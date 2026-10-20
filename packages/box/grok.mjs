@@ -1,0 +1,396 @@
+import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
+import { BridgedSession, MAX_STDERR, ReplyText, killTree, systemReminder } from "./bridge.mjs";
+import { RpcPeer } from "./rpc.mjs";
+
+export const GROK_BIN = process.env.GROK_BIN || "grok";
+const SETUP_TIMEOUT_MS = 60_000;
+const INTERRUPT_GRACE_MS = 10_000;
+
+export const GROK_CREDENTIAL_ENV = ["XAI_API_KEY", "GROK_XAI_API_BASE_URL", "GROK_MODELS_BASE_URL", "GROK_MODELS_LIST_URL"];
+
+/** What Grok would otherwise borrow from Claude Code and Cursor on a shared box. */
+const COMPAT_OFF = Object.fromEntries(
+  ["CLAUDE", "CURSOR"].flatMap((tool) => ["SKILLS", "RULES", "AGENTS", "MCPS", "HOOKS"].map((what) => [`GROK_${tool}_${what}_ENABLED`, "0"])),
+);
+
+export function grokEnv(base, access) {
+  const env = { ...base };
+  for (const name of GROK_CREDENTIAL_ENV) delete env[name];
+  Object.assign(env, COMPAT_OFF, { GROK_DISABLE_AUTOUPDATER: "1" });
+  if (access?.kind === "api") {
+    env.XAI_API_KEY = access.token;
+    env.GROK_XAI_API_BASE_URL = access.baseUrl;
+  }
+  return env;
+}
+
+export function grokArgs({ model, permission }) {
+  const args = ["agent"];
+  if (permission === "full") args.push("--always-approve");
+  if (model) args.push("--model", model);
+  args.push("stdio");
+  return args;
+}
+
+export function acpMcpServers({ node, mcpScript, socketPath, mcpServers = [] }) {
+  const pairs = (record) => Object.entries(record && typeof record === "object" ? record : {}).map(([name, value]) => ({ name, value: String(value) }));
+  const out = [{ name: "gond", command: node, args: [mcpScript, socketPath], env: [] }];
+  for (const server of mcpServers) {
+    if (!server || typeof server.name !== "string" || !/^[a-z0-9][a-z0-9_-]*$/i.test(server.name) || server.name === "gond") continue;
+    if (server.type === "http" && typeof server.url === "string") out.push({ type: "http", name: server.name, url: server.url, headers: pairs(server.headers) });
+    else if (server.type === "stdio" && typeof server.command === "string" && server.command) out.push({ name: server.name, command: server.command, args: Array.isArray(server.args) ? server.args.map(String) : [], env: pairs(server.env) });
+  }
+  return out;
+}
+
+export function withPersona(persona, prompt) {
+  return `<instructions>\n${persona}\n</instructions>\n\n${prompt}`;
+}
+
+function oneLine(text, max = 160) {
+  return String(text ?? "").replace(/\s+/g, " ").trim().slice(0, max);
+}
+
+export function grokSubject(toolCall) {
+  const input = toolCall?.rawInput && typeof toolCall.rawInput === "object" ? toolCall.rawInput : {};
+  const name = toolCall?._meta?.["x.ai/tool"]?.name ?? toolCall?.title ?? "tool";
+  if (name === "use_tool" && typeof input.tool_name === "string") {
+    const [server, ...rest] = input.tool_name.split("__");
+    const tool = rest.join("__") || server;
+    if (server === "gond" && tool === "permission") return null;
+    const args = input.tool_input && typeof input.tool_input === "object" ? input.tool_input : {};
+    return { tool: server === "gond" ? tool : `mcp__${server}__${tool}`, input: args };
+  }
+  if (name === "search_tool") return null;
+  if (typeof input.command === "string") return { tool: "Bash", input: { command: input.command } };
+  const file = input.path ?? input.file_path ?? input.target_file ?? toolCall?.locations?.[0]?.path;
+  if (!/replace|patch|edit|write/i.test(name) && /glob|grep|search|find/i.test(name)) return { tool: /glob/i.test(name) ? "Glob" : "Grep", input: { pattern: String(input.pattern ?? input.query ?? input.glob ?? ""), ...(typeof file === "string" ? { path: file } : {}) } };
+  if (typeof file === "string" && /list|dir|^ls$/i.test(name)) return { tool: "LS", input: { path: file } };
+  if (typeof file === "string") return { tool: /read|view/i.test(name) ? "Read" : /write|create/i.test(name) ? "Write" : "Edit", input: { file_path: file } };
+  if (typeof input.url === "string") return { tool: "WebFetch", input: { url: input.url } };
+  if (typeof input.query === "string") return { tool: "WebSearch", input: { query: input.query } };
+  return { tool: String(name), input };
+}
+
+function grokOutput(update) {
+  const parts = (Array.isArray(update?.content) ? update.content : []).map((part) => {
+    if (part?.type === "content" && part.content?.type === "text") return part.content.text;
+    if (part?.type === "diff") return `${part.path ?? ""}\n${part.newText ?? ""}`;
+    return "";
+  });
+  const text = parts.filter(Boolean).join("\n");
+  if (text) return text;
+  const raw = update?.rawOutput;
+  return raw === undefined || raw === null ? null : typeof raw === "string" ? raw : JSON.stringify(raw, null, 2);
+}
+
+export function grokStep(update) {
+  const id = update?.toolCallId;
+  if (!id) return null;
+  const status = update.status === "completed" ? "done" : update.status === "failed" ? "failed" : undefined;
+  if (update.sessionUpdate === "tool_call") {
+    const subject = grokSubject(update);
+    if (!subject) return null;
+    const kind = subject.tool === "Bash" ? "command" : ["Read", "Edit", "Write", "LS", "Glob", "Grep"].includes(subject.tool) ? "file" : "tool";
+    return { id, kind, tool: subject.tool, input: subject.input, status: status ?? "running" };
+  }
+  const output = grokOutput(update);
+  if (!status && output === null) return null;
+  return { id, ...(output !== null ? { output } : {}), ...(status ? { status } : {}) };
+}
+
+export function permissionSubject(toolCall) {
+  const input = toolCall?.rawInput && typeof toolCall.rawInput === "object" ? { ...toolCall.rawInput } : {};
+  const kind = toolCall?.kind;
+  if (kind === "execute" || typeof input.command === "string") return { tool: "Bash", input: { command: String(input.command ?? toolCall?.title ?? ""), ...(input.description ? { description: String(input.description) } : {}) } };
+  if (kind === "edit" || kind === "delete" || kind === "move") {
+    const file = input.path ?? input.file_path ?? input.target_file ?? toolCall?.locations?.[0]?.path ?? "";
+    return { tool: kind === "edit" ? "Edit" : "Write", input: { file_path: String(file) } };
+  }
+  if (kind === "fetch") return { tool: "WebFetch", input: { url: String(input.url ?? toolCall?.title ?? "") } };
+  const name = toolCall?._meta?.["x.ai/tool"]?.name ?? toolCall?.title ?? "tool";
+  return { tool: String(name), input };
+}
+
+/** Picks the option id for an answer: once, never "always", so every later call asks again. */
+export function permissionOutcome(options, allow) {
+  const list = Array.isArray(options) ? options : [];
+  const want = allow ? ["allow_once", "allow_always"] : ["reject_once", "reject_always"];
+  for (const kind of want) {
+    const option = list.find((o) => o?.kind === kind);
+    if (option) return { outcome: { outcome: "selected", optionId: option.optionId } };
+  }
+  return { outcome: { outcome: "cancelled" } };
+}
+
+export function grokPrompt(text, images = [], imagesSupported = false) {
+  const prompt = [{ type: "text", text }];
+  if (!imagesSupported) return prompt;
+  for (const file of images) {
+    if (file && typeof file.data === "string" && typeof file.mediaType === "string" && file.mediaType.startsWith("image/")) {
+      prompt.push({ type: "image", data: file.data, mimeType: file.mediaType });
+    }
+  }
+  return prompt;
+}
+
+export class GrokSession extends BridgedSession {
+  constructor(options) {
+    super(options);
+    this.engine = "grok";
+    this.bin = options.bin ?? GROK_BIN;
+    this.node = options.node ?? process.execPath;
+    this.rpc = null;
+    this.permission = "ask";
+    this.imagesSupported = false;
+
+    this.personaSent = false;
+    this.replaying = false;
+  }
+
+  bridgeTools() {
+    return this.tools.filter((tool) => tool.name !== "permission");
+  }
+
+  async ensure({ model, systemPrompt, tools, permission = "ask", mcpServers = [], access = { kind: "plan" } }) {
+    this.tools = tools;
+    this.permission = permission;
+    const argsKey = createHash("sha256")
+      .update(JSON.stringify({ engine: "grok", model, permission, mcpServers, access, tools: tools.map((t) => t.name).sort() }))
+      .digest("hex")
+      .slice(0, 16);
+    if (this.running && this.argsKey === argsKey) return { launched: false };
+    if (this.running) await this.close({ keepSession: true });
+
+    const socketPath = await this.listen();
+    const args = grokArgs({ model, permission });
+    this.stderr = "";
+    this.log("spawn", { args });
+    const child = spawn(this.bin, args, {
+      cwd: this.cwd,
+      env: grokEnv(this.baseEnv, access),
+      ...(this.uid !== undefined ? { uid: this.uid, gid: this.gid } : {}),
+      detached: true,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    this.child = child;
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk) => {
+      this.stderr = (this.stderr + chunk).slice(-MAX_STDERR);
+      this.log("stderr", chunk);
+    });
+    const spawned = new Promise((resolve, reject) => {
+      child.once("error", reject);
+      child.once("spawn", resolve);
+    });
+    child.on("close", (code, signal) => this.onExit(child, code, signal));
+    await spawned;
+    this.rpc = new RpcPeer(child, {
+      jsonrpc: true,
+      log: this.log,
+      onRequest: (method, params) => this.onAgentRequest(method, params),
+      onNotification: (method, params) => this.onNotification(method, params),
+    });
+
+    const describe = (error) => new Error(`Grok didn't start: ${(error.message || this.stderr.trim()).slice(0, 300)}`);
+    const init = await this.rpc
+      .request("initialize", { protocolVersion: 1, clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false } }, { timeoutMs: SETUP_TIMEOUT_MS })
+      .catch((error) => {
+        throw describe(error);
+      });
+    this.imagesSupported = Boolean(init?.agentCapabilities?.promptCapabilities?.image);
+    const methods = (init?.authMethods ?? []).map((m) => m?.id);
+    const method = access.kind === "api" ? "xai.api_key" : methods.includes("cached_token") ? "cached_token" : null;
+    if (method && methods.includes(method)) {
+      await this.rpc.request("authenticate", { methodId: method, _meta: { headless: true } }, { timeoutMs: SETUP_TIMEOUT_MS }).catch((error) => {
+        throw new Error(access.kind === "api" ? `Grok refused the API key: ${error.message}` : `Grok isn't signed in: ${error.message}. Run grok login --device-auth in a terminal on the computer.`);
+      });
+    }
+
+    const servers = acpMcpServers({ node: this.node, mcpScript: this.mcpScript, socketPath, mcpServers });
+    let resumed = false;
+    let recovered = false;
+    if (this.sessionId) {
+      const caps = init?.agentCapabilities ?? {};
+      const attempts = [...(caps.sessionCapabilities?.resume ? ["session/resume"] : []), ...(caps.loadSession ? ["session/load"] : [])];
+      for (const call of attempts) {
+        try {
+          // A load replays the history as updates; none of it belongs to a turn.
+          this.replaying = true;
+          await this.rpc.request(call, { sessionId: this.sessionId, cwd: this.cwd, mcpServers: servers }, { timeoutMs: SETUP_TIMEOUT_MS });
+          resumed = true;
+          break;
+        } catch (error) {
+          this.onWarning(`Grok couldn't ${call.slice(8)} session ${this.sessionId} (${error.message}).`);
+        } finally {
+          this.replaying = false;
+        }
+      }
+      if (!resumed) {
+        this.sessionId = null;
+        recovered = true;
+      }
+    }
+    if (!this.sessionId) {
+      const created = await this.rpc.request("session/new", { cwd: this.cwd, mcpServers: servers }, { timeoutMs: SETUP_TIMEOUT_MS }).catch((error) => {
+        throw describe(error);
+      });
+      this.sessionId = created?.sessionId ?? null;
+      if (!this.sessionId) throw new Error("Grok started no session");
+      this.personaSent = false;
+    }
+    if (!this.personaSent) this.systemPromptHash = null;
+    this.argsKey = argsKey;
+    return { launched: true, resumed, recovered };
+  }
+
+  onExit(child, code, signal) {
+    if (this.child !== child) return;
+    this.log("exit", { code, signal });
+    this.child = null;
+    this.rpc = null;
+    const turn = this.turn;
+    if (turn) {
+      this.turn = null;
+      turn.finish({ ok: false, text: turn.reply.text(), stopReason: turn.interrupted ? "interrupted" : "exited", error: turn.interrupted ? "The turn was interrupted" : this.stderr.trim().slice(0, 500) || `Grok exited (${signal ?? code})` });
+    }
+  }
+
+  onNotification(method, params) {
+    const turn = this.turn;
+    if (!turn || this.replaying || (params?.sessionId && params.sessionId !== this.sessionId)) return;
+    const update = params?.update ?? {};
+    if (method === "session/update") {
+      switch (update.sessionUpdate) {
+        case "agent_message_chunk":
+          if (update.content?.type === "text" && typeof update.content.text === "string") turn.reply.chunk(update.content.text);
+          return;
+        case "tool_call": {
+          if (turn.reply.current().trim()) turn.onEvent({ type: "activity", line: oneLine(turn.reply.current(), 200) });
+          turn.reply.tool();
+          const step = grokStep(update);
+          if (step) turn.onEvent({ type: "step", step });
+          return;
+        }
+        case "tool_call_update": {
+          const step = grokStep(update);
+          if (step) turn.onEvent({ type: "step", step });
+          return;
+        }
+        default:
+          return;
+      }
+    }
+  }
+
+  async onAgentRequest(method, params) {
+    if (method !== "session/request_permission") throw new Error(`${method} isn't supported by Gond`);
+    const toolCall = params?.toolCall ?? {};
+    const options = params?.options ?? [];
+    if (!this.turn) return { outcome: { outcome: "cancelled" } };
+    const input = toolCall.rawInput && typeof toolCall.rawInput === "object" ? toolCall.rawInput : {};
+
+    if (typeof input.tool_name === "string" && input.tool_name.startsWith("gond__")) return permissionOutcome(options, true);
+    if (this.permission === "full") return permissionOutcome(options, true);
+    const subject = permissionSubject(toolCall);
+    const answer = await this.askPermission(subject.tool, subject.input);
+    return permissionOutcome(options, answer.allow);
+  }
+
+  turnWith({ prompt, images, timeoutMs, onEvent, systemPrompt, signal }) {
+    if (this.turn) return Promise.reject(new Error("A turn is already in flight"));
+    if (!this.running || !this.rpc) return Promise.reject(new Error("No session"));
+    this.clearIdle();
+    let text = prompt;
+    const hash = createHash("sha256").update(systemPrompt).digest("hex");
+    if (!this.personaSent) text = withPersona(systemPrompt, prompt);
+    else if (hash !== this.systemPromptHash) text = systemReminder(systemPrompt) + prompt;
+    this.systemPromptHash = hash;
+    this.personaSent = true;
+    return new Promise((resolve) => {
+      const turn = {
+        onEvent,
+        interrupted: false,
+        reply: new ReplyText(),
+
+        steers: [],
+        finish: (result) => {
+          clearTimeout(timer);
+          signal?.removeEventListener("abort", interrupt);
+          this.dropPendingCalls();
+          if (this.running) this.armIdle();
+          resolve(result);
+        },
+      };
+      const interrupt = () => {
+        if (this.turn !== turn) return;
+        turn.interrupted = true;
+        this.rpc?.notify("session/cancel", { sessionId: this.sessionId });
+        setTimeout(() => {
+          if (this.turn === turn) this.kill();
+        }, INTERRUPT_GRACE_MS).unref?.();
+      };
+      const timer = setTimeout(interrupt, timeoutMs);
+      if (signal?.aborted) {
+        clearTimeout(timer);
+        resolve({ ok: false, text: "", stopReason: "interrupted", error: "Aborted before the turn started" });
+        return;
+      }
+      signal?.addEventListener("abort", interrupt, { once: true });
+      this.turn = turn;
+      this.log("in", { prompt: text.length, images: images?.length ?? 0 });
+      const send = (content) =>
+          this.rpc
+          .request("session/prompt", { sessionId: this.sessionId, prompt: content })
+          .then((done) => {
+            if (this.turn !== turn) return;
+
+            if (turn.steers.length && !turn.interrupted && this.rpc) {
+              const steers = turn.steers.splice(0);
+              turn.reply.tool();
+              this.log("in", { steer: steers.length });
+              send(grokPrompt(steers.join("\n\n"), [], this.imagesSupported));
+              return;
+            }
+            this.turn = null;
+            const stopReason = turn.interrupted ? "interrupted" : (done?.stopReason ?? "end_turn");
+            const ok = stopReason === "end_turn" || stopReason === "max_tokens" || stopReason === "max_turn_requests";
+            turn.finish({ ok: ok && !turn.interrupted, text: turn.reply.text(), stopReason, error: ok ? null : stopReason === "interrupted" || stopReason === "cancelled" ? "The turn was interrupted" : `Grok stopped (${stopReason})` });
+          })
+          .catch((error) => {
+            if (this.turn !== turn) return;
+            this.turn = null;
+            turn.finish({ ok: false, text: turn.reply.text(), stopReason: "error", error: error.message });
+          });
+      send(grokPrompt(text, images, this.imagesSupported));
+    });
+  }
+
+  async steer(text) {
+    const turn = this.turn;
+    if (!turn || turn.interrupted || !this.rpc || this.pendingCalls.size > 0) return false;
+    turn.steers.push(text);
+    if (turn.steers.length === 1) this.rpc.notify("session/cancel", { sessionId: this.sessionId });
+    return true;
+  }
+
+  kill() {
+    const child = this.child;
+    if (!child) return;
+    killTree(child, "SIGTERM");
+    setTimeout(() => killTree(child, "SIGKILL"), 5_000).unref?.();
+  }
+
+  async close({ keepSession = true } = {}) {
+    this.clearIdle();
+    await this.stopChild();
+    this.child = null;
+    this.rpc = null;
+    if (!keepSession) {
+      this.sessionId = null;
+      this.personaSent = false;
+    }
+    await this.closeBridge();
+  }
+}

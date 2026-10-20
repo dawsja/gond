@@ -1,0 +1,21 @@
+{
+  "name": "@gond/desktop",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Gond for Windows and Linux: the web app in its own window, pointed at your Gond.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "start": "tauri dev",
+    "build": "tauri build",
+    "dist:win": "tauri build --bundles nsis",
+    "dist:linux": "tauri build --bundles appimage",
+    "icons": "tauri icon ../../assets/gond-1024.png -o src-tauri/icons",
+    "lint": "node scripts/cargo.mjs fmt --all --manifest-path src-tauri/Cargo.toml --check",
+    "typecheck": "node scripts/cargo.mjs check --manifest-path src-tauri/Cargo.toml -p server-url",
+    "test": "node scripts/cargo.mjs test --manifest-path src-tauri/Cargo.toml -p server-url"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.12.1"
+  }
+}

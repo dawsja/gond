@@ -1,0 +1,46 @@
+import { Hono } from "hono";
+import { ownThread, userId } from "../access.ts";
+import { applyComposioKey } from "../composio.ts";
+import type { Env } from "../app.ts";
+import { deleteSecret, getSecretRequest, listSecrets, resolveSecretRequest, setSecret } from "../data/secrets.ts";
+import { holdLogin, rememberable } from "../logins.ts";
+import { answerSecretRequest } from "../secret-requests.ts";
+
+export function secretsRoutes() {
+  const app = new Hono<Env>();
+
+  app.get("/secret-requests/:id", (c) => {
+    const request = getSecretRequest(c.req.param("id"));
+    return request && ownThread(c, request.threadId) ? c.json({ request }) : c.json({ error: "No such request" }, 404);
+  });
+
+  app.post("/secret-requests/:id", async (c) => {
+    const request = getSecretRequest(c.req.param("id"));
+    if (!request || !ownThread(c, request.threadId)) return c.json({ error: "No such request" }, 404);
+    if (request.status !== "pending") return c.json({ request });
+    const body = (await c.req.json().catch(() => ({}))) as { value?: string; values?: Record<string, unknown>; remember?: boolean; decline?: boolean };
+    if (body.decline) return c.json({ request: answerSecretRequest(request.id, "declined") });
+    try {
+      if (request.target === "login") {
+        const values = body.values && typeof body.values === "object" ? body.values : {};
+        const given = request.fields.map((field) => ({ field, value: typeof values[field.name] === "string" ? (values[field.name] as string) : "" }));
+        if (given.some(({ value }) => !value)) return c.json({ error: "Fill in every field" }, 400);
+        if (given.some(({ value }) => value.length > 1_000)) return c.json({ error: "That's too long" }, 400);
+        for (const { field, value } of given) {
+          holdLogin(request.threadId, field.name, value);
+          if (body.remember === true && rememberable(field)) setSecret(userId(c), field.name, value, request.botId, request.site ?? request.name);
+        }
+      } else if (request.target === "composio") applyComposioKey(userId(c), String(body.value ?? ""));
+      else setSecret(userId(c), request.name, String(body.value ?? ""), request.botId);
+    } catch (error) {
+      return c.json({ error: error instanceof Error ? error.message : "Could not save" }, 400);
+    }
+    return c.json({ request: answerSecretRequest(request.id, "given") ?? resolveSecretRequest(request.id, "given") });
+  });
+
+  app.get("/secrets", (c) => c.json({ secrets: listSecrets(userId(c)) }));
+
+  app.delete("/secrets/:name", (c) => (deleteSecret(userId(c), c.req.param("name")) ? c.json({ ok: true }) : c.json({ error: "No such secret" }, 404)));
+
+  return app;
+}

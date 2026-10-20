@@ -1,0 +1,198 @@
+"use client";
+
+import { APPROVAL_LEVELS, APPROVAL_LEVEL_LABELS, BOT_COLORS, BOT_EXPRESSIONS, BOT_LIMITS, BOT_SHAPES, BOT_SHAPE_LABELS, type Bot, type BotExpression, type BotShape } from "@gond/shared";
+import { useRouter } from "next/navigation";
+import { ImagePlus } from "lucide-react";
+import { useEffect, useState, type FormEvent } from "react";
+import { GondBot } from "@/components/hq/gond-bot";
+import { usePicturePicker } from "@/components/picture-crop-dialog";
+import { useStore } from "@/components/store";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Spinner } from "@/components/ui/spinner";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { api, del, patch, post } from "@/lib/api";
+
+type Form = {
+  name: string;
+  title: string;
+  description: string;
+  color: string;
+  expression: BotExpression;
+  shape: BotShape;
+  approval: (typeof APPROVAL_LEVELS)[number];
+  toolkits: string[];
+  notify: boolean;
+};
+
+const APPROVAL_ITEMS = APPROVAL_LEVELS.map((level) => ({ value: level, label: APPROVAL_LEVEL_LABELS[level].title }));
+
+const EMPTY: Form = { name: "", title: "", description: "", color: BOT_COLORS[0], expression: "happy", shape: "cog", approval: "auto", toolkits: [], notify: true };
+
+export function BotDialog({ botId, onClose }: { botId: string | null; onClose: () => void }) {
+  const { bots, refresh } = useStore();
+  const router = useRouter();
+  const existing = botId ? bots.find((b) => b.id === botId) ?? null : null;
+  const [form, setForm] = useState<Form>(existing ? pick(existing) : EMPTY);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const set = <K extends keyof Form>(key: K, value: Form[K]) => setForm((f) => ({ ...f, [key]: value }));
+  // A new picture waits for Save, like every other change here; null means back to the mascot.
+  const [photo, setPhoto] = useState<{ blob: Blob; url: string } | null | undefined>(undefined);
+  const shown = photo === undefined ? (existing?.avatar ?? null) : (photo?.url ?? null);
+  const picture = usePicturePicker("The bot's picture", async (blob) => setPhoto({ blob, url: URL.createObjectURL(blob) }));
+  useEffect(() => () => void (photo && URL.revokeObjectURL(photo.url)), [photo]);
+
+  useEffect(() => {
+    if (!existing) api<{ name: string }>("/api/bots/name").then((d) => setForm((f) => (f.name ? f : { ...f, name: d.name, color: BOT_COLORS[bots.length % BOT_COLORS.length]! }))).catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const bot = existing ? (await patch<{ bot: Bot }>(`/api/bots/${existing.id}`, form)).bot : (await post<{ bot: Bot }>("/api/bots", form)).bot;
+      if (photo) {
+        const upload = new FormData();
+        upload.append("file", photo.blob, photo.blob.type === "image/gif" ? "picture.gif" : "picture.png");
+        await api(`/api/bots/${bot.id}/avatar`, { method: "PUT", body: upload });
+      } else if (photo === null && existing?.avatar) {
+        await del(`/api/bots/${bot.id}/avatar`);
+      }
+      await refresh();
+      if (!existing) router.push(`/app/t/${bot.threadId}`);
+      onClose();
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : "Could not save.");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{existing ? `Edit ${existing.name}` : "Create a bot"}</DialogTitle>
+          <DialogDescription>A name, a job, and a way of working. A focused bot beats a catch-all one.</DialogDescription>
+        </DialogHeader>
+        <form onSubmit={submit}>
+          <FieldGroup className="gap-5">
+
+            <div className="flex flex-col items-center gap-4">
+              {shown ? (
+                // eslint-disable-next-line @next/next/no-img-element -- a stored or local picture, already square
+                <img src={shown} alt="" className="size-26 rounded-full border border-primary-edge object-cover" />
+              ) : (
+                <GondBot color={form.color} size={104} expression={form.expression} shape={form.shape} />
+              )}
+              <div className="flex flex-wrap justify-center gap-2">
+                <Button type="button" variant="outline" size="lg" onClick={picture.choose} disabled={picture.busy}>
+                  <ImagePlus data-icon="inline-start" aria-hidden="true" />
+                  {shown ? "Change the picture" : "Upload a picture"}
+                </Button>
+                {shown ? (
+                  <Button type="button" variant="ghost" size="lg" onClick={() => setPhoto(null)}>
+                    Use the mascot
+                  </Button>
+                ) : null}
+              </div>
+              {picture.elements}
+              {shown ? null : (
+                <>
+
+                  <RadioGroup aria-label="Color" value={form.color} onValueChange={(value) => typeof value === "string" && set("color", value)} className="flex w-auto flex-wrap justify-center gap-2.5">
+                    {BOT_COLORS.map((c) => (
+                      <RadioGroupItem key={c} value={c} aria-label={c} className="size-8 border-2 border-transparent bg-(--swatch) ring-control ring-offset-2 ring-offset-card data-checked:border-transparent data-checked:bg-(--swatch) data-checked:ring-2 dark:bg-(--swatch) dark:data-checked:bg-(--swatch) [&>span]:hidden" style={{ "--swatch": c } as React.CSSProperties} />
+                    ))}
+                  </RadioGroup>
+                  <ToggleGroup aria-label="Shape" variant="pill" value={[form.shape]} onValueChange={(v) => v[0] && set("shape", v[0] as BotShape)} spacing={1.5} className="flex-wrap justify-center">
+                    {BOT_SHAPES.map((shape) => (
+                      <ToggleGroupItem key={shape} value={shape} aria-label={BOT_SHAPE_LABELS[shape]} title={BOT_SHAPE_LABELS[shape]} className="size-12 p-0">
+                        <GondBot color={form.color} size={30} expression="happy" shape={shape} greet={false} label={BOT_SHAPE_LABELS[shape]} />
+                      </ToggleGroupItem>
+                    ))}
+                  </ToggleGroup>
+                  <ToggleGroup aria-label="Expression" variant="pill" value={[form.expression]} onValueChange={(v) => v[0] && set("expression", v[0] as BotExpression)} spacing={1.5} className="flex-wrap justify-center">
+                    {BOT_EXPRESSIONS.map((e) => (
+                      <ToggleGroupItem key={e} value={e} className="px-3.5">
+                        {e}
+                      </ToggleGroupItem>
+                    ))}
+                  </ToggleGroup>
+                </>
+              )}
+            </div>
+
+            <FieldGroup className="gap-3">
+              <Field>
+                <FieldLabel htmlFor="bot-name">Name</FieldLabel>
+                <Input id="bot-name" value={form.name} onChange={(e) => set("name", e.target.value)} required maxLength={BOT_LIMITS.name} />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="bot-title">Job</FieldLabel>
+                <Input id="bot-title" value={form.title} onChange={(e) => set("title", e.target.value)} maxLength={BOT_LIMITS.title} placeholder="Sales Outbound, Inbox Manager, Assistant…" />
+              </Field>
+            </FieldGroup>
+
+            <Field>
+              <FieldLabel htmlFor="bot-description">Instructions</FieldLabel>
+              <Textarea id="bot-description" value={form.description} onChange={(e) => set("description", e.target.value)} rows={5} maxLength={BOT_LIMITS.description} placeholder="What it owns, what it must ask before doing, and what it returns. This becomes its SOUL.md." />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="bot-approval">Approvals</FieldLabel>
+              <Select items={APPROVAL_ITEMS} value={form.approval} onValueChange={(value) => value && set("approval", value as Form["approval"])}>
+                <SelectTrigger id="bot-approval" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {APPROVAL_LEVELS.map((level) => (
+                      <SelectItem key={level} value={level}>
+                        {APPROVAL_LEVEL_LABELS[level].title}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+              <FieldDescription>{APPROVAL_LEVEL_LABELS[form.approval].detail} Every bot runs on the model chosen under Settings. Any bot can add teammates and hand work to them; your primary bot is the one that coordinates.</FieldDescription>
+            </Field>
+
+            <FieldLabel htmlFor="bot-notify">
+              <Field orientation="horizontal">
+                <FieldContent>
+                  <FieldTitle>Notify me</FieldTitle>
+                  <FieldDescription>A notification when it finishes or needs you. Turn them on under Settings first.</FieldDescription>
+                </FieldContent>
+                <Switch id="bot-notify" checked={form.notify} onCheckedChange={(on) => set("notify", on)} aria-label="Notify me" />
+              </Field>
+            </FieldLabel>
+
+            {error ? <FieldError>{error}</FieldError> : null}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={onClose}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={busy}>
+                {busy ? <Spinner data-icon="inline-start" /> : null}
+                {busy ? "Saving…" : existing ? "Save" : "Create bot"}
+              </Button>
+            </DialogFooter>
+          </FieldGroup>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function pick(bot: Bot): Form {
+  return { name: bot.name, title: bot.title, description: bot.description, color: bot.color, expression: bot.expression, shape: bot.shape, approval: bot.approval, toolkits: bot.toolkits, notify: bot.notify };
+}

@@ -1,0 +1,46 @@
+"use client";
+
+import type { Bot } from "@gond/shared";
+import { Crown } from "lucide-react";
+import { GondBot } from "@/components/hq/gond-bot";
+import { useStore } from "@/components/store";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { cn } from "@/lib/utils";
+
+export function BotAvatar({ bot, size = 24, greet = false, className }: { bot: Pick<Bot, "name" | "title" | "color" | "expression" | "primary"> & Partial<Pick<Bot, "shape" | "avatar">>; size?: number; greet?: boolean; className?: string }) {
+  const disc = Math.max(12, Math.round(size * 0.3));
+  const label = `${bot.name}${bot.title ? `, ${bot.title}` : ""}${bot.primary ? ", primary bot" : ""}`;
+  return (
+    <span data-slot="bot-avatar" className={cn("relative inline-flex shrink-0 items-center justify-center", className)} style={{ width: size, height: size }}>
+      {bot.avatar ? (
+        <Avatar className="size-full border border-primary-edge after:hidden" role="img" aria-label={label}>
+          <AvatarImage src={bot.avatar} alt="" />
+          <AvatarFallback style={{ background: bot.color }} />
+        </Avatar>
+      ) : (
+        <GondBot color={bot.color} size={size} expression={bot.expression} shape={bot.shape} greet={greet} label={label} />
+      )}
+      {bot.primary && size >= 24 ? (
+        <span aria-hidden="true" className="absolute right-0 bottom-0 flex items-center justify-center rounded-full bg-gold text-gold-foreground ring-[1.5px] ring-background" style={{ width: disc, height: disc }}>
+          <Crown style={{ width: Math.round(disc * 0.62), height: Math.round(disc * 0.62) }} />
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+export function YouAvatar({ size = 24, className }: { size?: number; className?: string }) {
+  const { me } = useStore();
+  return <PersonAvatar name={me.name} avatar={me.avatar} size={size} className={className} />;
+}
+
+export function PersonAvatar({ name, avatar, size = 24, className }: { name: string; avatar: string | null; size?: number; className?: string }) {
+  return (
+    <Avatar className={cn("after:hidden", className)} style={{ width: size, height: size }} aria-label={name}>
+      {avatar ? <AvatarImage src={avatar} alt="" /> : null}
+      <AvatarFallback className="border border-primary-edge bg-primary font-semibold text-primary-foreground" style={{ fontSize: Math.max(10, Math.round(size * 0.4)) }}>
+        {name.charAt(0).toUpperCase() || "Y"}
+      </AvatarFallback>
+    </Avatar>
+  );
+}

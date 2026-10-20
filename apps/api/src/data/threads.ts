@@ -1,0 +1,348 @@
+import type { ChatAttachment, Message, MessageAuthor, MessageKind, Reaction, ReactionEmoji, Thread } from "@gond/shared";
+import { ensureDatabase, transaction } from "../db/init.ts";
+import { botsChanged, emit, threadChanged } from "../events.ts";
+import { newId, now } from "../ids.ts";
+
+type ThreadRow = {
+  id: string;
+  kind: "bot" | "room";
+  bot_id: string | null;
+  name: string;
+  last_read_at: string | null;
+  user_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type MessageRow = {
+  id: string;
+  thread_id: string;
+  author: string;
+  kind: MessageKind;
+  body: string;
+  attachments: string;
+  depth: number;
+  approval_id: string | null;
+  from_thread_id: string | null;
+  claimed_by: string | null;
+  answered_at: string | null;
+  steered: number;
+  created_at: string;
+};
+
+function parseAttachments(text: string): ChatAttachment[] {
+  try {
+    const value = JSON.parse(text);
+    return Array.isArray(value) ? (value as ChatAttachment[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function toMessage(row: MessageRow): Message {
+  return {
+    id: row.id,
+    threadId: row.thread_id,
+    author: row.author,
+    kind: row.kind,
+    body: row.body,
+    attachments: parseAttachments(row.attachments),
+    depth: row.depth,
+    approvalId: row.approval_id,
+    fromThreadId: row.from_thread_id,
+    steered: row.steered === 1,
+    reactions: reactionsOf(row.id),
+    createdAt: row.created_at,
+  };
+}
+
+export function reactionsOf(messageId: string): Reaction[] {
+  return ensureDatabase().query("SELECT author, emoji FROM gond_message_reactions WHERE message_id = ? ORDER BY created_at, rowid").all(messageId) as Reaction[];
+}
+
+/** Puts one author's reaction on a message, replacing theirs, or takes it off with null. */
+export function setReaction(message: Message, author: MessageAuthor, emoji: ReactionEmoji | null): Reaction[] {
+  const db = ensureDatabase();
+  if (emoji) {
+    db.query(
+      "INSERT INTO gond_message_reactions (message_id, author, emoji, created_at) VALUES (?, ?, ?, ?) ON CONFLICT (message_id, author) DO UPDATE SET emoji = excluded.emoji, created_at = excluded.created_at",
+    ).run(message.id, author, emoji, now());
+  } else {
+    db.query("DELETE FROM gond_message_reactions WHERE message_id = ? AND author = ?").run(message.id, author);
+  }
+  const reactions = reactionsOf(message.id);
+  emit({ topic: "reactions", threadId: message.threadId, messageId: message.id, reactions });
+  return reactions;
+}
+
+function members(threadId: string): string[] {
+  const rows = ensureDatabase().query("SELECT bot_id FROM gond_thread_members WHERE thread_id = ? ORDER BY rowid").all(threadId) as { bot_id: string }[];
+  return rows.map((r) => r.bot_id);
+}
+
+function toThread(row: ThreadRow): Thread {
+  const db = ensureDatabase();
+  const last = db
+    .query("SELECT author, body, created_at FROM gond_messages WHERE thread_id = ? AND kind IN ('message', 'approval', 'signin') ORDER BY created_at DESC LIMIT 1")
+    .get(row.id) as { author: string; body: string; created_at: string } | null;
+  const unread = db
+    .query("SELECT COUNT(*) AS n FROM gond_messages WHERE thread_id = ? AND author NOT IN ('you') AND kind IN ('message', 'approval', 'signin') AND created_at > ?")
+    .get(row.id, row.last_read_at ?? "") as { n: number };
+  return {
+    id: row.id,
+    userId: row.user_id ?? "",
+    kind: row.kind,
+    botId: row.bot_id,
+    name: row.name,
+    members: members(row.id),
+    lastMessage: last ? { author: last.author, body: last.body, at: last.created_at } : null,
+    unread: Number(unread.n),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function getThread(id: string): Thread | null {
+  const row = ensureDatabase().query("SELECT * FROM gond_threads WHERE id = ?").get(id) as ThreadRow | null;
+  return row ? toThread(row) : null;
+}
+
+export function listThreads(options: { kind?: "bot" | "room"; userId?: string } = {}): Thread[] {
+  const where: string[] = [];
+  const params: string[] = [];
+  if (options.kind) {
+    where.push("kind = ?");
+    params.push(options.kind);
+  }
+  if (options.userId) {
+    where.push("user_id = ?");
+    params.push(options.userId);
+  }
+  const rows = ensureDatabase()
+    .query(`SELECT * FROM gond_threads ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY updated_at DESC`)
+    .all(...params) as ThreadRow[];
+  return rows.map(toThread);
+}
+
+export function threadOwner(threadId: string): string | null {
+  const row = ensureDatabase().query("SELECT user_id FROM gond_threads WHERE id = ?").get(threadId) as { user_id: string | null } | null;
+  return row?.user_id ?? null;
+}
+
+export function createRoom(name: string, botIds: string[], userId: string): Thread {
+  const id = newId("room");
+  const at = now();
+  transaction((db) => {
+    db.query("INSERT INTO gond_threads (id, kind, bot_id, name, user_id, created_at, updated_at) VALUES (?, 'room', NULL, ?, ?, ?, ?)").run(id, name, userId, at, at);
+    for (const botId of new Set(botIds)) db.query("INSERT INTO gond_thread_members (thread_id, bot_id) VALUES (?, ?)").run(id, botId);
+  });
+  botsChanged();
+  return getThread(id)!;
+}
+
+export function updateRoom(id: string, patch: { name?: string; members?: string[] }): Thread | null {
+  const thread = getThread(id);
+  if (!thread || thread.kind !== "room") return null;
+  transaction((db) => {
+    if (patch.name) db.query("UPDATE gond_threads SET name = ?, updated_at = ? WHERE id = ?").run(patch.name, now(), id);
+    if (patch.members) {
+      db.query("DELETE FROM gond_thread_members WHERE thread_id = ?").run(id);
+      for (const botId of new Set(patch.members)) db.query("INSERT INTO gond_thread_members (thread_id, bot_id) VALUES (?, ?)").run(id, botId);
+    }
+  });
+  botsChanged();
+  return getThread(id);
+}
+
+export function deleteRoom(id: string): boolean {
+  const thread = getThread(id);
+  if (!thread || thread.kind !== "room") return false;
+  ensureDatabase().query("DELETE FROM gond_threads WHERE id = ?").run(id);
+  botsChanged();
+  return true;
+}
+
+export function markThreadRead(id: string) {
+  ensureDatabase().query("UPDATE gond_threads SET last_read_at = ? WHERE id = ?").run(now(), id);
+  botsChanged();
+}
+
+export type NewMessage = {
+  threadId: string;
+  author: MessageAuthor;
+  body: string;
+  kind?: MessageKind;
+  attachments?: ChatAttachment[];
+  depth?: number;
+  approvalId?: string | null;
+  fromThreadId?: string | null;
+
+  answered?: boolean;
+
+  wake?: boolean;
+
+  steered?: boolean;
+};
+
+export function postMessage(input: NewMessage): Message {
+  const id = newId("m");
+  const at = now();
+  const kind = input.kind ?? "message";
+  const needsAnswer = !input.answered && !input.steered && ((kind === "message" && (input.author === "you" || input.author === "routine" || Boolean(input.fromThreadId) || Boolean(input.wake))) || kind === "prompt");
+  transaction((db) => {
+    db.query(
+      `INSERT INTO gond_messages (id, thread_id, author, kind, body, attachments, depth, approval_id, from_thread_id, answered_at, steered, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(id, input.threadId, input.author, kind, input.body, JSON.stringify(input.attachments ?? []), input.depth ?? 0, input.approvalId ?? null, input.fromThreadId ?? null, needsAnswer ? null : at, input.steered ? 1 : 0, at);
+    db.query("UPDATE gond_threads SET updated_at = ? WHERE id = ?").run(at, input.threadId);
+    if (input.author === "you") db.query("UPDATE gond_threads SET last_read_at = ? WHERE id = ?").run(at, input.threadId);
+    for (const file of input.attachments ?? []) db.query("UPDATE gond_attachments SET message_id = ? WHERE id = ?").run(id, file.id);
+  });
+  threadChanged(input.threadId);
+  return getMessage(id)!;
+}
+
+/** Takes a message out of its conversation, as a routine run with nothing to say does. */
+export function dropMessage(id: string) {
+  const message = getMessage(id);
+  if (!message) return;
+  ensureDatabase().query("DELETE FROM gond_messages WHERE id = ?").run(id);
+  threadChanged(message.threadId, true);
+}
+
+export function getMessage(id: string): Message | null {
+  const row = ensureDatabase().query("SELECT * FROM gond_messages WHERE id = ?").get(id) as MessageRow | null;
+  return row ? toMessage(row) : null;
+}
+
+export function listMessages(threadId: string, options: { after?: string | null; before?: string | null; limit?: number; includeSent?: boolean } = {}): Message[] {
+  const limit = Math.min(Math.max(options.limit ?? 200, 1), 500);
+  const db = ensureDatabase();
+  const where = options.includeSent ? "(thread_id = ? OR from_thread_id = ?)" : "thread_id = ?";
+  const ids = options.includeSent ? [threadId, threadId] : [threadId];
+  if (options.after) {
+    const rows = db.query(`SELECT * FROM gond_messages WHERE ${where} AND created_at > ? ORDER BY created_at ASC, rowid ASC LIMIT ?`).all(...ids, options.after, limit) as MessageRow[];
+    return rows.map(toMessage);
+  }
+  const rows = db
+    .query(`SELECT * FROM gond_messages WHERE ${where} ${options.before ? "AND created_at < ?" : ""} ORDER BY created_at DESC, rowid DESC LIMIT ?`)
+    .all(...(options.before ? [...ids, options.before, limit] : [...ids, limit])) as MessageRow[];
+  return rows.reverse().map(toMessage);
+}
+
+export function listExchange(threadId: string, withThreadId: string, limit = 500): Message[] {
+  const rows = ensureDatabase()
+    .query(
+      `SELECT * FROM gond_messages WHERE kind = 'message' AND ((thread_id = ? AND from_thread_id = ?) OR (thread_id = ? AND from_thread_id = ?)) ORDER BY created_at ASC, rowid ASC LIMIT ?`,
+    )
+    .all(threadId, withThreadId, withThreadId, threadId, limit) as MessageRow[];
+  return rows.map(toMessage);
+}
+
+export function recentMessages(threadId: string, count: number): Message[] {
+  const rows = ensureDatabase()
+    .query("SELECT * FROM gond_messages WHERE thread_id = ? AND kind IN ('message', 'approval', 'signin') ORDER BY created_at DESC LIMIT ?")
+    .all(threadId, count) as MessageRow[];
+  return rows.reverse().map(toMessage);
+}
+
+export function searchMessages(query: string, userId: string, limit = 50): Message[] {
+  const like = `%${query.replace(/[%_]/g, (c) => `\\${c}`)}%`;
+  const rows = ensureDatabase()
+    .query("SELECT m.* FROM gond_messages m JOIN gond_threads t ON t.id = m.thread_id WHERE t.user_id = ? AND m.kind = 'message' AND m.body LIKE ? ESCAPE '\\' ORDER BY m.created_at DESC LIMIT ?")
+    .all(userId, like, limit) as MessageRow[];
+  return rows.map(toMessage);
+}
+
+export function claimPendingMessages(owner: string, room: (userId: string) => number): Message[] {
+  return transaction((db) => {
+    const rows = db
+      .query(
+        `SELECT m.*, t.user_id AS owner_id FROM gond_messages m LEFT JOIN gond_threads t ON t.id = m.thread_id
+         WHERE m.answered_at IS NULL AND m.claimed_by IS NULL AND m.kind IN ('message', 'prompt') ORDER BY m.created_at ASC`,
+      )
+      .all() as (MessageRow & { owner_id: string | null })[];
+    const taken = new Map<string, number>();
+    const claimed: Message[] = [];
+    for (const row of rows) {
+      const userId = row.owner_id ?? "";
+      const count = taken.get(userId) ?? 0;
+      if (count >= room(userId)) continue;
+      taken.set(userId, count + 1);
+      db.query("UPDATE gond_messages SET claimed_by = ? WHERE id = ?").run(owner, row.id);
+      claimed.push(toMessage(row));
+    }
+    return claimed;
+  });
+}
+
+export function botLinesSincePerson(threadId: string): number {
+  const row = ensureDatabase()
+    .query(
+      `SELECT COUNT(*) AS n FROM gond_messages WHERE thread_id = ? AND kind = 'message' AND author NOT IN ('you', 'system', 'routine')
+       AND created_at > COALESCE((SELECT MAX(created_at) FROM gond_messages WHERE thread_id = ? AND author = 'you'), '')`,
+    )
+    .get(threadId, threadId) as { n: number };
+  return row.n;
+}
+
+export function markAnswered(id: string) {
+  ensureDatabase().query("UPDATE gond_messages SET answered_at = ?, claimed_by = NULL WHERE id = ?").run(now(), id);
+}
+
+export function closePending(threadId: string): number {
+  const changed = ensureDatabase()
+    .query("UPDATE gond_messages SET answered_at = ?, claimed_by = NULL WHERE thread_id = ? AND answered_at IS NULL AND kind IN ('message', 'prompt')")
+    .run(now(), threadId).changes;
+  if (changed) threadChanged(threadId);
+  return changed;
+}
+
+export function closeSentFrom(threadId: string, since: string | null = null): number {
+  const db = ensureDatabase();
+  const where = `from_thread_id = ? AND thread_id != ? AND answered_at IS NULL ${since ? "AND created_at >= ?" : ""}`;
+  const args = since ? [threadId, threadId, since] : [threadId, threadId];
+  const threads = db.query(`SELECT DISTINCT thread_id FROM gond_messages WHERE ${where}`).all(...args) as { thread_id: string }[];
+  const changed = db.query(`UPDATE gond_messages SET answered_at = ?, claimed_by = NULL WHERE ${where}`).run(now(), ...args).changes;
+  for (const row of threads) threadChanged(row.thread_id);
+  return changed;
+}
+
+export function unsteer(id: string) {
+  const message = getMessage(id);
+  if (!message) return;
+  ensureDatabase().query("UPDATE gond_messages SET steered = 0, answered_at = NULL, claimed_by = NULL WHERE id = ?").run(id);
+  threadChanged(message.threadId);
+}
+
+export function releaseClaim(id: string) {
+  ensureDatabase().query("UPDATE gond_messages SET claimed_by = NULL WHERE id = ?").run(id);
+}
+
+export function threadBusy(threadId: string): boolean {
+  const row = ensureDatabase().query("SELECT COUNT(*) AS n FROM gond_messages WHERE thread_id = ? AND answered_at IS NULL AND kind = 'message'").get(threadId) as { n: number };
+  return Number(row.n) > 0;
+}
+
+export function storeAttachment(file: { name: string; mediaType: string; data: Uint8Array }): ChatAttachment {
+  const id = newId("f");
+  ensureDatabase()
+    .query("INSERT INTO gond_attachments (id, message_id, name, media_type, size, data, created_at) VALUES (?, NULL, ?, ?, ?, ?, ?)")
+    .run(id, file.name, file.mediaType, file.data.byteLength, file.data, now());
+  return { id, name: file.name, mediaType: file.mediaType, size: file.data.byteLength };
+}
+
+export function attachmentOwner(id: string): string | null {
+  const row = ensureDatabase()
+    .query("SELECT t.user_id FROM gond_attachments a JOIN gond_messages m ON m.id = a.message_id JOIN gond_threads t ON t.id = m.thread_id WHERE a.id = ?")
+    .get(id) as { user_id: string | null } | null;
+  return row?.user_id ?? null;
+}
+
+export function getAttachment(id: string): { meta: ChatAttachment; data: Uint8Array } | null {
+  const row = ensureDatabase().query("SELECT id, name, media_type, size, data FROM gond_attachments WHERE id = ?").get(id) as
+    | { id: string; name: string; media_type: string; size: number; data: Uint8Array }
+    | null;
+  if (!row) return null;
+  return { meta: { id: row.id, name: row.name, mediaType: row.media_type, size: row.size }, data: row.data };
+}

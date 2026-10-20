@@ -1,0 +1,350 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release to attach the apps to (v1.2.3); empty only builds. Assets the release already has are kept."
+        required: false
+        default: ""
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  # The release the apps are built for: the pushed tag, or the one a manual run names.
+  RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || inputs.tag || '' }}
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Lint, typecheck and test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - run: bun install ${{ hashFiles('bun.lock') != '' && '--frozen-lockfile' || '' }}
+      - run: bun run lint
+      - run: bun run typecheck
+      - run: bun run test
+
+  desktop:
+    name: Desktop app for ${{ matrix.os }}
+    needs: check
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows
+            runner: windows-latest
+            script: dist:win
+            files: |
+              apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe
+              apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe.sig
+          - os: linux
+            runner: ubuntu-24.04
+            script: dist:linux
+            files: |
+              apps/desktop/src-tauri/target/release/bundle/appimage/*.AppImage
+              apps/desktop/src-tauri/target/release/bundle/appimage/*.AppImage.sig
+    runs-on: ${{ matrix.runner }}
+    env:
+      GOND_REQUIRE_CARGO: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - if: matrix.os == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev libsoup-3.0-dev libayatana-appindicator3-dev librsvg2-dev patchelf libgtk-3-dev libssl-dev build-essential libxdo-dev
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+      - run: bun install ${{ hashFiles('bun.lock') != '' && '--frozen-lockfile' || '' }}
+      - if: env.RELEASE_TAG != ''
+        shell: bash
+        run: bun -e "const f = 'apps/desktop/src-tauri/tauri.conf.json'; const p = await Bun.file(f).json(); p.version = process.env.RELEASE_TAG.slice(1); await Bun.write(f, JSON.stringify(p, null, 2) + '\\n');"
+      - run: cargo fmt --all --check
+        working-directory: apps/desktop/src-tauri
+      - run: cargo test
+        working-directory: apps/desktop/src-tauri
+      # The bundler signs the installer for the updater (a .sig next to it)
+      # with the repository's key; without it (a fork) it builds unsigned.
+      - name: Build unsigned without the signing key
+        shell: bash
+        env:
+          HAS_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
+        run: |
+          if [ "$HAS_KEY" = "true" ]; then exit 0; fi
+          echo "No TAURI_SIGNING_PRIVATE_KEY here: building without updater signatures."
+          bun -e "const f = 'apps/desktop/src-tauri/tauri.conf.json'; const p = await Bun.file(f).json(); p.bundle.createUpdaterArtifacts = false; await Bun.write(f, JSON.stringify(p, null, 2) + '\\n');"
+      - run: bun run --filter @gond/desktop ${{ matrix.script }}
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: gond-desktop-${{ matrix.os }}
+          path: ${{ matrix.files }}
+          if-no-files-found: error
+
+  android:
+    name: Android app
+    needs: check
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v5
+        with:
+          gradle-version: 8.14.3
+      # A release tag (v1.2.3) names the APK; package.json stays 0.x in the tree.
+      - if: env.RELEASE_TAG != ''
+        shell: bash
+        run: |
+          node -e "const fs=require('fs');const f='apps/android/package.json';const p=JSON.parse(fs.readFileSync(f,'utf8'));p.version=process.env.RELEASE_TAG.slice(1);fs.writeFileSync(f,JSON.stringify(p,null,2)+'\n');"
+      - name: Keystore from secrets
+        if: env.KEYSTORE != ''
+        env:
+          KEYSTORE: ${{ secrets.GOND_ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          echo "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/release.keystore"
+          echo "GOND_ANDROID_KEYSTORE=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
+      - working-directory: apps/android
+        env:
+          GOND_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.GOND_ANDROID_KEYSTORE_PASSWORD }}
+          GOND_ANDROID_KEY_ALIAS: ${{ secrets.GOND_ANDROID_KEY_ALIAS }}
+          GOND_ANDROID_KEY_PASSWORD: ${{ secrets.GOND_ANDROID_KEY_PASSWORD }}
+        run: gradle --no-daemon testReleaseUnitTest assembleRelease
+      - uses: actions/upload-artifact@v7
+        with:
+          name: gond-android
+          path: apps/android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+
+  release:
+    name: Release the desktop and Android apps
+    needs: [desktop, android]
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.tag != ''
+
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: release
+          pattern: gond-*
+          merge-multiple: true
+      # What the desktop app's updater reads at releases/latest/download/latest.json.
+      # The signatures go into it rather than onto the release; without them
+      # (no signing key) there is no latest.json and the apps don't update.
+      - name: Write latest.json for the desktop updater
+        run: |
+          mkdir -p signatures
+          find release -maxdepth 1 -name '*.sig' -exec mv {} signatures/ \;
+          exe=$(find release -maxdepth 1 -name '*-setup.exe' -printf '%f\n' | head -n 1)
+          appimage=$(find release -maxdepth 1 -name '*.AppImage' -printf '%f\n' | head -n 1)
+          if [ -z "$exe" ] || [ -z "$appimage" ] || [ ! -s "signatures/$exe.sig" ] || [ ! -s "signatures/$appimage.sig" ]; then
+            echo "The desktop builds aren't signed, so there is no latest.json for $RELEASE_TAG."
+            exit 0
+          fi
+          download="https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG"
+          jq -n \
+            --arg version "${RELEASE_TAG#v}" \
+            --arg notes "See https://github.com/$GITHUB_REPOSITORY/releases/tag/$RELEASE_TAG" \
+            --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --rawfile windows "signatures/$exe.sig" \
+            --arg windowsUrl "$download/$exe" \
+            --rawfile linux "signatures/$appimage.sig" \
+            --arg linuxUrl "$download/$appimage" \
+            '{
+              version: $version,
+              notes: $notes,
+              pub_date: $date,
+              platforms: {
+                "windows-x86_64": { signature: ($windows | gsub("\\s"; "")), url: $windowsUrl },
+                "linux-x86_64": { signature: ($linux | gsub("\\s"; "")), url: $linuxUrl }
+              }
+            }' > release/latest.json
+          cat release/latest.json
+      # A new tag gets a release with everything; an existing release (a
+      # manual run for it) gets what it doesn't have yet and keeps the rest.
+      # latest.json goes up only with the installers it signs: next to ones
+      # from an earlier build, its signatures wouldn't match them.
+      - name: Create the GitHub release, or add to it
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            existing=$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
+            kept=""
+            for file in release/*; do
+              name=$(basename "$file")
+              [ "$name" = latest.json ] && continue
+              if grep -qxF "$name" <<<"$existing"; then echo "$name is already on $RELEASE_TAG"; kept="$kept $name"; continue; fi
+              gh release upload "$RELEASE_TAG" "$file" --repo "$GITHUB_REPOSITORY"
+            done
+            if [ -f release/latest.json ]; then
+              if grep -qxF latest.json <<<"$existing"; then
+                echo "latest.json is already on $RELEASE_TAG"
+              elif [[ "$kept" == *-setup.exe* || "$kept" == *.AppImage* ]]; then
+                echo "$RELEASE_TAG keeps installers from an earlier build, so latest.json isn't added."
+              else
+                gh release upload "$RELEASE_TAG" release/latest.json --repo "$GITHUB_REPOSITORY"
+              fi
+            fi
+          else
+            gh release create "$RELEASE_TAG" release/* --repo "$GITHUB_REPOSITORY" --title "Gond $RELEASE_TAG" --generate-notes
+          fi
+
+  build:
+    name: Build ${{ matrix.name }} ${{ matrix.arch }}
+    needs: check
+    strategy:
+      fail-fast: false
+      matrix:
+        name: [gond-web, gond-api, gond-box]
+        arch: [amd64, arm64]
+        include:
+          - name: gond-web
+            context: .
+            dockerfile: apps/web/Dockerfile
+          - name: gond-api
+            context: .
+            dockerfile: apps/api/Dockerfile
+          - name: gond-box
+            context: packages/box
+            dockerfile: packages/box/Dockerfile
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/${{ github.repository_owner }}/${{ matrix.name }}
+      PUSH: ${{ github.event_name != 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - name: Log in to GHCR
+        if: env.PUSH == 'true'
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE }}
+      - id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/${{ matrix.arch }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=${{ env.PUSH }}
+          cache-from: type=gha,scope=${{ matrix.name }}-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}-${{ matrix.arch }}
+      - name: Export digest
+        if: env.PUSH == 'true'
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/digests"
+          touch "$RUNNER_TEMP/digests/${DIGEST#sha256:}"
+      - if: env.PUSH == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: digests-${{ matrix.name }}--${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    name: Publish ${{ matrix.name }}
+    needs: build
+    if: github.event_name != 'pull_request'
+    strategy:
+      fail-fast: false
+      matrix:
+        name: [gond-web, gond-api, gond-box]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    env:
+      IMAGE: ghcr.io/${{ github.repository_owner }}/${{ matrix.name }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-${{ matrix.name }}--*
+          merge-multiple: true
+      - uses: docker/setup-buildx-action@v4
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE }}
+          # latest follows main; release tags (v1.2.3) publish 1.2.3 and 1.2.
+          flavor: latest=false
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha
+      - name: Create manifest list
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          mapfile -t tags < <(jq -r '.tags[]' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          args=()
+          for tag in "${tags[@]}"; do args+=(-t "$tag"); done
+          for digest in *; do args+=("$IMAGE@sha256:$digest"); done
+          docker buildx imagetools create "${args[@]}"
+      - name: Read manifest digest
+        id: manifest
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          digest=$(docker buildx imagetools inspect "$IMAGE:$VERSION" --format '{{json .Manifest}}' | jq -r .digest)
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "Published $IMAGE:$VERSION ($digest)" >> "$GITHUB_STEP_SUMMARY"
+      # Signed provenance for the published image. GitHub only stores
+      # attestations for public repositories and for private ones under an
+      # organization, so on a private personal repo this is skipped rather
+      # than failing a publish whose images are already pushed.
+      - if: github.event.repository.visibility == 'public'
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.manifest.outputs.digest }}
+          push-to-registry: true
