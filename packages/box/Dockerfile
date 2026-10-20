@@ -12,19 +12,6 @@ RUN apt-get update \
  && mkdir -p /home/agent/.bots /home/agent/.cache /home/agent/.claude /home/agent/.codex /home/agent/.grok /state \
  && chown agent:agent /home/agent/.bots /home/agent/.cache /home/agent/.claude /home/agent/.codex /home/agent/.grok
 
-# Each person's Claude Code login stays in their own ~/.claude; Gond never sees it.
-RUN mkdir -p /opt/claude && cd /opt/claude \
- && bun add --trust @anthropic-ai/claude-code \
- && ln -sf /opt/claude/node_modules/.bin/claude /usr/local/bin/claude \
- && rm -rf /root/.bun/install/cache
-
-RUN mkdir -p /opt/codex /opt/grok \
- && cd /opt/codex && bun add --trust @openai/codex \
- && ln -sf /opt/codex/node_modules/.bin/codex /usr/local/bin/codex \
- && cd /opt/grok && bun add --trust @xai-official/grok \
- && ln -sf /opt/grok/node_modules/.bin/grok /usr/local/bin/grok \
- && rm -rf /root/.bun/install/cache
-
 # A light Xfce desktop (its window manager, desktop, Thunar and terminal)
 # with a Plank dock; no 3D acceleration needed. The desktop needs no ports:
 # VNC listens on a unix socket in the person's runtime dir, bridged by

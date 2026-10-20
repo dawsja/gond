@@ -173,7 +173,7 @@ export function ComputerCard({ status, admin, onCheck }: { status: BoxStatus | n
           <AlertDialogHeader>
             <AlertDialogTitle>Update the computer?</AlertDialogTitle>
             <AlertDialogDescription>
-              The computer pauses for everyone: running work stops, desktops close, and new messages wait. {docker?.available ? "The newest box image is pulled from GHCR and the box restarts on it, keeping everyone's files." : "Then it's patched in place (Debian, Bun, Claude Code, Codex and Grok)."}
+              The computer pauses for everyone: running work stops, desktops close, and new messages wait. {docker?.available ? "The newest box image is pulled from GHCR and the box restarts on it, keeping everyone's files." : "Then it's patched in place (Debian and Bun)."}
               {docker && !docker.available ? ` Image pulls are off: ${docker.reason}` : docker?.available ? " Then Debian, Bun, Claude Code, Codex and Grok are patched." : ""} A few minutes, usually.
             </AlertDialogDescription>
           </AlertDialogHeader>

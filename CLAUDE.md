@@ -978,8 +978,8 @@ what is here. The README says what Gond is; this says how it is made.
   name a hostname from before an update; Chrome won't open a profile
   locked by another host, and both the wrapper and `clearForeignLock`
   remove such a lock first.
-- Node and the desktop come from the image; Bun and Claude Code are
-  patched in place by `update.sh`. Keep the script step-per-tool, each
+- Node and the desktop come from the image; Bun is patched in
+  place by `update.sh`. Keep the script step-per-tool, each
   step reporting and never stopping the next.
 
 ## Before a commit

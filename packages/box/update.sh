@@ -32,24 +32,6 @@ bun upgrade 2>&1
 finish $?
 printf 'bun %s -> %s\n' "$before" "$(bun --version 2>/dev/null || echo "?")"
 
-step "Claude Code"
-before=$(claude --version 2>/dev/null | head -n1 || echo "?")
-( cd /opt/claude && bun update --latest @anthropic-ai/claude-code 2>&1 && rm -rf /root/.bun/install/cache )
-finish $?
-printf 'claude %s -> %s\n' "$before" "$(claude --version 2>/dev/null | head -n1 || echo "?")"
-
-step "Codex"
-before=$(codex --version 2>/dev/null | head -n1 || echo "?")
-( cd /opt/codex && bun update --latest @openai/codex 2>&1 && rm -rf /root/.bun/install/cache )
-finish $?
-printf 'codex %s -> %s\n' "$before" "$(codex --version 2>/dev/null | head -n1 || echo "?")"
-
-step "Grok"
-before=$(grok --version 2>/dev/null | head -n1 || echo "?")
-( cd /opt/grok && bun update --latest @xai-official/grok 2>&1 && rm -rf /root/.bun/install/cache )
-finish $?
-printf 'grok %s -> %s\n' "$before" "$(grok --version 2>/dev/null | head -n1 || echo "?")"
-
 step "Node"
 printf 'node %s (from the image)\n' "$(node --version)"
 

@@ -81,7 +81,7 @@ Three containers:
 |---|---|
 | `web` | Next.js app. Forwards `/api/*` to the API, so there's one origin and one login. |
 | `api` | Hono on Bun with SQLite. Bots, chats, approvals, routines, apps, and the client that drives the box. |
-| `box` | The bots' computer: Node, Bun, Python, a browser, the three CLIs and an Xfce desktop. No published ports. |
+| `box` | The bots' computer: Node, Bun, Python, a browser and an Xfce desktop. No published ports. |
 
 ```mermaid
 flowchart LR
@@ -106,7 +106,7 @@ through the API's LLM proxy, which adds the key on the way out.
 volumes, so they survive restarts and updates.
 
 **Update and Reset** are in Settings → Team (admin only). Update pulls the
-newest box image and patches Debian, Bun and the CLIs in place. Reset puts
+newest box image and patches Debian and Bun in place. Reset puts
 the computer back to how it was built: every person's account and home goes,
 the admin's home is emptied, and the container is rebuilt from its image.
 Only the CLI sign-ins are kept, so nobody signs in to their plan again; an
