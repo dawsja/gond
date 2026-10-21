@@ -582,7 +582,7 @@ what is here. The README says what Gond is; this says how it is made.
   actions.** `browser` and `computer` (`src/computer-tool.ts`) are the
   same on every engine: `{ actions: [...] }`, up to `MAX_SCREEN_STEPS`
   (20) JSON steps run in order (`SCREEN_STEP_TYPES` in shared: screenshot,
-  click `{x, y, button?, count?}`, move, drag `{x, y, to_x, to_y}`, type,
+  click `{x, y, button?, count?}`, move, drag `{x, y, to_x, to_y, hold?}`, type,
   `type_login {name, submit?}`, key, scroll `{direction, amount?, x?, y?}`,
   wait `{ms}`, copy, paste `{text?}`, clipboard, and in the browser only
   navigate, back, forward, reload, tab, new_tab, close_tab, fill, select,
@@ -964,7 +964,10 @@ what is here. The README says what Gond is; this says how it is made.
   runs until it is answered. Copy and paste go through `xclip` on the
   person's display, so the desktop and the browser share one clipboard. The
   desktop's steps are xdotool argv (`xdotoolArgv`; text goes on stdin,
-  never in an argument). The browser is one host per person
+  never in an argument). A drag is a hand's on both: a held press, small
+  moves along `dragPath` and `hold` over the drop spot before the release,
+  since drag-and-drop lists ignore a pointer that jumps to its end. The
+  browser is one host per person
   (`browser-host.mjs`, started as them by `browser.mjs`): it holds a
   Playwright persistent context, Chrome headed on their display with its
   profile in `~/.config/gond-browser` (which the files API never opens),

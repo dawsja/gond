@@ -19,6 +19,7 @@ import {
   usesInput,
   xdoKey,
   xdotoolArgv,
+  dragPath,
   xdotoolStdin,
 } from "../computer.mjs";
 
@@ -75,10 +76,25 @@ test("clicks move to the point when given, with the button and count asked for",
   rejects([{ type: "click", x: 1 }], /needs x and y/);
 });
 
+test("a drag travels in small moves and ends on its target, however far it goes", () => {
+  const near = dragPath([0, 0], [6, 0]);
+  assert.equal(near.length, 10);
+  assert.deepEqual(near.at(-1), [6, 0]);
+  const far = dragPath([100, 50], [100, 2050]);
+  assert.equal(far.length, 80);
+  assert.deepEqual(far.at(-1), [100, 2050]);
+  assert.ok(far.every(([, y], i) => i === 0 || y > far[i - 1][1]), "always moving toward the target");
+});
+
 test("a move needs a point and a drag needs both ends", () => {
   assert.deepEqual(argv({ type: "move", x: 3, y: 4 }), ["xdotool", "mousemove", "3", "4"]);
   rejects([{ type: "move" }], /move needs x and y/);
-  assert.deepEqual(argv({ type: "drag", x: 1, y: 2, to_x: 30, to_y: 40 }), ["xdotool", "mousemove", "1", "2", "mousedown", "1", "mousemove", "--sync", "30", "40", "mouseup", "1"]);
+  const drag = argv({ type: "drag", x: 1, y: 2, to_x: 30, to_y: 40 });
+  assert.deepEqual(drag.slice(0, 8), ["xdotool", "mousemove", "1", "2", "mousedown", "1", "sleep", "0.15"]);
+  assert.deepEqual(drag.slice(-9), ["mousemove", "30", "40", "sleep", "0.016", "sleep", "0.08", "mouseup", "1"]);
+  assert.equal(drag.filter((word) => word === "mousemove").length, 11, "the press, then ten small moves");
+  assert.equal(one({ type: "drag", x: 1, y: 2, to_x: 30, to_y: 40, hold: 99_999 }).hold, 10_000);
+  rejects([{ type: "drag", x: 1, y: 2, to_x: 3, to_y: 4, hold: "long" }], /hold must be a number/);
   rejects([{ type: "drag", x: 1, y: 2 }], /needs to_x and to_y/);
 });
 
@@ -191,7 +207,7 @@ test("a browser step can name an element by its ref, and the browser's own steps
   assert.deepEqual(browser({ type: "select", ref: "e6", option: "Large" })[0].options, ["Large"]);
   assert.deepEqual(browser({ type: "select", ref: "e6", option: ["A", "B"] })[0].options, ["A", "B"]);
   assert.equal(browser({ type: "check", ref: "e8", checked: false })[0].checked, false);
-  assert.deepEqual(browser({ type: "drag", ref: "e1", to_ref: "e2" })[0], { type: "drag", ref: "e1", toRef: "e2" });
+  assert.deepEqual(browser({ type: "drag", ref: "e1", to_ref: "e2" })[0], { type: "drag", ref: "e1", toRef: "e2", hold: 80 });
   assert.deepEqual(browser({ type: "scroll", ref: "e9" })[0], { type: "scroll", ref: "e9", direction: null, amount: 0 });
   assert.deepEqual(browser({ type: "read" })[0], { type: "read" });
   assert.deepEqual(browser({ type: "wait_for", text: "Order placed" })[0], { type: "wait_for", text: "Order placed", url: null, gone: false, ms: 10_000 });

@@ -10,7 +10,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { spawn } from "node:child_process";
-import { describeStep, LOOK_STEPS, NAVIGATE_TIMEOUT_MS, pngSize, SETTLE_MS } from "./computer.mjs";
+import { describeStep, DRAG_PRESS_MS, DRAG_STEP_MS, dragPath, LOOK_STEPS, NAVIGATE_TIMEOUT_MS, pngSize, SETTLE_MS } from "./computer.mjs";
 import { takeLines } from "./gond-mcp.mjs";
 import { compactSnapshot, snapshotControls } from "./snapshot.mjs";
 
@@ -73,6 +73,8 @@ export function writeXclip(text, spawnAs = spawn, options = {}) {
 }
 
 export const clipText = (text, max = MAX_READ_CHARS) => (text.length > max ? `${text.slice(0, max)}\n[… ${text.length - max} more characters]` : text);
+
+const centerOf = (box) => (box ? [Math.round(box.x + box.width / 2), Math.round(box.y + box.height / 2)] : null);
 
 function refError(error, ref) {
   const line = errorLine(error);
@@ -276,17 +278,31 @@ export function createBrowser({ launch, clipboard = xclipClipboard, downloadsDir
         mouse = { x: step.at[0], y: step.at[1] };
         await current.mouse.move(mouse.x, mouse.y, { steps: 4 });
         return null;
-      case "drag":
-        if (step.ref || step.find) {
-          await onElement(current, step, (el) => el.dragTo(element(current, step.toRef), options));
-          return null;
+      case "drag": {
+        let from = step.from;
+        let to = step.to;
+        if (step.ref) {
+          for (const ref of [step.ref, step.toRef]) if ((await element(current, ref).count()) === 0) throw refError(new Error(`no element ${ref}`), ref);
+          const source = element(current, step.ref);
+          await source.scrollIntoViewIfNeeded(options).catch((error) => {
+            throw refError(error, step.ref);
+          });
+          from = centerOf(await source.boundingBox());
+          to = centerOf(await element(current, step.toRef).boundingBox());
+          if (!from || !to) throw new Error(`${from ? step.toRef : step.ref} isn't showing, so it can't be dragged`);
         }
-        await current.mouse.move(step.from[0], step.from[1]);
+        await current.mouse.move(from[0], from[1]);
         await current.mouse.down();
-        await current.mouse.move(step.to[0], step.to[1], { steps: 12 });
+        await current.waitForTimeout(DRAG_PRESS_MS);
+        for (const [x, y] of dragPath(from, to)) {
+          await current.mouse.move(x, y);
+          await current.waitForTimeout(DRAG_STEP_MS);
+        }
+        await current.waitForTimeout(step.hold);
         await current.mouse.up();
-        mouse = { x: step.to[0], y: step.to[1] };
+        mouse = { x: to[0], y: to[1] };
         return null;
+      }
       case "type":
         if (step.ref || step.find) await onElement(current, step, (el) => el.click(options));
         await current.keyboard.type(step.text, { delay: 12 });

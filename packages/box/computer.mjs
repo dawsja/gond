@@ -32,6 +32,32 @@ const ROLE = /^[a-z]{2,24}$/;
 
 export const SETTLE_MS = 400;
 
+// A drag the way a hand does it, since drag-and-drop lists ignore one that jumps straight to
+// its end: hold the press, travel in small moves, and wait over the drop spot before letting go.
+export const DRAG_PRESS_MS = 150;
+export const DRAG_HOLD_MS = 80;
+export const MAX_DRAG_HOLD_MS = 10_000;
+export const DRAG_STEP_MS = 16;
+const DRAG_STEP_PX = 12;
+const DRAG_MIN_STEPS = 10;
+const DRAG_MAX_STEPS = 80;
+
+/** The points a drag passes through after the press, ending on its target. */
+export function dragPath(from, to) {
+  const steps = Math.min(Math.max(Math.ceil(Math.hypot(to[0] - from[0], to[1] - from[1]) / DRAG_STEP_PX), DRAG_MIN_STEPS), DRAG_MAX_STEPS);
+  return Array.from({ length: steps }, (_, i) => {
+    const t = (i + 1) / steps;
+    return [Math.round(from[0] + (to[0] - from[0]) * t), Math.round(from[1] + (to[1] - from[1]) * t)];
+  });
+}
+
+function holdOf(step) {
+  if (step.hold === undefined || step.hold === null) return DRAG_HOLD_MS;
+  const given = Number(step.hold);
+  if (!Number.isFinite(given)) throw new ComputerActionError("hold must be a number of milliseconds");
+  return Math.min(Math.max(Math.round(given), 0), MAX_DRAG_HOLD_MS);
+}
+
 export const THUMB_EDGE = 1024;
 
 export const CONTROL_HOLDERS = ["free", "bots", "person"];
@@ -260,9 +286,9 @@ function parseStep(step, target, area) {
       const toRef = refOf(step, "to_ref");
       if (ref || toRef) {
         if (!ref || !toRef) throw new ComputerActionError("drag by element needs ref and to_ref");
-        return { type, ref, toRef };
+        return { type, ref, toRef, hold: holdOf(step) };
       }
-      return { type, from: point(step, "x", "y", area), to: point(step, "to_x", "to_y", area) };
+      return { type, from: point(step, "x", "y", area), to: point(step, "to_x", "to_y", area), hold: holdOf(step) };
     }
     case "type":
       return { type, ...where, text: textOf(step), secret: step.secret === true };
@@ -401,8 +427,11 @@ export function xdotoolArgv(step) {
         : ["xdotool", ...move, "click", String(XDO_BUTTONS[step.button])];
     case "move":
       return ["xdotool", ...move];
-    case "drag":
-      return ["xdotool", "mousemove", String(step.from[0]), String(step.from[1]), "mousedown", "1", "mousemove", "--sync", String(step.to[0]), String(step.to[1]), "mouseup", "1"];
+    case "drag": {
+      const seconds = (ms) => String(ms / 1000);
+      const travel = dragPath(step.from, step.to).flatMap(([x, y]) => ["mousemove", String(x), String(y), "sleep", seconds(DRAG_STEP_MS)]);
+      return ["xdotool", "mousemove", String(step.from[0]), String(step.from[1]), "mousedown", "1", "sleep", seconds(DRAG_PRESS_MS), ...travel, "sleep", seconds(step.hold), "mouseup", "1"];
+    }
     case "type":
       return ["xdotool", "type", "--delay", "12", "--clearmodifiers", "--file", "-"];
     case "key":
@@ -426,6 +455,7 @@ export const NAVIGATE_TIMEOUT_MS = 30_000;
 export function stepTimeoutMs(step) {
   if (step.type === "type") return STEP_TIMEOUT_MS + step.text.length * TYPE_MS_PER_CHAR;
   if (step.type === "wait" || step.type === "wait_for") return step.ms + STEP_TIMEOUT_MS;
+  if (step.type === "drag") return step.hold + STEP_TIMEOUT_MS;
   if (step.type === "new_tab" && step.url) return NAVIGATE_TIMEOUT_MS;
   if (step.type === "navigate" || step.type === "reload" || step.type === "back" || step.type === "forward") return NAVIGATE_TIMEOUT_MS;
   return STEP_TIMEOUT_MS;
