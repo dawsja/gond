@@ -1,7 +1,7 @@
 "use client";
 
 import type { Bot } from "@gond/shared";
-import { ArrowRightLeft, Monitor, Pencil, Pin, PinOff, Trash2, type LucideIcon } from "lucide-react";
+import { ArrowRightLeft, Pencil, Pin, PinOff, Trash2, type LucideIcon } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { Confirm } from "@/components/confirm-dialog";
 import type { ShellDialog } from "@/components/shell";
@@ -20,7 +20,7 @@ export type Ask = { kind: "delete" | "transfer"; thread: ThreadRow };
 
 export type ThreadAction = { id: string; label: string; icon: LucideIcon; run: () => void; destructive?: boolean };
 
-export function threadActions({ thread, bot, bots, driving = false, onOpen, onAsk, refresh }: { thread: ThreadRow; bot: Bot | undefined; bots: Bot[]; driving?: boolean; onOpen: (dialog: NonNullable<ShellDialog>) => void; onAsk: (ask: Ask) => void; refresh: () => Promise<void> }): ThreadAction[][] {
+export function threadActions({ thread, bot, bots, onOpen, onAsk, refresh }: { thread: ThreadRow; bot: Bot | undefined; bots: Bot[]; onOpen: (dialog: NonNullable<ShellDialog>) => void; onAsk: (ask: Ask) => void; refresh: () => Promise<void> }): ThreadAction[][] {
   const groups: ThreadAction[][] = [];
   if (bot) {
     groups.push([
@@ -34,8 +34,6 @@ export function threadActions({ thread, bot, bots, driving = false, onOpen, onAs
             .then(() => refresh())
             .catch(failed(bot.pinned ? "Couldn't unpin it." : "Couldn't pin it.")),
       },
-
-      { id: "computer", label: driving ? "Watch its screen" : "Open its computer", icon: Monitor, run: () => onOpen({ kind: "computer", botId: bot.id }) },
     ]);
     if (bot.primary && bots.some((b) => b.id !== bot.id && !b.hidden)) {
       groups.push([{ id: "transfer", label: "Transfer primary bot", icon: ArrowRightLeft, run: () => onAsk({ kind: "transfer", thread }) }]);

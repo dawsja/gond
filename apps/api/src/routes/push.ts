@@ -4,7 +4,7 @@ import type { Env } from "../app.ts";
 import { setUserTimezone } from "../data/prefs.ts";
 import { countSubscriptions, removeSubscription, saveSubscription } from "../data/push.ts";
 import { markActive, markViewing } from "../presence.ts";
-import { sendPush, vapidKeys } from "../push.ts";
+import { vapidKeys } from "../push.ts";
 
 export function pushRoutes() {
   const app = new Hono<Env>();
@@ -35,11 +35,6 @@ export function pushRoutes() {
     if (device && body.active === true) markActive(userId(c), device);
     if (body.timezone !== undefined) setUserTimezone(userId(c), body.timezone);
     return c.body(null, 204);
-  });
-
-  app.post("/push/test", async (c) => {
-    const sent = await sendPush({ title: "Gond", body: "Notifications are working.", url: "/app", tag: "test", threadId: "" }, userId(c));
-    return c.json({ sent });
   });
 
   return app;

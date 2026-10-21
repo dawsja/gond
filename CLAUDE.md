@@ -93,11 +93,15 @@ what is here. The README says what Gond is; this says how it is made.
   transparent with the same edge when it is secondary
   (`variant="outline"`, a toggle until it is pressed). A focused field
   steps to `--primary-edge-focus`, never a ring, which reads as a band on
-  the light page and vanishes on the dark one. There is no brand colour:
+  the light page and vanishes on the dark one. A hovered pill steps too,
+  solid, never see-through: `bg-primary-hover` (8% toward the ink,
+  Material's hover state) and `--primary-edge-focus` on its edge, so a pill
+  floating over a conversation or the computer's screen still reads as
+  hovered; no hover is an opacity. There is no brand colour:
   ink on paper in the light, Material's dark theme (#121212, elevation by
   a lighter grey) in the dark, and the bots are the only colour on a page.
   The exceptions are markers, each a token: your bubble's blue, the
-  primary bot's gold crown (`--gold`), and the tones of a status
+  primary bot's crown on a gold coin (`--gold`, `--gold-coin`, the `bg-gold-coin` utility), and the tones of a status
   (`--tone-ok`, `-warn`, `-bad`, `-info`). Secondary actions are `variant="outline"`, tertiary
   `ghost`, destructive `destructive`. Use `text-muted-foreground`,
   `bg-card`, `bg-muted`, `border` and friends; never raw Tailwind colours,
@@ -121,7 +125,11 @@ what is here. The README says what Gond is; this says how it is made.
   with no blur; fields inside are `bg-primary`, so they read on it. The
   close is a primary circle (`icon-lg`, 44px under a coarse pointer),
   the title `text-lg font-semibold`, and the footer has no band: its
-  buttons are `lg` pills, full width and stacked on a phone. Menus, a
+  buttons are `lg` pills, full width and stacked on a phone. Only the
+  middle scrolls (`dialog-body`): the header, title and close together,
+  sticks to the top and the footer to the bottom, so neither scrolls out
+  of reach, and each shows a `border` line only while something is
+  scrolled under it (`trackScrollEdges`). Menus, a
   `Select`'s list and popovers are a `rounded-2xl` card with the same
   edge and `h-9` rows on every pointer. All of it lives in
   `components/ui`; a call site only sets its width. The one exception is
@@ -181,7 +189,9 @@ what is here. The README says what Gond is; this says how it is made.
   answer promises and an older desktop may lack a method, so check it is a
   function before calling. In the Android and the desktop app there is no
   Web Push: the API's `notify` live event becomes a native notification
-  through the bridge (`shell-notifications.tsx`), the theme provider hands
+  through the bridge (`shell-notifications.tsx`), and Turn off there is a
+  switch kept on that device (`shellNotificationsOff` in `lib/push.ts`),
+  since an app can't take back the system's permission; the theme provider hands
   the page's background to the bars and the window around it, and Settings
   → Account shows the server the app is pointed at with a Change server
   button. Signing out in an app ends only Gond's session (`useSignOut`
@@ -235,7 +245,9 @@ what is here. The README says what Gond is; this says how it is made.
   while it is open and there is one connection per visible view. The
   right panel shows it when `desktop.drivers` names the thread, else the
   grey placeholder; on a phone a "Watching the screen" pill under the
-  header opens it; the thread menu says "Watch its screen" meanwhile.
+  header opens it. The bot's ⋯ and long-press menu has no computer item:
+  the right panel shows it on a wide screen and the details sheet on a
+  phone.
   Taking control is `POST /api/box/desktop/control` (`changeDesktopControl`
   in `computer-panel.tsx`); the result arrives as the `desktop` event.
 - **A bot can wear a picture instead of its mascot.** Edit profile uploads
@@ -328,8 +340,7 @@ what is here. The README says what Gond is; this says how it is made.
   (`right-panel.tsx` → `openShellDialog({ kind: "computer", botId })`),
   and keeping it running (Update, Reset, what is installed) is the
   `ComputerCard` inside Team, the admin's. `useStore().admin` hides the
-  admin's things elsewhere ("Open its computer", the computer section of a
-  bot's details). A new card goes into an existing section, or a new entry there
+  admin's things elsewhere (the computer section of a bot's details). A new card goes into an existing section, or a new entry there
   with a URL the API and the bots can point at (`Settings → Apps → MCP
   servers` in copy). Sign out is in the sidebar footer's profile menu on a
   desktop and the last row of the Settings list on a phone (`useSignOut`).
@@ -354,6 +365,14 @@ what is here. The README says what Gond is; this says how it is made.
   table in migration 6), and a data test that writes the new value. Settings that apply to
   the whole team go in `gond_settings`; binary things (attachments, your
   picture) are blobs in their own table.
+- **Search is an index, not a scan.** `gond_messages_fts` is an FTS5
+  trigram index over every message's text, kept by triggers, so
+  `searchMessages` matches words anywhere (case aside, inside words too),
+  all of them in any order, and walks the index newest first to stop at
+  its limit; a word under three characters is checked with LIKE. The index
+  follows `gond_messages`' rowids, so a migration that rebuilds that table
+  (or a VACUUM) ends with `INSERT INTO gond_messages_fts (gond_messages_fts)
+  VALUES ('rebuild')`.
 - Anything that runs on the box goes through `src/box.ts`. The API never
   reads the Claude sign-in and never sends connected-app credentials to
   the box; app actions run through Composio in the API.
@@ -854,9 +873,7 @@ what is here. The README says what Gond is; this says how it is made.
   sends Web Push only to that device's subscriptions and stamps the
   `notify` event with it, and `shell-notifications.tsx` shows only its
   own; until the API has seen the person since it started
-  (`activeDevice` is in memory), every device gets it. `POST
-  /api/push/test` sends one past the viewing check; Send a test
-  notification in Settings → Account calls it.
+  (`activeDevice` is in memory), every device gets it.
 - **Time is the person's browser's.** `gond_user_prefs` keeps each person's
   zone, reported by `viewing-report.tsx` with every presence ping;
   `userTimezone(userId)` in `src/data/prefs.ts` is the only reader;

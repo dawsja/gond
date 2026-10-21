@@ -79,7 +79,7 @@ export function BotDialog({ botId, onClose }: { botId: string | null; onClose: (
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{existing ? `Edit ${existing.name}` : "Create a bot"}</DialogTitle>
           <DialogDescription>A name, a job, and a way of working. A focused bot beats a catch-all one.</DialogDescription>

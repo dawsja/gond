@@ -63,7 +63,8 @@ function oneLineOf(text: string, max: number): string {
 export function snippetAround(text: string, query: string, width = 240): string {
   const flat = text.replace(/\s+/g, " ").trim();
   if (flat.length <= width) return flat;
-  const at = Math.max(0, flat.toLowerCase().indexOf(query.toLowerCase()));
+  const lower = flat.toLowerCase();
+  const at = Math.max(0, [query, ...query.split(/\s+/)].map((part) => (part ? lower.indexOf(part.toLowerCase()) : -1)).find((index) => index >= 0) ?? 0);
   const start = Math.max(0, Math.min(at - Math.floor(width / 3), flat.length - width));
   return `${start > 0 ? "…" : ""}${flat.slice(start, start + width).trim()}${start + width < flat.length ? "…" : ""}`;
 }

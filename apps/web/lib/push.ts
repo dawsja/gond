@@ -37,6 +37,24 @@ export async function enablePush(): Promise<void> {
 let device: string | null = null;
 
 /** One id per browser or app install, kept across reloads, so the API can notify only the one the person used last. */
+// The apps can't take back the system's permission, so their Turn off is a switch kept on this device.
+const SHELL_OFF = "gond-shell-notifications-off";
+
+export function shellNotificationsOff(): boolean {
+  try {
+    return localStorage.getItem(SHELL_OFF) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function setShellNotificationsOff(off: boolean) {
+  try {
+    if (off) localStorage.setItem(SHELL_OFF, "1");
+    else localStorage.removeItem(SHELL_OFF);
+  } catch {}
+}
+
 export function deviceId(): string {
   if (device) return device;
   try {

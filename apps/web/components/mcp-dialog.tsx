@@ -65,7 +65,7 @@ export function McpDialog({ server, onClose, onSaved }: { server: McpServer | nu
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{server ? `Edit ${server.name}` : "Add an MCP server"}</DialogTitle>
           <DialogDescription>Every one of your bots gets its tools. Writes still ask for your approval.</DialogDescription>

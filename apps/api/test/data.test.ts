@@ -1092,7 +1092,7 @@ describe("data", () => {
     expect(userTimezone("u-ping")).toBe("America/Chicago");
   });
 
-  test("a test notification goes to the person's subscriptions only, past the viewing check", async () => {
+  test("a notification goes to the person's own subscriptions, on the device they used last", async () => {
     const { Hono } = await import("hono");
     const { mock } = await import("bun:test");
     const delivered: string[] = [];
@@ -1106,6 +1106,8 @@ describe("data", () => {
       },
     }));
     const { pushRoutes } = await import("../src/routes/push.ts");
+    const { sendPush } = await import("../src/push.ts");
+    const notice = { title: "Gond", body: "Done.", url: "/app", tag: "t", threadId: "" };
     const { saveSubscription } = await import("../src/data/push.ts");
     const { markViewing } = await import("../src/presence.ts");
     const { subscribe } = await import("../src/events.ts");
@@ -1117,14 +1119,12 @@ describe("data", () => {
       if (event.topic === "notify") seen.push(event);
     });
     try {
-      const app = asPerson(new Hono(), "u-tester").route("/api", pushRoutes());
-      const response = await app.request("/api/push/test", { method: "POST" });
-      expect(await response.json()).toEqual({ sent: 1 });
+      expect(await sendPush(notice, "u-tester")).toBe(1);
     } finally {
       stop();
     }
     expect(delivered).toEqual(["https://push.example/tester"]);
-    expect(seen).toEqual([{ topic: "notify", userId: "u-tester", title: "Gond", body: "Notifications are working.", url: "/app", tag: "test", threadId: "", device: null }]);
+    expect(seen).toEqual([{ topic: "notify", userId: "u-tester", ...notice, device: null }]);
 
     delivered.length = 0;
     seen.length = 0;
@@ -1136,7 +1136,7 @@ describe("data", () => {
       const app = asPerson(new Hono(), "u-tester").route("/api", pushRoutes());
       const used = await app.request("/api/push/viewing", { method: "POST", body: JSON.stringify({ client: "w2", threadId: null, device: "phone", active: true }) });
       expect(used.status).toBe(204);
-      expect(await (await app.request("/api/push/test", { method: "POST" })).json()).toEqual({ sent: 1 });
+      expect(await sendPush(notice, "u-tester")).toBe(1);
     } finally {
       again();
     }
@@ -1162,6 +1162,19 @@ describe("data", () => {
     postMessage({ threadId: mine.threadId, author: "you", body: "the secret plan" });
     postMessage({ threadId: theirs.threadId, author: "you", body: "the secret plan" });
     expect(searchMessages("secret plan", "u-me").map((m) => m.threadId)).toEqual([mine.threadId]);
+    const kopia = postMessage({ threadId: mine.threadId, author: "you", body: "Delete the old Kopia cache on ditto, then check the B2 backup" });
+    const found = (query: string) => searchMessages(query, "u-me").map((m) => m.id);
+    expect(found("KOPIA")).toEqual([kopia.id]);
+    expect(found("opia")).toEqual([kopia.id]);
+    expect(found("backup kopia")).toEqual([kopia.id]);
+    expect(found("b2 kopia")).toEqual([kopia.id]);
+    expect(found("b2")).toEqual([kopia.id]);
+    expect(found("kopia restic")).toEqual([]);
+    expect(found('"kopia" OR plan')).toEqual([]);
+    expect(searchMessages("kopia", "u-them")).toEqual([]);
+    const { dropMessage } = await import("../src/data/threads.ts");
+    dropMessage(kopia.id);
+    expect(found("kopia")).toEqual([]);
     saveSubscription({ endpoint: "https://push.example/me", keys: { p256dh: "a", auth: "b" } }, "u-me");
     saveSubscription({ endpoint: "https://push.example/them", keys: { p256dh: "a", auth: "b" } }, "u-them");
     expect(listSubscriptions("u-me").map((s) => s.endpoint)).toEqual(["https://push.example/me"]);

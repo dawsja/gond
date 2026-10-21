@@ -382,7 +382,7 @@ export function DesktopScreen({
       frame={frame}
       onBackdrop={close}
       backdropLabel={backdropLabel}
-      bar={<DesktopToolbar title={wideTitle} icon={icon} driver={driver} frame={frame} report={report} control={control} onControlChange={onControlChange} view={view} onHelp={() => setHelp(true)} onStop={onStop} onClose={close} closeLabel={closeLabel} className="hidden wide:flex" />}
+      bar={<DesktopToolbar title={wideTitle} icon={icon} driver={driver} report={report} control={control} onControlChange={onControlChange} view={view} onHelp={() => setHelp(true)} onStop={onStop} onClose={close} closeLabel={closeLabel} className="hidden wide:flex" />}
     >
       <DesktopView ref={view} viewOnly={control === "bots"} trackpad={trackpad} quality="full" onStatus={setReport} onKeyboard={setKeyboardOpen} />
       <PhoneControls

@@ -8,8 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
-import { post } from "@/lib/api";
-import { currentSubscription, disablePush, enablePush, pushPermission, pushSupported } from "@/lib/push";
+import { currentSubscription, disablePush, enablePush, pushPermission, pushSupported, setShellNotificationsOff, shellNotificationsOff } from "@/lib/push";
 import { shellBridge, useNativeShell } from "@/lib/shell";
 
 type State = "checking" | "unsupported" | "off" | "on" | "blocked";
@@ -27,7 +26,7 @@ export function NotificationsCard() {
       if (bridge) {
         if (typeof bridge.notificationsState !== "function") return setState("unsupported");
         const permission = await bridge.notificationsState();
-        return setState(permission === "granted" ? "on" : permission === "denied" ? "blocked" : "off");
+        return setState(permission === "granted" ? (shellNotificationsOff() ? "off" : "on") : permission === "denied" ? "blocked" : "off");
       }
       if (!pushSupported()) return setState("unsupported");
       if (pushPermission() === "denied") return setState("blocked");
@@ -43,7 +42,12 @@ export function NotificationsCard() {
 
   async function turnOn() {
     const bridge = shellBridge();
-    if (bridge) return void (typeof bridge.requestNotifications === "function" && (await bridge.requestNotifications()));
+    if (bridge) {
+      setShellNotificationsOff(false);
+      const granted = typeof bridge.notificationsState === "function" && (await bridge.notificationsState()) === "granted";
+      if (!granted && typeof bridge.requestNotifications === "function") await bridge.requestNotifications();
+      return void window.dispatchEvent(new Event("gond:notifications"));
+    }
     setBusy(true);
     try {
       await enablePush();
@@ -59,25 +63,14 @@ export function NotificationsCard() {
 
   async function turnOff() {
     const bridge = shellBridge();
-    if (bridge) return void (typeof bridge.requestNotifications === "function" && (await bridge.requestNotifications()));
+    if (bridge) {
+      setShellNotificationsOff(true);
+      return void window.dispatchEvent(new Event("gond:notifications"));
+    }
     setBusy(true);
     try {
       await disablePush();
       setState("off");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function sendTest() {
-    setBusy(true);
-    try {
-      const { sent } = await post<{ sent: number }>("/api/push/test");
-      if (sent) toast.add({ type: "info", title: sent === 1 ? "Sent to one browser." : `Sent to ${sent} browsers.` });
-      else if (shell) toast.add({ type: "info", title: "Test sent." });
-      else toast.add({ type: "info", title: "No device is subscribed yet." });
-    } catch (failure) {
-      toast.add({ type: "error", title: failure instanceof Error ? failure.message : "Could not send the test." });
     } finally {
       setBusy(false);
     }
@@ -117,7 +110,7 @@ export function NotificationsCard() {
                   ? "This computer shows them."
                   : "This browser is subscribed."
               : state === "off"
-                ? `Not on for ${where} yet.`
+                ? `Off for ${where}.`
                 : state === "blocked"
                   ? shell === "android"
                     ? "Notifications are off for Gond in the phone's settings. Turn on opens them."
@@ -131,13 +124,6 @@ export function NotificationsCard() {
                     : ""}
           </span>
         </div>
-        {state === "on" ? (
-          <div>
-            <Button variant="outline" size="sm" disabled={busy} onClick={() => void sendTest()}>
-              Send a test notification
-            </Button>
-          </div>
-        ) : null}
         {state === "unsupported" && !shell ? (
           <Alert>
             <AlertTitle>Not available on this address</AlertTitle>

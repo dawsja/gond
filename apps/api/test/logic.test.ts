@@ -1128,3 +1128,26 @@ describe("run_with_secrets", () => {
     expect(scrubbed("nothing here", env)).toBe("nothing here");
   });
 });
+
+describe("message search index", () => {
+  test("the migration indexes messages that are already there, and triggers keep it current", async () => {
+    const { Database } = await import("bun:sqlite");
+    const { runMigrations, LATEST_VERSION } = await import("../src/db/migrations.ts");
+    const db = new Database(":memory:", { strict: true });
+    runMigrations(db, LATEST_VERSION - 1);
+    const at = "2026-10-21T00:00:00Z";
+    db.query("INSERT INTO gond_threads (id, kind, bot_id, name, user_id, created_at, updated_at) VALUES ('t1', 'room', NULL, 'Room', 'u1', ?, ?)").run(at, at);
+    const post = (id: string, body: string) =>
+      db.query("INSERT INTO gond_messages (id, thread_id, author, kind, body, attachments, depth, created_at) VALUES (?, 't1', 'you', 'message', ?, '[]', 0, ?)").run(id, body, at);
+    post("m1", "the Kopia cache on ditto");
+    runMigrations(db);
+    const hits = (term: string) => (db.query("SELECT m.id FROM gond_messages m WHERE m.rowid IN (SELECT rowid FROM gond_messages_fts WHERE gond_messages_fts MATCH ?)").all(`"${term}"`) as { id: string }[]).map((r) => r.id);
+    expect(hits("kopia")).toEqual(["m1"]);
+    post("m2", "a new Kopia repository");
+    expect(hits("kopia").sort()).toEqual(["m1", "m2"]);
+    db.query("UPDATE gond_messages SET body = 'nothing to see' WHERE id = 'm2'").run();
+    db.query("DELETE FROM gond_messages WHERE id = 'm1'").run();
+    expect(hits("kopia")).toEqual([]);
+    expect(hits("nothing")).toEqual(["m2"]);
+  });
+});

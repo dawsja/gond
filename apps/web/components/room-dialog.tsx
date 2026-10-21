@@ -40,7 +40,7 @@ export function RoomDialog({ onClose }: { onClose: () => void }) {
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>New group chat</DialogTitle>
+          <DialogTitle>New group</DialogTitle>
           <DialogDescription>Put bots in a room so they can coordinate: pass work, assign ownership, and pull you in for judgment calls.</DialogDescription>
         </DialogHeader>
         <form onSubmit={submit}>

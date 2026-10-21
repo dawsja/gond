@@ -46,9 +46,8 @@ function preview(thread: ThreadRow, bots: Bot[], activity: Record<string, string
 }
 
 function ThreadMenu({ thread, bot, onOpen, onAsk, trigger, children }: { thread: ThreadRow; bot: Bot | undefined; onOpen: (dialog: ShellDialog) => void; onAsk: (ask: Ask) => void; trigger: ReactElement; children: ReactNode }) {
-  const { bots, refresh, desktop } = useStore();
-  const driving = Boolean(desktop?.drivers.some((driver) => driver.threadId === thread.id));
-  const groups = threadActions({ thread, bot, bots, driving, onOpen, onAsk, refresh });
+  const { bots, refresh } = useStore();
+  const groups = threadActions({ thread, bot, bots, onOpen, onAsk, refresh });
   return (
     <ContextMenu>
       <ContextMenuTrigger render={trigger}>{children}</ContextMenuTrigger>
@@ -187,7 +186,7 @@ export function NewMenu({ onOpen, size = "icon-lg" }: { onOpen: (dialog: ShellDi
         <DropdownMenuGroup>
           <DropdownMenuItem onClick={() => onOpen({ kind: "new-bot" })}>Create a bot</DropdownMenuItem>
           <DropdownMenuItem onClick={() => onOpen({ kind: "new-room" })} disabled={bots.length === 0}>
-            New group chat
+            New group
           </DropdownMenuItem>
         </DropdownMenuGroup>
       </DropdownMenuContent>

@@ -597,6 +597,22 @@ const MIGRATIONS: Array<string | ((db: Database) => void)> = [
   `ALTER TABLE gond_push_subscriptions ADD COLUMN device TEXT;`,
   `ALTER TABLE gond_user_prefs ADD COLUMN voice TEXT;`,
   `ALTER TABLE gond_user_prefs ADD COLUMN voice_model TEXT;`,
+  // Search: a trigram index over every message's text, kept by triggers. It follows the messages'
+  // rowids, so a migration that rebuilds gond_messages (or a VACUUM) must end with a 'rebuild'.
+  `
+  CREATE VIRTUAL TABLE gond_messages_fts USING fts5(body, content='gond_messages', content_rowid='rowid', tokenize='trigram');
+  INSERT INTO gond_messages_fts (gond_messages_fts) VALUES ('rebuild');
+  CREATE TRIGGER gond_messages_fts_insert AFTER INSERT ON gond_messages BEGIN
+    INSERT INTO gond_messages_fts (rowid, body) VALUES (new.rowid, new.body);
+  END;
+  CREATE TRIGGER gond_messages_fts_delete AFTER DELETE ON gond_messages BEGIN
+    INSERT INTO gond_messages_fts (gond_messages_fts, rowid, body) VALUES ('delete', old.rowid, old.body);
+  END;
+  CREATE TRIGGER gond_messages_fts_update AFTER UPDATE OF body ON gond_messages BEGIN
+    INSERT INTO gond_messages_fts (gond_messages_fts, rowid, body) VALUES ('delete', old.rowid, old.body);
+    INSERT INTO gond_messages_fts (rowid, body) VALUES (new.rowid, new.body);
+  END;
+  `,
 ];
 
 export const RENAME_VERSION = MIGRATIONS.indexOf(renameLegacyObjects) + 1;

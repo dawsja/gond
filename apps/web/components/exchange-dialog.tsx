@@ -63,8 +63,8 @@ export function ExchangeDialog({ threadId, withThreadId, onClose }: { threadId: 
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent showCloseButton={false} className="grid h-[min(85dvh,720px)] max-w-[calc(100%-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-w-2xl">
-        <DialogHeader className="gap-0 border-b px-4 py-3">
+      <DialogContent showCloseButton={false} className="h-[min(85dvh,720px)] max-w-[calc(100%-2rem)] sm:max-w-2xl" bodyClassName="grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 max-sm:pb-0">
+        <DialogHeader className="m-0 gap-0 border-b border-border px-4 py-3">
           <DialogTitle className="flex items-center gap-2 text-[14px] font-semibold">
             {data ? (
               <>
@@ -122,7 +122,7 @@ export function ExchangeDialog({ threadId, withThreadId, onClose }: { threadId: 
           </MessageScroller>
         </MessageScrollerProvider>
 
-        <DialogFooter className="mx-0 mb-0 flex-row items-center justify-center gap-3 border-t px-4 py-3 sm:justify-center">
+        <DialogFooter className="m-0 flex-row items-center border-border justify-center gap-3 border-t px-4 py-3 sm:justify-center">
           <span className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
             <Lock className="size-3.5" aria-hidden="true" />
             This chat is view-only

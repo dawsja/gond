@@ -10,9 +10,9 @@ const toggleVariants = cva(
     variants: {
       variant: {
         default: "bg-transparent",
-        outline: "border border-primary-edge bg-transparent hover:bg-primary",
+        outline: "border border-primary-edge bg-transparent hover:border-primary-edge-focus hover:bg-primary",
 
-        pill: "rounded-full border border-primary-edge bg-transparent hover:bg-primary data-pressed:border-control data-pressed:bg-control data-pressed:text-control-foreground aria-pressed:border-control aria-pressed:bg-control aria-pressed:text-control-foreground",
+        pill: "rounded-full border border-primary-edge bg-transparent hover:border-primary-edge-focus hover:bg-primary data-pressed:border-control data-pressed:bg-control data-pressed:text-control-foreground aria-pressed:border-control aria-pressed:bg-control aria-pressed:text-control-foreground",
       },
       size: {
         default:

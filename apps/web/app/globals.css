@@ -57,6 +57,10 @@
   --color-primary: var(--primary);
   --color-primary-edge: var(--primary-edge);
   --color-primary-edge-focus: var(--primary-edge-focus);
+  /* Hover is a solid step toward the ink, never see-through, so a pill floating over a page or
+     a picture reads as hovered and doesn't take on what is behind it. */
+  --color-primary-hover: color-mix(in oklch, var(--primary), var(--foreground) 8%);
+  --color-control-hover: color-mix(in oklch, var(--control), var(--background) 18%);
   --color-bubble-you: var(--bubble-you);
   --color-bubble-you-foreground: var(--bubble-you-foreground);
   --color-bubble-bot: var(--bubble-bot);
@@ -117,7 +121,7 @@
  *   mint / amber / sky on linen  4.7 / 5.3 / 5.0       9.6 / 13.4 / 8.9
  *   magenta / grape / ember on linen 5.0 / 4.5 / 5.1   8.3 / 7.5 / 5.2
  *   white on ember                5.6                   3.6
- *   gold-foreground on gold       6.5                  10.2
+ *   gold-foreground on gold       5.3 (5.0 at the coin's darkest)
  *   control-foreground on control 17.4                 14.2
  */
 :root {
@@ -145,8 +149,9 @@
   --tone-warn: #8a5a00;
   --tone-bad: #c2301a;
   --tone-info: #2266c4;
-  --gold: #c9960c;
-  --gold-foreground: #1b1a18;
+  --gold: #d9a21b;
+  --gold-coin: linear-gradient(145deg, #fff1b0 0%, #f6d158 30%, #d49b16 68%, #9a6a08 100%);
+  --gold-foreground: #4a3000;
 
   --background: var(--linen);
   --foreground: var(--carbon);
@@ -222,8 +227,9 @@
   --tone-warn: #ffe082;
   --tone-bad: #ef9a9a;
   --tone-info: #90caf9;
-  --gold: #e6c35c;
-  --gold-foreground: #1b1a18;
+  --gold: #d9a21b;
+  --gold-coin: linear-gradient(145deg, #fff1b0 0%, #f6d158 30%, #d49b16 68%, #9a6a08 100%);
+  --gold-foreground: #4a3000;
 
   --background: var(--linen);
   --foreground: var(--carbon);
@@ -279,6 +285,14 @@
 
 [data-slot="bubble-content"] ::selection {
   background: color-mix(in oklch, var(--foreground) 25%, transparent);
+}
+
+/* The primary bot's crown is a gold coin: lit from the top, deep underneath. The shading goes in
+   --tw-inset-shadow so a ring on the same element still draws. */
+@utility bg-gold-coin {
+  background-color: var(--gold);
+  background-image: var(--gold-coin);
+  --tw-inset-shadow: inset 0 1px 0 rgb(255 255 255 / 0.65), inset 0 -1px 0 rgb(90 55 0 / 0.35);
 }
 
 /* `scrollbar-none` stays for the call sites that say it out loud; the base already does the same. */

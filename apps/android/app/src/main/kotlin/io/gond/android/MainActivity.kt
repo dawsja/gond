@@ -117,6 +117,13 @@ class MainActivity : AppCompatActivity() {
         web.onResume()
     }
 
+    // WebView writes new cookies to disk lazily, and a swipe from the recent apps kills the
+    // process before it does, so the sign-in's session cookie would be lost with it.
+    override fun onPause() {
+        CookieManager.getInstance().flush()
+        super.onPause()
+    }
+
     override fun onDestroy() {
         web.destroy()
         super.onDestroy()
@@ -406,6 +413,7 @@ class MainActivity : AppCompatActivity() {
             override fun onPageFinished(view: WebView, url: String?) {
                 binding.progress.visibility = View.GONE
                 relayout()
+                CookieManager.getInstance().flush()
             }
 
             override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {

@@ -113,7 +113,7 @@ export function SettingsPage({ user, section, index = false }: { user: SessionUs
   );
 
   const nav = (
-    <nav aria-label="Settings sections" className="hidden gap-1 overflow-x-auto wide:flex wide:w-44 wide:shrink-0 wide:flex-col wide:overflow-visible">
+    <nav aria-label="Settings sections" className="hidden gap-1 overflow-x-auto wide:sticky wide:top-8 wide:flex wide:w-44 wide:shrink-0 wide:flex-col wide:overflow-visible">
       {sectionsFor(me.role).map((s) => {
         const active = s.id === current.id;
         const Icon = s.icon;

@@ -738,7 +738,7 @@ export function Conversation({ threadId }: { threadId: string }) {
   const screenProps = { expanded: screen, onExpand: () => setScreen(true), onCollapse: () => setScreen(false) };
   // A wide screen already shows the details beside the chat, so there the bot's pill opens its profile.
   const openPill = () => (bot && window.matchMedia("(width >= 64rem)").matches && document.documentElement.dataset.shell !== "android" ? openShellDialog({ kind: "edit-bot", botId: bot.id }) : setDetails(true));
-  const actions = row ? threadActions({ thread: row, bot: bot ?? undefined, bots, driving, onOpen: openShellDialog, onAsk: setAsk, refresh }) : [];
+  const actions = row ? threadActions({ thread: row, bot: bot ?? undefined, bots, onOpen: openShellDialog, onAsk: setAsk, refresh }) : [];
 
   return (
     <div className="flex min-h-0 flex-1">
@@ -762,7 +762,7 @@ export function Conversation({ threadId }: { threadId: string }) {
           <span className="flex-1" />
 
           <Tooltip>
-            <TooltipTrigger render={<Button size="icon-xl" aria-label="Toggle details" aria-pressed={panel} onClick={() => setPanel((p) => !p)} className={cn("pointer-events-auto hidden xwide:inline-flex", panel && "bg-primary/85")} />}>
+            <TooltipTrigger render={<Button size="icon-xl" aria-label="Toggle details" aria-pressed={panel} onClick={() => setPanel((p) => !p)} className={cn("pointer-events-auto hidden xwide:inline-flex", panel && "bg-primary-hover")} />}>
               <PanelRight aria-hidden="true" />
             </TooltipTrigger>
             <TooltipContent>Details</TooltipContent>

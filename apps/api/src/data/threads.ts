@@ -246,12 +246,34 @@ export function recentMessages(threadId: string, count: number): Message[] {
   return rows.reverse().map(toMessage);
 }
 
+/** The words of a search, each matched anywhere in a message (case aside), in any order. */
+export function searchTerms(query: string): string[] {
+  return [...new Set(query.toLowerCase().split(/\s+/).filter(Boolean))].slice(0, 8);
+}
+
+/**
+ * Words of three characters or more go through the trigram index, walked from the newest message
+ * back so a common word stops at the limit instead of sorting every match; shorter words, which a
+ * trigram index can't hold, are checked with LIKE (and alone, scan newest first as before).
+ * Messages are written in time order, so the index's rowid order is newest first.
+ */
 export function searchMessages(query: string, userId: string, limit = 50): Message[] {
-  const like = `%${query.replace(/[%_]/g, (c) => `\\${c}`)}%`;
-  const rows = ensureDatabase()
-    .query("SELECT m.* FROM gond_messages m JOIN gond_threads t ON t.id = m.thread_id WHERE t.user_id = ? AND m.kind = 'message' AND m.body LIKE ? ESCAPE '\\' ORDER BY m.created_at DESC LIMIT ?")
-    .all(userId, like, limit) as MessageRow[];
-  return rows.map(toMessage);
+  const terms = searchTerms(query);
+  if (!terms.length) return [];
+  const indexed = terms.filter((term) => [...term].length >= 3);
+  const likes = terms.filter((term) => [...term].length < 3).map((term) => `%${term.replace(/[%_\\]/g, (c) => `\\${c}`)}%`);
+  const short = likes.map(() => "AND m.body LIKE ? ESCAPE '\\'").join(" ");
+  const db = ensureDatabase();
+  const rows = indexed.length
+    ? db
+        .query(
+          `SELECT m.* FROM (SELECT rowid AS r FROM gond_messages_fts WHERE gond_messages_fts MATCH ? ORDER BY rowid DESC) f
+           JOIN gond_messages m ON m.rowid = f.r JOIN gond_threads t ON t.id = m.thread_id
+           WHERE t.user_id = ? AND m.kind = 'message' ${short} LIMIT ?`,
+        )
+        .all(indexed.map((term) => `"${term.replaceAll('"', '""')}"`).join(" AND "), userId, ...likes, limit)
+    : db.query(`SELECT m.* FROM gond_messages m JOIN gond_threads t ON t.id = m.thread_id WHERE t.user_id = ? AND m.kind = 'message' ${short} ORDER BY m.created_at DESC LIMIT ?`).all(userId, ...likes, limit);
+  return (rows as MessageRow[]).map(toMessage);
 }
 
 export function claimPendingMessages(owner: string, room: (userId: string) => number): Message[] {

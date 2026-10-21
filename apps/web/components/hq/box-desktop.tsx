@@ -34,7 +34,7 @@ function IconButton({
       >
         {children}
       </TooltipTrigger>
-      <TooltipContent side="bottom" container={container}>
+      <TooltipContent side="top" container={container}>
         {label}
       </TooltipContent>
     </Tooltip>
@@ -801,7 +801,6 @@ export function DesktopToolbar({
   title,
   icon,
   driver,
-  frame,
   report,
   control,
   onControlChange,
@@ -815,7 +814,6 @@ export function DesktopToolbar({
   title: string;
   icon?: ReactNode;
   driver?: string;
-  frame: RefObject<HTMLDivElement | null>;
   report: DesktopReport;
   control?: DesktopControl;
   onControlChange?: (holder: "person" | "free") => void;
@@ -827,11 +825,12 @@ export function DesktopToolbar({
   className?: string;
 }) {
   const { status, message, notice, zoom } = report;
+  const bar = useRef<HTMLDivElement>(null);
   const live = status === "live";
   const zoomed = zoom > 1;
   const said = notice ?? message ?? (control === "bots" && driver ? `${driver} is using it` : control ? DESKTOP_CONTROL_LABELS[control] : null);
   return (
-    <div className={cn("flex items-center gap-2", className)}>
+    <div ref={bar} className={cn("flex items-center gap-2", className)}>
       <div className={cn("flex h-9 min-w-0 shrink items-center gap-2 rounded-full border border-primary-edge bg-primary pr-3.5 text-[13px] font-medium text-primary-foreground", icon ? "pl-1" : "pl-3.5")}>
         {icon ? <span className="flex size-7 shrink-0 items-center justify-center [&>*]:scale-[0.875]">{icon}</span> : null}
         <span className="truncate">{title}</span>
@@ -857,26 +856,26 @@ export function DesktopToolbar({
         </Button>
       ) : null}
       {live ? (
-        <IconButton container={frame} label={zoomed ? "Fit the screen" : "Zoom in"} onClick={() => view.current?.zoomTo(zoomed ? 1 : 2)} className="hidden pointer-coarse:flex">
+        <IconButton container={bar} label={zoomed ? "Fit the screen" : "Zoom in"} onClick={() => view.current?.zoomTo(zoomed ? 1 : 2)} className="hidden pointer-coarse:flex">
           {zoomed ? <ZoomOut /> : <ZoomIn />}
         </IconButton>
       ) : null}
       {live && control !== "bots" ? (
-        <IconButton container={frame} label="Keyboard" onClick={() => view.current?.openKeyboard()} className="hidden pointer-coarse:flex">
+        <IconButton container={bar} label="Keyboard" onClick={() => view.current?.openKeyboard()} className="hidden pointer-coarse:flex">
           <Keyboard />
         </IconButton>
       ) : null}
       {onHelp ? (
-        <IconButton container={frame} label="How to use the screen" onClick={onHelp} className="hidden pointer-coarse:flex">
+        <IconButton container={bar} label="How to use the screen" onClick={onHelp} className="hidden pointer-coarse:flex">
           <CircleQuestionMark />
         </IconButton>
       ) : null}
       {onStop ? (
-        <IconButton container={frame} label="Stop the desktop" onClick={onStop}>
+        <IconButton container={bar} label="Stop the desktop" onClick={onStop}>
           <MonitorOff />
         </IconButton>
       ) : null}
-      <IconButton container={frame} label={closeLabel} onClick={onClose}>
+      <IconButton container={bar} label={closeLabel} onClick={onClose}>
         <X />
       </IconButton>
     </div>
