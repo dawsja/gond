@@ -14,6 +14,11 @@ import { api, del } from "@/lib/api";
 
 type Forgetting = { title: string; names: string[]; detail: string };
 
+// A name like BACKUP_ENCRYPTION_PASSWORD has no spaces, so it may break after each underscore.
+function breakable(text: string) {
+  return text.split(/(?<=_)/).flatMap((part, i) => (i ? [<wbr key={i} />, part] : [part]));
+}
+
 export function SecretsCard() {
   const [secrets, setSecrets] = useState<SecretMeta[] | null>(null);
   const [forgetting, setForgetting] = useState<Forgetting | null>(null);
@@ -125,7 +130,7 @@ export function SecretsCard() {
       <AlertDialog open={Boolean(forgetting)} onOpenChange={(open) => !open && setForgetting(null)}>
         <AlertDialogContent size="sm">
           <AlertDialogHeader>
-            <AlertDialogTitle>Forget {forgetting?.title}?</AlertDialogTitle>
+            <AlertDialogTitle>Forget {breakable(forgetting?.title ?? "")}?</AlertDialogTitle>
             <AlertDialogDescription>{forgetting?.detail}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
