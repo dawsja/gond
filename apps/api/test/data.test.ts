@@ -402,6 +402,57 @@ describe("data", () => {
     deleteProvider("u-admin", "xai");
   });
 
+  test("voice picks the cheapest key unless one is chosen, and transcribes through it", async () => {
+    const { saveProvider, deleteProvider } = await import("../src/data/providers.ts");
+    const { getVoice, setVoice } = await import("../src/data/voice.ts");
+    const { voiceRoutes } = await import("../src/routes/voice.ts");
+    const { Hono } = await import("hono");
+    const seen: { path: string; auth: string | null; model: unknown; name: string | null }[] = [];
+    const upstream = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        const form = await request.formData();
+        const file = form.get("file");
+        seen.push({ path: new URL(request.url).pathname, auth: request.headers.get("authorization"), model: form.get("model"), name: file instanceof File ? file.name : null });
+        return Response.json({ text: " hello there " });
+      },
+    });
+    const app = asPerson(new Hono(), "u-voice");
+    app.route("/api", voiceRoutes());
+    const send = (name = "voice.webm", bytes = 10) => {
+      const form = new FormData();
+      form.set("file", new File([new Uint8Array(bytes)], name));
+      return app.request("/api/transcribe", { method: "POST", body: form });
+    };
+    try {
+      expect(getVoice("u-voice")).toEqual({ preference: "auto", using: null, available: [] });
+      expect((await send()).status).toBe(409);
+
+      saveProvider("u-voice", "openai", { baseUrl: `http://127.0.0.1:${upstream.port}/v1`, apiKey: "sk-voice-key-123456" });
+      saveProvider("u-voice", "xai", { baseUrl: `http://127.0.0.1:${upstream.port}/x/v1`, apiKey: "xai-voice-key-123456" });
+      expect(getVoice("u-voice").using).toBe("xai");
+      const grok = await send();
+      expect(await grok.json()).toEqual({ text: "hello there" });
+      expect(seen[0]).toEqual({ path: "/x/v1/stt", auth: "Bearer xai-voice-key-123456", model: "grok-voice-transcribe-2.0", name: "recording.webm" });
+
+      expect(setVoice("u-voice", "openai").using).toBe("openai");
+      await send("voice.mp4");
+      expect(seen[1]).toEqual({ path: "/v1/audio/transcriptions", auth: "Bearer sk-voice-key-123456", model: "gpt-transcribe", name: "recording.mp4" });
+
+      deleteProvider("u-voice", "openai");
+      expect(getVoice("u-voice")).toMatchObject({ preference: "openai", using: "xai" });
+
+      expect((await send("page.html")).status).toBe(400);
+      expect((await app.request("/api/transcribe", { method: "POST", body: new FormData() })).status).toBe(400);
+      expect((await send("voice.webm", 11 * 1024 * 1024)).status).toBe(413);
+      expect((await app.request("/api/voice", { method: "PUT", body: JSON.stringify({ preference: "anthropic" }) })).status).toBe(400);
+    } finally {
+      upstream.stop(true);
+      deleteProvider("u-voice", "openai");
+      deleteProvider("u-voice", "xai");
+    }
+  });
+
   test("the LLM proxy swaps its token for its owner's key and refuses everything else", async () => {
     const { saveProvider, deleteProvider, providerProxyToken } = await import("../src/data/providers.ts");
     const { llmProxyRoutes } = await import("../src/routes/llm.ts");

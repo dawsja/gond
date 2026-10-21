@@ -39,6 +39,7 @@ import { Message as MessageRow, MessageAvatar, MessageContent, MessageFooter, Me
 import { MessageScroller, MessageScrollerButton, MessageScrollerContent, MessageScrollerEdges, MessageScrollerItem, MessageScrollerProvider, MessageScrollerViewport, useMessageScroller } from "@/components/ui/message-scroller";
 import { toast } from "@/components/ui/toast";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { VoiceButton } from "@/components/voice-button";
 import { WorkLine } from "@/components/work-log";
 import { useCoarsePointer } from "@/hooks/use-mobile";
 import { useSwipeBack } from "@/hooks/use-swipe-back";
@@ -728,6 +729,14 @@ export function Conversation({ threadId }: { threadId: string }) {
     attach([...event.dataTransfer.files]);
   }
 
+  const dictated = useCallback(
+    (text: string) => {
+      setDraft((d) => `${d}${d && !/\s$/.test(d) ? " " : ""}${text}`);
+      if (!touch) textarea.current?.focus();
+    },
+    [touch],
+  );
+
   const mention = (b: Bot) => {
     setDraft((d) => `${d}${d && !d.endsWith(" ") ? " " : ""}@${handleOf(b.name)} `);
     textarea.current?.focus();
@@ -944,6 +953,7 @@ export function Conversation({ threadId }: { threadId: string }) {
                   <TooltipContent>Send after it finishes</TooltipContent>
                 </Tooltip>
               ) : null}
+              <VoiceButton threadId={threadId} onText={dictated} />
               <Tooltip>
                 <TooltipTrigger render={<InputGroupButton type="submit" variant="default" size="icon-sm" aria-label="Send" disabled={sending || (!draft.trim() && !files.length)} className="rounded-full" />}>
                   <ArrowUp aria-hidden="true" />

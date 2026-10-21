@@ -25,7 +25,8 @@ what is here. The README says what Gond is; this says how it is made.
   is the only bridge: `src-tauri/src/init.js` injects it into every page,
   and every command it reaches in `bridge.rs` checks the page's current
   origin against the saved server before doing anything, the way Android's
-  `fromTrustedPage` does. The address rules live in the `server-url` crate
+  `fromTrustedPage` does. `on_permission_request` in `lib.rs` allows
+  notifications, clipboard reads and the microphone to that origin only. The address rules live in the `server-url` crate
   with the same tests Android's `ServerUrl.kt` has. The menu bar is hidden
   unless the person turns it on (`menu_bar` in `config.json`, the switch in
   Settings → Account's This app card, applied to every window). The package scripts go
@@ -44,7 +45,9 @@ what is here. The README says what Gond is; this says how it is made.
   connected to in a WebView, so every other screen is the web app.
   `gondMobile` (`GondBridge.kt`) is the only bridge; keep it that small, and
   every action on it goes through `fromTrustedPage` so a page from another
-  origin (an OAuth provider mid sign-in) can't use it. `ServerUrl.kt`
+  origin (an OAuth provider mid sign-in) can't use it. The microphone (`RECORD_AUDIO`, for the composer's
+  mic) is granted in `onPermissionRequest` only to the saved server's
+  origin and only on its own. `ServerUrl.kt`
   mirrors the desktop's `server-url.mjs`, with the same tests. The app is
   edge to edge: your Gond's pages draw under the status and navigation
   bars and the activity hands their sizes to the page as
@@ -252,6 +255,17 @@ what is here. The README says what Gond is; this says how it is made.
   bubble's corner, takes it off. A change is the `reactions` live event
   with the message's reactions as they stand, merged into the list in
   place, since a `thread` event only appends.
+- **The person can talk instead of typing.** The mic in the composer
+  pill (`voice-button.tsx`, `hooks/use-recorder.ts`) records with
+  `MediaRecorder` (webm, or mp4 on Safari, at most
+  `TRANSCRIBE_MAX_SECONDS`) and posts it to `/api/transcribe`; the text
+  lands in the draft and is never sent for them. It works only with an
+  xAI or OpenAI key, since no plan and no Claude API can transcribe;
+  without one it is dimmed and a tap says where to add one. Settings →
+  Voice (`voice-card.tsx`) picks the model: Automatic, the cheapest key
+  the person has (`VOICE_PROVIDERS`, xAI first), or one by name, which
+  falls back to Automatic when its key goes. `Permissions-Policy` allows
+  the microphone for the app's own origin and nothing else.
 - **Steps are recorded, never shown.** While a bot works the conversation
   shows one line of what it is doing (`WorkLine`); the work log behind it
   is kept by the API but the web never lists it.
@@ -305,7 +319,7 @@ what is here. The README says what Gond is; this says how it is made.
   drift. What is waiting is said by the buttons inside, never by a colour
   on the card; the approvals badge in the list carries the amber.
 - **Settings is sections, not a scroll.** `SETTINGS_SECTIONS` in
-  `lib/settings-sections.ts` is the list (account, team, ai, computer,
+  `lib/settings-sections.ts` is the list (account, team, ai, voice, computer,
   skills, apps, secrets, auth), each marked `admin` or not; the route
   `/app/settings/[[...section]]` maps to it and 404s a user on an admin
   section. Settings never opens the computer: a bot's panel does
@@ -673,6 +687,16 @@ what is here. The README says what Gond is; this says how it is made.
   `src/routes/llm.ts`) and the provider's proxy token; the token names whose row it is
   (`providerByToken`), only the proxy decrypts the key, and
   `allSecretValues()` includes every key for redaction.
+- **Speech becomes text in the API** (`src/routes/voice.ts`). The
+  person's choice is `voice` on `gond_user_prefs` (`src/data/voice.ts`,
+  `pickVoiceProvider` in shared); `/api/transcribe` sends the recording
+  with their own key to `VOICE_MODELS[kind]` (xAI's `stt` with
+  `grok-voice-transcribe-2.0`, OpenAI's `audio/transcriptions` with
+  `gpt-transcribe` and the conversation's bot names as `keywords[]`),
+  through `upstreamUrl` and `authHeaders` like the LLM proxy, and
+  answers `{ text }`. The format is read from the file's extension (Bun's
+  multipart parser drops a part's own type). Audio is never stored or
+  logged.
 - **Secrets never leave the API.** `src/data/secrets.ts` stores them
   encrypted, per person, and only `readSecret`/`injectSecrets` decrypt, at
   the moment of use: the MCP proxy in `src/routes/mcp.ts`, which fills a

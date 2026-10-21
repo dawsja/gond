@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.DownloadManager
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.Color
 import android.net.Uri
@@ -14,6 +15,7 @@ import android.util.Base64
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.webkit.CookieManager
+import android.webkit.PermissionRequest
 import android.webkit.URLUtil
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
@@ -58,10 +60,16 @@ class MainActivity : AppCompatActivity() {
     private var pendingFiles: ValueCallback<Array<Uri>>? = null
     private var lastInsets: WindowInsetsCompat? = null
     private var ownPage = false
+    private var pendingMic: PermissionRequest? = null
 
     private val pickFiles = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         pendingFiles?.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(result.resultCode, result.data))
         pendingFiles = null
+    }
+    private val micPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        val request = pendingMic ?: return@registerForActivityResult
+        pendingMic = null
+        if (granted) request.grant(request.resources) else request.deny()
     }
     private val notificationsPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
         // The web app's notifications card reads the state again on this event.
@@ -427,6 +435,20 @@ class MainActivity : AppCompatActivity() {
                 (resultMsg.obj as WebView.WebViewTransport).webView = popup
                 resultMsg.sendToTarget()
                 return true
+            }
+
+            /** The microphone, for the composer's voice button, and only for the person's own Gond. */
+            override fun onPermissionRequest(request: PermissionRequest) {
+                val micOnly = request.resources.toList() == listOf(PermissionRequest.RESOURCE_AUDIO_CAPTURE)
+                if (!micOnly || !ServerUrl.sameOrigin(request.origin.toString(), server)) return request.deny()
+                if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) return request.grant(request.resources)
+                pendingMic?.deny()
+                pendingMic = request
+                micPermission.launch(Manifest.permission.RECORD_AUDIO)
+            }
+
+            override fun onPermissionRequestCanceled(request: PermissionRequest) {
+                if (pendingMic == request) pendingMic = null
             }
 
             override fun onShowFileChooser(view: WebView, callback: ValueCallback<Array<Uri>>, params: FileChooserParams): Boolean {

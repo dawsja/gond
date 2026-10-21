@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { BOT_TEMPLATES, CURATED_TOOLKITS, LEGACY_MOBILE_SIGN_IN_CALLBACK, MOBILE_SIGN_IN_CALLBACK, SIGN_IN_APPS, approvalLine, botInputSchema, composioCard, composioCardToolkit, fromNativeAction, gerund, handleOf, isClosing, isQuietReply, isQuietTool, isStopRequest, routineName, joinCommandLine, mentionsIn, pickBotName, plainMarkdown, ruleLabel, splitCommandLine, toolLabel, toolLine } from "../src/index.ts";
+import { BOT_TEMPLATES, CURATED_TOOLKITS, LEGACY_MOBILE_SIGN_IN_CALLBACK, MOBILE_SIGN_IN_CALLBACK, SIGN_IN_APPS, approvalLine, botInputSchema, composioCard, composioCardToolkit, fromNativeAction, gerund, handleOf, isClosing, isQuietReply, isQuietTool, isStopRequest, routineName, joinCommandLine, mentionsIn, pickBotName, pickVoiceProvider, plainMarkdown, ruleLabel, splitCommandLine, toolLabel, toolLine } from "../src/index.ts";
 
 describe("shared", () => {
   test("pickBotName avoids taken names and numbers when exhausted", () => {
@@ -228,5 +228,16 @@ describe("isClosing", () => {
 
   test("a question or a new ask is not one", () => {
     for (const text of ["thanks, can you also order fries?", "Thank you. Now book the table for 7 and send me the confirmation", "I will need the receipt", "yes", "done?", "", "what's next"]) expect(isClosing(text)).toBe(false);
+  });
+});
+
+describe("pickVoiceProvider", () => {
+  test("auto takes the cheapest key, a choice holds while its key does", () => {
+    const has = (...kinds: string[]) => (kind: string) => kinds.includes(kind);
+    expect(pickVoiceProvider("auto", has("openai", "xai"))).toBe("xai");
+    expect(pickVoiceProvider("auto", has("openai"))).toBe("openai");
+    expect(pickVoiceProvider("openai", has("openai", "xai"))).toBe("openai");
+    expect(pickVoiceProvider("openai", has("xai"))).toBe("xai");
+    expect(pickVoiceProvider("auto", has())).toBeNull();
   });
 });

@@ -368,6 +368,29 @@ export const providerInputSchema = z.object({
 });
 export type ProviderInput = z.infer<typeof providerInputSchema>;
 
+/** Cheapest first: "auto" takes the first one the person has a key for. */
+export const VOICE_PROVIDERS = ["xai", "openai"] as const satisfies readonly ProviderKind[];
+export type VoiceProvider = (typeof VOICE_PROVIDERS)[number];
+export const VOICE_MODELS: Record<VoiceProvider, { path: string; model: string; label: string }> = {
+  xai: { path: "stt", model: "grok-voice-transcribe-2.0", label: "xAI Grok" },
+  openai: { path: "audio/transcriptions", model: "gpt-transcribe", label: "OpenAI" },
+};
+export const VOICE_PREFERENCES = ["auto", ...VOICE_PROVIDERS] as const;
+export type VoicePreference = (typeof VOICE_PREFERENCES)[number];
+export type VoiceSettings = { preference: VoicePreference; using: VoiceProvider | null; available: VoiceProvider[] };
+export const TRANSCRIBE_MAX_BYTES = 10 * 1024 * 1024;
+export const TRANSCRIBE_MAX_SECONDS = 120;
+
+export function isVoicePreference(value: unknown): value is VoicePreference {
+  return typeof value === "string" && (VOICE_PREFERENCES as readonly string[]).includes(value);
+}
+
+/** A chosen provider whose key is gone falls back to the cheapest one left. */
+export function pickVoiceProvider(preference: VoicePreference, has: (kind: VoiceProvider) => boolean): VoiceProvider | null {
+  if (preference !== "auto" && has(preference)) return preference;
+  return VOICE_PROVIDERS.find(has) ?? null;
+}
+
 export const CLI_ENGINES = ["claude", "codex", "grok"] as const;
 export type CliEngine = (typeof CLI_ENGINES)[number];
 

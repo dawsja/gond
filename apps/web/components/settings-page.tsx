@@ -16,6 +16,7 @@ import { McpCard } from "@/components/mcp-card";
 import { NotificationsCard } from "@/components/notifications-card";
 import { OidcCard } from "@/components/oidc-card";
 import { ProvidersCard } from "@/components/providers-card";
+import { VoiceCard } from "@/components/voice-card";
 import { SecretsCard } from "@/components/secrets-card";
 import { ServerCard } from "@/components/server-card";
 import { SkillsCard } from "@/components/skills-card";
@@ -157,6 +158,9 @@ export function SettingsPage({ user, section, index = false }: { user: SessionUs
           <ProvidersCard ai={ai} onAiChange={setAi} />
         </>
       );
+      break;
+    case "voice":
+      body = <VoiceCard />;
       break;
     case "computer":
       body = <HomeResetCard />;

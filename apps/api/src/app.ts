@@ -18,6 +18,7 @@ import { routinesRoutes } from "./routes/routines.ts";
 import { settingsRoutes } from "./routes/settings.ts";
 import { threadsRoutes } from "./routes/threads.ts";
 import { authConfig, usersRoutes } from "./routes/users.ts";
+import { voiceRoutes } from "./routes/voice.ts";
 
 export type Env = { Variables: { session: Session } };
 
@@ -110,6 +111,7 @@ export function createApp() {
   app.route("/api", mcpRoutes());
   app.route("/api", secretsRoutes());
   app.route("/api", providerRoutes());
+  app.route("/api", voiceRoutes());
   app.route("/api", pushRoutes());
   app.route("/api", usersRoutes());
 
