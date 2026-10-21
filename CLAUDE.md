@@ -101,7 +101,7 @@ what is here. The README says what Gond is; this says how it is made.
   ink on paper in the light, Material's dark theme (#121212, elevation by
   a lighter grey) in the dark, and the bots are the only colour on a page.
   The exceptions are markers, each a token: your bubble's blue, the
-  primary bot's crown on a gold coin (`--gold`, `--gold-coin`, the `bg-gold-coin` utility), and the tones of a status
+  primary bot's crown on a gold coin (`--gold`, `--gold-coin`, the `bg-gold-coin` utility; its ring is `--surface`, the colour of whatever it sits on, which a filled button, a card, a dialog and a sheet set, and an svg in it is sized inline, since a `Button` resizes any svg without a size class), and the tones of a status
   (`--tone-ok`, `-warn`, `-bad`, `-info`). Secondary actions are `variant="outline"`, tertiary
   `ghost`, destructive `destructive`. Use `text-muted-foreground`,
   `bg-card`, `bg-muted`, `border` and friends; never raw Tailwind colours,

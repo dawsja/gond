@@ -78,7 +78,7 @@ function DialogContent({
         data-slot="dialog-content"
         className={cn(
 
-          "fixed z-50 flex w-full flex-col overflow-hidden border border-primary-edge bg-card text-sm text-card-foreground shadow-subtle-3 duration-100 outline-none data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
+          "fixed z-50 flex w-full flex-col overflow-hidden border border-primary-edge bg-card [--surface:var(--card)] text-sm text-card-foreground shadow-subtle-3 duration-100 outline-none data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
           "max-sm:inset-x-0 max-sm:bottom-0 max-sm:max-h-[92dvh] max-sm:rounded-t-3xl max-sm:border-b-0 max-sm:data-open:slide-in-from-bottom-4 max-sm:data-closed:slide-out-to-bottom-4",
           "sm:top-1/2 sm:left-1/2 sm:max-h-[calc(100dvh-3rem)] sm:max-w-sm sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-3xl sm:data-open:zoom-in-95 sm:data-closed:zoom-out-95",
           className

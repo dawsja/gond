@@ -20,19 +20,27 @@ export function BotAvatar({ bot, size = 24, greet = false, className }: { bot: P
         <GondBot color={bot.color} size={size} expression={bot.expression} shape={bot.shape} greet={greet} label={label} />
       )}
       {bot.primary && size >= 24 ? (
-        <span aria-hidden="true" className={cn("absolute right-0 bottom-0 flex items-center justify-center rounded-full bg-gold-coin text-gold-foreground ring-[1.5px] ring-background", disc >= 18 && "gold-coin-shine")} style={{ width: disc, height: disc }}>
-          <CrownMark size={Math.round(disc * 0.72)} />
+        <span aria-hidden="true" className={cn("absolute right-0 bottom-0 flex items-center justify-center rounded-full bg-gold-coin text-gold-foreground ring-[1.5px] ring-(--surface)", disc >= 18 && "gold-coin-shine")} style={{ width: disc, height: disc }}>
+          <CrownMark size={crownSize(disc)} />
         </span>
       ) : null}
     </span>
   );
 }
 
-// Lucide's crown without its base line, framed on the crown's own centre so it sits in the middle of the coin.
-// Solid, because the badge is usually 12 px and an outline that small is a smudge.
+// Even with the coin's size, odd with odd, so the crown centres on whole pixels instead of half of one.
+function crownSize(disc: number) {
+  const size = Math.round(disc * 0.72);
+  return (disc - size) % 2 === 0 ? size : size + 1;
+}
+
+// Lucide's crown without its base line, framed on the crown's own centre, lifted half a unit since its
+// weight is in the band at the bottom.
+// Solid, because the badge is usually 12 px and an outline that small is a smudge. Sized inline, since a
+// Button resizes any svg inside it that has no size class (the conversation header's bot pill).
 function CrownMark({ size }: { size: number }) {
   return (
-    <svg viewBox="0 -2 24 24" width={size} height={size} fill="currentColor" stroke="currentColor" strokeWidth={1.5} strokeLinejoin="round">
+    <svg viewBox="0 -1.5 24 24" style={{ width: size, height: size }} fill="currentColor" stroke="currentColor" strokeWidth={1.5} strokeLinejoin="round">
       <path d="M11.562 3.266a.5.5 0 0 1 .876 0L15.39 8.87a1 1 0 0 0 1.516.294L21.183 5.5a.5.5 0 0 1 .798.519l-2.834 10.246a1 1 0 0 1-.956.734H5.81a1 1 0 0 1-.957-.734L2.02 6.02a.5.5 0 0 1 .798-.519l4.276 3.664a1 1 0 0 0 1.516-.294z" />
     </svg>
   );

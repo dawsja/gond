@@ -7,7 +7,7 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "border-primary-edge bg-primary text-primary-foreground shadow-(--primary-shadow) hover:border-primary-edge-focus hover:bg-primary-hover aria-expanded:bg-primary-hover",
+        default: "border-primary-edge bg-primary text-primary-foreground [--surface:var(--primary)] shadow-(--primary-shadow) hover:border-primary-edge-focus hover:bg-primary-hover aria-expanded:bg-primary-hover",
 
         control: "bg-control text-control-foreground hover:bg-control-hover aria-expanded:bg-control-hover",
 

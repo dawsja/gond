@@ -86,7 +86,7 @@ function Row({ thread, bot, active, bots, activity, onOpen, onAsk }: { thread: T
   const working = Object.keys(activity).length > 0;
   return (
     <ThreadMenu thread={thread} bot={bot} onOpen={onOpen} onAsk={onAsk} trigger={<SidebarMenuItem />}>
-        <SidebarMenuButton size="lg" isActive={active} render={<Link href={`/app/t/${thread.id}`} aria-current={active ? "page" : undefined} onClick={() => setOpenMobile(false)} />} className="h-[76px] gap-4 rounded-2xl px-3 data-active:bg-card data-active:shadow-subtle hover:bg-card/60 wide:h-14 wide:gap-3 wide:rounded-xl wide:px-2.5">
+        <SidebarMenuButton size="lg" isActive={active} render={<Link href={`/app/t/${thread.id}`} aria-current={active ? "page" : undefined} onClick={() => setOpenMobile(false)} />} className="h-[76px] gap-4 rounded-2xl px-3 data-active:bg-card data-active:[--surface:var(--card)] data-active:shadow-subtle hover:bg-card/60 wide:h-14 wide:gap-3 wide:rounded-xl wide:px-2.5">
           {bot ? (
             <>
               <BotAvatar bot={bot} size={48} className="wide:hidden" />

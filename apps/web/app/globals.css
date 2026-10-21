@@ -125,6 +125,9 @@
  *   control-foreground on control 17.4                 14.2
  */
 :root {
+  /* The colour a cut-out ring is painted in, so it reads as a gap whatever the badge sits on: the
+     page here, and each raised surface (a filled button, a card, a dialog, a sheet) sets its own. */
+  --surface: var(--background);
   /* The Android app draws the page under its bars and says how tall they are
      (--shell-inset-*); a WebView's env() can't be relied on for it. */
   --safe-top: max(env(safe-area-inset-top), var(--shell-inset-top, 0px));
