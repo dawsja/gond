@@ -372,6 +372,14 @@ function JumpToMessage({ id, ready, loaded, earlier }: { id: string | null; read
   return null;
 }
 
+function FollowSent({ id }: { id: string | null }) {
+  const { scrollToEnd } = useMessageScroller();
+  useEffect(() => {
+    if (id) scrollToEnd();
+  }, [id, scrollToEnd]);
+  return null;
+}
+
 function LoadEarlier({ onLoad }: { onLoad: () => Promise<boolean> }) {
   const ref = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(false);
@@ -423,6 +431,7 @@ export function Conversation({ threadId }: { threadId: string }) {
   const [exchange, setExchange] = useState<string | null>(null);
 
   const [editing, setEditing] = useState<string | null>(null);
+  const [sent, setSent] = useState<string | null>(null);
   const [selectText, setSelectText] = useState<string | null>(null);
   const [viewing, setViewing] = useState<string | null>(null);
   const [resolved, setResolved] = useState<Map<string, Approval>>(new Map());
@@ -591,6 +600,7 @@ export function Conversation({ threadId }: { threadId: string }) {
       }
       const data = await api<{ message: Message }>(`/api/threads/${threadId}/messages`, { method: "POST", body });
       append([data.message]);
+      setSent(data.message.id);
       setDraft("");
       setFiles([]);
     } catch (failure) {
@@ -606,6 +616,7 @@ export function Conversation({ threadId }: { threadId: string }) {
     try {
       const data = await api<{ message: Message }>(`/api/threads/${threadId}/messages`, { method: "POST", body: JSON.stringify({ body: option }) });
       append([data.message]);
+      setSent(data.message.id);
     } catch (failure) {
       toast.add({ type: "error", title: failure instanceof Error ? failure.message : "Couldn't send it." });
     }
@@ -618,6 +629,7 @@ export function Conversation({ threadId }: { threadId: string }) {
       if (stops) await post(`/api/threads/${threadId}/interrupt`);
       const data = await api<{ message: Message }>(`/api/threads/${threadId}/messages`, { method: "POST", body: JSON.stringify({ body: text, ...(working && !stops ? { after: true } : {}) }) });
       append([data.message]);
+      setSent(data.message.id);
       setEditing(null);
       void loadInfo();
       return true;
@@ -800,6 +812,7 @@ export function Conversation({ threadId }: { threadId: string }) {
 
         <MessageScrollerProvider autoScroll>
           <JumpToMessage id={jumpTo} ready={messages.length > 0} loaded={earlier === false} earlier={loadEarlier} />
+          <FollowSent id={sent} />
           <MessageScroller className="flex-1">
             <MessageScrollerViewport preserveScrollOnPrepend className="px-3 pt-[calc(64px+var(--safe-top))] pb-(--composer-h) sm:px-4">
               <MessageScrollerContent className="gap-3 py-4">
