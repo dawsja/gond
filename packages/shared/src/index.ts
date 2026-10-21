@@ -377,7 +377,9 @@ export const VOICE_MODELS: Record<VoiceProvider, { path: string; model: string; 
 };
 export const VOICE_PREFERENCES = ["auto", ...VOICE_PROVIDERS] as const;
 export type VoicePreference = (typeof VOICE_PREFERENCES)[number];
-export type VoiceSettings = { preference: VoicePreference; using: VoiceProvider | null; available: VoiceProvider[] };
+/** `openaiModel` is for an OpenAI-compatible server that names its own models, like a local Whisper. */
+export type VoiceSettings = { preference: VoicePreference; using: VoiceProvider | null; available: VoiceProvider[]; openaiModel: string };
+export const VOICE_MODEL_ID = /^[\w.:/@+-]{1,120}$/;
 export const TRANSCRIBE_MAX_BYTES = 10 * 1024 * 1024;
 export const TRANSCRIBE_MAX_SECONDS = 120;
 

@@ -425,7 +425,7 @@ describe("data", () => {
       return app.request("/api/transcribe", { method: "POST", body: form });
     };
     try {
-      expect(getVoice("u-voice")).toEqual({ preference: "auto", using: null, available: [] });
+      expect(getVoice("u-voice")).toEqual({ preference: "auto", using: null, available: [], openaiModel: "gpt-transcribe" });
       expect((await send()).status).toBe(409);
 
       saveProvider("u-voice", "openai", { baseUrl: `http://127.0.0.1:${upstream.port}/v1`, apiKey: "sk-voice-key-123456" });
@@ -435,9 +435,16 @@ describe("data", () => {
       expect(await grok.json()).toEqual({ text: "hello there" });
       expect(seen[0]).toEqual({ path: "/x/v1/stt", auth: "Bearer xai-voice-key-123456", model: "grok-voice-transcribe-2.0", name: "recording.webm" });
 
-      expect(setVoice("u-voice", "openai").using).toBe("openai");
+      expect(setVoice("u-voice", { preference: "openai" }).using).toBe("openai");
       await send("voice.mp4");
       expect(seen[1]).toEqual({ path: "/v1/audio/transcriptions", auth: "Bearer sk-voice-key-123456", model: "gpt-transcribe", name: "recording.mp4" });
+
+      const local = await app.request("/api/voice", { method: "PUT", body: JSON.stringify({ openaiModel: "Systran/faster-whisper-small" }) });
+      expect(await local.json()).toMatchObject({ preference: "openai", openaiModel: "Systran/faster-whisper-small" });
+      await send();
+      expect(seen[2]!.model).toBe("Systran/faster-whisper-small");
+      expect((await app.request("/api/voice", { method: "PUT", body: JSON.stringify({ openaiModel: "bad model" }) })).status).toBe(400);
+      expect(setVoice("u-voice", { openaiModel: "" }).openaiModel).toBe("gpt-transcribe");
 
       deleteProvider("u-voice", "openai");
       expect(getVoice("u-voice")).toMatchObject({ preference: "openai", using: "xai" });

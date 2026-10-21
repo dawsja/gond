@@ -1,4 +1,4 @@
-import { TRANSCRIBE_MAX_BYTES, VOICE_MODELS, isVoicePreference } from "@gond/shared";
+import { TRANSCRIBE_MAX_BYTES, VOICE_MODEL_ID, VOICE_MODELS, isVoicePreference } from "@gond/shared";
 import { Hono } from "hono";
 import type { Env } from "../app.ts";
 import { ownThread, userId } from "../access.ts";
@@ -22,9 +22,12 @@ export function voiceRoutes() {
   app.get("/voice", (c) => c.json(getVoice(userId(c))));
 
   app.put("/voice", async (c) => {
-    const body = (await c.req.json().catch(() => null)) as { preference?: unknown } | null;
-    if (!isVoicePreference(body?.preference)) return c.json({ error: "Pick automatic, xai or openai" }, 400);
-    return c.json(setVoice(userId(c), body.preference));
+    const body = (await c.req.json().catch(() => null)) as { preference?: unknown; openaiModel?: unknown } | null;
+    const { preference, openaiModel } = body ?? {};
+    if (preference === undefined && openaiModel === undefined) return c.json({ error: "Nothing to change" }, 400);
+    if (preference !== undefined && !isVoicePreference(preference)) return c.json({ error: "Pick automatic, xai or openai" }, 400);
+    if (openaiModel !== undefined && (typeof openaiModel !== "string" || (openaiModel.trim() && !VOICE_MODEL_ID.test(openaiModel.trim())))) return c.json({ error: "That isn't a model id" }, 400);
+    return c.json(setVoice(userId(c), { preference, openaiModel }));
   });
 
   app.post("/transcribe", async (c) => {
@@ -35,12 +38,14 @@ export function voiceRoutes() {
     const extension = audioExtension(file.name);
     if (!extension) return c.json({ error: "That isn't a recording this can read" }, 400);
     if (file.size > TRANSCRIBE_MAX_BYTES) return c.json({ error: "The recording is too long" }, 413);
-    const kind = getVoice(who).using;
+    const voice = getVoice(who);
+    const kind = voice.using;
     const baseUrl = kind ? providerBaseUrl(who, kind) : null;
     const key = kind ? providerKey(who, kind) : null;
     if (!kind || !baseUrl || !key) return c.json({ error: "Add an xAI or OpenAI key to talk to your bots" }, 409);
 
-    const { path, model, label } = VOICE_MODELS[kind];
+    const { path, label } = VOICE_MODELS[kind];
+    const model = kind === "openai" ? voice.openaiModel : VOICE_MODELS[kind].model;
     const upstream = new FormData();
     upstream.set("model", model);
     upstream.set("file", file, `recording.${extension}`);

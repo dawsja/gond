@@ -234,7 +234,11 @@ fn page_builder<'a>(
                 .zip(webview.state::<AppState>().server())
                 .is_some_and(|(url, server)| server_url::same_origin(url.as_str(), &server));
             match kind {
-                PermissionKind::Notifications | PermissionKind::ClipboardRead | PermissionKind::Microphone if own => {
+                PermissionKind::Notifications
+                | PermissionKind::ClipboardRead
+                | PermissionKind::Microphone
+                    if own =>
+                {
                     PermissionResponse::Allow
                 }
                 _ => PermissionResponse::Deny,

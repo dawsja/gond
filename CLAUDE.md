@@ -264,7 +264,9 @@ what is here. The README says what Gond is; this says how it is made.
   without one it is dimmed and a tap says where to add one. Settings →
   Voice (`voice-card.tsx`) picks the model: Automatic, the cheapest key
   the person has (`VOICE_PROVIDERS`, xAI first), or one by name, which
-  falls back to Automatic when its key goes. `Permissions-Policy` allows
+  falls back to Automatic when its key goes; the OpenAI-compatible
+  model can be renamed there, for a server of the person's own like a
+  local Whisper. `Permissions-Policy` allows
   the microphone for the app's own origin and nothing else.
 - **Steps are recorded, never shown.** While a bot works the conversation
   shows one line of what it is doing (`WorkLine`); the work log behind it
@@ -688,7 +690,7 @@ what is here. The README says what Gond is; this says how it is made.
   (`providerByToken`), only the proxy decrypts the key, and
   `allSecretValues()` includes every key for redaction.
 - **Speech becomes text in the API** (`src/routes/voice.ts`). The
-  person's choice is `voice` on `gond_user_prefs` (`src/data/voice.ts`,
+  person's choice is `voice` and `voice_model` on `gond_user_prefs` (`src/data/voice.ts`,
   `pickVoiceProvider` in shared); `/api/transcribe` sends the recording
   with their own key to `VOICE_MODELS[kind]` (xAI's `stt` with
   `grok-voice-transcribe-2.0`, OpenAI's `audio/transcriptions` with

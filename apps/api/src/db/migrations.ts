@@ -596,6 +596,7 @@ const MIGRATIONS: Array<string | ((db: Database) => void)> = [
   `,
   `ALTER TABLE gond_push_subscriptions ADD COLUMN device TEXT;`,
   `ALTER TABLE gond_user_prefs ADD COLUMN voice TEXT;`,
+  `ALTER TABLE gond_user_prefs ADD COLUMN voice_model TEXT;`,
 ];
 
 export const RENAME_VERSION = MIGRATIONS.indexOf(renameLegacyObjects) + 1;
