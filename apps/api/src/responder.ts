@@ -10,7 +10,7 @@ import { allSecretValues } from "./data/secrets.ts";
 import { userTimezone } from "./data/prefs.ts";
 import { listConnections } from "./data/settings.ts";
 import { listSkills } from "./data/skills.ts";
-import { botLinesSincePerson, closePending, closeSentFrom, dropMessage, getAttachment, getMessage, getThread, listThreads, markAnswered, postMessage, reactionsOf, releaseClaim, threadBusy, unsteer } from "./data/threads.ts";
+import { botLinesSincePerson, closePending, closeSentFrom, dropMessage, getAttachment, getMessage, getThread, listThreads, markAnswered, postMessage, reactionsOf, recentMessages, releaseClaim, threadBusy, unsteer } from "./data/threads.ts";
 import { computerTools, secretCommandTool } from "./computer.ts";
 import { computerTool } from "./computer-tool.ts";
 import { attachmentNote, deliverAttachments, type Delivered } from "./inbox.ts";
@@ -333,11 +333,17 @@ export function promptFor(bot: Bot, thread: Thread, message: Message, bots: Bot[
     return [earlier, `${heading}\n${history || (since ? "(nothing new)" : "(nothing yet)")}`, `Gond, not the person, asks you this; nobody else sees it. Do it, and address your answer to the person:\n${message.body}`].filter(Boolean).join("\n\n");
   }
   const from = message.fromThreadId && message.author !== "you" ? `\n\nThis message came from ${names.get(message.author) ?? "a teammate"}. Do the work it asks for and answer with the result; your answer goes back to them, not to the person. If it brings something the person should hear (a result, a change, a question for them), tell them with post_message, which posts in your chat with them, then answer ${names.get(message.author) ?? "the teammate"} in a line.` : "";
+  // A session a teammate woke was told to answer it in its final line; the person's turn in the
+  // same session must hear that its answer only ever reaches the person.
+  const teammates = message.author === "you" ? [...new Set(recentMessages(thread.id, CONTEXT_LINES).filter((m) => m.fromThreadId && !PEOPLE_AND_GOND.has(m.author) && m.author !== bot.id).map((m) => names.get(m.author) ?? "a teammate"))] : [];
+  const toPerson = teammates.length
+    ? `\n\nYour answer goes to the person only, in this chat, like anything you post with post_message. ${teammates.join(" and ")} wrote here as a teammate and was answered already; to tell a teammate something now (a result, a reply), call message_bot, or delegate_bot for new work, then answer the person.`
+    : "";
   return [
     earlier,
     `${heading}\n${history}`,
     files,
-    `Now answer the last message, which is from ${who}.${from}\n${message.author === "routine" ? "This is a scheduled routine: do the job and report, addressing the person." : ""}`,
+    `Now answer the last message, which is from ${who}.${from}${toPerson}\n${message.author === "routine" ? "This is a scheduled routine: do the job and report, addressing the person." : ""}`,
     message.author === "you" && isClosing(message.body) ? `It reads as the person closing the exchange (a thanks, an "I will", a goodbye). Unless it answers a question you asked, react to it with the react tool (👍 or ❤️) and answer with exactly ${QUIET_REPLY}, so nothing more is posted.` : "",
   ]
     .filter(Boolean)

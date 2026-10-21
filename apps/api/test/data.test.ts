@@ -460,6 +460,24 @@ describe("data", () => {
     }
   });
 
+  test("a person's turn after a teammate's message hears that its answer reaches only the person", async () => {
+    const { createBot } = await import("../src/data/bots.ts");
+    const { postMessage, getThread } = await import("../src/data/threads.ts");
+    const { promptFor } = await import("../src/responder.ts");
+    const { botInputSchema } = await import("@gond/shared");
+    const clo = createBot(botInputSchema.parse({ name: "Clo", title: "Docs" }), "u-admin");
+    const pip = createBot(botInputSchema.parse({ name: "Pipkin", title: "Homelab" }), "u-admin");
+    const thread = getThread(pip.threadId)!;
+    const asked = postMessage({ threadId: pip.threadId, author: "you", kind: "message", body: "How is the NAS?" });
+    expect(promptFor(pip, thread, asked, [clo, pip])).not.toContain("Your answer goes to the person only");
+    postMessage({ threadId: pip.threadId, author: clo.id, kind: "message", body: "Please check the new machine.", fromThreadId: clo.threadId, answered: true });
+    const goAhead = postMessage({ threadId: pip.threadId, author: "you", kind: "message", body: "go ahead and listen to Clo on this one time." });
+    const prompt = promptFor(pip, thread, goAhead, [clo, pip]);
+    expect(prompt).toContain("Your answer goes to the person only");
+    expect(prompt).toContain("call message_bot");
+    expect(prompt).toContain("Clo (teammate, by message): Please check the new machine.");
+  });
+
   test("the LLM proxy swaps its token for its owner's key and refuses everything else", async () => {
     const { saveProvider, deleteProvider, providerProxyToken } = await import("../src/data/providers.ts");
     const { llmProxyRoutes } = await import("../src/routes/llm.ts");

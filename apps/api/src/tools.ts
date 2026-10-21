@@ -86,7 +86,7 @@ export const TOOL_NOTES = [
   "send_file hands the person a file from the computer as a download in this conversation (a document, an HTML page, an image, a spreadsheet, up to 100 MB). When the person asks for a file, or a teammate made one for them, send it; don't only say where it is on the computer. To show them the screen (a cart before they buy, a confirmation, or whenever they ask to see it), call send_screenshot; never save a screenshot to a file.",
   "Your reply is what you write after your last tool call. Make your calls first (handoffs included), then write the whole answer; don't end a turn on a tool call with the answer half written before it.",
   `react puts an emoji on the person's message you are answering, as a person taps one in a chat: 👍 or ❤️ when they thank you, agree or close ("thanks!", "perfect", "that will be all"), the others when they fit. When the reaction says it all, react and answer with exactly ${QUIET_REPLY}: nothing more is posted and nobody is notified. Otherwise react and reply as usual. Most messages need no reaction.`,
-  "post_message adds a line to the conversation you are in before your final answer, e.g. to say what you are starting on. Your final answer is posted for you; don't repeat it.",
+  "post_message adds a line to the conversation you are in before your final answer, e.g. to say what you are starting on. Your final answer is posted for you; don't repeat it. Both only ever reach the person: a teammate hears from you through message_bot, ask_bot or delegate_bot, or through your final answer when its own message woke you.",
   "list_bots shows the team with each bot's id, job and whether it is busy.",
   "message_bot sends a teammate a note and returns at once; its answer comes back to your conversation as a message, without starting another turn of yours, and never shows in the person's chat with it. Use it to hand something over without waiting; use ask_bot when you need the answer now.",
   "delegate_bot hands a teammate a self-contained brief (outcome, sources, constraints, deliverable, review point) in its own conversation and returns immediately. The result comes back to you here as a new message from that teammate; report it to the person then, not before. When you hand on part of a task that was handed to you, it stays open: the results come back to you, and your reply once the last of them is in is what goes back to whoever handed it to you, so don't relay results with message_bot.",
@@ -363,7 +363,7 @@ export function baseTools(context: Context): Record<string, DriverTool> {
       },
     },
     post_message: {
-      description: "Post to this conversation, your chat with the person, now: a line before your final answer, or, when a teammate's message woke you and your answer goes back to them, what the person should hear.",
+      description: "Post to this conversation, your chat with the person, now: a line before your final answer, or, when a teammate's message woke you and your answer goes back to them, what the person should hear. It never reaches a teammate; message_bot does.",
       inputSchema: schema({ text: { type: "string" } }, ["text"]),
       execute: async (input) => {
         const text = String(input.text ?? "").trim();
@@ -1162,10 +1162,11 @@ export function transcriptLines(lines: Message[], bots: Bot[], self: Bot, clipAt
   return lines
     .map((m) => {
       const nameOf = (author: string) => (author === "you" ? "Person" : author === "routine" ? "Routine" : author === "system" ? "Gond" : (names.get(author) ?? author) + (author === self.id ? " (you)" : ""));
+      const via = m.fromThreadId && names.has(m.author) && m.author !== self.id ? " (teammate, by message)" : "";
       const files = m.attachments.length ? ` [attached: ${m.attachments.map((a) => a.name).join(", ")}]` : "";
       const reactions = m.reactions.length ? ` [reactions: ${m.reactions.map((r) => `${nameOf(r.author)} ${r.emoji}`).join(", ")}]` : "";
       const body = m.body.length > clipAt ? `${m.body.slice(0, clipAt)}…` : m.body;
-      return `${nameOf(m.author)}: ${m.kind === "approval" ? `(asked for approval: ${body})` : m.kind === "signin" ? `(posted a sign-in card: ${body})` : body}${files}${reactions}`;
+      return `${nameOf(m.author)}${via}: ${m.kind === "approval" ? `(asked for approval: ${body})` : m.kind === "signin" ? `(posted a sign-in card: ${body})` : body}${files}${reactions}`;
     })
     .join("\n");
 }

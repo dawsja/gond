@@ -485,7 +485,12 @@ what is here. The README says what Gond is; this says how it is made.
   handed the task out is for the person, in its own conversation. A bot a
   teammate's message woke tells the person what is for them with
   `post_message`, which posts in its chat with them and, for a turn a
-  teammate started, sends the push the final answer won't.
+  teammate started, sends the push the final answer won't. The other way
+  round, a turn the person started posts its answer to the person only,
+  so when a teammate wrote in that chat its prompt says so and points to
+  `message_bot` (the session may still hold "answer the teammate in your
+  last line" from the turn the teammate woke), and the transcript marks
+  such lines "(teammate, by message)".
 - **Stop means stop, and everything it started.** `stopThread`
   (`src/responder.ts`) is what Stop runs: the turns in the conversation
   are aborted with the reason `"stopped"` and given a moment to wind down,
