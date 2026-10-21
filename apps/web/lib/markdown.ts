@@ -28,7 +28,9 @@ export type Callout = { kind: CalloutKind; children: RootContent[] };
 
 export type Definitions = Map<string, { url: string; title: string | null }>;
 
-const extensions = [gfm(), directive()];
+// A single ~ would strike out everything between two shell prompts (`root@host:~#`) in pasted
+// output; GitHub itself only strikes ~~two~~.
+const extensions = [gfm({ singleTilde: false }), directive()];
 const mdastExtensions = [gfmFromMarkdown(), directiveFromMarkdown()];
 
 export function parseMarkdown(source: string): Root {

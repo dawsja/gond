@@ -5,6 +5,11 @@ import { badgeOf, calloutOf, choicesOf, meterOf, parseInline, parseMarkdown, pla
 const types = (nodes: { type: string }[]) => nodes.map((n) => n.type);
 
 describe("markdown", () => {
+  test("a lone ~ is text, so a pasted shell prompt isn't struck through; ~~two~~ still is", () => {
+    const pasted = parseMarkdown("root@golem:~# curl -fsSL https://example.com/install.sh | sh\nInstalled /usr/local/bin/tadpole\nroot@golem:~#");
+    expect(JSON.stringify(pasted)).not.toContain('"delete"');
+    expect(types(parseInline("this is ~~gone~~ now"))).toEqual(["text", "delete", "text"]);
+  });
   test("inline code, bold and links", () => {
     expect(types(parseInline("run `ls` **now** [docs](https://example.com)"))).toEqual(["text", "inlineCode", "text", "strong", "text", "link"]);
   });
