@@ -121,7 +121,13 @@ what is here. The README says what Gond is; this says how it is made.
   buttons are `lg` pills, full width and stacked on a phone. Menus, a
   `Select`'s list and popovers are a `rounded-2xl` card with the same
   edge and `h-9` rows on every pointer. All of it lives in
-  `components/ui`; a call site only sets its width.
+  `components/ui`; a call site only sets its width. The one exception is
+  the picture viewer (`image-viewer.tsx`): a tap on any picture in a
+  conversation, the person's or a bot's, opens it over a `bg-black/90`
+  backdrop with no card, the picture itself the object, its name, Download
+  and close as floating pills like a conversation's header. A tap zooms in
+  where it lands and a drag moves around; a swipe, the arrow keys or the
+  side circles on a wide screen go through the conversation's pictures.
 - **Both themes, every time.** Check light and dark. Field edges, rings and
   fills must read on both.
 - **Phones first, one screen at a time.** Under `md` the app is a
@@ -270,21 +276,34 @@ what is here. The README says what Gond is; this says how it is made.
   `:badge[Label]{tone=ok}` is a `Badge` with the tone variant (ok, warn,
   bad, info, neutral) and a leaf `::meter{value=6 label="…" text="6% used"
   left="…" right="…" tone=ok}` is a `Progress` with a label row and
-  captions. `badgeOf` / `meterOf` say when one is well formed; any other
+  captions, and a leaf `::choices[Pickup | Delivery]` (two to six short
+  options) is a row of outline pills at the end of a bot's message: a tap
+  sends that option as the person's message, and once the person has said
+  anything after it the row closes, the pick shown pressed
+  (`ChoicesContext`, which only the conversation provides, so anywhere
+  else it is inert). `badgeOf` / `meterOf` / `choicesOf` say when one is well formed; any other
   directive, a container, or a malformed one renders as its raw source, so
   `Note:this` and `:smile:` survive. The `## Formatting` section of the
   system prompt (`souls.ts`) tells a bot to use them, with figures in a
   right-aligned table and a bold label for a key fact. `plainMarkdown` in
   `packages/shared` is the dependency-free reduction to one line of words,
   for a push notification's body; `plainText` in the web does the same
-  from the tree. Anything a person has to act on (a sign-in, a key) is a
-  card, not a link. Every one of them is built on `action-card.tsx`, one
-  shell in the same grey with the same edge as a button or a field: the
-  approval in `conversation.tsx`, then `secret-card.tsx`,
-  `login-card.tsx`, `signin-card.tsx` and `connect-card.tsx`. A new kind of card goes there
-  too, so they never drift. What is waiting is said by the buttons inside,
-  never by a colour on the card; the approvals badge in the list carries
-  the amber.
+  from the tree. Anything a person has to act on (a decision, a sign-in,
+  a key) is a card, not a link. Every one of them is built on
+  `action-card.tsx`: `ActionCard` is the bot's bubble grey with the pill
+  edge, `rounded-3xl`, an icon in a primary circle, the question as the
+  title and who and where under it, then what it is about (`ActionRows`
+  for figures with a bold total, `ActionCode` for a command or a path),
+  `xl` buttons side by side (stacked on a phone) and a line on privacy
+  with a lock; once answered it folds to `ActionCardDone`, one line with a
+  tone `Badge` saying how it ended. The approval is `approval-card.tsx`,
+  worded per tool (Run a command?, Change a file?, Use the screen?); an
+  `ask_approval` is a decision card with the bot's own question, rows,
+  total and button names ("Place order" / "Not yet"), and no Always.
+  Then `secret-card.tsx`, `login-card.tsx`, `signin-card.tsx` and
+  `connect-card.tsx`. A new kind of card goes there too, so they never
+  drift. What is waiting is said by the buttons inside, never by a colour
+  on the card; the approvals badge in the list carries the amber.
 - **Settings is sections, not a scroll.** `SETTINGS_SECTIONS` in
   `lib/settings-sections.ts` is the list (account, team, ai, computer,
   skills, apps, secrets, auth), each marked `admin` or not; the route
@@ -657,8 +676,17 @@ what is here. The README says what Gond is; this says how it is made.
 - **Secrets never leave the API.** `src/data/secrets.ts` stores them
   encrypted, per person, and only `readSecret`/`injectSecrets` decrypt, at
   the moment of use: the MCP proxy in `src/routes/mcp.ts`, which fills a
-  server's headers only from its owner's secrets. No route returns a value, no
-  value goes to the box but a sign-in a `type_login` action types, and every bot reply and activity line passes
+  server's headers only from its owner's secrets. No route returns a value, and
+  a value goes to the box only two ways. A `type_login` action types a
+  held sign-in or, once the person allows it on a card (`type_secret`,
+  on `mustAsk`'s list so Auto asks too, with no Always on the card), any
+  stored secret by name that isn't a website's sign-in, like a server's
+  root password. And `run_with_secrets`
+  (`secretCommandTool` in `src/computer.ts`) runs one shell command with
+  named secrets in its environment, approved like any Bash command, the
+  values only in the child's environment (the box's `execEnv` refuses
+  names that would change how the shell runs) and replaced by `[NAME]` in
+  what comes back (`scrubbed`). Every bot reply and activity line passes
   through `createRedactor(allSecretValues())`. A bot asks with
   `request_secret` (a `secret` message kind, answered on
   `/api/secret-requests/:id`); it only ever hears "stored". A request's
@@ -767,7 +795,10 @@ what is here. The README says what Gond is; this says how it is made.
   reacted and answers `NOTHING_NEW` or nothing posts nothing and pushes
   nothing (`reactedOnly` in the responder), the way a routine's quiet run
   does. The transcript carries every message's reactions, so a bot sees
-  the person's.
+  the person's. A message from the person that `isClosing` (shared: a
+  thanks, an "I will", a goodbye, an emoji alone; not a new ask) gets a
+  line in the turn prompt telling the bot to react and answer
+  `NOTHING_NEW`, since a house rule alone was too easy to miss.
 - A hidden `prompt` message (author `system`) is how the API asks a bot to
   do something on its own, like greeting a new person; the dispatcher
   answers it like a message and the web never renders it.
@@ -782,8 +813,19 @@ what is here. The README says what Gond is; this says how it is made.
   `shell-notifications.tsx`. Nothing is pushed about a conversation the
   person has in front of them: the page reports what it shows
   (`viewing-report.tsx` → `/api/push/viewing`, `src/presence.ts`), since the
-  service worker can't tell on an iPhone. `POST /api/push/test` sends one
-  past that check; Send a test notification in Settings → Account calls it.
+  service worker can't tell on an iPhone. A notice goes only to the device
+  the person used last: every browser and app install has an id in
+  `localStorage` (`deviceId` in `lib/push.ts`), sent with its push
+  subscription (`device` on `gond_push_subscriptions`) and with the
+  presence ping when the person opens, focuses, taps or types there
+  (`active`; the heartbeat never claims it, or an idle desktop window
+  would win the notices back from the phone in their hand). `sendPush`
+  sends Web Push only to that device's subscriptions and stamps the
+  `notify` event with it, and `shell-notifications.tsx` shows only its
+  own; until the API has seen the person since it started
+  (`activeDevice` is in memory), every device gets it. `POST
+  /api/push/test` sends one past the viewing check; Send a test
+  notification in Settings → Account calls it.
 - **Time is the person's browser's.** `gond_user_prefs` keeps each person's
   zone, reported by `viewing-report.tsx` with every presence ping;
   `userTimezone(userId)` in `src/data/prefs.ts` is the only reader;
@@ -1024,9 +1066,10 @@ changed and why, written for the person reading the log.
   Update and Reset. Nothing else may use it.
 - A stored secret is never returned by a route, never written in plain
   text, and never appears in a message: only injected by the API at the
-  point of use. The one value that reaches the box is a sign-in detail
-  a `type_login` action types into a page, as keystrokes (xdotool's stdin
-  or the browser host's), never in an argument or a log.
+  point of use. A value reaches the box only as keystrokes a `type_login`
+  action types (xdotool's stdin or the browser host's), or in the
+  environment of one `run_with_secrets` command, never in an argument or
+  a log, and its output comes back with the value replaced.
 - `.env` never holds anything checked in. `.env.example` is only what a
   person sets: `APP_URL` and `GOND_SECRET_KEY`. Anything with a safe
   default (a random secret, a timeout, a limit) is made or chosen here and

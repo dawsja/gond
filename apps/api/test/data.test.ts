@@ -850,7 +850,7 @@ describe("data", () => {
     } finally {
       stop();
     }
-    expect(seen).toEqual([{ topic: "notify", userId: "u-admin", title: "Pip", body: "Done.", url: "/app/t/t1", tag: "t1", threadId: "t1" }]);
+    expect(seen).toEqual([{ topic: "notify", userId: "u-admin", title: "Pip", body: "Done.", url: "/app/t/t1", tag: "t1", threadId: "t1", device: null }]);
   });
 
   test("the time zone is the person's browser's, and a change moves their routines", async () => {
@@ -1048,7 +1048,24 @@ describe("data", () => {
       stop();
     }
     expect(delivered).toEqual(["https://push.example/tester"]);
-    expect(seen).toEqual([{ topic: "notify", userId: "u-tester", title: "Gond", body: "Notifications are working.", url: "/app", tag: "test", threadId: "" }]);
+    expect(seen).toEqual([{ topic: "notify", userId: "u-tester", title: "Gond", body: "Notifications are working.", url: "/app", tag: "test", threadId: "", device: null }]);
+
+    delivered.length = 0;
+    seen.length = 0;
+    saveSubscription({ endpoint: "https://push.example/tester-phone", keys: { p256dh: "a", auth: "b" } }, "u-tester", "", "phone");
+    const again = subscribe((event) => {
+      if (event.topic === "notify") seen.push(event);
+    });
+    try {
+      const app = asPerson(new Hono(), "u-tester").route("/api", pushRoutes());
+      const used = await app.request("/api/push/viewing", { method: "POST", body: JSON.stringify({ client: "w2", threadId: null, device: "phone", active: true }) });
+      expect(used.status).toBe(204);
+      expect(await (await app.request("/api/push/test", { method: "POST" })).json()).toEqual({ sent: 1 });
+    } finally {
+      again();
+    }
+    expect(delivered).toEqual(["https://push.example/tester-phone"]);
+    expect(seen).toMatchObject([{ topic: "notify", device: "phone" }]);
   });
 
   test("each person has their own bots, conversations and subscriptions", async () => {
@@ -2552,6 +2569,40 @@ describe("the computer", () => {
       expect((await asPerson(new Hono(), "u-other").route("/api", secretsRoutes()).request("/api/secrets/UBER_EATS_EMAIL", { method: "DELETE" })).status).toBe(404);
       await releaseComputer("u-admin", thread.id, { botId: bot.id });
       await releaseComputer("u-admin", otherThread.id, { botId: other.id });
+    });
+  });
+
+  test("a stored secret that isn't a sign-in is typed only after the person allows it, and the bot never sees it", async () => {
+    await withBox(async ({ state }) => {
+      const { createBot } = await import("../src/data/bots.ts");
+      const { getThread, listMessages } = await import("../src/data/threads.ts");
+      const { decide } = await import("../src/approvals.ts");
+      const { boxConfig } = await import("../src/box.ts");
+      const { computerTool } = await import("../src/computer-tool.ts");
+      const { setSecret } = await import("../src/data/secrets.ts");
+      const { releaseComputer } = await import("../src/desktop.ts");
+      const { botInputSchema } = await import("@gond/shared");
+      const bot = createBot(botInputSchema.parse({ name: "Proxmox", approval: "auto" }), "u-admin");
+      const thread = getThread(bot.threadId)!;
+      setSecret("u-admin", "PVE_ROOT_PASSWORD", "root-pw-5678");
+      const tools = computerTool({ box: boxConfig("u-admin")!, bot, thread });
+
+      const denied = tools.computer.execute({ actions: [{ type: "type_login", name: "PVE_ROOT_PASSWORD" }] }, "t1");
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      const card = listMessages(thread.id).at(-1)!;
+      expect(card.kind).toBe("approval");
+      expect(card.body).toBe("Type PVE_ROOT_PASSWORD into the screen");
+      decide(card.approvalId!, "deny");
+      const before = state.batches.length;
+      expect(String(await denied)).toContain("NOT typed");
+      expect(state.batches.length).toBe(before);
+
+      const typing = tools.computer.execute({ actions: [{ type: "type_login", name: "PVE_ROOT_PASSWORD", submit: true }] }, "t2");
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      decide(listMessages(thread.id).at(-1)!.approvalId!, "allow");
+      expect(JSON.stringify(await typing)).not.toContain("root-pw-5678");
+      expect(state.batches.at(-1)!.steps).toEqual([{ type: "type", text: "root-pw-5678", secret: true }, { type: "key", key: "Enter" }]);
+      await releaseComputer("u-admin", thread.id, { botId: bot.id });
     });
   });
 

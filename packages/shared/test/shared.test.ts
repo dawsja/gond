@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { BOT_TEMPLATES, CURATED_TOOLKITS, LEGACY_MOBILE_SIGN_IN_CALLBACK, MOBILE_SIGN_IN_CALLBACK, SIGN_IN_APPS, approvalLine, botInputSchema, composioCard, composioCardToolkit, fromNativeAction, gerund, handleOf, isQuietReply, isQuietTool, isStopRequest, routineName, joinCommandLine, mentionsIn, pickBotName, plainMarkdown, ruleLabel, splitCommandLine, toolLabel, toolLine } from "../src/index.ts";
+import { BOT_TEMPLATES, CURATED_TOOLKITS, LEGACY_MOBILE_SIGN_IN_CALLBACK, MOBILE_SIGN_IN_CALLBACK, SIGN_IN_APPS, approvalLine, botInputSchema, composioCard, composioCardToolkit, fromNativeAction, gerund, handleOf, isClosing, isQuietReply, isQuietTool, isStopRequest, routineName, joinCommandLine, mentionsIn, pickBotName, plainMarkdown, ruleLabel, splitCommandLine, toolLabel, toolLine } from "../src/index.ts";
 
 describe("shared", () => {
   test("pickBotName avoids taken names and numbers when exhausted", () => {
@@ -67,6 +67,7 @@ describe("plain markdown", () => {
   test("a meter without words says its percentage, and a plain badge is its label", () => {
     expect(plainMarkdown("::meter{value=3 max=8 label=\"Seats\"}")).toBe("Seats: 38%");
     expect(plainMarkdown("::meter{value=40}")).toBe("40%");
+    expect(plainMarkdown("Which one?\n::choices[Pickup | Delivery]")).toBe("Which one? Pickup or Delivery?");
     expect(plainMarkdown("Status :badge[Plain] today")).toBe("Status Plain today");
   });
 
@@ -217,5 +218,15 @@ describe("stop requests", () => {
   });
   test("anything with more to it goes to the bot", () => {
     for (const text of ["cancel the order", "stop using Chrome and use the API", "don't stop", "can you stop by the store", "quitting time soon?", "", "stopwatch"]) expect(isStopRequest(text)).toBe(false);
+  });
+});
+
+describe("isClosing", () => {
+  test("a thanks, an I will or a goodbye closes the exchange", () => {
+    for (const text of ["Thank you!", "thanks", "ty", "I will!", "Will do", "perfect, thanks", "That will be all", "ok thanks!", "Goodnight", "👍", "❤️🙏", "got it, thank you"]) expect(isClosing(text)).toBe(true);
+  });
+
+  test("a question or a new ask is not one", () => {
+    for (const text of ["thanks, can you also order fries?", "Thank you. Now book the table for 7 and send me the confirmation", "I will need the receipt", "yes", "done?", "", "what's next"]) expect(isClosing(text)).toBe(false);
   });
 });

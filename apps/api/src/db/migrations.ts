@@ -594,6 +594,7 @@ const MIGRATIONS: Array<string | ((db: Database) => void)> = [
     PRIMARY KEY (message_id, author)
   );
   `,
+  `ALTER TABLE gond_push_subscriptions ADD COLUMN device TEXT;`,
 ];
 
 export const RENAME_VERSION = MIGRATIONS.indexOf(renameLegacyObjects) + 1;

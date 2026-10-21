@@ -3,12 +3,12 @@
 import { ChevronLeft, ChevronRight, CircleAlert, Info, Lightbulb, OctagonAlert, Square, SquareCheck, TriangleAlert, WrapText } from "lucide-react";
 import type { AlignType, Blockquote, Code, List, ListItem, Nodes, Table } from "mdast";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { Meter, StatusBadge } from "@/components/chat-blocks";
+import { Choices, Meter, StatusBadge } from "@/components/chat-blocks";
 import { CopyButton } from "@/components/copy-button";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Toggle } from "@/components/ui/toggle";
-import { badgeOf, calloutOf, definitionsOf, isLineBreak, meterOf, parseInline, parseMarkdown, plainText, safeHref, sourceOf, type CalloutKind, type Definitions } from "@/lib/markdown";
+import { badgeOf, calloutOf, choicesOf, definitionsOf, isLineBreak, meterOf, parseInline, parseMarkdown, plainText, safeHref, sourceOf, type CalloutKind, type Definitions } from "@/lib/markdown";
 import { cn } from "@/lib/utils";
 
 type Doc = { source: string; definitions: Definitions };
@@ -329,6 +329,8 @@ function NodeView({ node, doc, depth }: { node: Nodes; doc: Doc; depth: number }
       );
     }
     case "leafDirective": {
+      const choices = choicesOf(node);
+      if (choices) return <Choices options={choices} />;
       const meter = meterOf(node);
       if (!meter) return <Raw node={node} doc={doc} block />;
       return (

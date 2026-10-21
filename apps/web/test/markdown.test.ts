@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Blockquote, Code, Link, List, Table } from "mdast";
-import { badgeOf, calloutOf, meterOf, parseInline, parseMarkdown, plainText, safeHref, sourceOf } from "../lib/markdown";
+import { badgeOf, calloutOf, choicesOf, meterOf, parseInline, parseMarkdown, plainText, safeHref, sourceOf } from "../lib/markdown";
 
 const types = (nodes: { type: string }[]) => nodes.map((n) => n.type);
 
@@ -171,5 +171,14 @@ describe("chat blocks", () => {
   test("plain text reduces a badge to its label and a meter to label and text", () => {
     const source = 'Status: :badge[Healthy]{tone=ok} today.\n\n::meter{value=6 label="Root" text="6% used"}';
     expect(plainText(parseMarkdown(source).children, source)).toBe("Status: Healthy today.\nRoot: 6% used");
+  });
+  test("choices are two to six short options, and anything else stays as written", () => {
+    const first = (source: string) => choicesOf(parseMarkdown(source).children[0]!);
+    expect(first("::choices[Pickup | Delivery]")).toEqual(["Pickup", "Delivery"]);
+    expect(first("::choices[Yes|No|Yes]")).toEqual(["Yes", "No"]);
+    expect(first("::choices[Only one]")).toBeNull();
+    expect(first("::choices[a|b|c|d|e|f|g]")).toBeNull();
+    expect(first("::meter{value=3}")).toBeNull();
+    expect(plainText(parseMarkdown("::choices[Pickup | Delivery]"))).toBe("Pickup or Delivery?");
   });
 });

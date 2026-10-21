@@ -2,10 +2,10 @@ import { BROWSER_ONLY_STEPS, fromNativeAction, LOOK_STEPS, MAX_SCREEN_STEPS, SCR
 import { requestApproval, type Decision } from "./approvals.ts";
 import { BoxError, personHasControl, readBoxFileBytes, screenBatch, type BoxConfig, type ScreenResult, type ScreenStep, type ScreenView } from "./box.ts";
 import { storeAttachment, postMessage } from "./data/threads.ts";
-import { hideSecrets } from "./data/secrets.ts";
+import { hideSecrets, readLogin, readSecret } from "./data/secrets.ts";
 import { emitDesktop, markDriving, untilHandedBack } from "./desktop.ts";
 import type { DriverTool, ToolPart } from "./driver.ts";
-import { heldLogin } from "./logins.ts";
+import { heldLogin, holdLogin } from "./logins.ts";
 import { botHome } from "./memory.ts";
 
 export const DISPLAY = { width: 1024, height: 640 };
@@ -21,7 +21,7 @@ export const HANDED_BACK_TEXT =
   "Nothing in this batch ran: the person took control of the screen while you were working and has now given it back. They may have changed things (moved on a step, closed or opened something, filled something in), so this is the screen as they left it. Carry on from here, not from where you were, and don't redo what they did.";
 
 const STEP_HELP =
-  "Each action is a JSON object with a type: screenshot; click {x, y, button?: left|right|middle, count?: 1-3}; hover {x, y}; drag {x, y, to_x, to_y}; type {text}; type_login {name, submit?} for a sign-in detail from request_login; key {key: Enter, Tab, ctrl+l, ctrl+shift+t, several separated by spaces}; scroll {direction: up|down|left|right, amount?: 1-20, x?, y?}; wait {ms}; copy (the selection; its text comes back); paste {text?} (puts text on the clipboard and pastes it, far faster than typing a long text); clipboard (its text comes back).";
+  "Each action is a JSON object with a type: screenshot; click {x, y, button?: left|right|middle, count?: 1-3}; hover {x, y}; drag {x, y, to_x, to_y}; type {text}; type_login {name, submit?} types a sign-in detail from request_login, or any stored secret by name (a server's root password; the person is asked first), without you seeing it; key {key: Enter, Tab, ctrl+l, ctrl+shift+t, several separated by spaces}; scroll {direction: up|down|left|right, amount?: 1-20, x?, y?}; wait {ms}; copy (the selection; its text comes back); paste {text?} (puts text on the clipboard and pastes it, far faster than typing a long text); clipboard (its text comes back).";
 
 const BROWSER_HELP =
   "Every answer lists the page's controls and headings on screen, one per line: `e12 button \"Add to cart\" @640,410`. Name one by its ref instead of x and y and it is found exactly, even if the page moved (a page that shifts after one click sends the next x and y somewhere else, so use x and y only for what the list doesn't name): click {ref}; hover {ref}; type {ref, text}; drag {ref, to_ref}; scroll {ref} brings it into view, or with direction scrolls inside it. On a page you haven't seen yet (one this batch opens), name an element by label instead: its visible text or name, with role (button, link, textbox, checkbox, …) when the text alone is ambiguous; the step waits up to 8 seconds for it to appear. So one batch can carry an errand across pages: navigate to the store, click {label: \"#1 Whataburger\"}, select {label: \"Drink\", option: \"Dr Pepper\"}, click {label: \"Add to order\", role: \"button\"}, wait_for {text: \"Total\"}, read {label: \"Total\"}. If a label isn't found the batch stops there and says so. Browser-only actions (each takes ref or label): fill {ref, text} replaces a field's text at once (use it rather than type for forms); select {ref, option} picks a dropdown option by its label or value; check {ref, checked?: false to untick} sets a checkbox, radio or switch and leaves it that way whatever it was, so use it rather than click for a form's options (a site that draws its own boxes is listed by the row you would click); type_login {ref, name} fills a sign-in detail; read {ref?} gives the text of the page or of one element, without a picture (prices, totals, a list); wait_for {text, gone?} or {url} waits until text appears or goes, or the address changes, instead of a guessed wait; upload {ref, path} sends a file from your home to a file field; dialog {accept, text?} answers an alert, confirm or prompt; navigate {url}; back; forward; reload; tab {index}; new_tab {url?}; close_tab {index?}. Refs only hold until the next answer, which brings a new list. Downloads go to ~/Downloads.";
@@ -64,7 +64,7 @@ function stepSchema(target: ScreenTarget) {
       direction: { type: "string", enum: ["up", "down", "left", "right"] },
       amount: { type: "integer", minimum: 1, maximum: 20, description: "How far to scroll, in wheel clicks." },
       ms: { type: "integer", minimum: 0, maximum: 30_000, description: "wait: how long. wait_for: the most to wait (default 10000)." },
-      name: { type: "string", description: "type_login: the detail's name from request_login, like UBER_EATS_PASSWORD." },
+      name: { type: "string", description: "type_login: the detail's name from request_login, like UBER_EATS_PASSWORD, or a stored secret's, like ROOT_PASSWORD." },
       submit: { type: "boolean", description: "type_login: press Enter after it." },
       ...(target === "browser"
         ? {
@@ -137,7 +137,7 @@ export function screenSteps(input: Record<string, unknown>, target: ScreenTarget
     if (type === "type_login") {
       const name = String(step.name ?? "").trim().toUpperCase();
       const value = name ? login(name) : null;
-      if (!value) return { error: `NOT typed: there is no ${name || "sign-in detail"} for this conversation. Call request_login first. Nothing in this batch ran.` };
+      if (!value) return { error: `NOT typed: there is no ${name || "sign-in detail"} for this conversation or among the stored secrets. Call request_login, or request_secret for a password that isn't a website's. Nothing in this batch ran.` };
       const ref = target === "browser" && typeof step.ref === "string" && step.ref ? step.ref : null;
       const label = target === "browser" && !ref && typeof step.label === "string" && step.label ? step.label : null;
       if (ref) steps.push({ type: "fill", ref, text: value, secret: true });
@@ -286,6 +286,24 @@ export function computerTool(context: Context): { computer: DriverTool; browser:
     return typeof shown === "string" ? `${HANDED_BACK_TEXT}\n${shown}` : [{ type: "text", text: HANDED_BACK_TEXT }, ...shown];
   };
 
+  // A type_login of a stored secret that isn't a held sign-in (a server's root password, say) is typed only once the person allows it.
+  const typeSecrets = async (raw: Record<string, unknown>): Promise<string | null> => {
+    const names = (Array.isArray(raw.actions) ? raw.actions : [raw]).flatMap((step) =>
+      step && typeof step === "object" && (step as Record<string, unknown>).type === "type_login" ? [String((step as Record<string, unknown>).name ?? "").trim().toUpperCase()] : [],
+    );
+    for (const name of new Set(names)) {
+      // A website's saved sign-in goes through request_login, which asks for it by site.
+      if (!name || heldLogin(thread.id, name) !== null || readLogin(bot.userId, name) !== null) continue;
+      const value = readSecret(bot.userId, name);
+      if (value === null) continue;
+      const decision = await requestApproval({ bot, threadId: thread.id, tool: "type_secret", input: { name }, summary: `Type ${name} into the screen`, signal: context.signal });
+      if (decision === "expired") return `NOT typed: nobody answered about typing ${name}. Nothing in this batch ran.`;
+      if (decision !== "allow" && decision !== "always") return `NOT typed: the person said no to typing ${name}. Nothing in this batch ran.`;
+      holdLogin(thread.id, name, value);
+    }
+    return null;
+  };
+
   const tool = (target: ScreenTarget): DriverTool => ({
     description: target === "browser" ? BROWSER_DESCRIPTION : COMPUTER_DESCRIPTION,
     inputSchema: target === "browser" ? BROWSER_SCHEMA : COMPUTER_SCHEMA,
@@ -293,6 +311,8 @@ export function computerTool(context: Context): { computer: DriverTool; browser:
     execute: async (raw) => {
       const pointed = target === "desktop" && hasCoordinates(raw);
       if (pointed && !scale) await send("desktop", [{ type: "screenshot" }]);
+      const typed = await typeSecrets(raw);
+      if (typed) return typed;
       const parsed = screenSteps(raw, target, scale, (name) => heldLogin(thread.id, name));
       if ("error" in parsed) return parsed.error;
       const { steps } = parsed;

@@ -5,7 +5,7 @@ import { exactApp, fuzzyScore, indexApps, pageOf, searchIndex } from "../src/cat
 import { activityLine, workSteps } from "../src/driver.ts";
 import { clearWork, clipOutput, recordStep, workFor } from "../src/work.ts";
 import { curatedToolkits, isReadOnlyAction, narrowed } from "../src/composio.ts";
-import { isViewing, markViewing, VIEWING_TTL_MS } from "../src/presence.ts";
+import { activeDevice, isViewing, markActive, markViewing, VIEWING_TTL_MS } from "../src/presence.ts";
 import { renderSoul } from "../src/souls.ts";
 import { checkBundleFiles, packSkill, parseSkillMd, readableName, renderSkillMd, unpackSkill } from "../src/skill-bundle.ts";
 import { zipSync } from "fflate";
@@ -611,6 +611,16 @@ describe("viewing", () => {
     markViewing("u-two", "laptop", "thread-b", t + 30);
     expect(isViewing("u-two", "thread-a", t + 40)).toBe(false);
   });
+
+  test("notices follow the device the person used last, and go everywhere until one is known", () => {
+    expect(activeDevice("u-fresh")).toBeNull();
+    markActive("u-dev", "laptop", 100);
+    markActive("u-dev", "phone", 200);
+    expect(activeDevice("u-dev")).toBe("phone");
+    markActive("u-dev", "laptop", 150);
+    expect(activeDevice("u-dev")).toBe("phone");
+    expect(activeDevice("u-fresh")).toBeNull();
+  });
 });
 
 describe("handoff depth", () => {
@@ -1108,4 +1118,13 @@ test("a picture's type comes from its bytes", async () => {
   expect(pictureType(new TextEncoder().encode("RIFF\0\0\0\0WEBPVP8 "))).toBe("image/webp");
   expect(pictureType(new TextEncoder().encode("RIFF\0\0\0\0WAVEfmt "))).toBeNull();
   expect(pictureType(new TextEncoder().encode("<svg xmlns='http://www.w3.org/2000/svg'/>"))).toBeNull();
+});
+
+describe("run_with_secrets", () => {
+  test("a secret's value never comes back in the output, the longest first so none is half-hidden", async () => {
+    const { scrubbed } = await import("../src/computer.ts");
+    const env = { ROOT_PASSWORD: "hunter2hunter2", PIN: "hunter2" };
+    expect(scrubbed("login hunter2hunter2 ok, pin hunter2", env)).toBe("login [ROOT_PASSWORD] ok, pin [PIN]");
+    expect(scrubbed("nothing here", env)).toBe("nothing here");
+  });
 });

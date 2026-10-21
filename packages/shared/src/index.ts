@@ -612,7 +612,7 @@ export type LiveEvent =
    * push notification, for a client without Web Push (the Android app)
    * to show on its own. Quiet when that conversation is in front of you.
    */
-  | { topic: "notify"; userId: string; title: string; body: string; url: string; tag: string; threadId: string }
+  | { topic: "notify"; userId: string; title: string; body: string; url: string; tag: string; threadId: string; device: string | null }
   /** Your desktop on the computer: who is driving it, and whether it is up. */
   | { topic: "desktop"; userId: string; desktop: DesktopState };
 
@@ -1077,6 +1077,22 @@ export function isStopRequest(body: string): boolean {
   return text.length > 0 && text.length <= 60 && STOP_REQUEST.test(text);
 }
 
+// "thank you!", "I will", "perfect, thanks", "that will be all", "👍": a short
+// message that closes the exchange rather than asking for anything.
+const CLOSING_PHRASE = String.raw`(?:thanks?(?: you)?(?: (?:so|very) much| a lot| again| a ton)?|ty(?:sm)?|thx|tysm|cheers|much appreciated|appreciate (?:it|you|that)|perfect|great|awesome|amazing|nice|cool|sweet|lovely|love (?:it|that)|sounds good|looks good|all good|ok(?:ay)?|k|kk|got it|understood|will do|i will|i'?ll do (?:it|that)|i'?m good|we'?re good|that'?s (?:all|it|perfect|great)|that will be all|that'?ll be all|nothing else|no(?:pe)?,? that'?s (?:all|it)|bye|goodbye|good ?night|night|see (?:you|ya)|have a good (?:one|day|night)|you too|you'?re the best)`;
+const CLOSING = new RegExp(String.raw`^(?:${CLOSING_PHRASE}(?:[\s,.!]+(?:[a-z]+))?[\s,.!]*)+$`, "i");
+
+export function isClosing(body: string): boolean {
+  const text = body
+    .trim()
+    .replace(/[\p{Extended_Pictographic}\u{FE0F}\u{200D}]/gu, " ")
+    .replace(/[^\p{L}\p{N}'\s,.!]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!text) return body.trim().length > 0 && body.trim().length <= 12;
+  return text.length <= 60 && text.split(" ").length <= 9 && CLOSING.test(text);
+}
+
 /** A bot answers a routine run with this when there is nothing worth telling the person; the run then leaves no trace in the chat. */
 export const QUIET_REPLY = "NOTHING_NEW";
 
@@ -1100,6 +1116,7 @@ export function plainMarkdown(text: string): string {
       const words = /\btext="([^"]*)"/.exec(attrs)?.[1]?.trim() || fallback;
       return label && words ? `${label}: ${words}` : label || words;
     })
+    .replace(/^[ \t]*::choices\[([^\]\n]*)\][ \t]*$/gm, (_, options: string) => options.split("|").map((option) => option.trim()).filter(Boolean).join(" or ") + "?")
     .replace(/^[ \t]*:::[^\n]*$/gm, "")
     .replace(/\*\*/g, "")
     .replace(/`/g, "")
@@ -1354,6 +1371,8 @@ export function describeTool(name: string, input: Record<string, unknown> = {}, 
       return { verb: "Updating its profile", detail: null };
     case "post_message":
       return { verb: "Posting a message", detail: null };
+    case "run_with_secrets":
+      return { verb: "Running", detail: typeof input.command === "string" ? short(input.command) : null };
     case "react":
       return { verb: "Reacting", detail: typeof input.emoji === "string" ? input.emoji : null };
     case "send_file": {

@@ -368,6 +368,19 @@ export function botDir(account, id) {
   return dir;
 }
 
+/** Secrets for one command (the API's run_with_secrets): checked, and only ever in the child's environment. */
+function execEnv(raw, base) {
+  if (raw === undefined || raw === null) return {};
+  if (typeof raw !== "object" || Array.isArray(raw)) throw new HttpError(400, "env must be an object");
+  const entries = Object.entries(raw);
+  if (entries.length > 20) throw new HttpError(400, "Too many variables");
+  for (const [name, value] of entries) {
+    if (!/^[A-Z_][A-Z0-9_]{0,63}$/.test(name) || typeof value !== "string" || value.length > 16_384) throw new HttpError(400, `Bad variable ${name}`);
+    if (name in base || /^(?:LD_|BASH_|DYLD_)|^(?:ENV|IFS|PS4|SHELLOPTS|BASHOPTS|PROMPT_COMMAND|SHELL)$/.test(name)) throw new HttpError(400, `${name} can't be set for a command`);
+  }
+  return Object.fromEntries(entries);
+}
+
 function agentEnv(account, extra = {}) {
   const cache = account.cache;
   return {
@@ -1799,7 +1812,7 @@ async function route(request, response, url) {
     );
     const cwd = boxCwd(body.cwd, account.home, forbiddenIn(account));
     if (!fs.existsSync(cwd)) throw new HttpError(404, "No such directory");
-    return runAsUser(account, ["bash", "-lc", body.command], { cwd, timeoutMs });
+    return runAsUser(account, ["bash", "-lc", body.command], { cwd, timeoutMs, env: execEnv(body.env, agentEnv(account)) });
   }
   if (request.method === "GET" && parts.length === 2 && parts[0] === "files" && parts[1] === "raw") return sendRawFile(response, account, url.searchParams.get("path"));
   if (request.method === "PUT" && parts.length === 2 && parts[0] === "files" && parts[1] === "raw") return uploadFile(request, account, url.searchParams.get("path"));

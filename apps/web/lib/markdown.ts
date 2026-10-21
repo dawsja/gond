@@ -77,6 +77,20 @@ function numberOf(value: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+const MAX_CHOICES = 6;
+const MAX_CHOICE_LENGTH = 60;
+
+/** `::choices[Pickup | Delivery]`: two to six short answers the person can tap instead of typing. */
+export function choicesOf(node: Nodes): string[] | null {
+  if (node.type !== "leafDirective" || node.name !== "choices") return null;
+  const options = plainText(node.children)
+    .split("|")
+    .map((option) => option.trim())
+    .filter(Boolean);
+  if (options.length < 2 || options.length > MAX_CHOICES || options.some((option) => option.length > MAX_CHOICE_LENGTH)) return null;
+  return [...new Set(options)];
+}
+
 export function meterOf(node: Nodes): Meter | null {
   if (node.type !== "leafDirective" || node.name !== "meter") return null;
   const attributes = node.attributes ?? {};
@@ -132,6 +146,8 @@ function textOf(node: Nodes, source: string | undefined): string {
   if (badge) return plainText(badge.label, source);
   const meter = meterOf(node);
   if (meter) return `${plainText(meter.label, source)}: ${meter.text}\n`;
+  const choices = choicesOf(node);
+  if (choices) return `${choices.join(" or ")}?\n`;
   switch (node.type) {
     case "text":
     case "inlineCode":

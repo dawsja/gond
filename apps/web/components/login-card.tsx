@@ -3,9 +3,9 @@
 import { LOGIN_FIELD_LABELS, type Bot, type LoginField, type SecretRequest } from "@gond/shared";
 import { LogIn } from "lucide-react";
 import { useState, type FormEvent } from "react";
-import { ActionCard } from "@/components/action-card";
+import { ActionCard, ActionCardDone } from "@/components/action-card";
 import { Button } from "@/components/ui/button";
-import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field";
+import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
@@ -44,58 +44,66 @@ export function LoginCard({ request, bot, onAnswered }: { request: SecretRequest
     }
   }
 
+  const name = bot?.name ?? "A bot";
+  const icon = <LogIn aria-hidden="true" />;
+  if (request.status !== "pending") {
+    const done = request.status === "given" ? { status: "Sent", tone: "ok" as const } : request.status === "declined" ? { status: "Not now", tone: "neutral" as const } : { status: "Expired", tone: "neutral" as const };
+    return <ActionCardDone icon={icon} title={`Sign in to ${site}`} by={name} status={done.status} tone={done.tone} />;
+  }
+
   return (
-    <ActionCard icon={<LogIn className="size-3.5" aria-hidden="true" />} title={`${bot?.name ?? "A bot"} is signing you in to ${site}`}>
-      {request.reason ? <p className="text-[13.5px] text-muted-foreground">{request.reason}</p> : null}
-      {request.status === "pending" ? (
-        <form onSubmit={answer} className="flex flex-col gap-3">
-          <FieldGroup className="max-w-sm gap-3">
-            {request.fields.map((field) => {
-              const input = INPUTS[field.kind];
-              const id = `login-${request.id}-${field.name}`;
-              return (
-                <Field key={field.name}>
-                  <FieldLabel htmlFor={id}>{field.label || LOGIN_FIELD_LABELS[field.kind]}</FieldLabel>
-                  <Input
-                    id={id}
-                    type={input.type}
-                    inputMode={input.inputMode}
-                    autoComplete={input.autoComplete}
-                    autoCapitalize="off"
-                    spellCheck={false}
-                    value={values[field.name] ?? ""}
-                    onChange={(e) => setValues((now) => ({ ...now, [field.name]: e.target.value }))}
-                  />
-                </Field>
-              );
-            })}
-            {canRemember ? (
-              <FieldLabel htmlFor={`login-${request.id}-remember`}>
-                <Field orientation="horizontal">
-                  <FieldContent>
-                    <FieldTitle>Remember for next time</FieldTitle>
-                    <FieldDescription>Stored encrypted, so the next sign-in to {site} needs no card. Codes are never kept.</FieldDescription>
-                  </FieldContent>
-                  <Switch id={`login-${request.id}-remember`} checked={remember} onCheckedChange={setRemember} aria-label="Remember for next time" />
-                </Field>
-              </FieldLabel>
-            ) : null}
-          </FieldGroup>
-          {error ? <p className="text-[12.5px] text-destructive">{error}</p> : null}
-          <div className="flex flex-wrap gap-2">
-            <Button type="submit" size="sm" disabled={busy || !filled}>
+    <form onSubmit={answer} className="contents">
+      <ActionCard
+        icon={icon}
+        title={`Sign in to ${site}`}
+        by={request.reason || `${name} is on the sign-in page`}
+        actions={
+          <>
+            <Button type="submit" size="xl" className="w-full" disabled={busy || !filled}>
               {busy ? <Spinner data-icon="inline-start" /> : null}
               Sign in
             </Button>
-            <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => void answer(undefined, true)}>
+            <Button type="button" size="xl" variant="outline" className="w-full" disabled={busy} onClick={() => void answer(undefined, true)}>
               Not now
             </Button>
-          </div>
-          <p className="text-[11.5px] text-muted-foreground">Typed straight into the page by the API. The bot never sees it, and it stays out of the chat.</p>
-        </form>
-      ) : (
-        <p className="text-[12px] text-muted-foreground">{request.status === "given" ? "Sent. The bot is signing in." : request.status === "declined" ? "Not now." : "Nobody answered in time."}</p>
-      )}
-    </ActionCard>
+          </>
+        }
+        note={`Typed into the page by Gond. ${name} never sees it, and it stays out of the chat.`}
+      >
+        <FieldGroup className="gap-3">
+          {request.fields.map((field) => {
+            const input = INPUTS[field.kind];
+            const id = `login-${request.id}-${field.name}`;
+            return (
+              <Field key={field.name}>
+                <FieldLabel htmlFor={id}>{field.label || LOGIN_FIELD_LABELS[field.kind]}</FieldLabel>
+                <Input
+                  id={id}
+                  type={input.type}
+                  inputMode={input.inputMode}
+                  autoComplete={input.autoComplete}
+                  autoCapitalize="off"
+                  spellCheck={false}
+                  value={values[field.name] ?? ""}
+                  onChange={(e) => setValues((now) => ({ ...now, [field.name]: e.target.value }))}
+                />
+              </Field>
+            );
+          })}
+          {canRemember ? (
+            <FieldLabel htmlFor={`login-${request.id}-remember`}>
+              <Field orientation="horizontal">
+                <FieldContent>
+                  <FieldTitle>Remember for next time</FieldTitle>
+                  <FieldDescription>The next sign-in to {site} needs no card. Codes are never kept.</FieldDescription>
+                </FieldContent>
+                <Switch id={`login-${request.id}-remember`} checked={remember} onCheckedChange={setRemember} aria-label="Remember for next time" />
+              </Field>
+            </FieldLabel>
+          ) : null}
+          {error ? <FieldError>{error}</FieldError> : null}
+        </FieldGroup>
+      </ActionCard>
+    </form>
   );
 }

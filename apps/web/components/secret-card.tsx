@@ -3,12 +3,12 @@
 import type { Bot, Message, SecretRequest } from "@gond/shared";
 import { KeyRound } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
-import { ActionCard } from "@/components/action-card";
+import { ActionCard, ActionCardDone } from "@/components/action-card";
 import { LoginCard } from "@/components/login-card";
 import { useLiveEvents } from "@/components/hq/live-events";
 import { Button } from "@/components/ui/button";
-import { Field, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
+import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Spinner } from "@/components/ui/spinner";
 import { api, post } from "@/lib/api";
 
@@ -34,18 +34,19 @@ export function SecretCard({ message, bot }: { message: Message; bot: Bot | unde
   });
 
   if (request?.target === "login") return <LoginCard request={request} bot={bot} onAnswered={setRequest} />;
-  if (!request)
-    return (
-      <ActionCard icon={<KeyRound className="size-3.5" aria-hidden="true" />} title={`${bot?.name ?? "A bot"} needs something from you`}>
-        <Spinner aria-label="Loading" />
-      </ActionCard>
-    );
+  const name = bot?.name ?? "A bot";
+  const icon = <KeyRound aria-hidden="true" />;
+  if (!request) return <ActionCard icon={icon} title={`${name} needs something from you`} by={<Spinner aria-label="Loading" />} />;
 
-  const [name, ...reasonParts] = message.body.split(": ");
+  const [secret, ...reasonParts] = message.body.split(": ");
   const reason = reasonParts.join(": ");
-  const status = request?.status ?? "pending";
+  const composio = request.target === "composio";
+  const label = composio ? "Composio API key" : secret;
 
-  const composio = request?.target === "composio";
+  if (request.status !== "pending") {
+    const done = request.status === "given" ? { status: "Saved", tone: "ok" as const } : request.status === "declined" ? { status: "Not now", tone: "neutral" as const } : { status: "Expired", tone: "neutral" as const };
+    return <ActionCardDone icon={icon} title={label} by={`${name} · ${composio ? "connected apps" : "secret"}`} status={done.status} tone={done.tone} />;
+  }
 
   async function answer(event?: FormEvent, decline = false) {
     event?.preventDefault();
@@ -64,43 +65,48 @@ export function SecretCard({ message, bot }: { message: Message; bot: Bot | unde
   }
 
   return (
-    <ActionCard icon={<KeyRound className="size-3.5" aria-hidden="true" />} title={`${bot?.name ?? "A bot"} needs ${composio ? "your Composio key" : "a secret"}`}>
-        <p className="text-[13.5px]">
-          <span className={composio ? "font-medium" : "font-mono font-medium"}>{composio ? "Composio API key" : name}</span>
-          {reason ? <span className="text-muted-foreground"> · {reason}</span> : null}
-        </p>
-        {composio && status === "pending" ? (
-          <p className="text-[12.5px] text-muted-foreground">
+    <form onSubmit={answer} className="contents">
+      <ActionCard
+        icon={icon}
+        title={composio ? `${name} needs your Composio key` : `${name} needs a secret`}
+        by={reason || undefined}
+        actions={
+          <>
+            <Button type="submit" size="xl" className="w-full" disabled={busy || !value}>
+              {busy ? <Spinner data-icon="inline-start" /> : null}
+              Save
+            </Button>
+            <Button type="button" size="xl" variant="outline" className="w-full" disabled={busy} onClick={() => void answer(undefined, true)}>
+              Not now
+            </Button>
+          </>
+        }
+        note={composio ? "Encrypted, and used only when Gond talks to Composio. The bot never sees it." : `Encrypted. ${name} uses it without ever seeing it, and it never shows in the chat.`}
+      >
+        {composio ? (
+          <p className="text-[13.5px] text-muted-foreground">
             It connects your apps (Gmail, GitHub, Notion and the rest). A free key comes from{" "}
-            <a href="https://dashboard.composio.dev" target="_blank" rel="noreferrer noopener" className="underline underline-offset-2">
+            <a href="https://dashboard.composio.dev" target="_blank" rel="noreferrer noopener" className="text-foreground underline underline-offset-2">
               dashboard.composio.dev
             </a>{" "}
             under Settings → API keys.
           </p>
         ) : null}
-        {status === "pending" ? (
-          <form onSubmit={answer} className="flex flex-col gap-2">
-            <Field>
-              <FieldLabel htmlFor={`secret-${id}`} className="sr-only">
-                Value
-              </FieldLabel>
-              <Input id={`secret-${id}`} type="password" value={value} onChange={(e) => setValue(e.target.value)} autoComplete="off" placeholder="Paste it here; it stays out of the chat" className="max-w-sm" />
-            </Field>
-            {error ? <p className="text-[12.5px] text-destructive">{error}</p> : null}
-            <div className="flex flex-wrap gap-2">
-              <Button type="submit" size="sm" disabled={busy || !value}>
-                {busy ? <Spinner data-icon="inline-start" /> : null}
-                Store it
-              </Button>
-              <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => void answer(undefined, true)}>
-                Decline
-              </Button>
-            </div>
-            <p className="text-[11.5px] text-muted-foreground">{composio ? "Stored encrypted by the API and used only when it talks to Composio. The bot never sees the value." : "Stored encrypted by the API and filled in where it’s used. The bot never sees the value."}</p>
-          </form>
-        ) : (
-          <p className="text-[12px] text-muted-foreground">{status === "given" ? (composio ? "Stored. Connected apps are on." : "Stored. The bot was told it's there.") : status === "declined" ? "Declined." : "Nobody answered in time."}</p>
-        )}
-    </ActionCard>
+        <FieldGroup className="gap-2">
+          <Field data-invalid={error ? true : undefined}>
+            <FieldLabel htmlFor={`secret-${id}`} className={composio ? undefined : "font-mono text-[12.5px]"}>
+              {label}
+            </FieldLabel>
+            <InputGroup>
+              <InputGroupAddon>
+                <KeyRound aria-hidden="true" />
+              </InputGroupAddon>
+              <InputGroupInput id={`secret-${id}`} type="password" value={value} onChange={(e) => setValue(e.target.value)} autoComplete="off" placeholder="Paste it here" aria-invalid={error ? true : undefined} />
+            </InputGroup>
+            {error ? <FieldError>{error}</FieldError> : null}
+          </Field>
+        </FieldGroup>
+      </ActionCard>
+    </form>
   );
 }

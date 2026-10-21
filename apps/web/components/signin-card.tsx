@@ -1,9 +1,9 @@
 "use client";
 
 import { composioCardToolkit, type Bot, type McpServer, type Message } from "@gond/shared";
-import { Check, LogIn, TriangleAlert } from "lucide-react";
+import { ShieldCheck, TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { ActionCard } from "@/components/action-card";
+import { ActionCard, ActionCardDone } from "@/components/action-card";
 import { ConnectCard } from "@/components/connect-card";
 import { useLiveEvents } from "@/components/hq/live-events";
 import { Button } from "@/components/ui/button";
@@ -60,44 +60,31 @@ function McpSignInCard({ message, bot }: { message: Message; bot: Bot | undefine
     /* not a URL */
   }
 
+  const by = bot?.name ?? "A bot";
+  const icon = <ShieldCheck aria-hidden="true" />;
+  if (server === null) return <ActionCardDone icon={icon} title={name} by={`${by} · MCP server`} status="Removed" tone="neutral" />;
+  if (server?.authStatus === "signed_in" || server?.authStatus === "none") return <ActionCardDone icon={icon} title={name} by={host || `${by} · MCP server`} status={server.authStatus === "signed_in" ? "Signed in" : "Connected"} tone="ok" />;
+
   return (
-    <ActionCard icon={<LogIn className="size-3.5" aria-hidden="true" />} title={`${bot?.name ?? "A bot"} connected an app`}>
-        <p className="text-[13.5px]">
-          <span className="font-medium">{name}</span>
-          {host ? <span className="text-muted-foreground"> · {host}</span> : null}
+    <ActionCard
+      icon={icon}
+      title={`Sign in to ${name}`}
+      by={server === undefined ? <Spinner aria-label="Loading" /> : host ? `${by} added it · ${host}` : `${by} added it`}
+      actions={
+        <Button size="xl" variant={waiting ? "outline" : "default"} className="w-full" disabled={busy || !server?.enabled} onClick={() => void signIn()}>
+          {busy ? <Spinner data-icon="inline-start" /> : null}
+          {waiting ? "Open the sign-in again" : server?.authStatus === "error" ? "Try again" : `Sign in to ${name}`}
+        </Button>
+      }
+      note={`You sign in on ${host || "the app's own site"}. Gond keeps the token and the bots never see it.`}
+    >
+      {(server?.authStatus === "error" && server.authError) || error ? (
+        <p className="flex items-start gap-1.5 text-[13px] text-destructive">
+          <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+          {error ?? server?.authError}
         </p>
-        {server === undefined ? (
-          <Spinner />
-        ) : server === null ? (
-          <p className="text-[12px] text-muted-foreground">This server was removed.</p>
-        ) : server.authStatus === "signed_in" ? (
-          <p className="flex items-center gap-1.5 text-[12.5px] text-muted-foreground">
-            <Check className="size-3.5 text-mint" aria-hidden="true" />
-            Signed in.
-          </p>
-        ) : server.authStatus === "none" ? (
-          <p className="text-[12.5px] text-muted-foreground">Connected. It didn&apos;t need a sign-in.</p>
-        ) : (
-          <>
-            {server.authStatus === "error" && server.authError ? (
-              <p className="flex items-start gap-1.5 text-[12.5px] text-destructive">
-                <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-                {server.authError}
-              </p>
-            ) : (
-              <p className="text-[12.5px] text-muted-foreground">It needs you to sign in before the bots can use it.</p>
-            )}
-            {error ? <p className="text-[12.5px] text-destructive">{error}</p> : null}
-            <div>
-              <Button size="sm" variant={waiting ? "outline" : "default"} disabled={busy || !server.enabled} onClick={() => void signIn()}>
-                {busy ? <Spinner data-icon="inline-start" /> : null}
-                {waiting ? "Open the sign-in again" : server.authStatus === "error" ? "Try again" : `Sign in to ${name}`}
-              </Button>
-            </div>
-            {waiting ? <McpPasteSignIn name={name} onDone={() => void load()} /> : null}
-            <p className="text-[11.5px] text-muted-foreground">You sign in on {host || "the app's site"}; Gond keeps the token and the bots never see it.</p>
-          </>
-        )}
+      ) : null}
+      {waiting ? <McpPasteSignIn name={name} onDone={() => void load()} /> : null}
     </ActionCard>
   );
 }

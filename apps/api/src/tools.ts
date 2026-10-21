@@ -99,12 +99,12 @@ export const TOOL_NOTES = [
   "update_bot changes a teammate's profile when the person asks you to: its name, title, instructions (the description field, its SOUL), mascot colour, expression or shape. 'Make @Web Designer a Coder' means title: Coder and matching instructions.",
   "Those are every bot's, not only the primary bot's: who adds teammates and hands out work is a matter of the job, not of what you are allowed to call. Unless you are the primary bot, use them when the person asks you to, not on your own.",
   `Routines are yours to make and change: the person can only see them and switch them on or off, so when they want one made, changed, removed or run, you do it. create_routine schedules a prompt for yourself on a cron in the person's time zone, optionally with one of their skills, paused until they turn it on unless they asked for it in this conversation. list_routines shows yours; update_routine changes or pauses one, delete_routine removes it, run_routine runs it once now. When a routine fires (a message that starts [Routine: …]) and there is nothing new worth telling the person since its last run, answer with exactly ${QUIET_REPLY} and nothing else: the run then leaves no trace in the chat and nobody is notified. Anything they would want to know, say as usual.`,
-  "ask_approval posts an approval card and waits for the person. On Auto, call it before anything you can't undo or that leaves the computer: sending a message or email as the person, deleting or overwriting files outside your home, a payment or purchase, a forced push, changing settings for other people, typing a password you weren't given, anything they would want to know first. On Always ask the broker already asks; on Always allow it answers at once.",
+  "ask_approval posts a decision card and waits for the person. Whenever you need a yes or no before you act, use it rather than asking in a sentence and ending your turn: the question as summary, where and what as why, the rows that matter as details (items and prices, with total; recipients; files), and buttons named for the act (allow \"Place order\", deny \"Not yet\"). On Auto, call it before anything you can't undo or that leaves the computer: sending a message or email as the person, deleting or overwriting files outside your home, a payment or purchase, a forced push, changing settings for other people, typing a password you weren't given, anything they would want to know first. On Always ask the broker already asks; on Always allow it answers at once.",
   "Connected-app tools (names starting with the app, like GMAIL_SEND_EMAIL) act on the person's real accounts. Reads go through; writes may wait for the person's approval. Say what you sent, created or changed.",
   "team_memory_update replaces the team memory (its path is in the Team memory section), shared by every bot of the person. Keep it to what the whole team needs.",
   "use_skill returns a skill's full instructions and its files by slug. save_skill adds one to the person's library: best from a folder you built in your home (SKILL.md with name and description frontmatter, then the Markdown instructions: steps, decision rules, expected output, what to check with the person first, and how to run each script; beside it scripts/, references/, assets/), or a .skill file, or instructions and text files in the call. update_skill changes one. Every one of the person's bots gets it at once, at ~/.skills/<slug>/.",
   "connect_app connects one of the person's own apps (in their Composio project): it checks whether Gond can connect it through Composio, asks for their Composio key with a masked card when there isn't one yet (set_composio_key does that on its own), and posts a Connect card they tap to sign in. When the app isn't there but has an MCP server, use add_mcp_server with its URL (from the person, or its official docs; never guess one): it asks the person to approve, adds the server for every one of their bots, and posts a Sign in card when the server needs one. A server that runs as a command on the computer (like `uv run -m some_mcp`) goes in with add_mcp_server too: install it first, check it starts, then give the command and its args with absolute paths or names on PATH (~/.local/bin is on it) and any environment it needs, never a secret. Every bot gets its tools from its next reply.",
-  "request_secret asks the person for a secret by name (like STRIPE_API_KEY) with a reason; the value is stored for injection and you never see it. list_secrets shows the names that exist. set_composio_key asks for their Composio API key the same way and turns connected apps on; never ask for either as plain text in the conversation.",
+  "request_secret asks the person for a secret by name (like STRIPE_API_KEY or ROOT_PASSWORD) with a reason; the value is stored and you never see it. Use a stored one with run_with_secrets (a command that gets it as $NAME, with the output scrubbed), with a type_login action (typed into a field on the screen, once the person allows it), or as {{secret:NAME}} in an MCP server's headers. list_secrets shows the names that exist. set_composio_key asks for their Composio API key the same way and turns connected apps on; never ask for either as plain text in the conversation.",
   "request_login posts a sign-in card for the site open on your screen when it asks for an email, username, phone, password or code; a type_login action then types each detail into the field you clicked, without you seeing it.",
   "browser and computer are your hands on the screen: a list of JSON actions run in order by Gond, answered with the screen as it is after them. browser is a Chrome window that stays open between replies, for every website; its answer lists what is on screen with refs to act on (click, fill, select, check, read, wait_for and the rest, in its description). computer is the whole desktop, for everything else on it. Connected apps, MCP servers, APIs and the shell come first; never script the screen yourself.",
 ].join("\n");
@@ -125,6 +125,30 @@ type Context = {
 
   signal?: AbortSignal;
 };
+
+const MAX_DECISION_ROWS = 12;
+const DECISION_KINDS = ["purchase", "send", "delete", "publish", "other"] as const;
+
+/** What a decision card shows beyond its question, trimmed and with every stored secret blanked, since the web shows it as written. */
+export function decisionCard(input: Record<string, unknown>) {
+  const text = (value: unknown, max: number) => (typeof value === "string" && value.trim() ? hideSecrets(value.trim().slice(0, max)) : undefined);
+  const row = (value: unknown) => {
+    if (!value || typeof value !== "object") return null;
+    const label = text((value as { label?: unknown }).label, 80);
+    return label ? { label, value: text((value as { value?: unknown }).value, 80) ?? "" } : null;
+  };
+  const details = Array.isArray(input.details) ? input.details.slice(0, MAX_DECISION_ROWS).map(row).filter((r) => r !== null) : [];
+  const total = row(input.total);
+  const kind = DECISION_KINDS.find((k) => k === input.kind);
+  return {
+    why: text(input.why, 200),
+    ...(details.length ? { details } : {}),
+    ...(total ? { total } : {}),
+    allow: text(input.allow, 24),
+    deny: text(input.deny, 24),
+    ...(kind ? { kind } : {}),
+  };
+}
 
 const schema = (properties: Record<string, unknown>, required: string[] = []) => ({ type: "object", properties, required, additionalProperties: false });
 
@@ -315,16 +339,27 @@ export function baseTools(context: Context): Record<string, DriverTool> {
       },
     },
     ask_approval: {
-      description: "Ask the person before something irreversible or outward-facing. Posts an approval card and waits. On Always allow it answers at once.",
-      inputSchema: schema({ summary: { type: "string", description: "One line, as the card will show it." }, why: { type: "string" } }, ["summary"]),
+      description: "Ask the person before something irreversible or outward-facing. Posts a decision card with your question, the rows they should see and two buttons named for the act, then waits. On Always allow it answers at once.",
+      inputSchema: schema(
+        {
+          summary: { type: "string", description: 'The question, short, as the card\'s title: "Place this order?", "Send this email to Dana?"' },
+          why: { type: "string", description: 'One line under it: where and what. "Uber Eats, pickup at Angelo\'s Ale House"' },
+          details: { type: "array", maxItems: MAX_DECISION_ROWS, items: schema({ label: { type: "string" }, value: { type: "string" } }, ["label"]), description: "What they should see before deciding, one row each: items and prices, recipients, files." },
+          total: schema({ label: { type: "string" }, value: { type: "string" } }, ["label", "value"]),
+          allow: { type: "string", description: 'The yes button, named for the act: "Place order", "Send it". Default "Allow".' },
+          deny: { type: "string", description: 'The no button: "Not yet", "Don\'t send". Default "Deny".' },
+          kind: { type: "string", enum: [...DECISION_KINDS] },
+        },
+        ["summary"],
+      ),
       execute: async (input) => {
         const summary = String(input.summary ?? "").trim();
         if (!summary) return "Say what you want to do in summary.";
-        const why = typeof input.why === "string" && input.why.trim() ? input.why.trim() : undefined;
-        const decision = await requestApproval({ bot, threadId: thread.id, signal: context.signal, tool: "ask_approval", input: { summary, why }, summary: summary.slice(0, 300) });
-        if (decision === "allow" || decision === "always") return "Allowed. Go ahead.";
+        const card = decisionCard(input);
+        const decision = await requestApproval({ bot, threadId: thread.id, signal: context.signal, tool: "ask_approval", input: { summary: hideSecrets(summary.slice(0, 300)), ...card }, summary: summary.slice(0, 300) });
+        if (decision === "allow" || decision === "always") return card.allow ? `The person chose "${card.allow}". Go ahead.` : "Allowed. Go ahead.";
         if (decision === "expired") return "Nobody answered in time. Say so and stop, or ask again later.";
-        return "Denied: the person said no. Do something else, or say what you would need.";
+        return card.deny ? `The person chose "${card.deny}": don't do it. Do something else, or say what you would need.` : "Denied: the person said no. Do something else, or say what you would need.";
       },
     },
     post_message: {
@@ -495,8 +530,8 @@ export function baseTools(context: Context): Record<string, DriverTool> {
         const name = String(input.name ?? "").trim();
         if (!/^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(name)) return "NOT asked: name it in UPPER_SNAKE_CASE, like STRIPE_API_KEY.";
         const status = await requestSecret({ bot, threadId: thread.id, name, reason: String(input.reason ?? "").trim().slice(0, 300) });
-        if (status === "exists") return `${name} is already stored. Reference it as {{secret:${name}}} where secrets are injected (an MCP server's headers under Settings).`;
-        if (status === "given") return `${name} is stored. It is filled in where it's used; you never see the value. Carry on.`;
+        if (status === "exists") return `${name} is already stored. Use it with run_with_secrets ($${name} in a command), a type_login action (typed into a field on the screen), or {{secret:${name}}} in an MCP server's headers.`;
+        if (status === "given") return `${name} is stored; you never see the value. Use it with run_with_secrets ($${name} in a command) or a type_login action, and carry on.`;
         if (status === "declined") return `The person declined to give ${name}. Say what you can do without it.`;
         return `Nobody gave ${name} in time. Say so and stop, or ask again later.`;
       },

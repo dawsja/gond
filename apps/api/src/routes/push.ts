@@ -3,7 +3,7 @@ import { userId } from "../access.ts";
 import type { Env } from "../app.ts";
 import { setUserTimezone } from "../data/prefs.ts";
 import { countSubscriptions, removeSubscription, saveSubscription } from "../data/push.ts";
-import { markViewing } from "../presence.ts";
+import { markActive, markViewing } from "../presence.ts";
 import { sendPush, vapidKeys } from "../push.ts";
 
 export function pushRoutes() {
@@ -12,9 +12,10 @@ export function pushRoutes() {
   app.get("/push", (c) => c.json({ publicKey: vapidKeys().publicKey, subscriptions: countSubscriptions(userId(c)) }));
 
   app.post("/push/subscriptions", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { endpoint?: string; keys?: { p256dh?: string; auth?: string } };
+    const body = (await c.req.json().catch(() => ({}))) as { endpoint?: string; keys?: { p256dh?: string; auth?: string }; device?: unknown };
     if (!body.endpoint || !body.keys?.p256dh || !body.keys.auth) return c.json({ error: "Not a push subscription" }, 400);
-    saveSubscription({ endpoint: body.endpoint, keys: { p256dh: body.keys.p256dh, auth: body.keys.auth } }, userId(c), c.req.header("user-agent") ?? "");
+    const device = deviceOf(body.device);
+    saveSubscription({ endpoint: body.endpoint, keys: { p256dh: body.keys.p256dh, auth: body.keys.auth } }, userId(c), c.req.header("user-agent") ?? "", device);
     return c.json({ ok: true, subscriptions: countSubscriptions(userId(c)) }, 201);
   });
 
@@ -26,10 +27,12 @@ export function pushRoutes() {
   });
 
   app.post("/push/viewing", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { client?: unknown; threadId?: unknown; timezone?: unknown };
+    const body = (await c.req.json().catch(() => ({}))) as { client?: unknown; threadId?: unknown; timezone?: unknown; device?: unknown; active?: unknown };
     if (typeof body.client !== "string" || !/^[\w-]{1,64}$/.test(body.client)) return c.json({ error: "Which window?" }, 400);
     if (body.threadId !== null && (typeof body.threadId !== "string" || !/^[\w-]{1,64}$/.test(body.threadId))) return c.json({ error: "Which conversation?" }, 400);
     markViewing(userId(c), body.client, body.threadId);
+    const device = deviceOf(body.device);
+    if (device && body.active === true) markActive(userId(c), device);
     if (body.timezone !== undefined) setUserTimezone(userId(c), body.timezone);
     return c.body(null, 204);
   });
@@ -40,4 +43,8 @@ export function pushRoutes() {
   });
 
   return app;
+}
+
+function deviceOf(value: unknown): string | null {
+  return typeof value === "string" && /^[\w-]{1,64}$/.test(value) ? value : null;
 }

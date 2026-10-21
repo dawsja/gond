@@ -1,9 +1,9 @@
 "use client";
 
 import type { AppCatalogEntry, Bot, Connection, Message } from "@gond/shared";
-import { Check, Plug, TriangleAlert } from "lucide-react";
+import { TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { ActionCard } from "@/components/action-card";
+import { ActionCard, ActionCardDone } from "@/components/action-card";
 import { AppIcon, appName } from "@/components/app-icons";
 import { useLiveEvents } from "@/components/hq/live-events";
 import { Button } from "@/components/ui/button";
@@ -52,41 +52,29 @@ export function ConnectCard({ message, bot, toolkit }: { message: Message; bot: 
   }
 
   const name = app?.name ?? appName(toolkit);
-  const connected = connection?.status === "active";
+  const by = bot?.name ?? "A bot";
+  const icon = <AppIcon toolkit={toolkit} logo={app?.logo} size={20} />;
+  if (connection?.status === "active") return <ActionCardDone icon={icon} title={name} by={`${by} · connected app`} status="Connected" tone="ok" />;
 
   return (
-    <ActionCard icon={<Plug className="size-3.5" aria-hidden="true" />} title={`${bot?.name ?? "A bot"} connects an app`}>
-        <p className="flex items-center gap-2 text-[13.5px]">
-          <AppIcon toolkit={toolkit} logo={app?.logo} size={20} />
-          <span className="font-medium">{name}</span>
+    <ActionCard
+      icon={icon}
+      title={`Connect ${name}`}
+      by={connection === undefined ? <Spinner aria-label="Loading" /> : `${by} needs it. Sign in once and every bot of yours can use it.`}
+      actions={
+        <Button size="xl" className="w-full" disabled={busy || waiting || connection === undefined} onClick={() => void connect()}>
+          {busy || waiting ? <Spinner data-icon="inline-start" /> : null}
+          {waiting ? "Opening the sign-in…" : connection?.status === "pending" ? `Finish connecting ${name}` : `Connect ${name}`}
+        </Button>
+      }
+      note={`You sign in on ${name}'s own site. Gond keeps the token and the bots never see it.`}
+    >
+      {connection?.status === "failed" || error ? (
+        <p className="flex items-start gap-1.5 text-[13px] text-destructive">
+          <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+          {error ?? "The last sign-in didn't finish. Try again."}
         </p>
-        {connection === undefined ? (
-          <Spinner />
-        ) : connected ? (
-          <p className="flex items-center gap-1.5 text-[12.5px] text-muted-foreground">
-            <Check className="size-3.5 text-mint" aria-hidden="true" />
-            Connected. Give it to a bot in its profile to use it.
-          </p>
-        ) : (
-          <>
-            {connection?.status === "failed" ? (
-              <p className="flex items-start gap-1.5 text-[12.5px] text-destructive">
-                <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-                The last sign-in didn&apos;t finish.
-              </p>
-            ) : (
-              <p className="text-[12.5px] text-muted-foreground">Sign in to {name} once, and the bots you give it to can use it.</p>
-            )}
-            {error ? <p className="text-[12.5px] text-destructive">{error}</p> : null}
-            <div>
-              <Button size="sm" disabled={busy || waiting} onClick={() => void connect()}>
-                {busy || waiting ? <Spinner data-icon="inline-start" /> : null}
-                {waiting ? "Opening the sign-in…" : connection?.status === "pending" ? `Finish connecting ${name}` : `Connect ${name}`}
-              </Button>
-            </div>
-            <p className="text-[11.5px] text-muted-foreground">You sign in on {name}&apos;s own site; Gond keeps the token and the bots never see it.</p>
-          </>
-        )}
+      ) : null}
     </ActionCard>
   );
 }

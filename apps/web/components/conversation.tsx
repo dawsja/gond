@@ -1,17 +1,19 @@
 "use client";
 
-import { handleOf, routineName, ruleLabel, type Approval, type Bot, type Message, type ReactionEmoji, type Thread } from "@gond/shared";
-import { ArrowUp, Bot as BotIcon, ChevronLeft, Clock, Copy, Download, ListEnd, EllipsisVertical, FileText, Monitor, PanelRight, Paperclip, Pencil, Plus, ShieldQuestion, TextSelect, Users, X } from "lucide-react";
+import { handleOf, routineName, type Approval, type Bot, type Message, type ReactionEmoji, type Thread } from "@gond/shared";
+import { ArrowUp, Bot as BotIcon, ChevronLeft, Clock, Copy, Download, ListEnd, EllipsisVertical, FileText, Monitor, PanelRight, Paperclip, Pencil, Plus, TextSelect, Users, X } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type CSSProperties, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
-import { ActionCard } from "@/components/action-card";
+import { ApprovalCard, type Decision } from "@/components/approval-card";
 import { BotAvatar, YouAvatar } from "@/components/bot-avatar";
 import { CopyButton } from "@/components/copy-button";
 import { copyToClipboard } from "@/components/hq/clipboard";
 import { ExchangeDialog } from "@/components/exchange-dialog";
 import { canReact, react, ReactionBadges, ReactionPicker } from "@/components/reactions";
 import { pollInterval, useLiveEvents } from "@/components/hq/live-events";
+import { ChoicesContext } from "@/components/chat-blocks";
+import { ImageViewer } from "@/components/image-viewer";
 import { Markdown } from "@/components/markdown";
 import { DetailsSheet, RightPanel } from "@/components/right-panel";
 import { ScreenPanel } from "@/components/screen-panel";
@@ -50,46 +52,9 @@ const MAX_FILES = 6;
 const COMPOSER_HEIGHT = 68;
 
 type ThreadInfo = { thread: Thread; bot: Bot | null; busy: string[]; answering?: string[] };
-type Decision = "allow" | "deny" | "always";
 
 function formatBytes(n: number) {
   return n < 1024 ? `${n} B` : n < 1024 * 1024 ? `${(n / 1024).toFixed(0)} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`;
-}
-
-function ApprovalCard({ message, approval, bot, onDecide }: { message: Message; approval: Approval | null; bot: Bot | undefined; onDecide: (id: string, decision: Decision) => Promise<void> }) {
-  const [busy, setBusy] = useState(false);
-  const status = approval?.status ?? "pending";
-  const decide = async (decision: Decision) => {
-    if (!message.approvalId || busy) return;
-    setBusy(true);
-    try {
-      await onDecide(message.approvalId, decision);
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <ActionCard icon={<ShieldQuestion className="size-3.5" aria-hidden="true" />} title={`${bot?.name ?? "A bot"} asks to`}>
-        <p className="font-mono text-[12.5px] leading-5 break-words">{message.body}</p>
-        {status === "pending" ? (
-          <div className="mt-1 flex flex-wrap gap-2">
-            <Button size="sm" disabled={busy} onClick={() => void decide("allow")}>
-              Allow once
-            </Button>
-            {approval?.tool !== "ask_approval" && (
-              <Button variant="outline" size="sm" disabled={busy} onClick={() => void decide("always")}>
-                Always allow
-              </Button>
-            )}
-            <Button variant="destructive" size="sm" disabled={busy} onClick={() => void decide("deny")}>
-              Deny
-            </Button>
-          </div>
-        ) : (
-          <p className="text-[12px] text-muted-foreground">{status === "allowed" ? (approval?.rule ? `Allowed, and always from now on: ${ruleLabel(approval.rule)}.` : "Allowed.") : status === "denied" ? "Denied." : "Nobody answered in time."}</p>
-        )}
-    </ActionCard>
-  );
 }
 
 function Handoff({ message, threadId, bots, threads, onOpen }: { message: Message; threadId: string; bots: Bot[]; threads: ThreadRow[]; onOpen: (withThreadId: string) => void }) {
@@ -208,7 +173,7 @@ function SelectTextDialog({ text, onClose }: { text: string | null; onClose: () 
   );
 }
 
-function Line({ message, threadId, bots, threads, bot, approvals, isRoom, editing, stops, touch, onDecide, onOpenExchange, onEdit, onSelectText, onReacted }: { message: Message; threadId: string; bots: Bot[]; threads: ThreadRow[]; bot: Bot | null; approvals: Map<string, Approval>; isRoom: boolean; editing: boolean; stops: boolean; touch: boolean; onDecide: (id: string, decision: Decision) => Promise<void>; onOpenExchange: (withThreadId: string) => void; onEdit: (message: Message | null, text?: string) => Promise<boolean>; onSelectText: (text: string) => void; onReacted: (message: Message) => void }) {
+function Line({ message, threadId, bots, threads, bot, approvals, isRoom, editing, stops, touch, answer, onPick, onView, onDecide, onOpenExchange, onEdit, onSelectText, onReacted }: { message: Message; threadId: string; bots: Bot[]; threads: ThreadRow[]; bot: Bot | null; approvals: Map<string, Approval>; isRoom: boolean; editing: boolean; stops: boolean; touch: boolean; answer: string | undefined; onPick: (option: string) => Promise<void>; onView: (attachmentId: string) => void; onDecide: (id: string, decision: Decision) => Promise<void>; onOpenExchange: (withThreadId: string) => void; onEdit: (message: Message | null, text?: string) => Promise<boolean>; onSelectText: (text: string) => void; onReacted: (message: Message) => void }) {
   const mine = message.author === "you";
   const bubble = useRef<HTMLDivElement>(null);
 
@@ -290,16 +255,20 @@ function Line({ message, threadId, bots, threads, bot, approvals, isRoom, editin
         <ContextMenu onOpenChange={(open) => setSelected(open ? selectionIn(bubble.current) : "")}>
         <ContextMenuTrigger ref={bubble} className="select-text pointer-coarse:select-none" render={<Bubble variant={mine ? "default" : "outline"} align={mine ? "end" : "start"} className={cn("max-w-[86%] sm:max-w-[78%]", message.reactions.length > 0 && "mb-2.5")} />}>
           <BubbleContent className="rounded-2xl px-3.5 py-2">
-            {message.body ? <Markdown text={message.body} className="flex flex-col gap-2 text-[14px] leading-6" /> : null}
+            {message.body ? (
+              <ChoicesContext.Provider value={mine ? {} : { pick: onPick, picked: answer }}>
+                <Markdown text={message.body} className="flex flex-col gap-2 text-[14px] leading-6" />
+              </ChoicesContext.Provider>
+            ) : null}
             {message.attachments.length ? (
               <AttachmentGroup className={cn(message.body && "mt-2")}>
                 {message.attachments.map((file) =>
                   file.mediaType.startsWith("image/") && file.mediaType !== "image/svg+xml" ? (
                     <div key={file.id} className="relative shrink-0">
-                      <a href={`/api/attachments/${file.id}`} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-lg">
+                      <button type="button" onClick={() => onView(file.id)} aria-label={`View ${file.name}`} className="block cursor-zoom-in overflow-hidden rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={`/api/attachments/${file.id}`} alt={file.name} className="max-h-60 rounded-lg" />
-                      </a>
+                      </button>
                       <AttachmentAction variant="secondary" className="absolute top-2 right-2" aria-label={`Download ${file.name}`} render={<a href={`/api/attachments/${file.id}?download`} download={file.name} />} nativeButton={false}>
                         <Download />
                       </AttachmentAction>
@@ -455,6 +424,7 @@ export function Conversation({ threadId }: { threadId: string }) {
 
   const [editing, setEditing] = useState<string | null>(null);
   const [selectText, setSelectText] = useState<string | null>(null);
+  const [viewing, setViewing] = useState<string | null>(null);
   const [resolved, setResolved] = useState<Map<string, Approval>>(new Map());
   const textarea = useRef<HTMLTextAreaElement>(null);
   const composer = useRef<HTMLFormElement>(null);
@@ -473,6 +443,20 @@ export function Conversation({ threadId }: { threadId: string }) {
     for (const a of approvals) map.set(a.id, a);
     return map;
   }, [approvals, resolved]);
+
+  /** For a bot's message, what the person said next, which closes any choices it offered; none yet leaves them open. */
+  const answers = useMemo(() => {
+    const map = new Map<string, string>();
+    let next: string | undefined;
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      const m = messages[i]!;
+      if (m.author === "you" && m.kind === "message") next = m.body;
+      else if (next !== undefined) map.set(m.id, next);
+    }
+    return map;
+  }, [messages]);
+
+  const pictures = useMemo(() => messages.flatMap((m) => (m.kind === "prompt" ? [] : m.attachments.filter((file) => file.mediaType.startsWith("image/") && file.mediaType !== "image/svg+xml").map((file) => ({ id: file.id, name: file.name })))), [messages]);
 
   const append = useCallback((incoming: Message[]) => {
     if (!incoming.length) return;
@@ -615,6 +599,15 @@ export function Conversation({ threadId }: { threadId: string }) {
       setSending(false);
 
       if (!touch) textarea.current?.focus();
+    }
+  }
+
+  async function pick(option: string) {
+    try {
+      const data = await api<{ message: Message }>(`/api/threads/${threadId}/messages`, { method: "POST", body: JSON.stringify({ body: option }) });
+      append([data.message]);
+    } catch (failure) {
+      toast.add({ type: "error", title: failure instanceof Error ? failure.message : "Couldn't send it." });
     }
   }
 
@@ -843,7 +836,7 @@ export function Conversation({ threadId }: { threadId: string }) {
                 ) : null}
                 {messages.map((m) => (
                   <MessageScrollerItem key={m.id} messageId={m.id} className={cn(m.id === jumpTo && "rounded-2xl ring-2 ring-ring/40")}>
-                    <Line message={m} threadId={threadId} bots={bots} threads={threads} bot={bot} approvals={approvalMap} isRoom={Boolean(isRoom)} editing={editing === m.id} stops={Boolean(info?.answering?.includes(m.id))} touch={touch} onDecide={decide} onOpenExchange={setExchange} onEdit={edit} onSelectText={setSelectText} onReacted={replaceMessage} />
+                    <Line message={m} threadId={threadId} bots={bots} threads={threads} bot={bot} approvals={approvalMap} isRoom={Boolean(isRoom)} editing={editing === m.id} stops={Boolean(info?.answering?.includes(m.id))} touch={touch} answer={answers.get(m.id)} onPick={pick} onView={setViewing} onDecide={decide} onOpenExchange={setExchange} onEdit={edit} onSelectText={setSelectText} onReacted={replaceMessage} />
                   </MessageScrollerItem>
                 ))}
 
@@ -954,6 +947,7 @@ export function Conversation({ threadId }: { threadId: string }) {
       {screen && bot ? <ScreenPanel threadId={threadId} botId={bot.id} expanded onExpand={() => setScreen(true)} onCollapse={() => setScreen(false)} /> : null}
       <ThreadConfirms ask={ask} onClose={() => setAsk(null)} />
       <SelectTextDialog text={selectText} onClose={() => setSelectText(null)} />
+      <ImageViewer images={pictures} openId={viewing} onOpenId={setViewing} />
 
       {exchange ? <ExchangeDialog threadId={threadId} withThreadId={exchange} onClose={() => setExchange(null)} /> : null}
     </div>

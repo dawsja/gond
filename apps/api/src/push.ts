@@ -4,7 +4,7 @@ import webpush from "web-push";
 import { appUrl, ensureDataDir } from "./config.ts";
 import { listSubscriptions, removeSubscription } from "./data/push.ts";
 import { emit } from "./events.ts";
-import { isViewing } from "./presence.ts";
+import { activeDevice, isViewing } from "./presence.ts";
 
 type Vapid = { publicKey: string; privateKey: string };
 const holder = globalThis as typeof globalThis & { __gondVapid?: Vapid };
@@ -34,9 +34,10 @@ export type PushPayload = {
 };
 
 export async function sendPush(payload: PushPayload, userId: string): Promise<number> {
-  emit({ topic: "notify", userId, ...payload });
+  const device = activeDevice(userId);
+  emit({ topic: "notify", userId, ...payload, device });
   if (payload.threadId && isViewing(userId, payload.threadId)) return 0;
-  const subscriptions = listSubscriptions(userId);
+  const subscriptions = listSubscriptions(userId).filter((sub) => !device || sub.device === device);
   if (subscriptions.length === 0) return 0;
   const keys = vapidKeys();
   const contact = `mailto:gond@${new URL(appUrl()).hostname || "localhost"}`;

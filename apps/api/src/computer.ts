@@ -2,11 +2,15 @@ import type { Bot, Thread } from "@gond/shared";
 import { ENGINE_FILES_TEXT, requestApproval, SCRIPTED_SCREEN_TEXT, scriptsTheScreen, summarize, touchesEngine } from "./approvals.ts";
 import { execOnBox, readBoxFile, writeBoxFile, type BoxConfig } from "./box.ts";
 import type { DriverTool } from "./driver.ts";
+import { hideSecrets, readSecret } from "./data/secrets.ts";
 import { botHome } from "./memory.ts";
 
 const COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
 
 const MAX_READ_BYTES = 200_000;
+
+const SECRET_NAME = /^[A-Z_][A-Z0-9_]{0,63}$/;
+const MAX_COMMAND_SECRETS = 10;
 
 const schema = (properties: Record<string, unknown>, required: string[] = []) => ({ type: "object", properties, required, additionalProperties: false });
 
@@ -122,4 +126,52 @@ export function computerTools(context: Context): Record<string, DriverTool> {
       },
     },
   };
+}
+
+/** Every engine's: a command that needs a stored secret gets it as $NAME, and its output comes back with each value replaced by its name. */
+export function secretCommandTool(context: Context): Record<string, DriverTool> {
+  const { box, bot } = context;
+  return {
+    run_with_secrets: {
+      description:
+        'Run a shell command on the computer with stored secrets in its environment as $NAME, so a password or key reaches the command without you ever seeing it: SSHPASS="$ROOT_PASSWORD" sshpass -e ssh root@10.0.0.5 \'pct list\', curl -H "Authorization: Bearer $GITHUB_TOKEN" …, PGPASSWORD="$DB_PASSWORD" psql …. Name the secrets it needs (list_secrets shows them). Never echo, print or write a secret: whatever comes back has every stored secret replaced by its name.',
+      inputSchema: schema(
+        {
+          command: { type: "string", description: "The command line, referring to each secret as $NAME." },
+          secrets: { type: "array", items: { type: "string" }, description: "The names of the stored secrets it needs, like ROOT_PASSWORD." },
+          cwd: { type: "string", description: "Where to run it, relative to your home. Defaults to your own folder." },
+        },
+        ["command", "secrets"],
+      ),
+      execute: async (input) => {
+        const command = String(input.command ?? "").trim();
+        if (!command) return "NOT run: give the command.";
+        const names = [...new Set((Array.isArray(input.secrets) ? input.secrets : []).map((name) => String(name).trim().toUpperCase()).filter(Boolean))];
+        if (!names.length) return "NOT run: name the stored secrets it needs. A command without secrets runs in your own shell.";
+        if (names.length > MAX_COMMAND_SECRETS) return `NOT run: at most ${MAX_COMMAND_SECRETS} secrets in one command.`;
+        const bad = names.find((name) => !SECRET_NAME.test(name));
+        if (bad) return `NOT run: ${bad} isn't a secret's name (capitals, digits and _).`;
+        const env: Record<string, string> = {};
+        const missing: string[] = [];
+        for (const name of names) {
+          const value = readSecret(bot.userId, name);
+          if (value === null) missing.push(name);
+          else env[name] = value;
+        }
+        if (missing.length) return `NOT run: ${missing.join(", ")} ${missing.length === 1 ? "isn't" : "aren't"} stored. Ask the person for it with request_secret.`;
+        const denied = await allowed(context, "Bash", { command });
+        if (denied) return denied;
+        const cwd = typeof input.cwd === "string" && input.cwd.trim() ? resolvePath(bot.id, input.cwd) : botHome(bot.id);
+        const result = await execOnBox(box, command, { cwd, env, timeoutMs: COMMAND_TIMEOUT_MS });
+        const head = `exit ${result.exitCode}${result.timedOut ? " (timed out)" : ""}${result.signal ? ` (${result.signal})` : ""}`;
+        return `${head}\n${scrubbed(result.output, env) || "(no output)"}`;
+      },
+    },
+  };
+}
+
+export function scrubbed(text: string, env: Record<string, string>): string {
+  let out = text;
+  for (const [name, value] of Object.entries(env).sort((a, b) => b[1].length - a[1].length)) if (value) out = out.split(value).join(`[${name}]`);
+  return hideSecrets(out);
 }

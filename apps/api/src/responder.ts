@@ -1,4 +1,4 @@
-import { handleOf, isQuietReply, isStopRequest, mentionsIn, plainMarkdown, type Bot, type ChatAttachment, type Message, type Thread, type ToolLabelContext } from "@gond/shared";
+import { QUIET_REPLY, handleOf, isClosing, isQuietReply, isStopRequest, mentionsIn, plainMarkdown, type Bot, type ChatAttachment, type Message, type Thread, type ToolLabelContext } from "@gond/shared";
 import { boxConfig, boxHome, ensureBotHome, interruptAgent, steerAgent, writeBoxFile, type BoxConfig } from "./box.ts";
 import { isUpdating } from "./updater.ts";
 import { getAi } from "./data/ai.ts";
@@ -11,7 +11,7 @@ import { userTimezone } from "./data/prefs.ts";
 import { listConnections } from "./data/settings.ts";
 import { listSkills } from "./data/skills.ts";
 import { botLinesSincePerson, closePending, closeSentFrom, dropMessage, getAttachment, getMessage, getThread, listThreads, markAnswered, postMessage, reactionsOf, releaseClaim, threadBusy, unsteer } from "./data/threads.ts";
-import { computerTools } from "./computer.ts";
+import { computerTools, secretCommandTool } from "./computer.ts";
 import { computerTool } from "./computer-tool.ts";
 import { attachmentNote, deliverAttachments, type Delivered } from "./inbox.ts";
 import { driversOf, forgetHandBack, handedBack, releaseComputer } from "./desktop.ts";
@@ -338,6 +338,7 @@ export function promptFor(bot: Bot, thread: Thread, message: Message, bots: Bot[
     `${heading}\n${history}`,
     files,
     `Now answer the last message, which is from ${who}.${from}\n${message.author === "routine" ? "This is a scheduled routine: do the job and report, addressing the person." : ""}`,
+    message.author === "you" && isClosing(message.body) ? `It reads as the person closing the exchange (a thanks, an "I will", a goodbye). Unless it answers a question you asked, react to it with the react tool (👍 or ❤️) and answer with exactly ${QUIET_REPLY}, so nothing more is posted.` : "",
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -431,6 +432,7 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
       ...(await appTools(context)),
       ...(run.native ? computerTools(context) : { permission: permissionTool(context) }),
       ...computerTool({ ...context, imageResults: run.engine !== "grok" }),
+      ...secretCommandTool(context),
     };
     const instructions = systemPromptFor(usable, {
       bots,
