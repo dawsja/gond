@@ -21,7 +21,7 @@ function IconButton({
 }: {
   label: string;
   onClick: () => void;
-  container: RefObject<HTMLDivElement | null>;
+  container: RefObject<HTMLElement | null>;
   className?: string;
   children: ReactNode;
 }) {
@@ -825,12 +825,14 @@ export function DesktopToolbar({
   className?: string;
 }) {
   const { status, message, notice, zoom } = report;
-  const bar = useRef<HTMLDivElement>(null);
+  const bar = useRef<HTMLSpanElement>(null);
   const live = status === "live";
   const zoomed = zoom > 1;
   const said = notice ?? message ?? (control === "bots" && driver ? `${driver} is using it` : control ? DESKTOP_CONTROL_LABELS[control] : null);
   return (
-    <div ref={bar} className={cn("flex items-center gap-2", className)}>
+    <div className={cn("relative flex items-center gap-2", className)}>
+      {/* The tooltips' layer: out of the flex row, so one opening never shifts the pills. */}
+      <span ref={bar} className="absolute top-0 left-0" />
       <div className={cn("flex h-9 min-w-0 shrink items-center gap-2 rounded-full border border-primary-edge bg-primary pr-3.5 text-[13px] font-medium text-primary-foreground", icon ? "pl-1" : "pl-3.5")}>
         {icon ? <span className="flex size-7 shrink-0 items-center justify-center [&>*]:scale-[0.875]">{icon}</span> : null}
         <span className="truncate">{title}</span>

@@ -287,11 +287,15 @@
   background: color-mix(in oklch, var(--foreground) 25%, transparent);
 }
 
-/* The primary bot's crown is a gold coin: lit from the top, deep underneath. The shading goes in
-   --tw-inset-shadow so a ring on the same element still draws. */
+/* The primary bot's crown is a gold coin, lit from the top. A big coin also gets an edge of light
+   and shade, in --tw-inset-shadow so a ring on the same element still draws; on a small one those
+   pixels would only blur it. */
 @utility bg-gold-coin {
   background-color: var(--gold);
   background-image: var(--gold-coin);
+}
+
+@utility gold-coin-shine {
   --tw-inset-shadow: inset 0 1px 0 rgb(255 255 255 / 0.65), inset 0 -1px 0 rgb(90 55 0 / 0.35);
 }
 

@@ -20,8 +20,8 @@ export function BotAvatar({ bot, size = 24, greet = false, className }: { bot: P
         <GondBot color={bot.color} size={size} expression={bot.expression} shape={bot.shape} greet={greet} label={label} />
       )}
       {bot.primary && size >= 24 ? (
-        <span aria-hidden="true" className="absolute right-0 bottom-0 flex items-center justify-center rounded-full bg-gold-coin text-gold-foreground ring-[1.5px] ring-background" style={{ width: disc, height: disc }}>
-          <CrownMark size={Math.round(disc * 0.62)} />
+        <span aria-hidden="true" className={cn("absolute right-0 bottom-0 flex items-center justify-center rounded-full bg-gold-coin text-gold-foreground ring-[1.5px] ring-background", disc >= 18 && "gold-coin-shine")} style={{ width: disc, height: disc }}>
+          <CrownMark size={Math.round(disc * 0.72)} />
         </span>
       ) : null}
     </span>
@@ -29,9 +29,10 @@ export function BotAvatar({ bot, size = 24, greet = false, className }: { bot: P
 }
 
 // Lucide's crown without its base line, framed on the crown's own centre so it sits in the middle of the coin.
+// Solid, because the badge is usually 12 px and an outline that small is a smudge.
 function CrownMark({ size }: { size: number }) {
   return (
-    <svg viewBox="0 -2 24 24" width={size} height={size} fill="currentColor" fillOpacity={0.18} stroke="currentColor" strokeWidth={2.25} strokeLinejoin="round">
+    <svg viewBox="0 -2 24 24" width={size} height={size} fill="currentColor" stroke="currentColor" strokeWidth={1.5} strokeLinejoin="round">
       <path d="M11.562 3.266a.5.5 0 0 1 .876 0L15.39 8.87a1 1 0 0 0 1.516.294L21.183 5.5a.5.5 0 0 1 .798.519l-2.834 10.246a1 1 0 0 1-.956.734H5.81a1 1 0 0 1-.957-.734L2.02 6.02a.5.5 0 0 1 .798-.519l4.276 3.664a1 1 0 0 0 1.516-.294z" />
     </svg>
   );
