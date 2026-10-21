@@ -7,7 +7,6 @@ import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type CSSProperties, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
 import { ApprovalCard, type Decision } from "@/components/approval-card";
 import { BotAvatar, YouAvatar } from "@/components/bot-avatar";
-import { CopyButton } from "@/components/copy-button";
 import { copyToClipboard } from "@/components/hq/clipboard";
 import { ExchangeDialog } from "@/components/exchange-dialog";
 import { canReact, react, ReactionBadges, ReactionPicker } from "@/components/reactions";
@@ -180,13 +179,6 @@ function Line({ message, threadId, bots, threads, bot, approvals, isRoom, editin
 
   const [selected, setSelected] = useState("");
 
-  const pencil = useRef<HTMLButtonElement>(null);
-  const refocus = useRef(false);
-  useEffect(() => {
-    if (editing || !refocus.current) return;
-    refocus.current = false;
-    pencil.current?.focus();
-  }, [editing]);
   const author = mine ? null : bots.find((b) => b.id === message.author) ?? null;
   if (message.kind === "prompt") return null;
   if (message.kind === "message" && message.fromThreadId && author) return <Handoff message={message} threadId={threadId} bots={bots} threads={threads} onOpen={onOpenExchange} />;
@@ -237,10 +229,7 @@ function Line({ message, threadId, bots, threads, bot, approvals, isRoom, editin
             message={message}
             touch={touch}
             stops={stops}
-            onCancel={() => {
-              refocus.current = true;
-              void onEdit(null);
-            }}
+            onCancel={() => void onEdit(null)}
             onSend={(text) => onEdit(message, text)}
           />
         </MessageContent>
@@ -337,17 +326,6 @@ function Line({ message, threadId, bots, threads, bot, approvals, isRoom, editin
         <MessageFooter className="text-[10.5px] font-normal text-ash">
           {shortTime(message.createdAt)}
           {message.steered ? " · Sent while working" : null}
-
-          {message.body ? <CopyButton text={message.body} label="Copy text" className="size-6 opacity-0 group-hover/message:opacity-100 focus-visible:opacity-100 pointer-coarse:hidden" /> : null}
-          {editable ? (
-            <Tooltip>
-
-              <TooltipTrigger render={<Button ref={pencil} variant="ghost" size="icon-xs" aria-label="Edit and resend" onClick={() => void onEdit(message)} className="opacity-0 group-hover/message:opacity-100 focus-visible:opacity-100 pointer-coarse:-my-3 pointer-coarse:size-11 pointer-coarse:opacity-100" />}>
-                <Pencil aria-hidden="true" />
-              </TooltipTrigger>
-              <TooltipContent>Edit and resend</TooltipContent>
-            </Tooltip>
-          ) : null}
         </MessageFooter>
       </MessageContent>
     </MessageRow>
