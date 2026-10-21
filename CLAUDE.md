@@ -309,7 +309,7 @@ what is here. The README says what Gond is; this says how it is made.
   `action-card.tsx`: `ActionCard` is the bot's bubble grey with the pill
   edge, `rounded-3xl`, an icon in a primary circle, the question as the
   title and who and where under it, then what it is about (`ActionRows`
-  for figures with a bold total, `ActionCode` for a command or a path),
+  for figures with a bold total, a long value under its label, `ActionCode` for a command or a path),
   `xl` buttons side by side (stacked on a phone) and a line on privacy
   with a lock; once answered it folds to `ActionCardDone`, one line with a
   tone `Badge` saying how it ended. The approval is `approval-card.tsx`,

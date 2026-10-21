@@ -47,15 +47,26 @@ export function ActionCardDone({ icon, title, by, status, tone }: { icon: ReactN
 }
 
 /** The rows a card is about, drawn like the chat's tables. */
+// A value this short (a price, a date) sits on the right of its label; a longer one, like a
+// path or a sentence, goes under it, or it would squeeze the label to a letter per line.
+const FIGURE_CHARS = 24;
+
 export function ActionRows({ rows, total }: { rows: { label: string; value: string }[]; total?: { label: string; value: string } }) {
   return (
     <div className="overflow-hidden rounded-2xl border border-primary-edge bg-background/50 text-[13.5px]">
-      {rows.map((row, i) => (
-        <div key={i} className="flex items-baseline justify-between gap-3 border-b border-primary-edge/70 px-3.5 py-2 last:border-b-0">
-          <span className="min-w-0 break-words">{row.label}</span>
-          {row.value ? <span className="shrink-0 text-right text-muted-foreground tabular-nums">{row.value}</span> : null}
-        </div>
-      ))}
+      {rows.map((row, i) =>
+        row.value.length > FIGURE_CHARS ? (
+          <div key={i} className="flex flex-col gap-0.5 border-b border-primary-edge/70 px-3.5 py-2 last:border-b-0">
+            <span className="wrap-anywhere">{row.label}</span>
+            <span className="wrap-anywhere text-muted-foreground">{row.value}</span>
+          </div>
+        ) : (
+          <div key={i} className="flex items-baseline justify-between gap-3 border-b border-primary-edge/70 px-3.5 py-2 last:border-b-0">
+            <span className="min-w-0 wrap-anywhere">{row.label}</span>
+            {row.value ? <span className="shrink-0 text-right text-muted-foreground tabular-nums">{row.value}</span> : null}
+          </div>
+        ),
+      )}
       {total ? (
         <div className={cn("flex items-baseline justify-between gap-3 px-3.5 py-2 font-semibold", rows.length > 0 && "border-t border-primary-edge")}>
           <span className="min-w-0 break-words">{total.label}</span>
