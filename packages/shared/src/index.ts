@@ -1600,3 +1600,97 @@ export type DesktopState = {
   control: DesktopControl;
   drivers: DesktopDriver[];
 };
+
+/** An email a connected app is about to send, read from the action's own input. */
+export type EmailDraft = {
+  mode: "send" | "reply" | "forward" | "draft";
+  app: string;
+  to: string[];
+  cc: string[];
+  bcc: string[];
+  subject: string | null;
+  body: string | null;
+  files: string[];
+};
+
+const EMAIL_APPS: Record<string, string> = { GMAIL: "Gmail", OUTLOOK: "Outlook" };
+// Composio's mail actions name the same thing several ways across apps and versions.
+const EMAIL_FIELDS = {
+  to: ["recipient_email", "to_email", "to", "recipient", "recipients", "to_recipients", "extra_recipients", "to_emails"],
+  cc: ["cc", "cc_emails", "cc_recipients"],
+  bcc: ["bcc", "bcc_emails", "bcc_recipients"],
+  subject: ["subject"],
+  body: ["body", "message_body", "comment", "content", "html_body", "text", "additional_text", "message"],
+  files: ["attachment", "attachments"],
+} as const;
+
+function emailList(input: Record<string, unknown>, keys: readonly string[]): string[] {
+  const out: string[] = [];
+  const add = (value: unknown) => {
+    if (typeof value === "string") for (const part of value.split(/[,;]/)) part.trim() && out.push(part.trim());
+    else if (Array.isArray(value)) value.forEach(add);
+    else if (value && typeof value === "object") {
+      const entry = value as { email?: unknown; address?: unknown; name?: unknown; emailAddress?: unknown };
+      if (entry.emailAddress) return add(entry.emailAddress);
+      const address = typeof entry.email === "string" ? entry.email : typeof entry.address === "string" ? entry.address : null;
+      if (address) out.push(typeof entry.name === "string" && entry.name.trim() ? `${entry.name.trim()} <${address}>` : address);
+    }
+  };
+  for (const key of keys) add(input[key]);
+  return [...new Set(out)];
+}
+
+function emailFiles(input: Record<string, unknown>): string[] {
+  const out: string[] = [];
+  const add = (value: unknown) => {
+    if (typeof value === "string" && value.trim()) out.push(value.trim().split(/[\\/]/).pop() ?? value.trim());
+    else if (Array.isArray(value)) value.forEach(add);
+    else if (value && typeof value === "object") {
+      const file = value as { name?: unknown; filename?: unknown; path?: unknown };
+      add(typeof file.name === "string" ? file.name : typeof file.filename === "string" ? file.filename : file.path);
+    }
+  };
+  for (const key of EMAIL_FIELDS.files) add(input[key]);
+  return out;
+}
+
+/** HTML a bot wrote as an email body, as the words and line breaks a person reads; never markup. */
+export function emailText(body: string): string {
+  if (!/<[a-z][\s\S]*>/i.test(body)) return body.trim();
+  return body
+    .replace(/<(script|style)[\s\S]*?<\/\1>/gi, "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|h[1-6])>/gi, "\n\n")
+    .replace(/<\/(div|li|tr)>/gi, "\n")
+    .replace(/<li[^>]*>/gi, "• ")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, "&")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+export function emailDraftOf(tool: string, input: Record<string, unknown>): EmailDraft | null {
+  const name = bareToolName(tool).toUpperCase();
+  const app = EMAIL_APPS[name.split("_")[0] ?? ""];
+  if (!app) return null;
+  const mode = /(^|_)REPLY(_|$)/.test(name) ? "reply" : /(^|_)FORWARD(_|$)/.test(name) ? "forward" : /(^|_)SEND(_|$)/.test(name) ? "send" : /(^|_)DRAFT(_|$)/.test(name) ? "draft" : null;
+  if (!mode) return null;
+  const to = emailList(input, EMAIL_FIELDS.to);
+  const rawBody = EMAIL_FIELDS.body.map((key) => input[key]).find((value): value is string => typeof value === "string" && value.trim() !== "");
+  const subject = typeof input.subject === "string" && input.subject.trim() ? input.subject.trim() : null;
+  // A send that only names a saved draft carries nothing to show; the plain card says what it is.
+  if (!to.length && !rawBody && !subject) return null;
+  return { mode, app, to, cc: emailList(input, EMAIL_FIELDS.cc), bcc: emailList(input, EMAIL_FIELDS.bcc), subject, body: rawBody ? emailText(rawBody) : null, files: emailFiles(input) };
+}
+
+/** "Dana Ruiz <dana@ruizdesign.co>" is Dana Ruiz to a person; a bare address stays an address. */
+export function emailName(recipient: string): string {
+  const match = /^\s*"?([^"<]+?)"?\s*<[^>]+>\s*$/.exec(recipient);
+  return match?.[1]?.trim() || recipient.trim();
+}

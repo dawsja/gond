@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { BOT_TEMPLATES, CURATED_TOOLKITS, LEGACY_MOBILE_SIGN_IN_CALLBACK, MOBILE_SIGN_IN_CALLBACK, SIGN_IN_APPS, approvalLine, botInputSchema, composioCard, composioCardToolkit, fromNativeAction, gerund, handleOf, isClosing, isQuietReply, isQuietTool, isStopRequest, routineName, joinCommandLine, mentionsIn, pickBotName, pickVoiceProvider, plainMarkdown, ruleLabel, splitCommandLine, toolLabel, toolLine } from "../src/index.ts";
+import { BOT_TEMPLATES, CURATED_TOOLKITS, emailDraftOf, emailName, emailText, LEGACY_MOBILE_SIGN_IN_CALLBACK, MOBILE_SIGN_IN_CALLBACK, SIGN_IN_APPS, approvalLine, botInputSchema, composioCard, composioCardToolkit, fromNativeAction, gerund, handleOf, isClosing, isQuietReply, isQuietTool, isStopRequest, routineName, joinCommandLine, mentionsIn, pickBotName, pickVoiceProvider, plainMarkdown, ruleLabel, splitCommandLine, toolLabel, toolLine } from "../src/index.ts";
 
 describe("shared", () => {
   test("pickBotName avoids taken names and numbers when exhausted", () => {
@@ -239,5 +239,36 @@ describe("pickVoiceProvider", () => {
     expect(pickVoiceProvider("openai", has("openai", "xai"))).toBe("openai");
     expect(pickVoiceProvider("openai", has("xai"))).toBe("xai");
     expect(pickVoiceProvider("auto", has())).toBeNull();
+  });
+
+  test("an email card reads what a Gmail or Outlook action is about to send", () => {
+    expect(emailDraftOf("GMAIL_SEND_EMAIL", { recipient_email: "dana@ruizdesign.co", extra_recipients: ["priya@ruizdesign.co"], cc: ["ops@ruizdesign.co"], bcc: ["me@gmail.com"], subject: "Launch plan", body: "Hi all,\n\nDates below.", attachment: "/home/agent/proofs-v4.pdf" })).toEqual({
+      mode: "send",
+      app: "Gmail",
+      to: ["dana@ruizdesign.co", "priya@ruizdesign.co"],
+      cc: ["ops@ruizdesign.co"],
+      bcc: ["me@gmail.com"],
+      subject: "Launch plan",
+      body: "Hi all,\n\nDates below.",
+      files: ["proofs-v4.pdf"],
+    });
+    const reply = emailDraftOf("GMAIL_REPLY_TO_THREAD", { thread_id: "t1", recipient_email: "marco@bellandco.com", message_body: "<p>Confirmed: $4,280.</p><p>Thanks,<br>Dawson</p>", is_html: true });
+    expect(reply).toMatchObject({ mode: "reply", to: ["marco@bellandco.com"], subject: null, body: "Confirmed: $4,280.\n\nThanks,\nDawson" });
+    expect(emailDraftOf("OUTLOOK_SEND_EMAIL", { to_email: "it@golem-labs.com", subject: "VPN", body: "Renew it?", cc_emails: "a@x.com; b@x.com" })).toMatchObject({ app: "Outlook", to: ["it@golem-labs.com"], cc: ["a@x.com", "b@x.com"] });
+    expect(emailDraftOf("OUTLOOK_REPLY_EMAIL", { message_id: "m1", comment: "On it." })).toMatchObject({ mode: "reply", body: "On it." });
+    expect(emailDraftOf("GMAIL_FORWARD_MESSAGE", { message_id: "m1", recipient_email: "leo@park.io", additional_text: "FYI" })).toMatchObject({ mode: "forward", body: "FYI" });
+    expect(emailDraftOf("GMAIL_CREATE_EMAIL_DRAFT", { recipient_email: "a@b.co", subject: "Hi", body: "x" })?.mode).toBe("draft");
+    expect(emailDraftOf("GMAIL_SEND_DRAFT", { draft_id: "d1" })).toBeNull();
+    expect(emailDraftOf("GMAIL_DELETE_MESSAGE", { message_id: "m1" })).toBeNull();
+    expect(emailDraftOf("SLACK_SEND_MESSAGE", { channel: "c", text: "hi" })).toBeNull();
+    expect(emailDraftOf("OUTLOOK_SEND_EMAIL", { to_recipients: [{ emailAddress: { name: "Ann Lee", address: "ann@x.com" } }], subject: "s" })?.to).toEqual(["Ann Lee <ann@x.com>"]);
+  });
+
+  test("an email body is words, never markup", () => {
+    expect(emailText("<script>alert(1)</script><b>Hi</b> &amp; bye<ul><li>one</li><li>two</li></ul>")).toBe("Hi & bye• one\n• two");
+    expect(emailText("Plain <3 text")).toBe("Plain <3 text");
+    expect(emailName("Dana Ruiz <dana@ruizdesign.co>")).toBe("Dana Ruiz");
+    expect(emailName('"Ruiz, Dana" <dana@ruizdesign.co>')).toBe("Ruiz, Dana");
+    expect(emailName("dana@ruizdesign.co")).toBe("dana@ruizdesign.co");
   });
 });

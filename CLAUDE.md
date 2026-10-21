@@ -327,7 +327,19 @@ what is here. The README says what Gond is; this says how it is made.
   tone `Badge` saying how it ended. The approval is `approval-card.tsx`,
   worded per tool (Run a command?, Change a file?, Use the screen?); an
   `ask_approval` is a decision card with the bot's own question, rows,
-  total and button names ("Place order" / "Not yet"), and no Always.
+  total and button names ("Place order" / "Not yet"), and no Always. It
+  is a yes or no on one act, deny meaning don't; a pick between options
+  is `::choices`, and `pickNotYesNo` in `src/tools.ts` sends back an
+  `ask_approval` that looks like one (a which or what question, buttons
+  named as options) unposted, pointing the bot there.
+  An email a connected app is about to send, reply, forward or save as a
+  draft (Gmail, Outlook) is drawn from the action's own input, so what the
+  person approves is what goes out: `emailDraftOf` in shared reads it (the
+  body's HTML reduced to words by `emailText`, never rendered) and
+  `email-card.tsx` draws it as a letter, To, Cc and Bcc by name (a tap shows
+  the addresses), the subject, the body with Show all and the files, with
+  Send and Don't send and no Always. A reply or a forward asks on Auto like
+  a send (`OUTWARD_ACTION`).
   Then `secret-card.tsx`, `login-card.tsx`, `signin-card.tsx` and
   `connect-card.tsx`. A new kind of card goes there too, so they never
   drift. What is waiting is said by the buttons inside, never by a colour

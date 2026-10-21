@@ -111,7 +111,7 @@ export function boxPermission(level: ApprovalLevel): "ask" | "full" {
   return level === "full" ? "full" : "ask";
 }
 
-const OUTWARD_ACTION = /(^|_)(SEND|DELETE|REMOVE|PAY|PAYMENT|TRANSFER|PUBLISH)(_|$)/;
+const OUTWARD_ACTION = /(^|_)(SEND|SENDS|REPLY|FORWARD|DELETE|REMOVE|PAY|PAYMENT|TRANSFER|PUBLISH)(_|$)/;
 
 const PIPED_INSTALL = /\b(?:curl|wget)\b[^|]*\|\s*(?:sudo\s+(?:-\S+\s+)*)?(?:sh|bash|zsh|dash)(?=\s|$)|\b(?:sh|bash|zsh|dash)\s+<\(\s*(?:curl|wget)\b/;
 const ESCALATES = new Set(["sudo", "su", "doas"]);

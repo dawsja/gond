@@ -1,4 +1,4 @@
-import { APP_CATALOG, QUIET_REPLY, REACTIONS, isReaction, BOT_COLORS, BOT_EXPRESSIONS, BOT_SHAPES, LOGIN_FIELD_KINDS, MAX_SENT_FILE_BYTES, SKILL_LIMITS, botInputSchema, composioCard, handleOf, joinCommandLine, mentionsIn, mediaTypeFor, mcpServerInputSchema, pickBotName, plainMarkdown, skillFilePath, type Bot, type BotExpression, type BotShape, type McpServer, type McpServerInput, type Message, type SkillInput, type Thread } from "@gond/shared";
+import { APP_CATALOG, emailDraftOf, emailName, QUIET_REPLY, REACTIONS, isReaction, BOT_COLORS, BOT_EXPRESSIONS, BOT_SHAPES, LOGIN_FIELD_KINDS, MAX_SENT_FILE_BYTES, SKILL_LIMITS, botInputSchema, composioCard, handleOf, joinCommandLine, mentionsIn, mediaTypeFor, mcpServerInputSchema, pickBotName, plainMarkdown, skillFilePath, type Bot, type BotExpression, type BotShape, type McpServer, type McpServerInput, type Message, type SkillInput, type Thread } from "@gond/shared";
 import { ENGINE_FILES_TEXT, requestApproval, SCRIPTED_SCREEN_TEXT, scriptsTheScreen, summarize, touchesEngine } from "./approvals.ts";
 import { boxHome, readBoxFile, readBoxFileBytes, writeBoxFile, type BoxConfig } from "./box.ts";
 import { exactApp, searchIndex } from "./catalog.ts";
@@ -100,7 +100,7 @@ export const TOOL_NOTES = [
   "update_bot changes a teammate's profile when the person asks you to: its name, title, instructions (the description field, its SOUL), mascot colour, expression or shape. 'Make @Web Designer a Coder' means title: Coder and matching instructions.",
   "Those are every bot's, not only the primary bot's: who adds teammates and hands out work is a matter of the job, not of what you are allowed to call. Unless you are the primary bot, use them when the person asks you to, not on your own.",
   `Routines are yours to make and change: the person can only see them and switch them on or off, so when they want one made, changed, removed or run, you do it. create_routine schedules a prompt for yourself on a cron in the person's time zone, optionally with one of their skills, paused until they turn it on unless they asked for it in this conversation. list_routines shows yours; update_routine changes or pauses one, delete_routine removes it, run_routine runs it once now. When a routine fires (a message that starts [Routine: …]) and there is nothing new worth telling the person since its last run, answer with exactly ${QUIET_REPLY} and nothing else: the run then leaves no trace in the chat and nobody is notified. Anything they would want to know, say as usual.`,
-  "ask_approval posts a decision card and waits for the person. Whenever you need a yes or no before you act, use it rather than asking in a sentence and ending your turn: the question as summary, where and what as why, the rows that matter as details (items and prices, with total; recipients; files), and buttons named for the act (allow \"Place order\", deny \"Not yet\"). On Auto, call it before anything you can't undo or that leaves the computer: sending a message or email as the person, deleting or overwriting files outside your home, a payment or purchase, a forced push, changing settings for other people, typing a password you weren't given, anything they would want to know first. On Always ask the broker already asks; on Always allow it answers at once.",
+  "ask_approval posts a decision card and waits for the person. Whenever you need a yes or no before you act, use it rather than asking in a sentence and ending your turn: the question as summary, where and what as why, the rows that matter as details (items and prices, with total; recipients; files), and buttons named for the act (allow \"Place order\", deny \"Not yet\"). Both buttons are about one act: allow does it, deny doesn't, and deny tells you to stop. It is never a way to pick between options (A or B, this host or every host): for that, end your reply with ::choices[A | B], wait for the pick, and only then ask_approval for the act it settled on, if it still needs a yes. On Auto, call it before anything you can't undo or that leaves the computer: sending a message or email as the person, deleting or overwriting files outside your home, a payment or purchase, a forced push, changing settings for other people, typing a password you weren't given, anything they would want to know first. On Always ask the broker already asks; on Always allow it answers at once.",
   "Connected-app tools (names starting with the app, like GMAIL_SEND_EMAIL) act on the person's real accounts. Reads go through; writes may wait for the person's approval. Say what you sent, created or changed.",
   "team_memory_update replaces the team memory (its path is in the Team memory section), shared by every bot of the person. Keep it to what the whole team needs.",
   "use_skill returns a skill's full instructions and its files by slug. save_skill adds one to the person's library: best from a folder you built in your home (SKILL.md with name and description frontmatter, then the Markdown instructions: steps, decision rules, expected output, what to check with the person first, and how to run each script; beside it scripts/, references/, assets/), or a .skill file, or instructions and text files in the call. update_skill changes one. Every one of the person's bots gets it at once, at ~/.skills/<slug>/.",
@@ -131,18 +131,33 @@ const MAX_DECISION_ROWS = 12;
 const DECISION_KINDS = ["purchase", "send", "delete", "publish", "other"] as const;
 
 /** What a decision card shows beyond its question, trimmed and with every stored secret blanked, since the web shows it as written. */
+// ask_approval is a yes or no on one act; a model that wants a pick reaches for it anyway and puts
+// the options on the buttons, so deny ends up meaning "the other one" and the bot hears "don't".
+const OPTION_LABEL = /^\s*(?:(?:option|choice|plan)\s+[a-z0-9]\b|[a-d1-4]\s*[:).-])/i;
+const PICK_QUESTION = /^\s*(?:which|what|where|who|how many|how much)\b/i;
+
+export function pickNotYesNo(summary: string, allow?: string, deny?: string): boolean {
+  if (PICK_QUESTION.test(summary)) return true;
+  if ([allow, deny].some((label) => label && OPTION_LABEL.test(label))) return true;
+  return Boolean(allow?.includes(":") && deny?.includes(":"));
+}
+
+// A row's value and the line under the title hold a sentence; a long value stacks under its label on the card.
+const DECISION_VALUE_CHARS = 240;
+const DECISION_WHY_CHARS = 400;
+
 export function decisionCard(input: Record<string, unknown>) {
   const text = (value: unknown, max: number) => (typeof value === "string" && value.trim() ? hideSecrets(value.trim().slice(0, max)) : undefined);
   const row = (value: unknown) => {
     if (!value || typeof value !== "object") return null;
     const label = text((value as { label?: unknown }).label, 80);
-    return label ? { label, value: text((value as { value?: unknown }).value, 80) ?? "" } : null;
+    return label ? { label, value: text((value as { value?: unknown }).value, DECISION_VALUE_CHARS) ?? "" } : null;
   };
   const details = Array.isArray(input.details) ? input.details.slice(0, MAX_DECISION_ROWS).map(row).filter((r) => r !== null) : [];
   const total = row(input.total);
   const kind = DECISION_KINDS.find((k) => k === input.kind);
   return {
-    why: text(input.why, 200),
+    why: text(input.why, DECISION_WHY_CHARS),
     ...(details.length ? { details } : {}),
     ...(total ? { total } : {}),
     allow: text(input.allow, 24),
@@ -340,7 +355,7 @@ export function baseTools(context: Context): Record<string, DriverTool> {
       },
     },
     ask_approval: {
-      description: "Ask the person before something irreversible or outward-facing. Posts a decision card with your question, the rows they should see and two buttons named for the act, then waits. On Always allow it answers at once.",
+      description: "Ask the person yes or no before one irreversible or outward-facing act. Posts a decision card with your question, the rows they should see and two buttons named for the act, then waits. allow does it, deny means don't: never put two options on the buttons (use ::choices in your reply for a pick). On Always allow it answers at once.",
       inputSchema: schema(
         {
           summary: { type: "string", description: 'The question, short, as the card\'s title: "Place this order?", "Send this email to Dana?"' },
@@ -348,7 +363,7 @@ export function baseTools(context: Context): Record<string, DriverTool> {
           details: { type: "array", maxItems: MAX_DECISION_ROWS, items: schema({ label: { type: "string" }, value: { type: "string" } }, ["label"]), description: "What they should see before deciding, one row each: items and prices, recipients, files." },
           total: schema({ label: { type: "string" }, value: { type: "string" } }, ["label", "value"]),
           allow: { type: "string", description: 'The yes button, named for the act: "Place order", "Send it". Default "Allow".' },
-          deny: { type: "string", description: 'The no button: "Not yet", "Don\'t send". Default "Deny".' },
+          deny: { type: "string", description: 'The no button, which means don\'t do it: "Not yet", "Don\'t send". Never another option. Default "Deny".' },
           kind: { type: "string", enum: [...DECISION_KINDS] },
         },
         ["summary"],
@@ -357,6 +372,8 @@ export function baseTools(context: Context): Record<string, DriverTool> {
         const summary = String(input.summary ?? "").trim();
         if (!summary) return "Say what you want to do in summary.";
         const card = decisionCard(input);
+        if (pickNotYesNo(summary, card.allow, card.deny))
+          return "Not posted: that is a pick between options, and ask_approval is only a yes or no on one act (allow does it, deny means don't). End your reply with ::choices[First option | Second option] and stop; the person's pick comes back as their message. Then call ask_approval for the act they picked, with a yes-or-no question like \"Copy golem's compose files?\", if it still needs one.";
         const decision = await requestApproval({ bot, threadId: thread.id, signal: context.signal, tool: "ask_approval", input: { summary: hideSecrets(summary.slice(0, 300)), ...card }, summary: summary.slice(0, 300) });
         if (decision === "allow" || decision === "always") return card.allow ? `The person chose "${card.allow}". Go ahead.` : "Allowed. Go ahead.";
         if (decision === "expired") return "Nobody answered in time. Say so and stop, or ask again later.";
@@ -1106,7 +1123,9 @@ export async function appTools(context: Context): Promise<Record<string, DriverT
       execute: async (input) => {
         if (!isReadOnlyAction(slug)) {
           const first = Object.entries(input).find(([, v]) => typeof v === "string") as [string, string] | undefined;
-          const decision = await requestApproval({ bot, threadId: thread.id, signal: context.signal, tool: slug, input, summary: `${tool.name}${first ? `: ${first[1].slice(0, 160)}` : ""}` });
+          const email = emailDraftOf(slug, input);
+          const summary = email ? `${tool.name} to ${email.to.map(emailName).join(", ") || "the thread"}${email.subject ? `: ${email.subject.slice(0, 160)}` : ""}` : `${tool.name}${first ? `: ${first[1].slice(0, 160)}` : ""}`;
+          const decision = await requestApproval({ bot, threadId: thread.id, signal: context.signal, tool: slug, input, summary });
           if (decision === "deny") return "NOT done: the person denied this action.";
           if (decision === "expired") return "NOT done: nobody approved this action in time.";
         }

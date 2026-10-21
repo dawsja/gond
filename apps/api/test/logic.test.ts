@@ -94,7 +94,7 @@ describe("approvals", () => {
     ]) {
       expect(bash(command)).toBe(true);
     }
-    for (const slug of ["GMAIL_SEND_EMAIL", "SLACK_DELETE_MESSAGE", "STRIPE_CREATE_PAYMENT", "TWITTER_PUBLISH_POST", "BANK_TRANSFER_FUNDS"]) expect(mustAsk(slug, {}, bot)).toBe(true);
+    for (const slug of ["GMAIL_SEND_EMAIL", "GMAIL_REPLY_TO_THREAD", "GMAIL_FORWARD_MESSAGE", "OUTLOOK_REPLY_EMAIL", "SLACK_SENDS_A_MESSAGE_TO_A_SLACK_CHANNEL", "SLACK_DELETE_MESSAGE", "STRIPE_CREATE_PAYMENT", "TWITTER_PUBLISH_POST", "BANK_TRANSFER_FUNDS"]) expect(mustAsk(slug, {}, bot)).toBe(true);
     for (const slug of ["GITHUB_CREATE_ISSUE", "GMAIL_FETCH_EMAILS", "NOTION_UPDATE_PAGE"]) expect(mustAsk(slug, {}, bot)).toBe(false);
     expect(mustAsk("add_mcp_server", { name: "x" }, bot)).toBe(true);
     expect(mustAsk("ask_approval", { summary: "Send the invoice" }, bot)).toBe(true);
@@ -645,6 +645,31 @@ describe("plainText", () => {
     expect(plainText("Art Director &AMP; Pixel &lt;3")).toBe("Art Director & Pixel <3");
     expect(plainText("&amp;lt;")).toBe("&lt;");
     expect(plainText("Q&A")).toBe("Q&A");
+  });
+});
+
+describe("decisionCard", () => {
+  test("keeps a sentence in a row and under the title, and cuts only past that", async () => {
+    const { decisionCard } = await import("../src/tools.ts");
+    const sentence = "Only golem's own containers: the Dockge stacks (dozzle-agent, and any others there) and nothing from the other hosts.";
+    const card = decisionCard({ why: `Patch · ${sentence} ${sentence}`, details: [{ label: "Option A", value: sentence }, { label: "Long", value: "x".repeat(300) }] });
+    expect(card.details?.[0]?.value).toBe(sentence);
+    expect(card.details?.[1]?.value).toHaveLength(240);
+    expect(card.why).toBe(`Patch · ${sentence} ${sentence}`);
+  });
+});
+
+describe("pickNotYesNo", () => {
+  test("turns away a pick dressed as a yes or no, and lets a real one through", async () => {
+    const { pickNotYesNo } = await import("../src/tools.ts");
+    expect(pickNotYesNo("Which compose files should I copy into a new folder?", "Option B: every host", "Option A: golem only")).toBe(true);
+    expect(pickNotYesNo("Copy the compose files?", "Option A", "Option B")).toBe(true);
+    expect(pickNotYesNo("Copy the compose files?", "Golem only: 4 files", "Every host: 19 files")).toBe(true);
+    expect(pickNotYesNo("Copy the compose files?", "A) golem", "B) every host")).toBe(true);
+    expect(pickNotYesNo("Place this order?", "Place order", "Not yet")).toBe(false);
+    expect(pickNotYesNo("Send this email to Dana?", "Send it", "Don't send")).toBe(false);
+    expect(pickNotYesNo("Delete the old backups?")).toBe(false);
+    expect(pickNotYesNo("Should I copy golem's compose files to backup?", "Copy them", "Leave it")).toBe(false);
   });
 });
 
