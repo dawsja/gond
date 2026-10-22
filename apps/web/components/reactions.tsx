@@ -49,7 +49,7 @@ export function ReactionBadges({ message, bots, mine, onReact }: { message: Mess
     <span className={cn("absolute -bottom-3 z-10 flex gap-1", mine ? "left-2" : "right-2")}>
       {message.reactions.map((reaction) => {
         const who = reaction.author === "you" ? "You" : (bots.find((b) => b.id === reaction.author)?.name ?? "A bot");
-        const chip = "inline-flex h-6 min-w-7 items-center justify-center rounded-full border border-primary-edge bg-card px-1.5 text-[13px] leading-none shadow-subtle";
+        const chip = "inline-flex h-6 min-w-7 animate-pop items-center justify-center rounded-full border border-primary-edge bg-card px-1.5 text-[13px] leading-none shadow-subtle motion-reduce:animate-none";
         return reaction.author === "you" ? (
           <button key={reaction.author} type="button" aria-label={`Remove your ${reaction.emoji}`} title="Tap to remove" onClick={() => onReact(reaction.emoji)} className={cn(chip, "outline-none focus-visible:ring-3 focus-visible:ring-ring/50 pointer-coarse:h-7")}>
             {reaction.emoji}

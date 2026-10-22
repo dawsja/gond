@@ -11,6 +11,8 @@ const buttonVariants = cva(
 
         control: "bg-control text-control-foreground hover:bg-control-hover aria-expanded:bg-control-hover",
 
+        tint: "bg-tint-solid text-tint-foreground [--surface:var(--tint-solid)] hover:bg-tint-solid-hover aria-expanded:bg-tint-solid-hover",
+
         outline:
           "border-primary-edge bg-transparent hover:border-primary-edge-focus hover:bg-primary hover:text-foreground aria-expanded:bg-primary aria-expanded:text-foreground",
         secondary:

@@ -63,6 +63,15 @@
   --color-control-hover: color-mix(in oklch, var(--control), var(--background) 18%);
   --color-bubble-you: var(--bubble-you);
   --color-bubble-you-foreground: var(--bubble-you-foreground);
+  --color-tint: var(--tint);
+  --color-tint-solid: var(--tint-solid);
+  --color-tint-solid-hover: color-mix(in oklch, var(--tint-solid), black 12%);
+  --color-tint-foreground: #ffffff;
+  --color-tint-wash: var(--tint-wash);
+  --color-tint-edge: var(--tint-edge);
+  --color-tint-ink: var(--tint-ink);
+  --color-tone-ok-wash: color-mix(in srgb, var(--tone-ok) 14%, var(--bubble-bot));
+  --color-tone-ok-edge: color-mix(in srgb, var(--tone-ok) 30%, var(--primary-edge));
   --color-bubble-bot: var(--bubble-bot);
   --color-bubble-inset: var(--bubble-inset);
   --color-control-foreground: var(--control-foreground);
@@ -167,6 +176,13 @@
   --primary-edge: #d9d4ca;
   --primary-edge-focus: #c9c4b9;
   --primary-shadow: none;
+  /* The person's color (Settings → Appearance), blue until they pick another. Each color is a block
+     below, its shades worked out so white on --tint-solid and --tint-ink on --tint-wash clear 4.6:1. */
+  --tint: #2F6FD6;
+  --tint-solid: #2c62ba;
+  --tint-wash: #d6dbe0;
+  --tint-edge: #a9b8cd;
+  --tint-ink: #29559d;
   --bubble-you: #cfe0f5;
   --bubble-you-foreground: var(--carbon);
   --bubble-bot: #ebe8e1;
@@ -245,6 +261,11 @@
   --primary-edge: #474747;
   --primary-edge-focus: #5c5c5c;
   --primary-shadow: none;
+  --tint: #2F6FD6;
+  --tint-solid: #2b61b9;
+  --tint-wash: #252f40;
+  --tint-edge: #3d5780;
+  --tint-ink: #8db0e8;
   --bubble-you: #173554;
   --bubble-you-foreground: var(--carbon);
   --bubble-bot: #232323;
@@ -284,6 +305,146 @@
   --grid-line: rgba(255, 255, 255, 0.055);
   --bot-ink-mix: 0%;
   color-scheme: dark;
+}
+
+:root:not(.dark)[data-accent="blue"] {
+  --tint: #2F6FD6;
+  --tint-solid: #2c62ba;
+  --tint-wash: #d6dbe0;
+  --tint-edge: #a9b8cd;
+  --tint-ink: #29559d;
+  --bubble-you: #cfe0f5;
+}
+:root.dark[data-accent="blue"] {
+  --tint: #2F6FD6;
+  --tint-solid: #2b61b9;
+  --tint-wash: #252f40;
+  --tint-edge: #3d5780;
+  --tint-ink: #8db0e8;
+  --bubble-you: #173554;
+}
+:root:not(.dark)[data-accent="purple"] {
+  --tint: #7650D8;
+  --tint-solid: #6848bb;
+  --tint-wash: #ded7e0;
+  --tint-edge: #bdafce;
+  --tint-ink: #5b409e;
+  --bubble-you: #ded5f6;
+}
+:root.dark[data-accent="purple"] {
+  --tint: #7650D8;
+  --tint-solid: #6747ba;
+  --tint-wash: #302a40;
+  --tint-edge: #5a4b81;
+  --tint-ink: #b49fea;
+  --bubble-you: #322651;
+}
+:root:not(.dark)[data-accent="pink"] {
+  --tint: #CF3D85;
+  --tint-solid: #b43875;
+  --tint-wash: #e8d5d7;
+  --tint-edge: #d6aab7;
+  --tint-ink: #993364;
+  --bubble-you: #f3d0e2;
+}
+:root.dark[data-accent="pink"] {
+  --tint: #CF3D85;
+  --tint-solid: #b33774;
+  --tint-wash: #3f2733;
+  --tint-edge: #7d4360;
+  --tint-ink: #e594bc;
+  --bubble-you: #4e2037;
+}
+:root:not(.dark)[data-accent="red"] {
+  --tint: #D03A3A;
+  --tint-solid: #b53535;
+  --tint-wash: #e8d5cf;
+  --tint-edge: #d6a9a2;
+  --tint-ink: #9a3030;
+  --bubble-you: #f4d0d0;
+}
+:root.dark[data-accent="red"] {
+  --tint: #D03A3A;
+  --tint-solid: #b33434;
+  --tint-wash: #3f2727;
+  --tint-edge: #7e4242;
+  --tint-ink: #e59393;
+  --bubble-you: #4f1f1f;
+}
+:root:not(.dark)[data-accent="orange"] {
+  --tint: #E04E0A;
+  --tint-solid: #c2460c;
+  --tint-wash: #ead7c9;
+  --tint-edge: #dbae94;
+  --tint-ink: #9f3d0f;
+  --bubble-you: #f8d5c4;
+}
+:root.dark[data-accent="orange"] {
+  --tint: #E04E0A;
+  --tint-solid: #c1450b;
+  --tint-wash: #412a1f;
+  --tint-edge: #844a2f;
+  --tint-ink: #ee9e78;
+  --bubble-you: #54250f;
+}
+:root:not(.dark)[data-accent="amber"] {
+  --tint: #D98A08;
+  --tint-solid: #9e670d;
+  --tint-wash: #e9dec9;
+  --tint-edge: #d9bf94;
+  --tint-ink: #83580f;
+  --bubble-you: #f6e3c4;
+}
+:root.dark[data-accent="amber"] {
+  --tint: #D98A08;
+  --tint-solid: #9f670b;
+  --tint-wash: #40331f;
+  --tint-edge: #81622e;
+  --tint-ink: #eabf77;
+  --bubble-you: #52380f;
+}
+:root:not(.dark)[data-accent="green"] {
+  --tint: #189C47;
+  --tint-solid: #19863f;
+  --tint-wash: #d4e0d0;
+  --tint-edge: #a3c4a5;
+  --tint-ink: #196d36;
+  --bubble-you: #c8e7d3;
+}
+:root.dark[data-accent="green"] {
+  --tint: #189C47;
+  --tint-solid: #17853e;
+  --tint-wash: #213629;
+  --tint-edge: #346947;
+  --tint-ink: #80c99a;
+  --bubble-you: #143e23;
+}
+
+@theme {
+  --animate-peek: peek 3.2s ease-in-out infinite;
+  --animate-hop: hop 0.9s cubic-bezier(0.34, 1.56, 0.64, 1) 2;
+  --animate-confetti: confetti 1.1s ease-out 1 both;
+  --animate-pop: pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+
+  @keyframes peek {
+    0%, 70%, 100% { transform: translateY(0); }
+    80%, 90% { transform: translateY(-4px); }
+  }
+  @keyframes hop {
+    0%, 100% { transform: translateY(0); }
+    35% { transform: translateY(-7px); }
+    65% { transform: translateY(0) scale(1.06, 0.94); }
+  }
+  @keyframes confetti {
+    0% { opacity: 0; transform: translate(0, 0) scale(0.4); }
+    30% { opacity: 1; }
+    100% { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(1); }
+  }
+  @keyframes pop {
+    0% { opacity: 0; transform: scale(0.4); }
+    60% { opacity: 1; transform: scale(1.15); }
+    100% { transform: scale(1); }
+  }
 }
 
 [data-slot="bubble-content"] ::selection {

@@ -182,6 +182,30 @@ describe("data", () => {
     expect(listRoutines("b1")[0]!.lastRunAt).toBeTruthy();
   });
 
+  test("a watch keeps its flag and announces itself as a watch when it runs", async () => {
+    const { createRoutine, getRoutine, routinePrompt, updateRoutine } = await import("../src/data/routines.ts");
+    const { isWatchRun, routineName } = await import("@gond/shared");
+    const watch = createRoutine("b1", { name: "Calendar clashes", cron: "0 * * * *", timezone: "UTC", prompt: "Look for clashes.", enabled: true, watch: true });
+    expect(getRoutine(watch.id)?.watch).toBe(true);
+    const run = routinePrompt(watch);
+    expect(isWatchRun(run)).toBe(true);
+    expect(routineName(run)).toBe("Calendar clashes");
+    const plain = updateRoutine(watch.id, { watch: false })!;
+    expect(plain.watch).toBe(false);
+    expect(isWatchRun(routinePrompt(plain))).toBe(false);
+    expect(routineName(routinePrompt(plain))).toBe("Calendar clashes");
+  });
+
+  test("each person's color is their own, blue until they pick one", async () => {
+    const { setUserAccent, userAccent } = await import("../src/data/prefs.ts");
+    expect(userAccent("u-color")).toBe("blue");
+    setUserAccent("u-color", "purple");
+    expect(userAccent("u-color")).toBe("purple");
+    expect(userAccent("u-other")).toBe("blue");
+    setUserAccent("u-color", "blue");
+    expect(userAccent("u-color")).toBe("blue");
+  });
+
   test("a patch keeps what it doesn't mention", async () => {
     const { createBot, updateBot } = await import("../src/data/bots.ts");
     const { botInputSchema, botPatchSchema, routinePatchSchema, skillPatchSchema } = await import("@gond/shared");
@@ -1285,6 +1309,21 @@ describe("data", () => {
       const res = await app.request(`/api/attachments/${posted.attachments[0]!.id}`);
       expect(res.headers.get("content-disposition")).toStartWith("attachment;");
       expect(res.headers.get("content-security-policy")).toBe("sandbox");
+
+      const send = (file: File) => {
+        const form = new FormData();
+        form.append("files", file);
+        form.append("after", "1");
+        return app.request(`/api/threads/${bot.threadId}/messages`, { method: "POST", body: form });
+      };
+      const sent = await send(new File(['<svg xmlns="http://www.w3.org/2000/svg"><circle r="5"/></svg>'], "logo.svg", { type: "image/svg+xml" }));
+      expect(sent.status).toBe(201);
+      const svg = ((await sent.json()) as { message: { attachments: { id: string; mediaType: string }[] } }).message.attachments[0]!;
+      expect(svg.mediaType).toBe("image/svg+xml");
+      const servedSvg = await app.request(`/api/attachments/${svg.id}`);
+      expect(servedSvg.headers.get("content-disposition")).toStartWith("attachment;");
+      expect(servedSvg.headers.get("content-security-policy")).toBe("sandbox");
+      expect((await send(new File(["MZ"], "setup.exe", { type: "application/x-msdownload" }))).status).toBe(400);
     } finally {
       box.stop(true);
     }
@@ -3037,5 +3076,98 @@ describe("the computer", () => {
       const status = await app.request("/api/box/desktop");
       expect(((await status.json()) as { desktop: { running: boolean; control: string } }).desktop).toMatchObject({ running: true, control: "free" });
     });
+  });
+});
+
+describe("rooms and a bot's files", () => {
+  test("a room is renamed, its bots changed and pinned, and says what changed", async () => {
+    await seedUsers(["u-room", "user"], ["u-room-other", "user"]);
+    const { Hono } = await import("hono");
+    const { createBot } = await import("../src/data/bots.ts");
+    const { createRoom, getThread, listMessages } = await import("../src/data/threads.ts");
+    const { threadsRoutes, roomChange } = await import("../src/routes/threads.ts");
+    const { botInputSchema } = await import("@gond/shared");
+    const ada = createBot(botInputSchema.parse({ name: "Ada" }), "u-room");
+    const bo = createBot(botInputSchema.parse({ name: "Bo" }), "u-room");
+    const cy = createBot(botInputSchema.parse({ name: "Cy" }), "u-room");
+    const stranger = createBot(botInputSchema.parse({ name: "Stranger" }), "u-room-other");
+    const room = createRoom("Launch", [ada.id, bo.id], "u-room");
+    const mine = asPerson(new Hono(), "u-room").route("/api", threadsRoutes());
+    const theirs = asPerson(new Hono(), "u-room-other").route("/api", threadsRoutes());
+    const json = { "Content-Type": "application/json" };
+    const change = (app: typeof mine, body: unknown) => app.request(`/api/rooms/${room.id}`, { method: "PATCH", headers: json, body: JSON.stringify(body) });
+
+    expect((await change(theirs, { name: "Mine" })).status).toBe(404);
+    expect((await change(mine, { name: "  " })).status).toBe(400);
+    expect((await change(mine, { members: [stranger.id] })).status).toBe(400);
+    expect((await change(mine, { pinned: "yes" })).status).toBe(400);
+
+    const res = await change(mine, { name: "Launch week", members: [ada.id, cy.id, stranger.id], pinned: true });
+    expect(res.status).toBe(200);
+    const thread = getThread(room.id)!;
+    expect(thread).toMatchObject({ name: "Launch week", pinned: true });
+    expect(thread.members.sort()).toEqual([ada.id, cy.id].sort());
+    expect(listMessages(room.id).at(-1)!.body).toBe("Renamed to Launch week. Cy joined. Bo left.");
+    expect(getThread(ada.threadId)!.pinned).toBe(false);
+
+    await change(mine, { pinned: false });
+    expect(getThread(room.id)!.pinned).toBe(false);
+    expect(listMessages(room.id).at(-1)!.body).toBe("Renamed to Launch week. Cy joined. Bo left.");
+    expect(roomChange({ name: "A", members: [] }, { name: "A", members: ["1", "2", "3"] }, (id) => `Bot ${id}`)).toBe("Bot 1, Bot 2 and Bot 3 joined.");
+  });
+
+  test("a bot's files are listed and downloaded, never with a stored secret in them", async () => {
+    await seedUsers(["u-files", "user"]);
+    const { Hono } = await import("hono");
+    const { createBot } = await import("../src/data/bots.ts");
+    const { setSecret } = await import("../src/data/secrets.ts");
+    const { boxRoutes } = await import("../src/routes/box.ts");
+    const { botInputSchema } = await import("@gond/shared");
+    const files: Record<string, string> = { "notes.md": "Plan: ship on Friday", "keys.txt": "token=files-secret-value-1", "dot.png": "\x89PNG\r\n\x1a\n" };
+    const fake = Bun.serve({
+      port: 0,
+      fetch(request: Request): Response {
+        const url = new URL(request.url);
+        const name = (url.searchParams.get("path") ?? "").split("/").pop()!;
+        if (url.pathname === "/files" && name === ".") return Response.json({ directory: ["notes.md"], entries: [{ name: "notes.md", dir: false, size: 20, modified: "2026-10-21T10:00:00.000Z" }] });
+        if (url.pathname === "/files") return Response.json({ content: files[name], size: files[name]!.length });
+        if (url.pathname === "/files/raw") return new Response(name === "dot.png" ? new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0]) : files[name], { headers: { "Content-Type": "application/octet-stream" } });
+        return new Response("", { status: 404 });
+      },
+    });
+    const boxUrl = process.env.GOND_BOX_URL;
+    const boxToken = process.env.GOND_BOX_TOKEN;
+    process.env.GOND_BOX_URL = `http://127.0.0.1:${fake.port}`;
+    process.env.GOND_BOX_TOKEN = "box-token";
+    try {
+      setSecret("u-files", "FILES_TOKEN", "files-secret-value-1");
+      const bot = createBot(botInputSchema.parse({ name: "Filer" }), "u-files");
+      const app = asPerson(new Hono(), "u-files").route("/api", boxRoutes());
+      const other = asPerson(new Hono(), "u-files-other").route("/api", boxRoutes());
+
+      const listing = (await (await app.request(`/api/bots/${bot.id}/files?path=.`)).json()) as { file: { entries: unknown[] } };
+      expect(listing.file.entries).toEqual([{ name: "notes.md", dir: false, size: 20, modified: "2026-10-21T10:00:00.000Z" }]);
+      const shown = (await (await app.request(`/api/bots/${bot.id}/files?path=keys.txt`)).json()) as { file: { content: string } };
+      expect(shown.file.content).not.toContain("files-secret-value-1");
+
+      const download = await app.request(`/api/bots/${bot.id}/files/raw?path=notes.md`);
+      expect(download.status).toBe(200);
+      expect(await download.text()).toBe("Plan: ship on Friday");
+      expect(download.headers.get("content-disposition")).toBe("attachment; filename*=UTF-8''notes.md");
+      expect(download.headers.get("content-security-policy")).toBe("sandbox");
+      expect((await app.request(`/api/bots/${bot.id}/files/raw?path=notes.md&view=1`)).headers.get("content-type")).toBe("application/octet-stream");
+      const picture = await app.request(`/api/bots/${bot.id}/files/raw?path=dot.png&view=1`);
+      expect(picture.headers.get("content-type")).toBe("image/png");
+      expect(picture.headers.get("content-disposition")).toStartWith("inline;");
+      expect((await app.request(`/api/bots/${bot.id}/files/raw?path=keys.txt`)).status).toBe(403);
+      expect((await app.request(`/api/bots/${bot.id}/files/raw?path=../../etc/passwd`)).status).toBe(400);
+      expect((await other.request(`/api/bots/${bot.id}/files/raw?path=notes.md`)).status).toBe(404);
+    } finally {
+      fake.stop(true);
+      if (boxUrl === undefined) delete process.env.GOND_BOX_URL;
+      else process.env.GOND_BOX_URL = boxUrl;
+      if (boxToken === undefined) delete process.env.GOND_BOX_TOKEN;
+      else process.env.GOND_BOX_TOKEN = boxToken;
+    }
   });
 });

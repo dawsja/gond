@@ -16,6 +16,7 @@ import {
   engineSignInCode,
   openBoxStream,
   readBoxFile,
+  readBoxFileBytes,
   resetBoxHome,
   startDesktop,
   startEngineSignIn,
@@ -27,6 +28,8 @@ import {
 } from "../box.ts";
 import { ownBot, userId } from "../access.ts";
 import { desktopState, emitDesktop, tookControl } from "../desktop.ts";
+import { containsSecret, hideSecrets } from "../data/secrets.ts";
+import { pictureType } from "../images.ts";
 import { botHome } from "../memory.ts";
 import { watchEngineSignIn } from "../status.ts";
 import { stopAll, tellHandedBack } from "../responder.ts";
@@ -333,7 +336,35 @@ export function boxRoutes() {
     const target = botFilePath(bot.id, c.req.query("path") ?? ".");
     if (!target) return c.json({ error: "Bad path" }, 400);
     try {
-      return c.json({ file: await readBoxFile(box, target) });
+      const file = await readBoxFile(box, target);
+      return c.json({ file: file.content === undefined ? file : { ...file, content: hideSecrets(file.content) } });
+    } catch (error) {
+      return boxErrorResponse(c, error);
+    }
+  });
+
+  app.get("/bots/:id/files/raw", async (c) => {
+    const bot = ownBot(c, c.req.param("id"));
+    if (!bot) return c.json({ error: "No such bot" }, 404);
+    const box = requireBox(c);
+    if (box instanceof Response) return box;
+    const target = botFilePath(bot.id, c.req.query("path") ?? "");
+    if (!target) return c.json({ error: "Bad path" }, 400);
+    try {
+      const data = await readBoxFileBytes(box, target);
+      if (containsSecret(data)) return c.json({ error: "That file holds a stored secret, so it can't be downloaded" }, 403);
+      const name = target.split("/").pop() || "file";
+      // Only bytes that really are a picture show in the page; anything else, SVG included, is a download under a sandbox.
+      const picture = c.req.query("view") === "1" ? pictureType(data) : null;
+      return new Response(Buffer.from(data), {
+        headers: {
+          "Content-Type": picture ?? "application/octet-stream",
+          "Content-Disposition": `${picture ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(name)}`,
+          "Content-Security-Policy": "sandbox",
+          "X-Content-Type-Options": "nosniff",
+          "Cache-Control": "no-store",
+        },
+      });
     } catch (error) {
       return boxErrorResponse(c, error);
     }

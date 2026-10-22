@@ -297,7 +297,7 @@ export async function syncSoul(bot: Bot) {
 function textAttachments(message: Message): string {
   const parts: string[] = [];
   for (const meta of message.attachments) {
-    if (!meta.mediaType.startsWith("text/") && meta.mediaType !== "application/json") continue;
+    if (!meta.mediaType.startsWith("text/") && meta.mediaType !== "application/json" && meta.mediaType !== "image/svg+xml") continue;
     const file = getAttachment(meta.id);
     if (!file) continue;
     const text = Buffer.from(file.data).toString("utf8").slice(0, 60_000);

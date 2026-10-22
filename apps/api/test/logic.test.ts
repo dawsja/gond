@@ -233,7 +233,7 @@ describe("souls", () => {
 
 describe("targetsFor", () => {
   const other: Bot = { ...bot, id: "bot-2", name: "Pip", primary: false, threadId: "t-2" };
-  const room: Thread = { id: "room", kind: "room", name: "Room", botId: null, userId: "u-admin", members: [other.id, bot.id], lastMessage: null, unread: 0, createdAt: "", updatedAt: "" };
+  const room: Thread = { id: "room", kind: "room", name: "Room", botId: null, userId: "u-admin", members: [other.id, bot.id], pinned: false, lastMessage: null, unread: 0, createdAt: "", updatedAt: "" };
 
   test("with nobody named, the primary bot answers", async () => {
     const { targetsFor } = await import("../src/responder.ts");
@@ -656,6 +656,18 @@ describe("decisionCard", () => {
     expect(card.details?.[0]?.value).toBe(sentence);
     expect(card.details?.[1]?.value).toHaveLength(240);
     expect(card.why).toBe(`Patch · ${sentence} ${sentence}`);
+  });
+
+  test("keeps a row's item list for the card to open, and drops empty lines", async () => {
+    const { decisionCard } = await import("../src/tools.ts");
+    const card = decisionCard({
+      details: [
+        { label: "Groceries", value: "$86.40", items: [{ label: "Oatly Barista ×2", value: "$11.98", note: "Swapped" }, { label: "Bananas", value: "$2.49" }, { label: " " }] },
+        { label: "Tip", value: "$8.00", items: [] },
+      ],
+    });
+    expect(card.details?.[0]).toEqual({ label: "Groceries", value: "$86.40", items: [{ label: "Oatly Barista ×2", value: "$11.98", note: "Swapped" }, { label: "Bananas", value: "$2.49" }] });
+    expect(card.details?.[1]).toEqual({ label: "Tip", value: "$8.00" });
   });
 });
 

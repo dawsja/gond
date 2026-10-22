@@ -1,6 +1,6 @@
 "use client";
 
-import { handleOf, routineName, type Approval, type Bot, type Message, type ReactionEmoji, type Thread } from "@gond/shared";
+import { handleOf, type Approval, type Bot, type Message, type ReactionEmoji, type Thread } from "@gond/shared";
 import { ArrowUp, Bot as BotIcon, ChevronLeft, Clock, Copy, Download, ListEnd, EllipsisVertical, FileText, Monitor, PanelRight, Paperclip, Pencil, Plus, TextSelect, Users, X } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -14,6 +14,7 @@ import { pollInterval, useLiveEvents } from "@/components/hq/live-events";
 import { ChoicesContext } from "@/components/chat-blocks";
 import { ImageViewer } from "@/components/image-viewer";
 import { Markdown } from "@/components/markdown";
+import { NoticedLinks, noticedRuns, RunMarker, useWatches, WatchesContext, type Noticed } from "@/components/noticed";
 import { DetailsSheet, RightPanel } from "@/components/right-panel";
 import { ScreenPanel } from "@/components/screen-panel";
 import { SecretCard } from "@/components/secret-card";
@@ -43,6 +44,7 @@ import { WorkLine } from "@/components/work-log";
 import { useCoarsePointer } from "@/hooks/use-mobile";
 import { useSwipeBack } from "@/hooks/use-swipe-back";
 import { api, post } from "@/lib/api";
+import { readDraft, saveDraft } from "@/lib/drafts";
 import { cn } from "@/lib/utils";
 
 const POLL_MS = 4_000;
@@ -173,7 +175,7 @@ function SelectTextDialog({ text, onClose }: { text: string | null; onClose: () 
   );
 }
 
-function Line({ message, threadId, bots, threads, bot, approvals, isRoom, editing, stops, touch, answer, onPick, onView, onDecide, onOpenExchange, onEdit, onSelectText, onReacted }: { message: Message; threadId: string; bots: Bot[]; threads: ThreadRow[]; bot: Bot | null; approvals: Map<string, Approval>; isRoom: boolean; editing: boolean; stops: boolean; touch: boolean; answer: string | undefined; onPick: (option: string) => Promise<void>; onView: (attachmentId: string) => void; onDecide: (id: string, decision: Decision) => Promise<void>; onOpenExchange: (withThreadId: string) => void; onEdit: (message: Message | null, text?: string) => Promise<boolean>; onSelectText: (text: string) => void; onReacted: (message: Message) => void }) {
+function Line({ message, threadId, bots, threads, bot, approvals, isRoom, editing, stops, touch, answer, noticed, onPick, onView, onDecide, onOpenExchange, onEdit, onSelectText, onReacted }: { message: Message; threadId: string; bots: Bot[]; threads: ThreadRow[]; bot: Bot | null; approvals: Map<string, Approval>; isRoom: boolean; editing: boolean; stops: boolean; touch: boolean; answer: string | undefined; noticed: Noticed | undefined; onPick: (option: string) => Promise<void>; onView: (attachmentId: string) => void; onDecide: (id: string, decision: Decision) => Promise<void>; onOpenExchange: (withThreadId: string) => void; onEdit: (message: Message | null, text?: string) => Promise<boolean>; onSelectText: (text: string) => void; onReacted: (message: Message) => void }) {
   const mine = message.author === "you";
   const bubble = useRef<HTMLDivElement>(null);
 
@@ -182,14 +184,7 @@ function Line({ message, threadId, bots, threads, bot, approvals, isRoom, editin
   const author = mine ? null : bots.find((b) => b.id === message.author) ?? null;
   if (message.kind === "prompt") return null;
   if (message.kind === "message" && message.fromThreadId && author) return <Handoff message={message} threadId={threadId} bots={bots} threads={threads} onOpen={onOpenExchange} />;
-  if (message.author === "routine") {
-    return (
-      <Marker className="justify-center" title={message.body.replace(/\s+/g, " ").slice(0, 200)}>
-        <Clock className="size-3.5 shrink-0" aria-hidden="true" />
-        <MarkerContent className="max-w-[80%] truncate text-xs">{routineName(message.body) ?? "A routine"}</MarkerContent>
-      </Marker>
-    );
-  }
+  if (message.author === "routine") return <RunMarker message={message} bot={bot} />;
   if (message.kind === "event") {
     return (
       <Marker className="justify-center">
@@ -211,7 +206,7 @@ function Line({ message, threadId, bots, threads, bot, approvals, isRoom, editin
       <MessageRow align="start">
         <MessageAvatar className="bg-transparent">{avatar}</MessageAvatar>
         <MessageContent>
-          {message.kind === "signin" ? <SignInCard message={message} bot={author ?? bot ?? undefined} /> : message.kind === "secret" ? <SecretCard message={message} bot={author ?? bot ?? undefined} /> : <ApprovalCard message={message} approval={message.approvalId ? approvals.get(message.approvalId) ?? null : null} bot={author ?? bot ?? undefined} onDecide={onDecide} />}
+          {message.kind === "signin" ? <SignInCard message={message} bot={author ?? bot ?? undefined} /> : message.kind === "secret" ? <SecretCard message={message} bot={author ?? bot ?? undefined} /> : <ApprovalCard message={message} approval={message.approvalId ? approvals.get(message.approvalId) ?? null : null} bot={author ?? bot ?? undefined} noticed={Boolean(noticed)} onDecide={onDecide} />}
         </MessageContent>
       </MessageRow>
     );
@@ -323,6 +318,7 @@ function Line({ message, threadId, bots, threads, bot, approvals, isRoom, editin
             </ContextMenuContent>
           ) : null}
         </ContextMenu>
+        {noticed?.lead ? <NoticedLinks message={message} watch={noticed.watch} bot={bot} /> : null}
         <MessageFooter className="text-[10.5px] font-normal text-ash">
           {shortTime(message.createdAt)}
           {message.steered ? " · Sent while working" : null}
@@ -394,9 +390,21 @@ export function Conversation({ threadId }: { threadId: string }) {
   const [earlier, setEarlier] = useState<boolean | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [draft, setDraft] = useState("");
+  const restored = useRef(false);
+  useEffect(() => {
+    const saved = readDraft(threadId);
+    void Promise.resolve().then(() => {
+      if (saved) setDraft((d) => d || saved);
+      restored.current = true;
+    });
+  }, [threadId]);
+  useEffect(() => {
+    if (restored.current) saveDraft(threadId, draft);
+  }, [threadId, draft]);
   const [files, setFiles] = useState<File[]>([]);
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [dropping, setDropping] = useState(false);
   const [panel, setPanel] = useState(true);
   const [details, setDetails] = useState(false);
   const [screen, setScreen] = useState(false);
@@ -561,6 +569,9 @@ export function Conversation({ threadId }: { threadId: string }) {
   const working = activity[threadId] ?? {};
   const isRoom = info?.thread.kind === "room";
   const bot = info?.bot ?? null;
+  const watches = useWatches(bot?.id ?? null);
+  const runs = useMemo(() => noticedRuns(messages), [messages]);
+  const waitingOnYou = approvals.some((a) => a.threadId === threadId && a.status === "pending");
 
   async function send(event?: FormEvent, after = false) {
     event?.preventDefault();
@@ -642,11 +653,9 @@ export function Conversation({ threadId }: { threadId: string }) {
 
   function attach(added: File[]) {
     if (!added.length) return;
-    if (files.length + added.length > MAX_FILES) {
-      setNotice(`At most ${MAX_FILES} files per message.`);
-      return;
-    }
-    setFiles([...files, ...added]);
+    const room = MAX_FILES - files.length;
+    if (added.length > room) setNotice(`At most ${MAX_FILES} files per message.`);
+    if (room > 0) setFiles([...files, ...added.slice(0, room)]);
   }
 
   function insertToken(token: string) {
@@ -702,8 +711,20 @@ export function Conversation({ threadId }: { threadId: string }) {
       attach(pasted);
     }
   }
-  function onDrop(event: DragEvent<HTMLFormElement>) {
+  const carriesFiles = (event: DragEvent) => event.dataTransfer.types.includes("Files");
+  function onDragOver(event: DragEvent<HTMLElement>) {
+    if (!carriesFiles(event)) return;
     event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    setDropping(true);
+  }
+  function onDragLeave(event: DragEvent<HTMLElement>) {
+    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropping(false);
+  }
+  function onDrop(event: DragEvent<HTMLElement>) {
+    if (!carriesFiles(event)) return;
+    event.preventDefault();
+    setDropping(false);
     attach([...event.dataTransfer.files]);
   }
 
@@ -737,25 +758,40 @@ export function Conversation({ threadId }: { threadId: string }) {
   const driving = Boolean(desktop?.drivers.some((driver) => driver.threadId === threadId));
   const screenProps = { expanded: screen, onExpand: () => setScreen(true), onCollapse: () => setScreen(false) };
   // A wide screen already shows the details beside the chat, so there the bot's pill opens its profile.
-  const openPill = () => (bot && window.matchMedia("(width >= 64rem)").matches && document.documentElement.dataset.shell !== "android" ? openShellDialog({ kind: "edit-bot", botId: bot.id }) : setDetails(true));
+  const openPill = () => {
+    if (!window.matchMedia("(width >= 64rem)").matches || document.documentElement.dataset.shell === "android") setDetails(true);
+    else if (bot) openShellDialog({ kind: "edit-bot", botId: bot.id });
+    else openShellDialog({ kind: "edit-room", threadId });
+  };
   const actions = row ? threadActions({ thread: row, bot: bot ?? undefined, bots, onOpen: openShellDialog, onAsk: setAsk, refresh }) : [];
 
   return (
     <div className="flex min-h-0 flex-1">
-      <section className="relative flex min-w-0 flex-1 flex-col" style={{ "--composer-h": `${composerHeight}px` } as CSSProperties}>
+      <section className="relative flex min-w-0 flex-1 flex-col" style={{ "--composer-h": `${composerHeight}px` } as CSSProperties} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
+        {dropping ? (
+          <div className="pointer-events-none absolute inset-0 z-30 flex bg-background/92 p-3 pt-[calc(12px+var(--safe-top))] pb-[max(12px,var(--safe-bottom))]">
+            <div className="flex flex-1 flex-col items-center justify-center gap-3 rounded-3xl border-2 border-dashed border-primary-edge-focus text-center">
+              <span className="flex size-14 items-center justify-center rounded-full border border-primary-edge bg-primary text-primary-foreground">
+                <Paperclip className="size-6" aria-hidden="true" />
+              </span>
+              <p className="text-lg font-semibold">Drop to attach</p>
+              <p className="text-sm text-muted-foreground">Pictures, PDFs and text files, up to {MAX_FILES} at a time</p>
+            </div>
+          </div>
+        ) : null}
 
         <header className="pointer-events-none absolute inset-x-0 top-0 z-20 flex h-[calc(64px+var(--safe-top))] items-center gap-2 px-3 pt-[var(--safe-top)] sm:px-4">
           <Button size="icon-xl" aria-label="Back to chats" render={<Link href="/app" />} nativeButton={false} className="pointer-events-auto wide:hidden">
             <ChevronLeft aria-hidden="true" />
           </Button>
           <h1 className="sr-only">{info?.thread.name ?? "Conversation"}</h1>
-          <Button size="xl" onClick={openPill} aria-label={bot ? `Edit ${bot.name}'s profile` : "Details"} className={cn("pointer-events-auto min-w-0 shrink gap-2 pl-1.5 text-left", !bot && "xwide:pointer-events-none")}>
+          <Button size="xl" onClick={openPill} aria-label={bot ? `Edit ${bot.name}'s profile` : "Edit group"} className="pointer-events-auto min-w-0 shrink gap-2 pl-1.5 text-left">
             {bot ? <BotAvatar bot={bot} size={32} /> : <Users className="ml-2 size-5" aria-hidden="true" />}
             <span className="flex min-w-0 flex-col">
               <span className="truncate text-[15px] leading-5 font-semibold">{info?.thread.name ?? "…"}</span>
               <span className={cn("truncate text-[11px] leading-3.5 font-normal opacity-70", (busy || boxUpdating) && "shimmer")}>
                 {bot ? bot.title || "Teammate" : info ? `${info.thread.members.length} bots` : ""}
-                {boxUpdating ? " · the computer is updating, replies wait" : busy ? " · working" : ""}
+                {boxUpdating ? " · the computer is updating, replies wait" : busy ? " · working" : waitingOnYou ? " · waiting on you" : watches.length ? ` · watching ${watches.length === 1 ? "1 thing" : `${watches.length} things`}` : ""}
               </span>
             </span>
           </Button>
@@ -834,11 +870,13 @@ export function Conversation({ threadId }: { threadId: string }) {
                     </Empty>
                   </MessageScrollerItem>
                 ) : null}
+                <WatchesContext.Provider value={watches}>
                 {messages.map((m) => (
                   <MessageScrollerItem key={m.id} messageId={m.id} className={cn(m.id === jumpTo && "rounded-2xl ring-2 ring-ring/40")}>
-                    <Line message={m} threadId={threadId} bots={bots} threads={threads} bot={bot} approvals={approvalMap} isRoom={Boolean(isRoom)} editing={editing === m.id} stops={Boolean(info?.answering?.includes(m.id))} touch={touch} answer={answers.get(m.id)} onPick={pick} onView={setViewing} onDecide={decide} onOpenExchange={setExchange} onEdit={edit} onSelectText={setSelectText} onReacted={replaceMessage} />
+                    <Line message={m} threadId={threadId} bots={bots} threads={threads} bot={bot} approvals={approvalMap} isRoom={Boolean(isRoom)} editing={editing === m.id} stops={Boolean(info?.answering?.includes(m.id))} touch={touch} answer={answers.get(m.id)} noticed={runs.get(m.id)} onPick={pick} onView={setViewing} onDecide={decide} onOpenExchange={setExchange} onEdit={edit} onSelectText={setSelectText} onReacted={replaceMessage} />
                   </MessageScrollerItem>
                 ))}
+                </WatchesContext.Provider>
 
                 {Object.entries(working).map(([botId, line]) => (
                   <MessageScrollerItem key={`working-${botId}`}>
@@ -852,7 +890,7 @@ export function Conversation({ threadId }: { threadId: string }) {
           </MessageScroller>
         </MessageScrollerProvider>
 
-        <form onSubmit={send} onDrop={onDrop} onDragOver={(e) => e.preventDefault()} ref={composer} className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-3 pt-2.5 pb-[max(12px,var(--safe-bottom))] sm:px-4 sm:pt-3 [&>*]:pointer-events-auto">
+        <form onSubmit={send} ref={composer} className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-3 pt-2.5 pb-[max(12px,var(--safe-bottom))] sm:px-4 sm:pt-3 [&>*]:pointer-events-auto">
           {members.length ? (
             <div className="mb-2 flex w-fit max-w-full flex-wrap gap-1 rounded-2xl bg-background p-1">
               {members.map((b) => (
@@ -896,7 +934,10 @@ export function Conversation({ threadId }: { threadId: string }) {
           <Tooltip>
             <TooltipTrigger render={<Button size="icon-xl" aria-label="Attach files" render={<label />} nativeButton={false} className="cursor-pointer" />}>
               <Plus aria-hidden="true" />
-              <input type="file" multiple className="sr-only" accept="image/*,.pdf,.txt,.md,.csv,.json" onChange={(e) => attach([...(e.target.files ?? [])])} />
+              <input type="file" multiple className="sr-only" accept="image/*,.pdf,.txt,.md,.csv,.json" onChange={(e) => {
+                attach([...(e.target.files ?? [])]);
+                e.target.value = "";
+              }} />
             </TooltipTrigger>
             <TooltipContent>Attach files</TooltipContent>
           </Tooltip>
@@ -933,7 +974,7 @@ export function Conversation({ threadId }: { threadId: string }) {
               ) : null}
               <VoiceButton threadId={threadId} onText={dictated} />
               <Tooltip>
-                <TooltipTrigger render={<InputGroupButton type="submit" variant="default" size="icon-sm" aria-label="Send" disabled={sending || (!draft.trim() && !files.length)} className="rounded-full" />}>
+                <TooltipTrigger render={<InputGroupButton type="submit" variant="tint" size="icon-sm" aria-label="Send" disabled={sending || (!draft.trim() && !files.length)} className="rounded-full" />}>
                   <ArrowUp aria-hidden="true" />
                 </TooltipTrigger>
                 <TooltipContent>{touch ? "Send" : "Send (Enter)"}</TooltipContent>

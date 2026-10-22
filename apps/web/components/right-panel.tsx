@@ -4,6 +4,7 @@ import { APPROVAL_LEVEL_LABELS, type Bot, type Routine, type Thread } from "@gon
 import { Clock } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BotAvatar } from "@/components/bot-avatar";
+import { BotFiles } from "@/components/bot-files";
 import { useLiveEvents } from "@/components/hq/live-events";
 import { RoutineDetails, setRoutineEnabled } from "@/components/routine-dialog";
 import { SCREEN_PREVIEW_MS, ScreenPanel, SleepingScreen, useScreenAwake, wakeScreen } from "@/components/screen-panel";
@@ -87,6 +88,9 @@ export function RightPanelContent({ thread, bot, screen }: { thread: Thread; bot
               </li>
             ))}
           </ul>
+          <Button variant="outline" size="sm" onClick={() => openShellDialog({ kind: "edit-room", threadId: thread.id })} className="mt-3 w-full">
+            Edit group
+          </Button>
         </section>
       </>
     );
@@ -121,6 +125,8 @@ export function RightPanelContent({ thread, bot, screen }: { thread: Thread; bot
           </ul>
         )}
       </section>
+
+      <BotFiles bot={bot} />
 
       <section>
         <h2 className="text-[12px] font-medium uppercase tracking-wide text-muted-foreground">Profile</h2>

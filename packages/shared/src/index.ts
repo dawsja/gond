@@ -94,6 +94,8 @@ export type Thread = {
   name: string;
 
   members: string[];
+  /** A room pinned to the top of the list; a bot's conversation follows its bot's own `pinned`. */
+  pinned: boolean;
 
   lastMessage: { author: string; body: string; at: string } | null;
   unread: number;
@@ -163,7 +165,7 @@ const FILE_TYPES: Record<string, string> = {
   mp3: "audio/mpeg", mp4: "video/mp4", wav: "audio/wav",
 };
 
-export const ATTACHMENT_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp", "application/pdf", "text/plain", "text/markdown", "text/csv", "application/json"] as const;
+export const ATTACHMENT_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp", "application/pdf", "text/plain", "text/markdown", "text/csv", "application/json", "image/svg+xml"] as const;
 
 export const APPROVAL_STATUSES = ["pending", "allowed", "denied", "expired"] as const;
 export type ApprovalStatus = (typeof APPROVAL_STATUSES)[number];
@@ -199,6 +201,8 @@ export type Routine = {
 
   prompt: string;
   enabled: boolean;
+  /** A watch checks for a change and speaks up only when there is one worth telling; its runs show as "<bot> noticed". */
+  watch: boolean;
   skillId: string | null;
   lastRunAt: string | null;
   nextRunAt: string | null;
@@ -212,12 +216,14 @@ const routineFields = z.object({
   timezone: z.string().trim().min(1).max(64),
   prompt: z.string().trim().min(1).max(4000),
   enabled: z.boolean(),
+  watch: z.boolean(),
 
   skillId: z.string().trim().max(40).nullable(),
 });
 export const routineInputSchema = routineFields.extend({
   timezone: routineFields.shape.timezone.default("UTC"),
   enabled: routineFields.shape.enabled.default(true),
+  watch: routineFields.shape.watch.default(false),
   skillId: routineFields.shape.skillId.default(null),
 });
 
@@ -276,7 +282,19 @@ export type Me = {
   provider: SignInProvider;
 
   avatar: string | null;
+  accent: Accent;
 };
+
+/** The color a person picks for their chats (Settings → Appearance): their bubbles, cards and main buttons. */
+export const ACCENTS = ["blue", "purple", "pink", "red", "orange", "amber", "green"] as const;
+export type Accent = (typeof ACCENTS)[number];
+export const DEFAULT_ACCENT: Accent = "blue";
+
+export const ACCENT_LABELS: Record<Accent, string> = { blue: "Blue", purple: "Purple", pink: "Pink", red: "Red", orange: "Orange", amber: "Amber", green: "Green" };
+
+export function isAccent(value: unknown): value is Accent {
+  return typeof value === "string" && (ACCENTS as readonly string[]).includes(value);
+}
 
 export type UserSummary = Me & { createdAt: string; bots: number };
 
@@ -969,6 +987,9 @@ export type BotTemplate = {
   routine?: { name: string; cron: string; prompt: string };
 };
 
+/** One entry of a folder in a bot's home, as the Files section lists it. */
+export type BotFileEntry = { name: string; dir: boolean; size: number; modified: string | null };
+
 export const BOT_TEMPLATES: BotTemplate[] = [
   {
     id: "assistant",
@@ -1121,9 +1142,13 @@ export function isClosing(body: string): boolean {
 /** A bot answers a routine run with this when there is nothing worth telling the person; the run then leaves no trace in the chat. */
 export const QUIET_REPLY = "NOTHING_NEW";
 
-/** The routine's name from the message a run posts (`[Routine: Inbox] …`). */
+/** The routine's name from the message a run posts (`[Routine: Inbox] …`, or `[Watch: Flight UA 418] …` for a watch). */
 export function routineName(body: string): string | null {
-  return /^\[Routine: ([^\]\n]+)\]/.exec(body)?.[1]?.trim() || null;
+  return /^\[(?:Routine|Watch): ([^\]\n]+)\]/.exec(body)?.[1]?.trim() || null;
+}
+
+export function isWatchRun(body: string): boolean {
+  return body.startsWith("[Watch: ");
 }
 
 export function isQuietReply(text: string): boolean {

@@ -7,6 +7,7 @@ import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AboutCard } from "@/components/about-card";
 import { AccountSection } from "@/components/account-section";
+import { AppearanceCard } from "@/components/appearance-card";
 import { AppsCard } from "@/components/apps-card";
 import { ComposioCard } from "@/components/composio-card";
 import { ComputerCard } from "@/components/computer-card";
@@ -83,7 +84,7 @@ export function SettingsPage({ user, section, index = false }: { user: SessionUs
         <PersonAvatar name={me.name} avatar={me.avatar} size={44} />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[15px] font-semibold">{me.name}</span>
-          <span className="block truncate text-[12.5px] text-muted-foreground">{me.provider === "local" ? "Picture, password, theme, notifications" : "Picture, theme, notifications"}</span>
+          <span className="block truncate text-[12.5px] text-muted-foreground">{me.provider === "local" ? "Picture, password, notifications" : "Picture, notifications"}</span>
         </span>
         <ChevronRight className="size-4 text-muted-foreground" aria-hidden="true" />
       </Link>
@@ -143,10 +144,11 @@ export function SettingsPage({ user, section, index = false }: { user: SessionUs
         <>
           <AccountSection user={user} />
           <NotificationsCard />
-          <ServerCard />
-          <AboutCard />
         </>
       );
+      break;
+    case "appearance":
+      body = <AppearanceCard />;
       break;
     case "team":
       body = <ComputerCard status={status} admin={admin} onCheck={() => load(true)} />;
@@ -179,6 +181,14 @@ export function SettingsPage({ user, section, index = false }: { user: SessionUs
       break;
     case "secrets":
       body = <SecretsCard />;
+      break;
+    case "about":
+      body = (
+        <>
+          <ServerCard />
+          <AboutCard />
+        </>
+      );
       break;
     case "auth":
       body = (

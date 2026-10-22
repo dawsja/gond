@@ -1,8 +1,9 @@
 import type { UserRole } from "@gond/shared";
-import { Blocks, BrainCircuit, KeyRound, LogIn, Mic, Monitor, Sparkles, UserRound, Users } from "lucide-react";
+import { Blocks, BrainCircuit, Info, KeyRound, LogIn, Mic, Monitor, Palette, Sparkles, UserRound, Users } from "lucide-react";
 
 export const SETTINGS_SECTIONS = [
-  { id: "account", label: "Account", blurb: "Your picture, password, theme and notifications.", icon: UserRound, admin: false },
+  { id: "account", label: "Account", blurb: "Your picture, password and notifications.", icon: UserRound, admin: false },
+  { id: "appearance", label: "Appearance", blurb: "Light or dark, and the color of your chats.", icon: Palette, admin: false },
   { id: "team", label: "Team", blurb: "The people on it and the computer they all share.", icon: Users, admin: true },
   { id: "ai", label: "AI", blurb: "What your bots run on: a coding CLI on your plan, or your API key called directly.", icon: BrainCircuit, admin: false },
   { id: "voice", label: "Voice", blurb: "Talk to your bots instead of typing: the model that turns speech into text.", icon: Mic, admin: false },
@@ -11,6 +12,7 @@ export const SETTINGS_SECTIONS = [
   { id: "apps", label: "Apps", blurb: "Your Composio key, your connected apps and your MCP servers.", icon: Blocks, admin: false },
   { id: "secrets", label: "Secrets", blurb: "The sign-ins and keys you gave your bots. Only their names are shown.", icon: KeyRound, admin: false },
   { id: "auth", label: "Authentication", blurb: "Who can sign in: the OIDC provider, and the people who have.", icon: LogIn, admin: true },
+  { id: "about", label: "About", blurb: "This app's version and updates, its server, and where Gond comes from.", icon: Info, admin: false },
 ] as const;
 
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number]["id"];

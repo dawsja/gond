@@ -10,7 +10,7 @@ import { changeServer, desktopShell, useNativeShell, type DesktopUpdate, type Go
 
 const never = () => () => {};
 
-function MenuBarField() {
+export function MenuBarField() {
   const [shown, setShown] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -133,7 +133,6 @@ export function ServerCard() {
       <CardContent className="flex flex-col gap-4 text-[13.5px] text-muted-foreground">
         <p>Changing the server takes you back to Connect; your sign-in here stays until you sign out.</p>
         {shell === "desktop" ? <UpdateField /> : null}
-        {shell === "desktop" ? <MenuBarField /> : null}
       </CardContent>
     </Card>
   );

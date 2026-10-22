@@ -11,13 +11,15 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSet, FieldTitle } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
-import { post } from "@/lib/api";
+import { patch, post } from "@/lib/api";
 
-export function RoomDialog({ onClose }: { onClose: () => void }) {
-  const { bots, refresh } = useStore();
+/** A new group, or an existing one (`threadId`) renamed and its bots changed. */
+export function RoomDialog({ threadId = null, onClose }: { threadId?: string | null; onClose: () => void }) {
+  const { bots, threads, refresh } = useStore();
   const router = useRouter();
-  const [name, setName] = useState("");
-  const [members, setMembers] = useState<string[]>(bots.filter((b) => b.primary).map((b) => b.id));
+  const existing = threadId ? (threads.find((t) => t.id === threadId && t.kind === "room") ?? null) : null;
+  const [name, setName] = useState(existing?.name ?? "");
+  const [members, setMembers] = useState<string[]>(existing ? existing.members : bots.filter((b) => b.primary).map((b) => b.id));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -26,12 +28,17 @@ export function RoomDialog({ onClose }: { onClose: () => void }) {
     if (busy) return;
     setBusy(true);
     try {
-      const { thread } = await post<{ thread: Thread }>("/api/rooms", { name: name.trim(), members });
-      await refresh();
-      router.push(`/app/t/${thread.id}`);
+      if (existing) {
+        await patch<{ thread: Thread }>(`/api/rooms/${existing.id}`, { name: name.trim(), members });
+        await refresh();
+      } else {
+        const { thread } = await post<{ thread: Thread }>("/api/rooms", { name: name.trim(), members });
+        await refresh();
+        router.push(`/app/t/${thread.id}`);
+      }
       onClose();
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : "Could not create the room.");
+      setError(failure instanceof Error ? failure.message : existing ? "Could not save the group." : "Could not create the room.");
       setBusy(false);
     }
   }
@@ -40,8 +47,8 @@ export function RoomDialog({ onClose }: { onClose: () => void }) {
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>New group</DialogTitle>
-          <DialogDescription>Put bots in a room so they can coordinate: pass work, assign ownership, and pull you in for judgment calls.</DialogDescription>
+          <DialogTitle>{existing ? "Edit group" : "New group"}</DialogTitle>
+          <DialogDescription>{existing ? "Rename it, or change which bots are in it. The conversation stays as it is." : "Put bots in a room so they can coordinate: pass work, assign ownership, and pull you in for judgment calls."}</DialogDescription>
         </DialogHeader>
         <form onSubmit={submit}>
           <FieldGroup className="gap-4">
@@ -71,9 +78,9 @@ export function RoomDialog({ onClose }: { onClose: () => void }) {
               <Button type="button" variant="outline" onClick={onClose}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={busy || members.length === 0}>
+              <Button type="submit" disabled={busy || members.length === 0 || !name.trim()}>
                 {busy ? <Spinner data-icon="inline-start" /> : null}
-                {busy ? "Creating…" : "Create room"}
+                {existing ? (busy ? "Saving…" : "Save") : busy ? "Creating…" : "Create room"}
               </Button>
             </DialogFooter>
           </FieldGroup>

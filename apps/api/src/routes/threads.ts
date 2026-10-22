@@ -1,15 +1,27 @@
-import { ATTACHMENT_TYPES, MAX_ATTACHMENTS, MAX_ATTACHMENT_BYTES, isReaction, type ChatAttachment } from "@gond/shared";
+import { ATTACHMENT_TYPES, MAX_ATTACHMENTS, MAX_ATTACHMENT_BYTES, isReaction, plainMarkdown, type ChatAttachment, type Thread } from "@gond/shared";
 import { Hono } from "hono";
 import { ownThread, userId } from "../access.ts";
 import type { Env } from "../app.ts";
 import { getBot, listBots } from "../data/bots.ts";
-import { attachmentOwner, createRoom, deleteRoom, getAttachment, getMessage, listExchange, listMessages, listThreads, markThreadRead, postMessage, searchMessages, setReaction, storeAttachment, updateRoom } from "../data/threads.ts";
+import { attachmentOwner, createRoom, deleteRoom, getAttachment, getMessage, getThread, listExchange, listMessages, listThreads, markThreadRead, postMessage, searchMessages, setReaction, storeAttachment, updateRoom } from "../data/threads.ts";
 import { activeTurns, postFromPerson, stopThread } from "../responder.ts";
 import { workFor } from "../work.ts";
 
 const MAX_BODY = 20_000;
 
 const INLINE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp", "application/pdf", "text/plain", "text/csv", "application/json"]);
+
+/** The line a room shows when it is renamed or its bots change, e.g. "Ada joined. Bo left." */
+export function roomChange(before: Pick<Thread, "name" | "members">, after: Pick<Thread, "name" | "members">, nameOf: (botId: string) => string): string | null {
+  const lines: string[] = [];
+  if (after.name !== before.name) lines.push(`Renamed to ${after.name}.`);
+  const list = (names: string[]) => (names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`);
+  const joined = after.members.filter((id) => !before.members.includes(id)).map(nameOf);
+  const left = before.members.filter((id) => !after.members.includes(id)).map(nameOf);
+  if (joined.length) lines.push(`${list(joined)} joined.`);
+  if (left.length) lines.push(`${list(left)} left.`);
+  return lines.length ? lines.join(" ") : null;
+}
 
 export function threadsRoutes() {
   const app = new Hono<Env>();
@@ -50,6 +62,24 @@ export function threadsRoutes() {
     const emoji = body?.emoji ?? null;
     if (emoji !== null && !isReaction(emoji)) return c.json({ error: "Not a reaction" }, 400);
     return c.json({ reactions: setReaction(message, "you", emoji) });
+  });
+
+  // "Less like this" under something a bot noticed on its own: the bot hears it as a hidden prompt and tightens the watch.
+  app.post("/threads/:id/messages/:messageId/less", async (c) => {
+    const thread = ownThread(c, c.req.param("id"));
+    const message = thread ? getMessage(c.req.param("messageId")) : null;
+    if (!thread || !message || message.threadId !== thread.id) return c.json({ error: "No such message" }, 404);
+    if (message.kind !== "message" || !getBot(message.author)) return c.json({ error: "Only something a bot said takes this" }, 400);
+    const body = (await c.req.json().catch(() => null)) as { watch?: unknown } | null;
+    const watch = typeof body?.watch === "string" ? body.watch.replace(/["\r\n]/g, " ").trim().slice(0, 80) : "";
+    const said = plainMarkdown(message.body).slice(0, 300);
+    postMessage({
+      threadId: thread.id,
+      author: "system",
+      kind: "prompt",
+      body: `The person tapped "Less like this" on what you noticed${watch ? ` from your watch "${watch}"` : ""}: "${said}". It wasn't worth telling them. Tighten that watch with update_routine so this kind of thing doesn't come up again, then answer in one short line saying what you'll leave out from now on. This line is from Gond, not the person.`,
+    });
+    return c.body(null, 204);
   });
 
   app.get("/threads/:id/exchange", (c) => {
@@ -116,11 +146,21 @@ export function threadsRoutes() {
   });
 
   app.patch("/rooms/:id", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { name?: string; members?: string[] };
-    if (!ownThread(c, c.req.param("id"))) return c.json({ error: "No such room" }, 404);
-    const known = new Set(listBots({ includeHidden: true, userId: userId(c) }).map((b) => b.id));
-    const thread = updateRoom(c.req.param("id"), { name: body.name ? String(body.name).trim().slice(0, 80) : undefined, members: Array.isArray(body.members) ? body.members.map(String).filter((id) => known.has(id)) : undefined });
-    return thread ? c.json({ thread }) : c.json({ error: "No such room" }, 404);
+    const body = (await c.req.json().catch(() => ({}))) as { name?: unknown; members?: unknown; pinned?: unknown };
+    const before = ownThread(c, c.req.param("id"));
+    if (!before || before.kind !== "room") return c.json({ error: "No such room" }, 404);
+    const bots = listBots({ includeHidden: true, userId: userId(c) });
+    const known = new Set(bots.map((b) => b.id));
+    const name = body.name === undefined ? undefined : String(body.name).trim().slice(0, 80);
+    if (name === "") return c.json({ error: "Give the room a name" }, 400);
+    const members = Array.isArray(body.members) ? [...new Set(body.members.map(String).filter((id) => known.has(id)))] : undefined;
+    if (members && members.length === 0) return c.json({ error: "Keep at least one bot in the room" }, 400);
+    if (body.pinned !== undefined && typeof body.pinned !== "boolean") return c.json({ error: "pinned is true or false" }, 400);
+    const thread = updateRoom(before.id, { name, members, pinned: body.pinned as boolean | undefined });
+    if (!thread) return c.json({ error: "No such room" }, 404);
+    const change = roomChange(before, thread, (id) => bots.find((b) => b.id === id)?.name ?? "A bot");
+    if (change) postMessage({ threadId: thread.id, author: "system", kind: "event", body: change, answered: true });
+    return c.json({ thread: getThread(thread.id) ?? thread });
   });
 
   app.delete("/rooms/:id", async (c) => {

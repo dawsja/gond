@@ -8,7 +8,7 @@ import { sendPush } from "./push.ts";
 import { createDelegation, finishDelegation, getDelegation, handoffWorkedOn, listDelegationsForBot, openChildren, type Delegation } from "./data/delegations.ts";
 import { cancelFollowUp, createFollowUp, listFollowUps } from "./data/follow-ups.ts";
 import { createMcpServer, getMcpServer, listMcpServers } from "./data/mcp.ts";
-import { allSecretValues, hideSecrets, listSecrets, readLogin } from "./data/secrets.ts";
+import { allSecretValues, containsSecret, hideSecrets, listSecrets, readLogin } from "./data/secrets.ts";
 import { userTimezone } from "./data/prefs.ts";
 import { listConnections } from "./data/settings.ts";
 import { createSkill, getSkill, getSkillBySlug, listSkills, skillFiles, updateSkill } from "./data/skills.ts";
@@ -99,7 +99,8 @@ export const TOOL_NOTES = [
   "create_bot adds a new teammate when the person asks for one: a name, a job title, its instructions in the description field (what it owns, sources, boundaries, what it returns; the app shows them as Instructions and they become its SOUL), and optionally a mascot colour, expression, shape and connected apps. Then brief it with delegate_bot if there is work for it.",
   "update_bot changes a teammate's profile when the person asks you to: its name, title, instructions (the description field, its SOUL), mascot colour, expression or shape. 'Make @Web Designer a Coder' means title: Coder and matching instructions.",
   "Those are every bot's, not only the primary bot's: who adds teammates and hands out work is a matter of the job, not of what you are allowed to call. Unless you are the primary bot, use them when the person asks you to, not on your own.",
-  `Routines are yours to make and change: the person can only see them and switch them on or off, so when they want one made, changed, removed or run, you do it. create_routine schedules a prompt for yourself on a cron in the person's time zone, optionally with one of their skills, paused until they turn it on unless they asked for it in this conversation. list_routines shows yours; update_routine changes or pauses one, delete_routine removes it, run_routine runs it once now. When a routine fires (a message that starts [Routine: …]) and there is nothing new worth telling the person since its last run, answer with exactly ${QUIET_REPLY} and nothing else: the run then leaves no trace in the chat and nobody is notified. Anything they would want to know, say as usual.`,
+  `Routines are yours to make and change: the person can only see them and switch them on or off, so when they want one made, changed, removed or run, you do it. create_routine schedules a prompt for yourself on a cron in the person's time zone, optionally with one of their skills, paused until they turn it on unless they asked for it in this conversation. list_routines shows yours; update_routine changes or pauses one, delete_routine removes it, run_routine runs it once now. When a routine fires (a message that starts [Routine: …] or [Watch: …]) and there is nothing new worth telling the person since its last run, answer with exactly ${QUIET_REPLY} and nothing else: the run then leaves no trace in the chat and nobody is notified. Anything they would want to know, say as usual.`,
+  `Speak up before you're asked. A watch is a routine with watch: true that checks something for a change (a calendar clash, a flight, a price, a reply they're waiting on, a status page, a charge on an account) and speaks only when the change matters to the person; its run shows them "<your name> noticed". When the person asks about the same thing a second time, or about anything that will change later, offer once to keep an eye on it, in one line ending with ::choices (like "Want me to watch your calendar for clashes like this?" ::choices[Yes, always | Work only | No thanks]); on a yes, create_routine with watch: true and enabled: true, a cron no more often than the thing changes, and a prompt that says exactly what counts as worth telling. Don't offer again for something they turned down. When a watch speaks, lead with what changed and what it means for them, in a line or two, then the one thing you can do about it (draft the reply and ask_approval to send it, say). A morning briefing is a plain routine, not a watch. "Less like this" on something you noticed means it wasn't worth it: tighten that watch's prompt with update_routine so it won't come up again.`,
   "ask_approval posts a decision card and waits for the person. Whenever you need a yes or no before you act, use it rather than asking in a sentence and ending your turn: the question as summary, where and what as why, the rows that matter as details (items and prices, with total; recipients; files), and buttons named for the act (allow \"Place order\", deny \"Not yet\"). Both buttons are about one act: allow does it, deny doesn't, and deny tells you to stop. It is never a way to pick between options (A or B, this host or every host): for that, end your reply with ::choices[A | B], wait for the pick, and only then ask_approval for the act it settled on, if it still needs a yes. On Auto, call it before anything you can't undo or that leaves the computer: sending a message or email as the person, deleting or overwriting files outside your home, a payment or purchase, a forced push, changing settings for other people, typing a password you weren't given, anything they would want to know first. On Always ask the broker already asks; on Always allow it answers at once.",
   "Connected-app tools (names starting with the app, like GMAIL_SEND_EMAIL) act on the person's real accounts. Reads go through; writes may wait for the person's approval. Say what you sent, created or changed.",
   "team_memory_update replaces the team memory (its path is in the Team memory section), shared by every bot of the person. Keep it to what the whole team needs.",
@@ -128,6 +129,7 @@ type Context = {
 };
 
 const MAX_DECISION_ROWS = 12;
+const MAX_DECISION_ITEMS = 60;
 const DECISION_KINDS = ["purchase", "send", "delete", "publish", "other"] as const;
 
 /** What a decision card shows beyond its question, trimmed and with every stored secret blanked, since the web shows it as written. */
@@ -153,7 +155,17 @@ export function decisionCard(input: Record<string, unknown>) {
     const label = text((value as { label?: unknown }).label, 80);
     return label ? { label, value: text((value as { value?: unknown }).value, DECISION_VALUE_CHARS) ?? "" } : null;
   };
-  const details = Array.isArray(input.details) ? input.details.slice(0, MAX_DECISION_ROWS).map(row).filter((r) => r !== null) : [];
+  const item = (value: unknown) => {
+    const line = row(value);
+    const note = line && text((value as { note?: unknown }).note, 24);
+    return line && note ? { ...line, note } : line;
+  };
+  const detail = (value: unknown) => {
+    const line = row(value);
+    const items = line && Array.isArray((value as { items?: unknown }).items) ? ((value as { items: unknown[] }).items.slice(0, MAX_DECISION_ITEMS).map(item).filter((i) => i !== null)) : [];
+    return line && items.length ? { ...line, items } : line;
+  };
+  const details = Array.isArray(input.details) ? input.details.slice(0, MAX_DECISION_ROWS).map(detail).filter((r) => r !== null) : [];
   const total = row(input.total);
   const kind = DECISION_KINDS.find((k) => k === input.kind);
   return {
@@ -225,13 +237,6 @@ function inlineSkillFiles(given: unknown): BundleFile[] | { error: string } {
     files.push({ path, data, executable: looksExecutable(data) });
   }
   return files;
-}
-
-function containsSecret(data: Uint8Array): boolean {
-  const secrets = allSecretValues().filter((s) => s.length >= 8);
-  if (!secrets.length) return false;
-  const bytes = Buffer.from(data);
-  return secrets.some((secret) => bytes.includes(secret));
 }
 
 export function mcpServerName(value: string): string {
@@ -360,7 +365,24 @@ export function baseTools(context: Context): Record<string, DriverTool> {
         {
           summary: { type: "string", description: 'The question, short, as the card\'s title: "Place this order?", "Send this email to Dana?"' },
           why: { type: "string", description: 'One line under it: where and what. "Uber Eats, pickup at Angelo\'s Ale House"' },
-          details: { type: "array", maxItems: MAX_DECISION_ROWS, items: schema({ label: { type: "string" }, value: { type: "string" } }, ["label"]), description: "What they should see before deciding, one row each: items and prices, recipients, files." },
+          details: {
+            type: "array",
+            maxItems: MAX_DECISION_ROWS,
+            items: schema(
+              {
+                label: { type: "string" },
+                value: { type: "string" },
+                items: {
+                  type: "array",
+                  maxItems: MAX_DECISION_ITEMS,
+                  items: schema({ label: { type: "string" }, value: { type: "string" }, note: { type: "string", description: 'A word on what changed: "Swapped", "Out of stock".' } }, ["label"]),
+                  description: "The lines behind this row, which the person opens with a tap: each grocery and its price, each file. Then the row is their sum (label \"Groceries\", value \"$86.40\"); the card counts the items itself.",
+                },
+              },
+              ["label"],
+            ),
+            description: "What they should see before deciding, one row each: subtotal, fees, tip, recipients, files. A long list goes in one row's items, not a row each.",
+          },
           total: schema({ label: { type: "string" }, value: { type: "string" } }, ["label", "value"]),
           allow: { type: "string", description: 'The yes button, named for the act: "Place order", "Send it". Default "Allow".' },
           deny: { type: "string", description: 'The no button, which means don\'t do it: "Not yet", "Don\'t send". Never another option. Default "Deny".' },
@@ -694,7 +716,7 @@ export function baseTools(context: Context): Record<string, DriverTool> {
       inputSchema: schema({}),
       execute: async () =>
         listRoutines(bot.id)
-          .map((r) => `- ${r.id} · ${r.name} · ${r.cron} (${r.timezone})${r.skillId ? ` · /${getSkill(r.skillId, bot.userId)?.slug ?? "a removed skill"}` : ""} · ${r.enabled ? `next ${r.nextRunAt ?? "?"}` : "paused"}`)
+          .map((r) => `- ${r.id} · ${r.name}${r.watch ? " (watch)" : ""} · ${r.cron} (${r.timezone})${r.skillId ? ` · /${getSkill(r.skillId, bot.userId)?.slug ?? "a removed skill"}` : ""} · ${r.enabled ? `next ${r.nextRunAt ?? "?"}` : "paused"}`)
           .join("\n") || "No routines yet.",
     },
     create_routine: {
@@ -705,6 +727,7 @@ export function baseTools(context: Context): Record<string, DriverTool> {
           cron: { type: "string", description: "minute hour day-of-month month day-of-week" },
           prompt: { type: "string", description: "What to do each time." },
           enabled: { type: "boolean", description: "True only when the person asked for it now." },
+          watch: { type: "boolean", description: `True for a watch: it checks for a change and answers ${QUIET_REPLY} unless there is one worth telling.` },
           skill: { type: "string", description: "Optional: the slug of one of the person's skills to use each time; the prompt then carries its inputs." },
         },
         ["name", "cron", "prompt"],
@@ -720,12 +743,12 @@ export function baseTools(context: Context): Record<string, DriverTool> {
         }
         const skill = routineSkill(input.skill);
         if (skill === undefined) return `NOT created: the person has no skill "${String(input.skill)}".`;
-        const routine = createRoutine(bot.id, { name: String(input.name ?? "Routine").slice(0, 80), cron, timezone, prompt: String(input.prompt ?? "").slice(0, 4000), enabled: input.enabled === true, skillId: skill });
-        return `Created "${routine.name}" (${routine.enabled ? "on" : "paused; the person can turn it on under Routines"}). Next runs: ${preview.join(", ")}.`;
+        const routine = createRoutine(bot.id, { name: String(input.name ?? "Routine").slice(0, 80), cron, timezone, prompt: String(input.prompt ?? "").slice(0, 4000), enabled: input.enabled === true, watch: input.watch === true, skillId: skill });
+        return `Created ${routine.watch ? "the watch " : ""}"${routine.name}" (${routine.enabled ? "on" : "paused; the person can turn it on under Routines"}). Next runs: ${preview.join(", ")}.`;
       },
     },
     update_routine: {
-      description: "Change one of your routines: its name, cron, prompt, skill, or whether it is on.",
+      description: "Change one of your routines: its name, cron, prompt, skill, whether it is a watch, or whether it is on.",
       inputSchema: schema(
         {
           routine: { type: "string", description: "Its id or name (list_routines)." },
@@ -733,6 +756,7 @@ export function baseTools(context: Context): Record<string, DriverTool> {
           cron: { type: "string", description: "minute hour day-of-month month day-of-week" },
           prompt: { type: "string" },
           enabled: { type: "boolean", description: "Turn it on only when the person asked for that; pause it freely." },
+          watch: { type: "boolean" },
           skill: { type: "string", description: "The slug of one of the person's skills to use, or an empty string for none." },
         },
         ["routine"],
@@ -740,7 +764,7 @@ export function baseTools(context: Context): Record<string, DriverTool> {
       execute: async (input) => {
         const routine = ownRoutine(String(input.routine ?? ""));
         if (!routine) return `NOT changed: you have no routine "${String(input.routine ?? "")}". Use list_routines.`;
-        const patch: { name?: string; cron?: string; prompt?: string; enabled?: boolean; skillId?: string | null } = {};
+        const patch: { name?: string; cron?: string; prompt?: string; enabled?: boolean; watch?: boolean; skillId?: string | null } = {};
         if (typeof input.skill === "string") {
           const skill = routineSkill(input.skill);
           if (skill === undefined) return `NOT changed: the person has no skill "${input.skill}".`;
@@ -749,6 +773,7 @@ export function baseTools(context: Context): Record<string, DriverTool> {
         if (typeof input.name === "string" && input.name.trim()) patch.name = input.name.trim().slice(0, 80);
         if (typeof input.prompt === "string" && input.prompt.trim()) patch.prompt = input.prompt.trim().slice(0, 4000);
         if (typeof input.enabled === "boolean") patch.enabled = input.enabled;
+        if (typeof input.watch === "boolean") patch.watch = input.watch;
         if (typeof input.cron === "string" && input.cron.trim()) {
           try {
             previewRuns(input.cron.trim(), routine.timezone, 1);

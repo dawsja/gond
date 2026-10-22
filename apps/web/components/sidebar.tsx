@@ -1,6 +1,6 @@
 "use client";
 
-import { handleOf, plainMarkdown, routineName, type Bot, type Message } from "@gond/shared";
+import { handleOf, isWatchRun, plainMarkdown, routineName, type Bot, type Message } from "@gond/shared";
 import { MessageSquareText, Pin, Plus, Search, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -20,6 +20,7 @@ import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTi
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarMenuSkeleton, useSidebar } from "@/components/ui/sidebar";
 import { api } from "@/lib/api";
+import { useDrafts } from "@/lib/drafts";
 import { cn } from "@/lib/utils";
 
 export function shortTime(iso: string, now = new Date()): string {
@@ -40,7 +41,7 @@ function preview(thread: ThreadRow, bots: Bot[], activity: Record<string, string
   }
   const last = thread.lastMessage;
   if (!last) return thread.kind === "room" ? "A room for several bots." : "Say hello, or hand over a task.";
-  if (last.author === "routine") return `Routine: ${routineName(last.body) ?? "ran"}`;
+  if (last.author === "routine") return isWatchRun(last.body) ? `Noticed: ${routineName(last.body) ?? "something"}` : `Routine: ${routineName(last.body) ?? "ran"}`;
   const who = last.author === "you" ? "You: " : thread.kind === "room" ? `${bots.find((b) => b.id === last.author)?.name ?? ""}: ` : "";
   return `${who}${plainMarkdown(last.body)}`;
 }
@@ -67,23 +68,41 @@ function ThreadMenu({ thread, bot, onOpen, onAsk, trigger, children }: { thread:
   );
 }
 
-function PinnedTile({ thread, bot, active, onOpen, onAsk }: { thread: ThreadRow; bot: Bot; active: boolean; onOpen: (dialog: ShellDialog) => void; onAsk: (ask: Ask) => void }) {
+function RoomFace({ size, className }: { size: number; className?: string }) {
+  return (
+    <span className={cn("inline-flex shrink-0 items-center justify-center rounded-full border border-primary-edge bg-primary text-muted-foreground", className)} style={{ width: size, height: size }}>
+      <Users style={{ width: size * 0.4, height: size * 0.4 }} aria-hidden="true" />
+    </span>
+  );
+}
+
+function PinnedTile({ thread, bot, active, onOpen, onAsk }: { thread: ThreadRow; bot: Bot | undefined; active: boolean; onOpen: (dialog: ShellDialog) => void; onAsk: (ask: Ask) => void }) {
   const { setOpenMobile } = useSidebar();
   return (
     <ThreadMenu thread={thread} bot={bot} onOpen={onOpen} onAsk={onAsk} trigger={<li className="list-none" />}>
       <Link href={`/app/t/${thread.id}`} aria-current={active ? "page" : undefined} onClick={() => setOpenMobile(false)} className="relative flex w-28 flex-col items-center gap-3 rounded-2xl py-3 outline-none focus-visible:ring-3 focus-visible:ring-ring/50 wide:w-22 wide:gap-1.5 wide:py-2">
-        <BotAvatar bot={bot} size={96} className="wide:hidden" />
-        <BotAvatar bot={bot} size={64} className="hidden wide:inline-flex" />
-        <span className={cn("max-w-full truncate text-[16px] wide:text-[13px]", active ? "font-medium text-foreground" : "text-muted-foreground")}>{bot.name}</span>
-        {thread.unread > 0 && !active ? <span className="absolute top-2 right-3 size-2.5 rounded-full ring-2 ring-background" style={{ background: bot.color }} aria-label={`${thread.unread} unread`} /> : null}
+        {bot ? (
+          <>
+            <BotAvatar bot={bot} size={96} className="wide:hidden" />
+            <BotAvatar bot={bot} size={64} className="hidden wide:inline-flex" />
+          </>
+        ) : (
+          <>
+            <RoomFace size={96} className="wide:hidden" />
+            <RoomFace size={64} className="hidden wide:inline-flex" />
+          </>
+        )}
+        <span className={cn("max-w-full truncate text-[16px] wide:text-[13px]", active ? "font-medium text-foreground" : "text-muted-foreground")}>{bot?.name ?? thread.name}</span>
+        {thread.unread > 0 && !active ? <span className="absolute top-2 right-3 size-2.5 rounded-full ring-2 ring-background" style={{ background: bot?.color ?? "var(--foreground)" }} aria-label={`${thread.unread} unread`} /> : null}
       </Link>
     </ThreadMenu>
   );
 }
 
-function Row({ thread, bot, active, bots, activity, onOpen, onAsk }: { thread: ThreadRow; bot: Bot | undefined; active: boolean; bots: Bot[]; activity: Record<string, string>; onOpen: (dialog: ShellDialog) => void; onAsk: (ask: Ask) => void }) {
+function Row({ thread, bot, active, bots, activity, draft, onOpen, onAsk }: { thread: ThreadRow; bot: Bot | undefined; active: boolean; bots: Bot[]; activity: Record<string, string>; draft: string | undefined; onOpen: (dialog: ShellDialog) => void; onAsk: (ask: Ask) => void }) {
   const { setOpenMobile } = useSidebar();
   const working = Object.keys(activity).length > 0;
+  const drafted = !active && !working && draft ? draft.replace(/\s+/g, " ").trim() : "";
   return (
     <ThreadMenu thread={thread} bot={bot} onOpen={onOpen} onAsk={onAsk} trigger={<SidebarMenuItem />}>
         <SidebarMenuButton size="lg" isActive={active} render={<Link href={`/app/t/${thread.id}`} aria-current={active ? "page" : undefined} onClick={() => setOpenMobile(false)} />} className="h-[76px] gap-4 rounded-2xl px-3 data-active:bg-card data-active:[--surface:var(--card)] data-active:shadow-subtle hover:bg-card/60 wide:h-14 wide:gap-3 wide:rounded-xl wide:px-2.5">
@@ -109,12 +128,19 @@ function Row({ thread, bot, active, bots, activity, onOpen, onAsk }: { thread: T
                     <span className="truncate">{bot.title}</span>
                   </Badge>
                 ) : null}
-                {bot?.pinned ? <Pin className="size-3 shrink-0 text-muted-foreground" aria-label="Pinned" /> : null}
+                {bot?.pinned || thread.pinned ? <Pin className="size-3 shrink-0 text-muted-foreground" aria-label="Pinned" /> : null}
               </span>
               {thread.lastMessage ? <span className="shrink-0 text-[13px] text-ash wide:text-[11px]">{shortTime(thread.lastMessage.at)}</span> : null}
             </span>
             <span className={cn("flex items-center gap-1.5 text-[15px] leading-6 text-muted-foreground wide:text-[12.5px] wide:leading-5", working && "italic")}>
-              <span className="truncate">{preview(thread, bots, activity)}</span>
+              {drafted ? (
+                <span className="truncate">
+                  <span className="font-medium text-foreground">Draft: </span>
+                  {drafted}
+                </span>
+              ) : (
+                <span className="truncate">{preview(thread, bots, activity)}</span>
+              )}
               {thread.unread > 0 && !active ? <span className="ml-auto size-2 shrink-0 rounded-full" style={{ background: bot?.color ?? "var(--foreground)" }} aria-label={`${thread.unread} unread`} /> : null}
             </span>
           </span>
@@ -154,8 +180,8 @@ export function useBotSearch() {
         return t.name.toLowerCase().includes(q) || Boolean(bot && (bot.name.toLowerCase().includes(q) || bot.title.toLowerCase().includes(q) || handleOf(bot.name).includes(q)));
       })
       .sort((a, b) => {
-        const pa = a.botId ? Number(byId.get(a.botId)?.pinned) : 0;
-        const pb = b.botId ? Number(byId.get(b.botId)?.pinned) : 0;
+        const pa = a.botId ? Number(byId.get(a.botId)?.pinned) : Number(a.pinned);
+        const pb = b.botId ? Number(byId.get(b.botId)?.pinned) : Number(b.pinned);
         if (pa !== pb) return pb - pa;
         return (b.lastMessage?.at ?? b.createdAt).localeCompare(a.lastMessage?.at ?? a.createdAt);
       });
@@ -208,11 +234,12 @@ export function ApprovalsBadge({ className }: { className?: string }) {
 export function BotRows({ rows, hits, query, setQuery, onOpen, onAsk }: { rows: ThreadRow[]; hits: Message[]; query: string; setQuery: (q: string) => void; onOpen: (dialog: ShellDialog) => void; onAsk: (ask: Ask) => void }): ReactNode {
   const { bots, threads, activity, loaded } = useStore();
   const pathname = usePathname();
+  const drafts = useDrafts();
   const pinned = query.trim()
     ? []
     : rows.flatMap((thread) => {
         const bot = thread.botId ? bots.find((b) => b.id === thread.botId) : undefined;
-        return bot?.pinned ? [{ thread, bot }] : [];
+        return bot?.pinned || (thread.kind === "room" && thread.pinned) ? [{ thread, bot }] : [];
       });
   return (
     <>
@@ -241,7 +268,7 @@ export function BotRows({ rows, hits, query, setQuery, onOpen, onAsk }: { rows: 
         <>
 
           {pinned.length ? (
-            <ul className="mb-2 flex flex-wrap justify-center gap-x-2 gap-y-2 px-1 pt-6 pb-4 wide:mb-1 wide:gap-x-1 wide:pt-2 wide:pb-3" aria-label="Pinned bots">
+            <ul className="mb-2 flex flex-wrap justify-center gap-x-2 gap-y-2 px-1 pt-6 pb-4 wide:mb-1 wide:gap-x-1 wide:pt-2 wide:pb-3" aria-label="Pinned">
               {pinned.map(({ thread, bot }) => (
                 <PinnedTile key={thread.id} thread={thread} bot={bot} active={pathname === `/app/t/${thread.id}`} onOpen={onOpen} onAsk={onAsk} />
               ))}
@@ -249,7 +276,7 @@ export function BotRows({ rows, hits, query, setQuery, onOpen, onAsk }: { rows: 
           ) : null}
         <SidebarMenu className="gap-0.5" aria-label="Bots">
           {(pinned.length ? rows.filter((t) => !pinned.some((p) => p.thread.id === t.id)) : rows).map((thread) => (
-            <Row key={thread.id} thread={thread} bot={thread.botId ? bots.find((b) => b.id === thread.botId) : undefined} active={pathname === `/app/t/${thread.id}`} bots={bots} activity={activity[thread.id] ?? {}} onOpen={onOpen} onAsk={onAsk} />
+            <Row key={thread.id} thread={thread} bot={thread.botId ? bots.find((b) => b.id === thread.botId) : undefined} active={pathname === `/app/t/${thread.id}`} bots={bots} activity={activity[thread.id] ?? {}} draft={drafts[thread.id]} onOpen={onOpen} onAsk={onAsk} />
           ))}
         </SidebarMenu>
         </>

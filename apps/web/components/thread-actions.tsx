@@ -38,6 +38,19 @@ export function threadActions({ thread, bot, bots, onOpen, onAsk, refresh }: { t
     if (bot.primary && bots.some((b) => b.id !== bot.id && !b.hidden)) {
       groups.push([{ id: "transfer", label: "Transfer primary bot", icon: ArrowRightLeft, run: () => onAsk({ kind: "transfer", thread }) }]);
     }
+  } else if (thread.kind === "room") {
+    groups.push([
+      { id: "edit", label: "Edit group", icon: Pencil, run: () => onOpen({ kind: "edit-room", threadId: thread.id }) },
+      {
+        id: "pin",
+        label: thread.pinned ? "Unpin" : "Pin to the top",
+        icon: thread.pinned ? PinOff : Pin,
+        run: () =>
+          void patch(`/api/rooms/${thread.id}`, { pinned: !thread.pinned })
+            .then(() => refresh())
+            .catch(failed(thread.pinned ? "Couldn't unpin it." : "Couldn't pin it.")),
+      },
+    ]);
   }
   groups.push([
     { id: "delete", label: bot ? "Delete bot" : "Delete room", icon: Trash2, destructive: true, run: () => onAsk({ kind: "delete", thread }) },

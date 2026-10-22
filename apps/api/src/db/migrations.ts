@@ -613,6 +613,11 @@ const MIGRATIONS: Array<string | ((db: Database) => void)> = [
     INSERT INTO gond_messages_fts (rowid, body) VALUES (new.rowid, new.body);
   END;
   `,
+  `ALTER TABLE gond_threads ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;`,
+  // Held a table for bot templates that was taken out before release; kept so later versions keep their numbers.
+  `DROP TABLE IF EXISTS gond_bot_templates;`,
+  `ALTER TABLE gond_user_prefs ADD COLUMN accent TEXT;`,
+  `ALTER TABLE gond_routines ADD COLUMN watch INTEGER NOT NULL DEFAULT 0;`,
 ];
 
 export const RENAME_VERSION = MIGRATIONS.indexOf(renameLegacyObjects) + 1;

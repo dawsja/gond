@@ -203,6 +203,8 @@ fn page_builder<'a>(
         .title("Gond")
         .visible(false)
         .initialization_script(INIT_SCRIPT)
+        // Tauri's own drop handler takes every file drop, so the page's drop events never fire.
+        .disable_drag_drop_handler()
         .on_navigation(move |url| {
             if allowed_page(&guard, url) {
                 return true;

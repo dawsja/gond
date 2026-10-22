@@ -12,6 +12,7 @@ type Row = {
   timezone: string;
   prompt: string;
   enabled: number;
+  watch: number;
   skill_id: string | null;
   last_run_at: string | null;
   next_run_at: string | null;
@@ -28,6 +29,7 @@ function toRoutine(row: Row): Routine {
     timezone: row.timezone,
     prompt: row.prompt,
     enabled: row.enabled === 1,
+    watch: row.watch === 1,
     skillId: row.skill_id,
     lastRunAt: row.last_run_at,
     nextRunAt: row.next_run_at,
@@ -62,13 +64,13 @@ export function getRoutine(id: string): Routine | null {
   return row ? toRoutine(row) : null;
 }
 
-export function createRoutine(botId: string, input: Omit<RoutineInput, "skillId"> & { skillId?: string | null }): Routine {
+export function createRoutine(botId: string, input: Omit<RoutineInput, "skillId" | "watch"> & { skillId?: string | null; watch?: boolean }): Routine {
   const id = newId("r");
   const at = now();
   const next = input.enabled ? nextRun(input.cron, input.timezone)?.toISOString() ?? null : null;
   ensureDatabase()
-    .query("INSERT INTO gond_routines (id, bot_id, name, cron, timezone, prompt, enabled, skill_id, next_run_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-    .run(id, botId, input.name, input.cron, input.timezone, input.prompt, input.enabled ? 1 : 0, input.skillId ?? null, next, at, at);
+    .query("INSERT INTO gond_routines (id, bot_id, name, cron, timezone, prompt, enabled, watch, skill_id, next_run_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    .run(id, botId, input.name, input.cron, input.timezone, input.prompt, input.enabled ? 1 : 0, input.watch ? 1 : 0, input.skillId ?? null, next, at, at);
   settingsChanged();
   return getRoutine(id)!;
 }
@@ -79,8 +81,8 @@ export function updateRoutine(id: string, patch: Partial<RoutineInput>): Routine
   const next = { ...current, ...patch };
   const nextRunAt = next.enabled ? nextRun(next.cron, next.timezone)?.toISOString() ?? null : null;
   ensureDatabase()
-    .query("UPDATE gond_routines SET name = ?, cron = ?, timezone = ?, prompt = ?, enabled = ?, skill_id = ?, next_run_at = ?, updated_at = ? WHERE id = ?")
-    .run(next.name, next.cron, next.timezone, next.prompt, next.enabled ? 1 : 0, next.skillId ?? null, nextRunAt, now(), id);
+    .query("UPDATE gond_routines SET name = ?, cron = ?, timezone = ?, prompt = ?, enabled = ?, watch = ?, skill_id = ?, next_run_at = ?, updated_at = ? WHERE id = ?")
+    .run(next.name, next.cron, next.timezone, next.prompt, next.enabled ? 1 : 0, next.watch ? 1 : 0, next.skillId ?? null, nextRunAt, now(), id);
   settingsChanged();
   return getRoutine(id);
 }
@@ -125,7 +127,7 @@ function routineOwner(routineId: string): string | null {
 
 export function routinePrompt(routine: Routine): string {
   const skill = routine.skillId ? getSkillForRoutine(routine.skillId, routineOwner(routine.id)) : null;
-  return `[Routine: ${routine.name}]${skill ? ` Use /${skill.slug}.` : ""} ${routine.prompt}`;
+  return `[${routine.watch ? "Watch" : "Routine"}: ${routine.name}]${skill ? ` Use /${skill.slug}.` : ""} ${routine.prompt}`;
 }
 
 function getSkillForRoutine(id: string, userId: string | null): { slug: string } | null {

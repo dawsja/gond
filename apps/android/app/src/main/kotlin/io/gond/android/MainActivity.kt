@@ -63,8 +63,15 @@ class MainActivity : AppCompatActivity() {
     private var pendingMic: PermissionRequest? = null
 
     private val pickFiles = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        pendingFiles?.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(result.resultCode, result.data))
+        pendingFiles?.onReceiveValue(chosenFiles(result.resultCode, result.data))
         pendingFiles = null
+    }
+    // parseResult reads only the intent's data, so a pick of several (in its ClipData) would come back as one.
+    private fun chosenFiles(resultCode: Int, data: Intent?): Array<Uri>? {
+        if (resultCode != RESULT_OK || data == null) return null
+        val clip = data.clipData
+        if (clip != null && clip.itemCount > 0) return Array(clip.itemCount) { clip.getItemAt(it).uri }
+        return data.data?.let { arrayOf(it) }
     }
     private val micPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         val request = pendingMic ?: return@registerForActivityResult
@@ -463,7 +470,9 @@ class MainActivity : AppCompatActivity() {
                 pendingFiles?.onReceiveValue(null)
                 pendingFiles = callback
                 return try {
-                    pickFiles.launch(params.createIntent().addCategory(Intent.CATEGORY_OPENABLE))
+                    val intent = params.createIntent().addCategory(Intent.CATEGORY_OPENABLE)
+                    if (params.mode == FileChooserParams.MODE_OPEN_MULTIPLE) intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                    pickFiles.launch(intent)
                     true
                 } catch (_: ActivityNotFoundException) {
                     pendingFiles = null

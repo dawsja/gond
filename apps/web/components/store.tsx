@@ -4,6 +4,7 @@ import type { Approval, Bot, BoxUpdate, DesktopState, Me, Thread } from "@gond/s
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { pollInterval, useLiveEvents } from "@/components/hq/live-events";
 import { api } from "@/lib/api";
+import { applyAccent } from "@/lib/theme/theme";
 
 export type ThreadRow = Thread & { busy?: boolean };
 
@@ -74,6 +75,10 @@ export function StoreProvider({ user, children }: { user: Me; children: ReactNod
     await Promise.all([loadBots(), loadApprovals(), loadBoxUpdate().catch(() => undefined), loadDesktop()]).catch(() => undefined);
     setLoaded(true);
   }, [loadBots, loadApprovals, loadBoxUpdate, loadDesktop]);
+
+  useEffect(() => {
+    applyAccent(me.accent);
+  }, [me.accent]);
 
   const refreshRef = useRef(refresh);
   useEffect(() => {

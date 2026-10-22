@@ -29,12 +29,12 @@ what is here. The README says what Gond is; this says how it is made.
   notifications, clipboard reads and the microphone to that origin only. The address rules live in the `server-url` crate
   with the same tests Android's `ServerUrl.kt` has. The menu bar is hidden
   unless the person turns it on (`menu_bar` in `config.json`, the switch in
-  Settings → Account's This app card, applied to every window). The package scripts go
+  Settings → Appearance, applied to every window). The package scripts go
   through `scripts/cargo.mjs`, which skips with a notice where cargo is
   missing and fails in CI. It updates itself (`updater.rs`, the updater
   plugin): 5 s after start and every 6 hours it reads `latest.json` from
   the latest GitHub release, downloads a newer build in the background and
-  installs it on quit or from "Restart to update" in Settings → Account.
+  installs it on quit or from "Restart to update" in Settings → About.
   Only a build signed with the repository's key installs; CI signs with
   the `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
   secrets and writes `latest.json` in the release job. The private key
@@ -81,7 +81,7 @@ what is here. The README says what Gond is; this says how it is made.
   the dark. Every main button, the circles on the phone's screens and the
   bot's name pill use it. Bubbles have their
   own greys: yours is `bg-bubble-you`, a bot's `bg-bubble-bot`, a step
-  lighter. Send is a primary circle inside the composer pill. A control's
+  lighter. Send is a `tint` circle inside the composer pill. A control's
   on state (switch, checkbox, radio, slider, pressed pill) is `bg-control`
   / `text-control-foreground`, ink in both themes, so on and off always
   read; `variant="control"` on a button is for the rare one that must. Everything
@@ -100,7 +100,17 @@ what is here. The README says what Gond is; this says how it is made.
   hovered; no hover is an opacity. There is no brand colour:
   ink on paper in the light, Material's dark theme (#121212, elevation by
   a lighter grey) in the dark, and the bots are the only colour on a page.
-  The exceptions are markers, each a token: your bubble's blue, the
+  Except the person's own: the color they pick in Settings → Appearance
+  (`ACCENTS` in shared, blue by default, `accent` on `gond_user_prefs`,
+  `PUT /api/me/accent`, so it follows them to every device) is the
+  `--tint` family, one block per color in `globals.css` under
+  `<html data-accent>`, its shades worked out so white on `--tint-solid`
+  and `--tint-ink` on `--tint-wash` clear 4.6:1 in both themes. It paints
+  their bubble (`--bubble-you`, which for blue is the old blue), the main
+  button on a card (`variant="tint"`), Send, and a card a bot posts on its
+  own (`bg-tint-wash`); the theme init script sets it from
+  `localStorage` before the first paint and the store from `me.accent`.
+  The other exceptions are markers, each a token: the
   primary bot's crown on a gold coin (`--gold`, `--gold-coin`, the `bg-gold-coin` utility; its ring is `--surface`, the colour of whatever it sits on, which a filled button, a card, a dialog and a sheet set, and an svg in it is sized inline, since a `Button` resizes any svg without a size class), and the tones of a status
   (`--tone-ok`, `-warn`, `-bad`, `-info`). Secondary actions are `variant="outline"`, tertiary
   `ghost`, destructive `destructive`. Use `text-muted-foreground`,
@@ -259,6 +269,26 @@ what is here. The README says what Gond is; this says how it is made.
   SVG named `.png` is refused) and keeps it in `gond_bot_avatars`;
   `Bot.avatar` is its URL with a version, or null. `BotAvatar` draws the
   picture when there is one, crown and all.
+- **A group is edited like a bot.** Edit group (`room-dialog.tsx` with a
+  `threadId`, `PATCH /api/rooms/:id`) renames it and changes its bots,
+  from the room's ⋯ and long-press menu, its pill (on a wide screen; the
+  details sheet on a phone) and the panel; the room says what changed in
+  one line (`roomChange`: "Renamed to …", "Ada joined.", "Bo left."). A
+  room pins like a bot (`pinned` on the thread, only ever a room's) and
+  sits with the pinned bots as a tile.
+- **A draft stays where it was typed.** What the person types in a
+  conversation is kept per conversation in `localStorage` on that device
+  (`lib/drafts.ts`), put back when they return, and shown in the list as
+  "Draft: …" until it is sent or cleared.
+- **A bot's files are in its details.** The Files section of the right
+  panel and the details sheet (`bot-files.tsx`) lists the bot's folder on
+  the computer (`GET /api/bots/:id/files`, which now carries `entries`
+  with each one's kind, size and date; dotfiles are left out), opens a
+  file in a viewer (Markdown rendered, text as it is, a picture shown) and
+  downloads it (`GET /api/bots/:id/files/raw`). A download is always a
+  sandboxed attachment, a picture shows inline only when its bytes are
+  one (`pictureType`, so never an SVG), a file holding a stored secret is
+  refused, and the text view has every secret hidden.
 - **Reactions are a chat's tapbacks** (`REACTIONS` in shared: 👍 ❤️ 😂
   😮 😢 🙏), one per author per message (`gond_message_reactions`,
   `setReaction`). The person reacts to a bot's message from its context
@@ -319,12 +349,20 @@ what is here. The README says what Gond is; this says how it is made.
   from the tree. Anything a person has to act on (a decision, a sign-in,
   a key) is a card, not a link. Every one of them is built on
   `action-card.tsx`: `ActionCard` is the bot's bubble grey with the pill
-  edge, `rounded-3xl`, an icon in a primary circle, the question as the
-  title and who and where under it, then what it is about (`ActionRows`
-  for figures with a bold total, a long value under its label, `ActionCode` for a command or a path),
-  `xl` buttons side by side (stacked on a phone) and a line on privacy
-  with a lock; once answered it folds to `ActionCardDone`, one line with a
-  tone `Badge` saying how it ended. The approval is `approval-card.tsx`,
+  edge, `rounded-3xl`, the bot's mascot peeking over its top edge
+  (`animate-peek`), the question as the title with a warn `Badge` "Needs
+  you" and who and where under it, then what it is about (`ActionRows`
+  for figures with a big total, a long value under its label, a row with
+  `items` that opens on a tap to the lines behind it, like each grocery
+  and its price with a "Swapped" note, `ActionCode` for a command or a
+  path), `xl` buttons side by side (stacked on a phone), the main one
+  `variant="tint"`, and a line on privacy with a lock; a card from a
+  watch's run (`noticed`) wears the person's color instead, with an icon
+  in a tint circle and no badge. Once answered it folds to
+  `ActionCardDone`, one line with a tone `Badge` saying how it ended, on
+  a green wash when it went ahead; a card the person answered on this
+  page (`cheerOnFold`) folds with the mascot hopping in a little
+  confetti, once. The approval is `approval-card.tsx`,
   worded per tool (Run a command?, Change a file?, Use the screen?); an
   `ask_approval` is a decision card with the bot's own question, rows,
   total and button names ("Place order" / "Not yet"), and no Always. It
@@ -342,11 +380,12 @@ what is here. The README says what Gond is; this says how it is made.
   a send (`OUTWARD_ACTION`).
   Then `secret-card.tsx`, `login-card.tsx`, `signin-card.tsx` and
   `connect-card.tsx`. A new kind of card goes there too, so they never
-  drift. What is waiting is said by the buttons inside, never by a colour
-  on the card; the approvals badge in the list carries the amber.
+  drift. What is waiting is said by the "Needs you" badge and the buttons
+  inside, and the conversation's header pill says "waiting on you".
 - **Settings is sections, not a scroll.** `SETTINGS_SECTIONS` in
-  `lib/settings-sections.ts` is the list (account, team, ai, voice, computer,
-  skills, apps, secrets, auth), each marked `admin` or not; the route
+  `lib/settings-sections.ts` is the list (account, appearance, team, ai,
+  voice, computer, skills, apps, secrets, auth, about), each marked `admin`
+  or not; the route
   `/app/settings/[[...section]]` maps to it and 404s a user on an admin
   section. Settings never opens the computer: a bot's panel does
   (`right-panel.tsx` → `openShellDialog({ kind: "computer", botId })`),
@@ -356,9 +395,11 @@ what is here. The README says what Gond is; this says how it is made.
   with a URL the API and the bots can point at (`Settings → Apps → MCP
   servers` in copy). Sign out is in the sidebar footer's profile menu on a
   desktop and the last row of the Settings list on a phone (`useSignOut`).
-  `about-card.tsx` ends the Account section with the link to the
-  repository; Account is the one section everybody has, so anything for
-  every person goes there.
+  Account is the person themselves (picture, password, notifications);
+  Appearance is how it looks (the theme, which stays on the device, the
+  color, and the desktop's menu bar); About is the app (the server it is
+  connected to, the version and updates, `about-card.tsx` with the link to
+  the repository). All three are everybody's.
 - Copy is plain English in sentence case, short, no exclamation marks. Say
   "the computer" to the person, "the box" in code and docs for developers.
 
@@ -489,6 +530,19 @@ what is here. The README says what Gond is; this says how it is made.
   with nothing new to say answers a run with exactly `NOTHING_NEW`
   (`QUIET_REPLY`, `isQuietReply`): the responder posts nothing, pushes
   nothing and drops the run's message, so a quiet run leaves no trace.
+- **Bots speak up through watches.** A watch is a routine with `watch`
+  set: it checks for a change and speaks only when one is worth telling,
+  so most runs are quiet. Its run posts `[Watch: name]` (`isWatchRun`)
+  and the chat shows "<bot> noticed · name" with an eye in the person's
+  color (`RunMarker` in `components/noticed.tsx`); what the run says, up
+  to the person's next message, is `noticed` (`noticedRuns`): its cards
+  wear the person's color and its first line carries "Why you're seeing
+  this" (the watch and when it checks) and "Less like this" (`POST
+  /api/threads/:id/messages/:id/less`, a hidden prompt telling the bot to
+  tighten the watch). Nobody fills in a form for one: the house rules
+  have a bot offer once, with `::choices`, to watch what the person asks
+  about twice or what will change later, and make it on a yes. The header
+  pill says how many it is watching.
 - Long work is started by the dispatcher (`src/dispatcher.ts`) and awaited
   in the responder (`src/responder.ts`); a tick stays quick. While the
   computer updates or resets (`src/updater.ts`), nothing new starts and
@@ -713,7 +767,9 @@ what is here. The README says what Gond is; this says how it is made.
   up to 8 MB inline, and `attachmentNote` tells the bot in the prompt
   what came, where it is and what it can already see, so it never
   searches the computer for a file. Text files are also inlined as
-  before. The original is never sent to a model at full size.
+  before, and so is an SVG, which is text: it is never previewed as a
+  picture, and like any attachment that could run script it is served as
+  a download. The original is never sent to a model at full size.
 - **AI provider keys are secrets too, and each person's own.**
   `src/data/providers.ts` keeps one endpoint per API per person
   (`PROVIDER_KINDS`: Anthropic-compatible, OpenAI-compatible, xAI), the key

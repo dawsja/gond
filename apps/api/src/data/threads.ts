@@ -10,6 +10,7 @@ type ThreadRow = {
   name: string;
   last_read_at: string | null;
   user_id: string | null;
+  pinned: number;
   created_at: string;
   updated_at: string;
 };
@@ -95,6 +96,7 @@ function toThread(row: ThreadRow): Thread {
     botId: row.bot_id,
     name: row.name,
     members: members(row.id),
+    pinned: row.kind === "room" && Boolean(row.pinned),
     lastMessage: last ? { author: last.author, body: last.body, at: last.created_at } : null,
     unread: Number(unread.n),
     createdAt: row.created_at,
@@ -140,11 +142,12 @@ export function createRoom(name: string, botIds: string[], userId: string): Thre
   return getThread(id)!;
 }
 
-export function updateRoom(id: string, patch: { name?: string; members?: string[] }): Thread | null {
+export function updateRoom(id: string, patch: { name?: string; members?: string[]; pinned?: boolean }): Thread | null {
   const thread = getThread(id);
   if (!thread || thread.kind !== "room") return null;
   transaction((db) => {
     if (patch.name) db.query("UPDATE gond_threads SET name = ?, updated_at = ? WHERE id = ?").run(patch.name, now(), id);
+    if (patch.pinned !== undefined) db.query("UPDATE gond_threads SET pinned = ? WHERE id = ?").run(patch.pinned ? 1 : 0, id);
     if (patch.members) {
       db.query("DELETE FROM gond_thread_members WHERE thread_id = ?").run(id);
       for (const botId of new Set(patch.members)) db.query("INSERT INTO gond_thread_members (thread_id, bot_id) VALUES (?, ?)").run(id, botId);

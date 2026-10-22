@@ -485,7 +485,9 @@ function readFile(account, relative) {
   try {
     const stat = fs.fstatSync(fd);
     if (stat.isDirectory()) {
-      return { directory: fs.readdirSync(fs.existsSync(`/proc/self/fd/${fd}`) ? `/proc/self/fd/${fd}` : real).sort() };
+      const dir = fs.existsSync(`/proc/self/fd/${fd}`) ? `/proc/self/fd/${fd}` : real;
+      const names = fs.readdirSync(dir).sort();
+      return { directory: names, entries: names.map((name) => dirEntry(dir, name)) };
     }
     if (!stat.isFile()) throw new HttpError(400, "That isn't a file");
     if (stat.size > MAX_FILE_BYTES) throw new HttpError(413, "File is larger than 1 MB");
@@ -494,6 +496,16 @@ function readFile(account, relative) {
     return { content: buffer.toString("utf8"), size: stat.size };
   } finally {
     fs.closeSync(fd);
+  }
+}
+
+/** A link is described as itself, never followed, so a listing can't reach outside the home. */
+function dirEntry(dir, name) {
+  try {
+    const stat = fs.lstatSync(path.join(dir, name));
+    return { name, dir: stat.isDirectory(), size: stat.isFile() ? stat.size : 0, modified: stat.mtime.toISOString() };
+  } catch {
+    return { name, dir: false, size: 0, modified: null };
   }
 }
 

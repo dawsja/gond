@@ -3,7 +3,7 @@
 import type { Bot, Message, SecretRequest } from "@gond/shared";
 import { KeyRound } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
-import { ActionCard, ActionCardDone } from "@/components/action-card";
+import { ActionCard, ActionCardDone, cheerOnFold } from "@/components/action-card";
 import { LoginCard } from "@/components/login-card";
 import { useLiveEvents } from "@/components/hq/live-events";
 import { Button } from "@/components/ui/button";
@@ -36,7 +36,7 @@ export function SecretCard({ message, bot }: { message: Message; bot: Bot | unde
   if (request?.target === "login") return <LoginCard request={request} bot={bot} onAnswered={setRequest} />;
   const name = bot?.name ?? "A bot";
   const icon = <KeyRound aria-hidden="true" />;
-  if (!request) return <ActionCard icon={icon} title={`${name} needs something from you`} by={<Spinner aria-label="Loading" />} />;
+  if (!request) return <ActionCard bot={bot} icon={icon} title={`${name} needs something from you`} by={<Spinner aria-label="Loading" />} />;
 
   const [secret, ...reasonParts] = message.body.split(": ");
   const reason = reasonParts.join(": ");
@@ -45,7 +45,7 @@ export function SecretCard({ message, bot }: { message: Message; bot: Bot | unde
 
   if (request.status !== "pending") {
     const done = request.status === "given" ? { status: "Saved", tone: "ok" as const } : request.status === "declined" ? { status: "Not now", tone: "neutral" as const } : { status: "Expired", tone: "neutral" as const };
-    return <ActionCardDone icon={icon} title={label} by={`${name} · ${composio ? "connected apps" : "secret"}`} status={done.status} tone={done.tone} />;
+    return <ActionCardDone id={message.id} bot={bot} icon={icon} title={label} by={`${name} · ${composio ? "connected apps" : "secret"}`} status={done.status} tone={done.tone} />;
   }
 
   async function answer(event?: FormEvent, decline = false) {
@@ -55,6 +55,7 @@ export function SecretCard({ message, bot }: { message: Message; bot: Bot | unde
     setError(null);
     try {
       const data = await post<{ request: SecretRequest }>(`/api/secret-requests/${id}`, decline ? { decline: true } : { value });
+      if (!decline) cheerOnFold(message.id);
       setRequest(data.request);
       setValue("");
     } catch (failure) {
@@ -67,12 +68,13 @@ export function SecretCard({ message, bot }: { message: Message; bot: Bot | unde
   return (
     <form onSubmit={answer} className="contents">
       <ActionCard
+        bot={bot}
         icon={icon}
         title={composio ? `${name} needs your Composio key` : `${name} needs a secret`}
         by={reason || undefined}
         actions={
           <>
-            <Button type="submit" size="xl" className="w-full" disabled={busy || !value}>
+            <Button type="submit" size="xl" variant="tint" className="w-full" disabled={busy || !value}>
               {busy ? <Spinner data-icon="inline-start" /> : null}
               Save
             </Button>

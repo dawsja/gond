@@ -1,8 +1,10 @@
+import { isAccent } from "@gond/shared";
 import { Hono } from "hono";
 import type { Session } from "./auth.ts";
 import { requireAdmin, userId } from "./access.ts";
 import { countAccounts, getAuth, getSession, isSameOrigin, registerAccount } from "./auth.ts";
 import { AVATAR_MAX_BYTES, clearAvatar, getAvatar, getUser, setAvatar } from "./data/users.ts";
+import { setUserAccent } from "./data/prefs.ts";
 import { approvalsRoutes } from "./routes/approvals.ts";
 import { botsRoutes } from "./routes/bots.ts";
 import { boxRoutes } from "./routes/box.ts";
@@ -97,6 +99,13 @@ export function createApp() {
   app.delete("/api/me/avatar", (c) => {
     clearAvatar(userId(c));
     return c.body(null, 204);
+  });
+
+  app.put("/api/me/accent", async (c) => {
+    const body = (await c.req.json().catch(() => null)) as { accent?: unknown } | null;
+    if (!isAccent(body?.accent)) return c.json({ error: "Pick one of the colors on offer" }, 400);
+    setUserAccent(userId(c), body.accent);
+    return c.json({ accent: body.accent });
   });
 
   app.route("/api", botsRoutes());

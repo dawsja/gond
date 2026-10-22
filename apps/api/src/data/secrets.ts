@@ -49,6 +49,13 @@ export function hideSecrets(text: string): string {
   return createRedactor(allSecretValues(), Infinity)(text);
 }
 
+export function containsSecret(data: Uint8Array): boolean {
+  const secrets = allSecretValues().filter((s) => s.length >= 8);
+  if (!secrets.length) return false;
+  const bytes = Buffer.from(data);
+  return secrets.some((secret) => bytes.includes(secret));
+}
+
 export function allSecretValues(): string[] {
   const rows = ensureDatabase().query("SELECT value FROM gond_secrets").all() as { value: string }[];
   const out: string[] = [];

@@ -1,4 +1,4 @@
-import type { DesktopControl, Engine, EngineSignIn, EngineStatus, ModelChoice, ScreenStepType, ScreenTarget } from "@gond/shared";
+import type { BotFileEntry, DesktopControl, Engine, EngineSignIn, EngineStatus, ModelChoice, ScreenStepType, ScreenTarget } from "@gond/shared";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { env } from "./config.ts";
@@ -174,7 +174,7 @@ export function execOnBox(config: BoxConfig, command: string, options: { cwd?: s
   return call(config, "POST", "/exec", { command, cwd: options.cwd ?? null, timeoutMs, ...(options.env ? { env: options.env } : {}) }, timeoutMs + 30_000);
 }
 
-export function readBoxFile(config: BoxConfig, filePath: string): Promise<{ content?: string; directory?: string[]; binary?: boolean; size?: number }> {
+export function readBoxFile(config: BoxConfig, filePath: string): Promise<{ content?: string; directory?: string[]; entries?: BotFileEntry[]; binary?: boolean; size?: number }> {
   return call(config, "GET", `/files?path=${encodeURIComponent(filePath)}`);
 }
 

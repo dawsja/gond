@@ -3,7 +3,7 @@
 import { LOGIN_FIELD_LABELS, type Bot, type LoginField, type SecretRequest } from "@gond/shared";
 import { LogIn } from "lucide-react";
 import { useState, type FormEvent } from "react";
-import { ActionCard, ActionCardDone } from "@/components/action-card";
+import { ActionCard, ActionCardDone, cheerOnFold } from "@/components/action-card";
 import { Button } from "@/components/ui/button";
 import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -36,6 +36,7 @@ export function LoginCard({ request, bot, onAnswered }: { request: SecretRequest
     try {
       const data = await post<{ request: SecretRequest }>(`/api/secret-requests/${request.id}`, decline ? { decline: true } : { values, remember: canRemember && remember });
       setValues({});
+      if (!decline) cheerOnFold(request.id);
       onAnswered(data.request);
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "Could not send it.");
@@ -48,18 +49,19 @@ export function LoginCard({ request, bot, onAnswered }: { request: SecretRequest
   const icon = <LogIn aria-hidden="true" />;
   if (request.status !== "pending") {
     const done = request.status === "given" ? { status: "Sent", tone: "ok" as const } : request.status === "declined" ? { status: "Not now", tone: "neutral" as const } : { status: "Expired", tone: "neutral" as const };
-    return <ActionCardDone icon={icon} title={`Sign in to ${site}`} by={name} status={done.status} tone={done.tone} />;
+    return <ActionCardDone id={request.id} bot={bot} icon={icon} title={`Sign in to ${site}`} by={name} status={done.status} tone={done.tone} />;
   }
 
   return (
     <form onSubmit={answer} className="contents">
       <ActionCard
+        bot={bot}
         icon={icon}
         title={`Sign in to ${site}`}
         by={request.reason || `${name} is on the sign-in page`}
         actions={
           <>
-            <Button type="submit" size="xl" className="w-full" disabled={busy || !filled}>
+            <Button type="submit" size="xl" variant="tint" className="w-full" disabled={busy || !filled}>
               {busy ? <Spinner data-icon="inline-start" /> : null}
               Sign in
             </Button>

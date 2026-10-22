@@ -1,5 +1,6 @@
+import { DEFAULT_ACCENT, isAccent, type Accent } from "@gond/shared";
 import { ensureDatabase } from "../db/init.ts";
-import { settingsChanged } from "../events.ts";
+import { emit, settingsChanged } from "../events.ts";
 import { now } from "../ids.ts";
 import { nextRun } from "./routines.ts";
 import { getSettings } from "./settings.ts";
@@ -46,4 +47,16 @@ export function setUserTimezone(userId: string, timezone: unknown): boolean {
   }
   if (routines.length) settingsChanged();
   return true;
+}
+
+export function userAccent(userId: string): Accent {
+  const row = ensureDatabase().query("SELECT accent FROM gond_user_prefs WHERE user_id = ?").get(userId) as { accent: string | null } | null;
+  return isAccent(row?.accent) ? row.accent : DEFAULT_ACCENT;
+}
+
+export function setUserAccent(userId: string, accent: Accent) {
+  ensureDatabase()
+    .query("INSERT INTO gond_user_prefs (user_id, accent, updated_at) VALUES (?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET accent = excluded.accent, updated_at = excluded.updated_at")
+    .run(userId, accent === DEFAULT_ACCENT ? null : accent, now());
+  emit({ topic: "me", userId });
 }

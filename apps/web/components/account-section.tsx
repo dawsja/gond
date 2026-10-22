@@ -1,35 +1,22 @@
 "use client";
 
-import { Camera, Moon, Sun, SunMoon } from "lucide-react";
-import { useState, useSyncExternalStore, type FormEvent } from "react";
+import { Camera } from "lucide-react";
+import { useState, type FormEvent } from "react";
 import { PersonAvatar } from "@/components/bot-avatar";
 import { useStore } from "@/components/store";
-import { useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Field, FieldError, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field";
+import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api, del } from "@/lib/api";
 import { usePicturePicker } from "@/components/picture-crop-dialog";
 import { authClient } from "@/lib/auth/client";
 import type { SessionUser } from "@/lib/session";
 
-const subscribeNever = () => () => {};
-
-const THEMES = [
-  ["system", SunMoon, "System"],
-  ["light", Sun, "Light"],
-  ["dark", Moon, "Dark"],
-] as const;
-
 export function AccountSection({ user }: { user: SessionUser }) {
-  const { theme, setTheme } = useTheme();
-
-  const mounted = useSyncExternalStore(subscribeNever, () => true, () => false);
   const { me, setMe } = useStore();
   const local = me.provider === "local";
   void user;
@@ -125,17 +112,6 @@ export function AccountSection({ user }: { user: SessionUser }) {
           </FieldGroup>
         </form>
         ) : null}
-        <Field orientation="horizontal">
-          <FieldTitle id="theme-label">Theme</FieldTitle>
-          <ToggleGroup aria-labelledby="theme-label" variant="outline" size="sm" value={[mounted ? theme : "system"]} onValueChange={(v) => v[0] && setTheme(v[0] as typeof theme)} className="ml-auto">
-            {THEMES.map(([value, Icon, label]) => (
-              <ToggleGroupItem key={value} value={value} aria-label={label}>
-                <Icon data-icon="inline-start" />
-                {label}
-              </ToggleGroupItem>
-            ))}
-          </ToggleGroup>
-        </Field>
       </CardContent>
     </Card>
   );

@@ -3,7 +3,7 @@
 import { bareToolName, emailDraftOf, ruleLabel, type Approval, type Bot, type Message } from "@gond/shared";
 import { CornerUpLeft, CreditCard, FilePen, Forward, Globe, KeyRound, LogIn, Mail, Monitor, NotebookPen, Plug, Send, ShieldQuestion, SquareTerminal, Trash2 } from "lucide-react";
 import { useState, type ReactNode } from "react";
-import { ActionCard, ActionCardDone, ActionCode, ActionRows } from "@/components/action-card";
+import { ActionCard, ActionCardDone, ActionCode, ActionRows, cheerOnFold, type ActionItem, type ActionRow } from "@/components/action-card";
 import { EMAIL_WORDS, EmailLetter, emailGist } from "@/components/email-card";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -11,7 +11,6 @@ import { cn } from "@/lib/utils";
 
 export type Decision = "allow" | "deny" | "always";
 
-type Row = { label: string; value: string };
 
 type Shape = { icon: ReactNode; title: string; by: string; body: ReactNode; allow: string; deny: string; always: boolean; note?: string; done?: { title: string; by: string; allowed: string; denied: string } };
 
@@ -26,9 +25,23 @@ const KIND_ICONS: Record<string, ReactNode> = {
 
 const text = (value: unknown) => (typeof value === "string" && value.trim() ? value.trim() : null);
 
-function rowsOf(value: unknown): Row[] {
+function itemsOf(value: unknown): ActionItem[] {
   if (!Array.isArray(value)) return [];
-  return value.flatMap((row) => (row && typeof row === "object" && text((row as Row).label) ? [{ label: (row as Row).label, value: text((row as Row).value) ?? "" }] : []));
+  return value.flatMap((item) => {
+    const label = item && typeof item === "object" ? text((item as ActionItem).label) : null;
+    return label ? [{ label, value: text((item as ActionItem).value) ?? "", note: text((item as ActionItem).note) ?? undefined }] : [];
+  });
+}
+
+function rowsOf(value: unknown): ActionRow[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((row) => {
+    if (!row || typeof row !== "object") return [];
+    const label = text((row as ActionRow).label);
+    if (!label) return [];
+    const items = itemsOf((row as ActionRow).items);
+    return [{ label, value: text((row as ActionRow).value) ?? "", ...(items.length ? { items } : {}) }];
+  });
 }
 
 function sentence(line: string) {
@@ -92,13 +105,14 @@ function shapeOf(message: Message, approval: Approval | null, name: string): Sha
   }
 }
 
-export function ApprovalCard({ message, approval, bot, onDecide }: { message: Message; approval: Approval | null; bot: Bot | undefined; onDecide: (id: string, decision: Decision) => Promise<void> }) {
+export function ApprovalCard({ message, approval, bot, noticed = false, onDecide }: { message: Message; approval: Approval | null; bot: Bot | undefined; noticed?: boolean; onDecide: (id: string, decision: Decision) => Promise<void> }) {
   const [busy, setBusy] = useState<Decision | null>(null);
   const status = approval?.status ?? "pending";
   const shape = shapeOf(message, approval, bot?.name ?? "A bot");
   const decide = async (decision: Decision) => {
     if (!message.approvalId || busy) return;
     setBusy(decision);
+    if (decision !== "deny") cheerOnFold(message.id);
     try {
       await onDecide(message.approvalId, decision);
     } finally {
@@ -115,17 +129,19 @@ export function ApprovalCard({ message, approval, bot, onDecide }: { message: Me
           : { status: "Expired", tone: "neutral" as const };
     const title = status === "allowed" && shape.done ? shape.done.title : shape.title;
     const by = approval?.rule ? `From now on: ${ruleLabel(approval.rule)}` : (shape.done?.by ?? shape.by);
-    return <ActionCardDone icon={shape.icon} title={title} by={by} status={done.status} tone={done.tone} />;
+    return <ActionCardDone id={message.id} bot={bot} icon={shape.icon} title={title} by={by} status={done.status} tone={done.tone} />;
   }
   return (
     <ActionCard
+      bot={bot}
+      noticed={noticed}
       icon={shape.icon}
       title={shape.title}
       by={shape.by}
       note={shape.note}
       actions={
         <>
-          <Button size="xl" className="w-full" disabled={Boolean(busy)} onClick={() => void decide("allow")}>
+          <Button size="xl" variant="tint" className="w-full" disabled={Boolean(busy)} onClick={() => void decide("allow")}>
             {busy === "allow" ? <Spinner data-icon="inline-start" /> : null}
             {shape.allow}
           </Button>

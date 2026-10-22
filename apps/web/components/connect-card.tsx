@@ -3,7 +3,7 @@
 import type { AppCatalogEntry, Bot, Connection, Message } from "@gond/shared";
 import { TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { ActionCard, ActionCardDone } from "@/components/action-card";
+import { ActionCard, ActionCardDone, cheerOnFold } from "@/components/action-card";
 import { AppIcon, appName } from "@/components/app-icons";
 import { useLiveEvents } from "@/components/hq/live-events";
 import { Button } from "@/components/ui/button";
@@ -36,6 +36,7 @@ export function ConnectCard({ message, bot, toolkit }: { message: Message; bot: 
     if (busy) return;
     setBusy(true);
     setError(null);
+    cheerOnFold(message.id);
     try {
       const started = await post<{ redirectUrl: string | null }>(`/api/connections/${toolkit}/connect`, { threadId: message.threadId });
       if (started.redirectUrl) {
@@ -54,15 +55,16 @@ export function ConnectCard({ message, bot, toolkit }: { message: Message; bot: 
   const name = app?.name ?? appName(toolkit);
   const by = bot?.name ?? "A bot";
   const icon = <AppIcon toolkit={toolkit} logo={app?.logo} size={20} />;
-  if (connection?.status === "active") return <ActionCardDone icon={icon} title={name} by={`${by} · connected app`} status="Connected" tone="ok" />;
+  if (connection?.status === "active") return <ActionCardDone id={message.id} bot={bot} icon={icon} title={name} by={`${by} · connected app`} status="Connected" tone="ok" />;
 
   return (
     <ActionCard
+      bot={bot}
       icon={icon}
       title={`Connect ${name}`}
       by={connection === undefined ? <Spinner aria-label="Loading" /> : `${by} needs it. Sign in once and every bot of yours can use it.`}
       actions={
-        <Button size="xl" className="w-full" disabled={busy || waiting || connection === undefined} onClick={() => void connect()}>
+        <Button size="xl" variant="tint" className="w-full" disabled={busy || waiting || connection === undefined} onClick={() => void connect()}>
           {busy || waiting ? <Spinner data-icon="inline-start" /> : null}
           {waiting ? "Opening the sign-in…" : connection?.status === "pending" ? `Finish connecting ${name}` : `Connect ${name}`}
         </Button>
