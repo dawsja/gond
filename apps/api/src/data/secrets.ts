@@ -33,6 +33,17 @@ export function setSecret(userId: string, name: string, value: string, requested
   settingsChanged();
 }
 
+/**
+ * Replaces the value of a secret the person already has, keeping its site and who asked for it; written
+ * afresh, so it is encrypted again with a new IV. False when there is no such secret.
+ */
+export function changeSecret(userId: string, name: string, value: string): boolean {
+  const row = ensureDatabase().query("SELECT requested_by, site FROM gond_secrets WHERE user_id = ? AND name = ?").get(userId, name) as { requested_by: string | null; site: string | null } | null;
+  if (!row) return false;
+  setSecret(userId, name, value, row.requested_by, row.site);
+  return true;
+}
+
 /** The plain value, for injection only. Never send it to a route or the box. */
 export function readSecret(userId: string, name: string): string | null {
   const row = ensureDatabase().query("SELECT value FROM gond_secrets WHERE user_id = ? AND name = ?").get(userId, name) as { value: string } | null;

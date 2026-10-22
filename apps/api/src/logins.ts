@@ -38,6 +38,11 @@ export function heldLoginValues(): string[] {
   return out;
 }
 
+/** A detail the person changed: what their conversations still held of the old one goes. */
+export function forgetHeldLogin(name: string, threadIds: Iterable<string>) {
+  for (const threadId of threadIds) held().delete(keyOf(threadId, name));
+}
+
 export function forgetHeldLogins(threadId: string) {
   for (const key of held().keys()) if (key.startsWith(`${threadId}\n`)) held().delete(key);
 }

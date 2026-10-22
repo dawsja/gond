@@ -1,33 +1,18 @@
 "use client";
 
-import { KEY_PROVIDER_KINDS, PROVIDER_KINDS, PROVIDER_LABELS, type AiSettings, type Engine, type KeyProviderKind, type ProviderKind, type ProviderMeta } from "@gond/shared";
-import { Check, KeyRound, TriangleAlert } from "lucide-react";
+import { KEY_PROVIDER_KINDS, PROVIDER_KINDS, PROVIDER_LABELS, type KeyProviderKind, type ProviderKind, type ProviderMeta } from "@gond/shared";
+import { Check, TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useLiveEvents } from "@/components/hq/live-events";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Spinner } from "@/components/ui/spinner";
-import { api, del, patch, post } from "@/lib/api";
-
-function runningOn(ai: AiSettings | null | undefined, kind: ProviderKind): boolean {
-  return Boolean(ai && ai.enabled.includes("api") && (ai.engines.api.provider ?? null) === kind);
-}
-
-/** Puts the bots on a key or the ChatGPT plan, or takes them off it; the settings as saved, or null. */
-export async function runOnProvider(ai: AiSettings, kind: ProviderKind, on: boolean): Promise<AiSettings | null> {
-  const enabled = on ? [...new Set([...ai.enabled, "api" as Engine])] : ai.enabled.filter((engine) => engine !== "api");
-  const body = on
-    ? { engine: "api" as Engine, enabled, engines: { api: { provider: kind, access: "api" as const, model: ai.engines.api.model } } }
-    : { enabled: enabled.length ? enabled : (["claude"] as Engine[]) };
-  const data = await patch<{ ai: AiSettings }>("/api/ai", body).catch(() => null);
-  return data?.ai ?? null;
-}
+import { api, del, post } from "@/lib/api";
+import { cn } from "@/lib/utils";
 
 export function useProviders() {
   const [providers, setProviders] = useState<Record<ProviderKind, ProviderMeta | null> | null>(null);
@@ -109,7 +94,8 @@ export function ProviderCheck({ provider }: { provider: ProviderMeta }) {
   );
 }
 
-function SavedKey({ kind, provider, ai, onAiChange, onChange }: { kind: ProviderKind; provider: ProviderMeta; ai?: AiSettings | null; onAiChange?: (next: AiSettings) => void; onChange: () => void }) {
+/** A saved key's own actions: change it, check it, or remove it. */
+function ManageKey({ kind, provider, onChange }: { kind: KeyProviderKind; provider: ProviderMeta; onChange: () => void }) {
   const label = PROVIDER_LABELS[kind];
   const [editing, setEditing] = useState(false);
   const [checking, setChecking] = useState(false);
@@ -122,42 +108,8 @@ function SavedKey({ kind, provider, ai, onAiChange, onChange }: { kind: Provider
     onChange();
   }
 
-  async function use(on: boolean) {
-    if (!ai) return;
-    const saved = await runOnProvider(ai, kind, on);
-    if (saved) onAiChange?.(saved);
-  }
-
   return (
-    <li className="flex flex-col gap-3 rounded-xl border p-4">
-      <div className="flex items-start gap-3">
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted">
-          <KeyRound className="size-4 text-muted-foreground" aria-hidden="true" />
-        </span>
-        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="flex items-center gap-2 text-[14px] font-medium">
-            {label.name}
-            <Badge variant="secondary">Key saved</Badge>
-          </span>
-          {!editing ? (
-            <>
-              <code className="mt-1 truncate font-mono text-[12px] text-muted-foreground">{provider.baseUrl}</code>
-              <ProviderCheck provider={provider} />
-            </>
-          ) : null}
-        </span>
-      </div>
-      {!editing && ai ? (
-        <FieldGroup className="gap-2 rounded-lg border bg-muted/40 p-3">
-          <Field orientation="horizontal" className="min-h-11">
-            <FieldLabel htmlFor={`${kind}-run`} className="flex-1 font-normal">
-              Run your bots on this key
-            </FieldLabel>
-            <Switch id={`${kind}-run`} checked={runningOn(ai, kind)} onCheckedChange={(on) => void use(on)} />
-          </Field>
-          <FieldDescription>Off, they run on the CLIs you turned on.</FieldDescription>
-        </FieldGroup>
-      ) : null}
+    <div className="flex flex-col gap-3">
       {editing ? (
         <ProviderForm
           kind={kind}
@@ -186,7 +138,7 @@ function SavedKey({ kind, provider, ai, onAiChange, onChange }: { kind: Provider
         <AlertDialogContent size="sm">
           <AlertDialogHeader>
             <AlertDialogTitle>Remove this API key?</AlertDialogTitle>
-            <AlertDialogDescription>Bots running on the {label.short} API stop working until you add a key again or switch them to your plan.</AlertDialogDescription>
+            <AlertDialogDescription>Bots running on the {label.short} API stop working until you add a key again or pick somewhere else for them to run.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
@@ -196,7 +148,59 @@ function SavedKey({ kind, provider, ai, onAiChange, onChange }: { kind: Provider
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </li>
+    </div>
+  );
+}
+
+/** Step 2 for the API engine: one row per API, the saved ones to pick between, the rest to add. */
+export function KeyList({ providers, chosen, onPick, onChange }: { providers: Record<ProviderKind, ProviderMeta | null>; chosen: ProviderKind; onPick: (kind: KeyProviderKind) => void; onChange: () => void }) {
+  const [open, setOpen] = useState<KeyProviderKind | null>(null);
+  const saved = KEY_PROVIDER_KINDS.filter((kind) => providers[kind]);
+
+  return (
+    <div className="flex flex-col gap-3">
+      <RadioGroup aria-label="Which key" value={saved.includes(chosen as KeyProviderKind) ? chosen : null} onValueChange={(value) => typeof value === "string" && onPick(value as KeyProviderKind)} className="gap-0 overflow-hidden rounded-2xl border">
+        {KEY_PROVIDER_KINDS.map((kind, index) => {
+          const provider = providers[kind];
+          const label = PROVIDER_LABELS[kind];
+          const expanded = open === kind;
+          return (
+            <div key={kind} className={cn("flex flex-col gap-3 p-3 pl-4", index > 0 && "border-t")}>
+              <div className="flex min-h-11 items-center gap-3">
+                <RadioGroupItem value={kind} id={`key-${kind}`} disabled={!provider} aria-label={label.name} />
+                <label htmlFor={`key-${kind}`} className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className={cn("text-[14px] font-medium", !provider && "text-muted-foreground")}>{label.name}</span>
+                  {provider ? (
+                    <>
+                      <code className="truncate font-mono text-[12px] text-muted-foreground">{provider.baseUrl}</code>
+                      <ProviderCheck provider={provider} />
+                    </>
+                  ) : (
+                    <span className="text-[12.5px] text-muted-foreground">{label.detail}</span>
+                  )}
+                </label>
+                <Button variant={provider ? "ghost" : "outline"} size="sm" className="pointer-coarse:min-h-11" aria-expanded={expanded} onClick={() => setOpen(expanded ? null : kind)}>
+                  {provider ? (expanded ? "Done" : "Manage") : expanded ? "Cancel" : "Add key"}
+                </Button>
+              </div>
+              {expanded && provider ? <ManageKey kind={kind} provider={provider} onChange={onChange} /> : null}
+              {expanded && !provider ? (
+                <ProviderForm
+                  kind={kind}
+                  provider={null}
+                  onSaved={() => {
+                    setOpen(null);
+                    onChange();
+                    onPick(kind);
+                  }}
+                />
+              ) : null}
+            </div>
+          );
+        })}
+      </RadioGroup>
+      <p className="text-[12.5px] text-muted-foreground">You pay the provider for what your bots use. Keys are kept encrypted here and never reach the computer.</p>
+    </div>
   );
 }
 
@@ -241,33 +245,5 @@ export function AddProviderKey({ providers, onSaved }: { providers: Record<Provi
         </div>
       ) : null}
     </FieldGroup>
-  );
-}
-
-export function ProvidersCard({ ai, onAiChange }: { ai?: AiSettings | null; onAiChange?: (next: AiSettings) => void } = {}) {
-  const { providers, reload } = useProviders();
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>API keys</CardTitle>
-        <CardDescription>Run your bots on an API instead of a plan. Kept encrypted here, and never on the computer.</CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        {!providers ? (
-          <Spinner />
-        ) : (
-          <>
-            {KEY_PROVIDER_KINDS.some((kind) => providers[kind]) ? (
-              <ul className="flex flex-col gap-3">
-                {KEY_PROVIDER_KINDS.filter((kind) => providers[kind]).map((kind) => (
-                  <SavedKey key={kind} kind={kind} provider={providers[kind]!} ai={ai} onAiChange={onAiChange} onChange={() => void reload()} />
-                ))}
-              </ul>
-            ) : null}
-            <AddProviderKey providers={providers} onSaved={() => void reload()} />
-          </>
-        )}
-      </CardContent>
-    </Card>
   );
 }

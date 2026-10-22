@@ -25,6 +25,46 @@ permissions:
   contents: read
 
 jobs:
+  # What this run has to build. A main push and its release tag land together when Gond ships; the
+  # tag's run builds the images (publishing latest too) and the apps, so the main run doesn't repeat
+  # them at the same moment. The desktop and Android apps build when their files changed, and always
+  # for a release; the check job runs their Rust and Android checks either way.
+  changes:
+    name: What to build
+    runs-on: ubuntu-24.04
+    outputs:
+      images: ${{ steps.decide.outputs.images }}
+      apps: ${{ steps.decide.outputs.apps }}
+      latest: ${{ steps.decide.outputs.latest }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: decide
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          images=true; apps=true; latest=false
+          if [ "$REF" = refs/heads/main ]; then
+            latest=true
+            if [ "$EVENT" = push ] && [ -n "$(git tag --points-at HEAD --list 'v*')" ]; then
+              echo "This commit is a release; its tag's run builds and publishes it."
+              images=false; apps=false
+            fi
+          elif [ -n "$RELEASE_TAG" ]; then
+            [ "$(git rev-parse origin/main)" = "$GITHUB_SHA" ] && latest=true
+          fi
+          if [ "$apps" = true ] && [ -z "$RELEASE_TAG" ] && [ -n "$BASE" ] && git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            if ! git diff --name-only "$BASE" "$GITHUB_SHA" | grep -qE '^(apps/desktop/|apps/android/|assets/|\.github/workflows/)|^(package\.json|bun\.lock)$'; then
+              echo "The desktop and Android apps didn't change."
+              apps=false
+            fi
+          fi
+          echo "images=$images apps=$apps latest=$latest"
+          { echo "images=$images"; echo "apps=$apps"; echo "latest=$latest"; } >> "$GITHUB_OUTPUT"
+
   check:
     name: Lint, typecheck and test
     runs-on: ubuntu-24.04
@@ -40,7 +80,8 @@ jobs:
 
   desktop:
     name: Desktop app for ${{ matrix.os }}
-    needs: check
+    needs: changes
+    if: needs.changes.outputs.apps == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -103,7 +144,8 @@ jobs:
 
   android:
     name: Android app
-    needs: check
+    needs: changes
+    if: needs.changes.outputs.apps == 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -140,7 +182,7 @@ jobs:
 
   release:
     name: Release the desktop and Android apps
-    needs: [desktop, android]
+    needs: [check, desktop, android]
     if: startsWith(github.ref, 'refs/tags/v') || inputs.tag != ''
 
     runs-on: ubuntu-24.04
@@ -216,7 +258,8 @@ jobs:
 
   build:
     name: Build ${{ matrix.name }} ${{ matrix.arch }}
-    needs: check
+    needs: changes
+    if: needs.changes.outputs.images == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -291,7 +334,8 @@ jobs:
 
   publish:
     name: Publish ${{ matrix.name }}
-    needs: build
+    # Nothing is published unless the checks passed, though the images build alongside them.
+    needs: [changes, check, build]
     if: github.event_name != 'pull_request'
     strategy:
       fail-fast: false
@@ -322,10 +366,10 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE }}
-          # latest follows main; release tags (v1.2.3) publish 1.2.3 and 1.2.
+          # latest follows main (a release tag on main's head publishes it too); release tags (v1.2.3) publish 1.2.3 and 1.2.
           flavor: latest=false
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest,enable=${{ needs.changes.outputs.latest == 'true' }}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha

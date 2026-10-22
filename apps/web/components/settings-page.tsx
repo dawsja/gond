@@ -12,14 +12,11 @@ import { AppearanceCard } from "@/components/appearance-card";
 import { AppsCard } from "@/components/apps-card";
 import { ComposioCard } from "@/components/composio-card";
 import { ComputerCard } from "@/components/computer-card";
-import { EngineCard } from "@/components/engine-card";
+import { AiSteps } from "@/components/ai-steps";
 import { HomeResetCard } from "@/components/home-reset-card";
 import { McpCard } from "@/components/mcp-card";
 import { NotificationsCard } from "@/components/notifications-card";
 import { OidcCard } from "@/components/oidc-card";
-import { ChatGptPlanCard } from "@/components/chatgpt-plan";
-import { GrokPlanCard } from "@/components/grok-plan";
-import { ProvidersCard } from "@/components/providers-card";
 import { VoiceCard } from "@/components/voice-card";
 import { SecretsCard } from "@/components/secrets-card";
 import { ServerCard } from "@/components/server-card";
@@ -155,17 +152,12 @@ export function SettingsPage({ user, section, index = false }: { user: SessionUs
     case "appearance":
       body = <AppearanceCard />;
       break;
-    case "team":
+    case "shared-computer":
       body = <ComputerCard status={status} admin={admin} onCheck={() => load(true)} />;
       break;
     case "ai":
       body = (
-        <>
-          {ai ? <EngineCard ai={ai} status={status} onChange={setAi} onRefresh={() => void load(true)} /> : <Skeleton className="h-96 rounded-xl" />}
-          <ChatGptPlanCard ai={ai} onAiChange={setAi} />
-          <GrokPlanCard ai={ai} onAiChange={setAi} />
-          <ProvidersCard ai={ai} onAiChange={setAi} />
-        </>
+        ai ? <AiSteps ai={ai} status={status} onChange={setAi} onRefresh={() => load(true)} /> : <Skeleton className="h-96 rounded-xl" />
       );
       break;
     case "voice":

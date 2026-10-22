@@ -1,10 +1,10 @@
 import type { UserRole } from "@gond/shared";
-import { Blocks, BrainCircuit, Info, KeyRound, LogIn, Mic, Monitor, Palette, Sparkles, UserRound, Users } from "lucide-react";
+import { Blocks, BrainCircuit, Info, KeyRound, LogIn, Mic, Monitor, Palette, Server, Sparkles, UserRound } from "lucide-react";
 
 export const SETTINGS_SECTIONS = [
   { id: "account", label: "Account", blurb: "Your picture, password and notifications.", icon: UserRound, admin: false },
   { id: "appearance", label: "Appearance", blurb: "Light or dark, and the color of your chats.", icon: Palette, admin: false },
-  { id: "team", label: "Team", blurb: "The people on it and the computer they all share.", icon: Users, admin: true },
+  { id: "shared-computer", label: "Shared computer", blurb: "The computer everyone's bots run on: how it's doing, updating it and resetting it.", icon: Server, admin: true },
   { id: "ai", label: "AI", blurb: "What your bots run on: Claude Code on your plan, your ChatGPT or Grok plan, or an API key.", icon: BrainCircuit, admin: false },
   { id: "voice", label: "Voice", blurb: "Talk to your bots instead of typing: the model that turns speech into text.", icon: Mic, admin: false },
   { id: "computer", label: "Computer", blurb: "Your account on the computer your bots use, and starting it fresh.", icon: Monitor, admin: false },

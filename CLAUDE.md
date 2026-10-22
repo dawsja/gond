@@ -57,7 +57,12 @@ what is here. The README says what Gond is; this says how it is made.
 - `packages/shared`: types, zod schemas, constants, templates, the app
   catalog. If web and api both need it, it goes here.
 - `docker-compose.yml` runs the three services; CI builds the images and
-  publishes them to GHCR.
+  publishes them to GHCR. Builds start alongside the checks and nothing is
+  published or released unless they pass. When a release's tag lands with
+  its main push, the tag's run builds and publishes it (`latest` too) and
+  the main run leaves it alone; the desktop and Android apps build for
+  every release and otherwise only when their files changed (the `changes`
+  job in `build.yml`).
 
 ## Web
 
@@ -740,13 +745,16 @@ what is here. The README says what Gond is; this says how it is made.
   runs on their plan; a key is the `api` engine's, so nothing can be left
   pointing at a key with no way back. How hard a model thinks is the
   model's own business: nothing sets it, and there is no setting for it.
-  The Engine card
-  is only ever about the plan: an engine is put on a key, or taken off it,
-  by the switch on that key under API keys, and removing a key puts its
-  engines back on the plan (`releaseEngines`). So nothing but that card
-  writes `access`;
-  `src/engines.ts` turns that and the owner's providers into what the box
-  gets. A CLI's plan is the CLI signed in inside the person's own account on the
+  Settings → AI is three steps (`ai-steps.tsx`): where the bots run (one
+  engine, picked in a sentence), the account behind it (Claude Code's
+  sign-in on the computer with a circle that checks it again, the ChatGPT
+  or Grok sign-in, or which saved key), and the model, from that engine's
+  own list (`ModelPicker` with `only`). A pick moves the bots only once
+  its account works (`readiness`), so they never sit on an engine that
+  can't answer, and leaves `enabled` as just that engine. Removing a key
+  puts a CLI engine on it back on the plan (`releaseEngines`);
+  `src/engines.ts` turns `access` and the owner's providers into what the
+  box gets. A CLI's plan is the CLI signed in inside the person's own account on the
   box, which Settings → AI can do for them without a terminal
   (`/api/box/engines/:engine/sign-in`, `components/engine-signin.tsx`); an
   API key is one of their own providers. Models come from the engines
@@ -914,13 +922,12 @@ what is here. The README says what Gond is; this says how it is made.
   encrypted and write-only. An engine names the APIs it can run on
   (`ENGINE_LABELS[engine].providers`, best first) and `engineRun` takes the
   first the person has a key for. A key is only ever typed in one place,
-  Settings → AI → API keys, where the API is picked first and its card
-  opens. The box gets the LLM proxy (`/api/llm/:kind/*` in
+  Settings → AI with An API key picked, on its API's row (`KeyList`). The box gets the LLM proxy (`/api/llm/:kind/*` in
   `src/routes/llm.ts`) and the provider's proxy token; the token names whose row it is
   (`providerByToken`), only the proxy decrypts the key, and
   `allSecretValues()` includes every key for redaction.
 - **A ChatGPT plan is an engine you sign in to** (`src/chatgpt.ts`,
-  Settings → AI → ChatGPT plan, `chatgpt-plan.tsx`), OpenAI's Sign in
+  Settings → AI, `chatgpt-plan.tsx`), OpenAI's Sign in
   with ChatGPT for open-source apps: OAuth with PKCE against
   auth.openai.com, the client registered on first use
   (`dynamic_agent_client` comes back as an `oaiapp_` id kept in
@@ -934,10 +941,11 @@ what is here. The README says what Gond is; this says how it is made.
   `api_key`, the rest encrypted in `oauth`), redacted like a key;
   `chatGptAccessToken` renews them one at a time per person, since the
   refresh token rotates, and a refusal ends the sign-in with a line
-  saying so. It is the `chatgpt` engine, beside Claude Code, Grok and
-  API in the Engine card and with the plan as its only provider, so the
-  API engine stays about keys; like `api` it has no CLI (`native` in
-  `engineRun`), and the card's switch turns it on. Settings from when it
+  saying so. It is the `chatgpt` engine, beside Claude Code, Grok and an
+  API key in step 1 of Settings → AI and with the plan as its only
+  provider, so the API engine stays about keys; like `api` it has no CLI
+  (`native` in `engineRun`), and picking it there, once signed in, puts
+  the bots on it. Settings from when it
   was the `api` engine on a `chatgpt` provider read back as this engine
   (`toAi`). `native.ts` speaks the Responses API for it (`store: false`, streamed, the prompt as
   `instructions`, the tools in one `gond` namespace with `strict: false`,
@@ -951,7 +959,7 @@ what is here. The README says what Gond is; this says how it is made.
   CLI, so Codex's CLI, sign-in and session were taken out, and
   settings that still name it read back without it (`readEnabled`).
 - **A Grok plan is an engine you sign in to too** (`src/grok.ts`,
-  Settings → AI → Grok plan, `grok-plan.tsx`), and it is why there is no
+  Settings → AI, `grok-plan.tsx`), and it is why there is no
   Grok CLI on the computer. It reuses what the open-source Grok CLI
   (xai-org/grok-build, Apache-2.0) does, its public client included: the
   device flow (RFC 8628) against auth.x.ai with `referrer=grok-build`,
@@ -1001,11 +1009,16 @@ what is here. The README says what Gond is; this says how it is made.
   `target` says where the value lands: the secret store, the person's
   Composio key when the bot asked with `set_composio_key`, or a website's
   sign-in. Settings → Secrets (`secrets-card.tsx`) lists the names, saved
-  sign-ins by site and keys apart, and forgets one (`GET /api/secrets`,
-  `DELETE /api/secrets/:name`); a value still only goes in through a
-  bot's card, a newer one replaces it, and deleting the person takes the
-  lot. Never tell a person to paste a key into Settings that a bot could
-  ask for.
+  sign-ins by site and keys apart, forgets one (`GET /api/secrets`,
+  `DELETE /api/secrets/:name`), and changes one the person already has
+  (`PUT /api/secrets/:name`, `changeSecret`): the dialog's fields start
+  empty, since no value is ever sent back, a sign-in's details each say
+  what they are and any left empty stay as they were, and the new value
+  is encrypted afresh with its site kept, while what a conversation still
+  held of the old one is dropped (`forgetHeldLogin`). A new secret still
+  only goes in through a bot's card, a newer one replaces it, and deleting
+  the person takes the lot. Never tell a person to paste a new key into
+  Settings that a bot could ask for.
 - **A website's sign-in is a card, typed by the API.** When a page the
   bot is driving asks for an email, username, phone, password or code, it
   calls `request_login` with those fields: one `login` card

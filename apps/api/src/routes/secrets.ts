@@ -2,8 +2,9 @@ import { Hono } from "hono";
 import { ownThread, userId } from "../access.ts";
 import { applyComposioKey } from "../composio.ts";
 import type { Env } from "../app.ts";
-import { deleteSecret, getSecretRequest, listSecrets, resolveSecretRequest, setSecret } from "../data/secrets.ts";
-import { holdLogin, rememberable } from "../logins.ts";
+import { changeSecret, deleteSecret, getSecretRequest, listSecrets, resolveSecretRequest, setSecret } from "../data/secrets.ts";
+import { listThreads } from "../data/threads.ts";
+import { forgetHeldLogin, holdLogin, rememberable } from "../logins.ts";
 import { answerSecretRequest } from "../secret-requests.ts";
 
 export function secretsRoutes() {
@@ -39,6 +40,17 @@ export function secretsRoutes() {
   });
 
   app.get("/secrets", (c) => c.json({ secrets: listSecrets(userId(c)) }));
+
+  // The person replaces a value they already have; nobody ever reads one back, here or anywhere.
+  app.put("/secrets/:name", async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as { value?: unknown };
+    if (typeof body.value !== "string" || !body.value) return c.json({ error: "Type the new value" }, 400);
+    if (body.value.length > 8_000) return c.json({ error: "That's too long" }, 400);
+    const name = c.req.param("name");
+    if (!changeSecret(userId(c), name, body.value)) return c.json({ error: "No such secret" }, 404);
+    forgetHeldLogin(name, listThreads({ userId: userId(c) }).map((t) => t.id));
+    return c.json({ ok: true });
+  });
 
   app.delete("/secrets/:name", (c) => (deleteSecret(userId(c), c.req.param("name")) ? c.json({ ok: true }) : c.json({ error: "No such secret" }, 404)));
 

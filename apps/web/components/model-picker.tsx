@@ -44,11 +44,14 @@ export function ModelPicker({
   engine,
   model,
   disabled = false,
+  only = false,
   onChange,
 }: {
   engine: Engine;
   model: string;
   disabled?: boolean;
+  /** Lists only `engine`'s own models, so picking one never moves the bots to another engine. */
+  only?: boolean;
 
   onChange: (next: { engine: Engine; model: string }) => void;
 }) {
@@ -89,7 +92,7 @@ export function ModelPicker({
     );
   }
 
-  const groups = list.groups.filter((group) => group.models.length);
+  const groups = list.groups.filter((group) => group.models.length && (!only || group.engine === engine));
   const known = groups.some((group) => group.engine === engine && group.models.some((choice) => choice.id === model));
 
   const plan = isPlanProvider(ENGINE_LABELS[engine].provider);
@@ -121,7 +124,7 @@ export function ModelPicker({
 
   const label = (choice: ModelChoice) => choice.name ?? choice.id;
   const items = [
-    ...groups.flatMap((group) => group.models.map((choice) => ({ value: valueOf(group.engine, choice.id), label: `${label(choice)} · ${ENGINE_LABELS[group.engine].name}` }))),
+    ...groups.flatMap((group) => group.models.map((choice) => ({ value: valueOf(group.engine, choice.id), label: only ? label(choice) : `${label(choice)} · ${ENGINE_LABELS[group.engine].name}` }))),
     { value: OTHER, label: "Something else…" },
   ];
   const detail = list.groups.find((group) => group.engine === engine)?.detail ?? null;

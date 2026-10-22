@@ -1,18 +1,93 @@
 "use client";
 
-import { type SecretMeta } from "@gond/shared";
-import { KeyRound, LogIn, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { LOGIN_FIELD_LABELS, type LoginFieldKind, type SecretMeta } from "@gond/shared";
+import { KeyRound, LogIn, Pencil, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useLiveEvents } from "@/components/hq/live-events";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
 import { api, del } from "@/lib/api";
 
 type Forgetting = { title: string; names: string[]; detail: string };
+
+type Changing = { title: string; fields: { name: string; label: string; hidden: boolean }[] };
+
+/** "UBER_EATS_PASSWORD" is the Uber Eats password: its kind is the name's last word. */
+function detailOf(secret: SecretMeta): Changing["fields"][number] {
+  const kind = /_(EMAIL|USERNAME|PHONE|PASSWORD|CODE)(?:_\d+)?$/.exec(secret.name)?.[1]?.toLowerCase() as LoginFieldKind | undefined;
+  return { name: secret.name, label: kind ? LOGIN_FIELD_LABELS[kind] : secret.name, hidden: !kind || kind === "password" || kind === "code" };
+}
+
+/** New values for saved secrets, typed in place of what is there; what is there is never shown. */
+function ChangeDialog({ changing, onClose, onSaved }: { changing: Changing; onClose: () => void; onSaved: () => void }) {
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const given = changing.fields.filter((field) => values[field.name]);
+
+  async function save(event: FormEvent) {
+    event.preventDefault();
+    if (!given.length || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      for (const field of given) await api(`/api/secrets/${encodeURIComponent(field.name)}`, { method: "PUT", body: JSON.stringify({ value: values[field.name] }) });
+      toast.add({ type: "success", title: `Changed ${changing.title}.` });
+      onSaved();
+      onClose();
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : "Couldn't save it.");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Change {breakable(changing.title)}</DialogTitle>
+          <DialogDescription>What&apos;s saved now is never shown. Type a new value to replace it; it&apos;s encrypted again as it&apos;s saved.</DialogDescription>
+        </DialogHeader>
+        <form onSubmit={save} className="contents">
+          <FieldGroup className="dialog-body gap-4">
+            {changing.fields.map((field) => (
+              <Field key={field.name}>
+                <FieldLabel htmlFor={`change-${field.name}`}>{changing.fields.length > 1 ? field.label : "New value"}</FieldLabel>
+                <Input
+                  id={`change-${field.name}`}
+                  type={field.hidden ? "password" : "text"}
+                  autoComplete="new-password"
+                  spellCheck={false}
+                  maxLength={8000}
+                  placeholder={changing.fields.length > 1 ? "Leave as it is" : undefined}
+                  value={values[field.name] ?? ""}
+                  onChange={(event) => setValues((current) => ({ ...current, [field.name]: event.target.value }))}
+                />
+              </Field>
+            ))}
+            {error ? <FieldError>{error}</FieldError> : null}
+          </FieldGroup>
+          <DialogFooter>
+            <Button type="button" size="lg" variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" size="lg" variant="tint" disabled={!given.length || busy}>
+              {busy ? <Spinner data-icon="inline-start" /> : null}
+              Save
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 // A name like BACKUP_ENCRYPTION_PASSWORD has no spaces, so it may break after each underscore.
 function breakable(text: string) {
@@ -22,6 +97,7 @@ function breakable(text: string) {
 export function SecretsCard() {
   const [secrets, setSecrets] = useState<SecretMeta[] | null>(null);
   const [forgetting, setForgetting] = useState<Forgetting | null>(null);
+  const [changing, setChanging] = useState<Changing | null>(null);
 
   const load = useCallback(async () => {
     const data = await api<{ secrets: SecretMeta[] }>("/api/secrets").catch(() => null);
@@ -81,6 +157,9 @@ export function SecretsCard() {
                       {list.length} {list.length === 1 ? "detail" : "details"} · saved {latest(list)}
                     </span>
                   </span>
+                  <Button variant="ghost" size="icon-xs" aria-label={`Change your ${site} sign-in`} onClick={() => setChanging({ title: `your ${site} sign-in`, fields: list.map(detailOf) })}>
+                    <Pencil aria-hidden="true" />
+                  </Button>
                   <Button variant="ghost" size="icon-xs" aria-label={`Forget ${site}`} className="text-destructive" onClick={() => setForgetting({ title: `your ${site} sign-in`, names: list.map((s) => s.name), detail: `The next time a bot signs you in to ${site}, it will ask with a card again.` })}>
                     <Trash2 aria-hidden="true" />
                   </Button>
@@ -94,7 +173,7 @@ export function SecretsCard() {
       <Card>
         <CardHeader>
           <CardTitle>Keys</CardTitle>
-          <CardDescription>API keys and tokens your bots asked you for, stored encrypted. Only their names are shown; a bot asks again when it needs a new one.</CardDescription>
+          <CardDescription>API keys and tokens your bots asked you for, stored encrypted. Only their names are shown; change one here when it&apos;s replaced, or a bot asks again when it needs a new one.</CardDescription>
         </CardHeader>
         <CardContent>
           {!secrets ? (
@@ -117,6 +196,9 @@ export function SecretsCard() {
                     <span className="block truncate font-mono text-[13.5px] font-medium">{secret.name}</span>
                     <span className="block truncate text-[12px] text-muted-foreground">Saved {new Date(secret.updatedAt).toLocaleDateString()}</span>
                   </span>
+                  <Button variant="ghost" size="icon-xs" aria-label={`Change ${secret.name}`} onClick={() => setChanging({ title: secret.name, fields: [{ name: secret.name, label: secret.name, hidden: true }] })}>
+                    <Pencil aria-hidden="true" />
+                  </Button>
                   <Button variant="ghost" size="icon-xs" aria-label={`Forget ${secret.name}`} className="text-destructive" onClick={() => setForgetting({ title: secret.name, names: [secret.name], detail: "Anything that uses it, like an MCP server's headers, stops working until a bot asks you for it again." })}>
                     <Trash2 aria-hidden="true" />
                   </Button>
@@ -126,6 +208,8 @@ export function SecretsCard() {
           )}
         </CardContent>
       </Card>
+
+      {changing ? <ChangeDialog changing={changing} onClose={() => setChanging(null)} onSaved={() => void load()} /> : null}
 
       <AlertDialog open={Boolean(forgetting)} onOpenChange={(open) => !open && setForgetting(null)}>
         <AlertDialogContent size="sm">

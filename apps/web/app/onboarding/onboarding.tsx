@@ -8,7 +8,7 @@ import { useEffect, useState } from "react";
 import { AppIcon } from "@/components/app-icons";
 import { ContinueWithChatGpt } from "@/components/chatgpt-plan";
 import { SignInWithGrok } from "@/components/grok-plan";
-import { readiness } from "@/components/engine-card";
+import { readiness } from "@/components/ai-steps";
 import { EngineSignInDialog } from "@/components/engine-signin";
 import { ModelPicker } from "@/components/model-picker";
 import { AddProviderKey, useProviders } from "@/components/providers-card";

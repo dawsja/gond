@@ -1,13 +1,12 @@
 "use client";
 
-import type { AiSettings } from "@gond/shared";
+import type { ProviderKind, ProviderMeta } from "@gond/shared";
 import { Copy, ExternalLink } from "lucide-react";
 import { useEffect, useEffectEvent, useState } from "react";
 import { PlanSignedIn } from "@/components/plan-engine";
-import { ProviderCheck, useProviders } from "@/components/providers-card";
+import { ProviderCheck } from "@/components/providers-card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
 import { api, post } from "@/lib/api";
@@ -127,29 +126,23 @@ export function SignInWithGrok({ onDone }: { onDone: () => void }) {
   );
 }
 
-export function GrokPlanCard({ ai, onAiChange }: { ai?: AiSettings | null; onAiChange?: (next: AiSettings) => void }) {
-  const { providers, reload } = useProviders();
+/** Step 2 for the Grok engine: Sign in with Grok, or the account it signed in. */
+export function GrokAccount({ providers, reload }: { providers: Record<ProviderKind, ProviderMeta | null> | null; reload: () => void }) {
   const provider = providers?.grok ?? null;
-
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Grok plan</CardTitle>
-        <CardDescription>Run your bots on your SuperGrok or X Premium+ plan, with no key to keep.</CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        {!providers ? (
-          <Spinner />
-        ) : provider?.account ? (
-          <PlanSignedIn kind="grok" logo={<GrokLogo size={18} />} provider={provider} ai={ai} onAiChange={onAiChange} onChange={() => void reload()} />
-        ) : (
-          <div className="flex flex-col items-start gap-3">
-            {provider?.check && !provider.check.ok ? <ProviderCheck provider={provider} /> : null}
-            <SignInWithGrok onDone={() => void reload()} />
-          </div>
-        )}
-        <p className="text-[12.5px] text-muted-foreground">What your bots do counts toward your Grok plan&apos;s usage limits. xAI decides which plans can be used outside Grok.</p>
-      </CardContent>
-    </Card>
+    <div className="flex flex-col gap-4">
+      {!providers ? (
+        <Spinner />
+      ) : provider?.account ? (
+        <PlanSignedIn kind="grok" logo={<GrokLogo size={18} />} provider={provider} onChange={reload} />
+      ) : (
+        <div className="flex flex-col items-start gap-3">
+          <p className="text-[14px]">Sign in with your SuperGrok or X Premium+ account. There is no key to keep.</p>
+          {provider?.check && !provider.check.ok ? <ProviderCheck provider={provider} /> : null}
+          <SignInWithGrok onDone={reload} />
+        </div>
+      )}
+      <p className="text-[12.5px] text-muted-foreground">What your bots do counts toward your Grok plan&apos;s usage limits. xAI decides which plans can be used outside Grok.</p>
+    </div>
   );
 }

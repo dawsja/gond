@@ -3532,6 +3532,46 @@ describe("the computer", () => {
   });
 });
 
+describe("changing a secret", () => {
+  test("the person replaces a saved value without ever seeing the old one, and it is encrypted afresh", async () => {
+    await seedUsers(["u-sec-a", "user"], ["u-sec-b", "user"]);
+    const { Hono } = await import("hono");
+    const { setSecret, readSecret, readLogin, listSecrets } = await import("../src/data/secrets.ts");
+    const { holdLogin, heldLogin } = await import("../src/logins.ts");
+    const { createBot } = await import("../src/data/bots.ts");
+    const { secretsRoutes } = await import("../src/routes/secrets.ts");
+    const { ensureDatabase } = await import("../src/db/init.ts");
+    const { botInputSchema } = await import("@gond/shared");
+    const bot = createBot(botInputSchema.parse({ name: "Keyholder" }), "u-sec-a");
+    setSecret("u-sec-a", "CURA_TOKEN", "old-token-123456", bot.id);
+    setSecret("u-sec-a", "UBER_EATS_PASSWORD", "old-password-1", bot.id, "Uber Eats");
+    holdLogin(bot.threadId, "UBER_EATS_PASSWORD", "old-password-1");
+    const stored = (name: string) => (ensureDatabase().query("SELECT value FROM gond_secrets WHERE user_id = 'u-sec-a' AND name = ?").get(name) as { value: string }).value;
+    const before = stored("CURA_TOKEN");
+    const mine = asPerson(new Hono(), "u-sec-a").route("/api", secretsRoutes());
+    const put = (app: typeof mine, name: string, value: unknown) => app.request(`/api/secrets/${name}`, { method: "PUT", body: JSON.stringify({ value }) });
+
+    const changed = await put(mine, "CURA_TOKEN", "new-token-654321");
+    expect(changed.status).toBe(200);
+    expect(await changed.text()).not.toContain("token");
+    expect(readSecret("u-sec-a", "CURA_TOKEN")).toBe("new-token-654321");
+    expect(stored("CURA_TOKEN")).not.toBe(before);
+    expect(stored("CURA_TOKEN")).not.toContain("new-token");
+
+    expect((await put(mine, "UBER_EATS_PASSWORD", "new-password-2")).status).toBe(200);
+    expect(readLogin("u-sec-a", "UBER_EATS_PASSWORD")).toBe("new-password-2");
+    expect(listSecrets("u-sec-a").find((s) => s.name === "UBER_EATS_PASSWORD")).toMatchObject({ site: "Uber Eats", requestedBy: bot.id });
+    expect(heldLogin(bot.threadId, "UBER_EATS_PASSWORD")).toBeNull();
+
+    expect((await put(mine, "NEVER_SAVED", "x")).status).toBe(404);
+    expect((await put(mine, "CURA_TOKEN", "")).status).toBe(400);
+    const theirs = asPerson(new Hono(), "u-sec-b").route("/api", secretsRoutes());
+    expect((await put(theirs, "CURA_TOKEN", "hijack")).status).toBe(404);
+    expect(readSecret("u-sec-a", "CURA_TOKEN")).toBe("new-token-654321");
+    expect(JSON.stringify(await (await mine.request("/api/secrets")).json())).not.toContain("new-token");
+  });
+});
+
 describe("bot templates", () => {
   test("a bot goes out as a .bot file or a link with its job, look, routines and their skills, and comes back no more trusting than Auto", async () => {
     await seedUsers(["u-tpl-a", "user"], ["u-tpl-b", "user"]);
