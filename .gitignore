@@ -38,7 +38,7 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env and secrets — never commit real env or tokens
+# env and secrets: never commit real env or tokens
 .env
 .env.*
 !.env.example

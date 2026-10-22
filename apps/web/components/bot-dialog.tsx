@@ -72,7 +72,7 @@ export function BotDialog({ botId, onClose }: { botId: string | null; onClose: (
       if (!existing) router.push(`/app/t/${bot.threadId}`);
       onClose();
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : "Could not save.");
+      setError(failure instanceof Error ? failure.message : "Couldn't save.");
       setBusy(false);
     }
   }

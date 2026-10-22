@@ -1,5 +1,5 @@
 import { posix } from "node:path";
-import { approvalLine, editedEmailInput, emailDraftOf, emailEditable, emailMode, sendDraftAction, type Approval, type ApprovalAnswer, type ApprovalLevel, type Bot } from "@gond/shared";
+import { QUIET_REPLY, approvalLine, editedEmailInput, emailDraftOf, emailEditable, emailMode, sendDraftAction, type Approval, type ApprovalAnswer, type ApprovalLevel, type Bot } from "@gond/shared";
 import { boxHome } from "./box.ts";
 import { approvalTimeoutMs } from "./config.ts";
 import { addRule, createApproval, getApproval, listApprovals, listRules, resolveApproval } from "./data/approvals.ts";
@@ -108,6 +108,33 @@ function inOwnHome(bot: Pick<Bot, "id" | "userId">, tool: string, input: Record<
   if (!FILE_TOOLS.has(tool)) return false;
   const paths = PATH_KEYS.map((key) => input[key]).filter((value): value is string => typeof value === "string");
   return paths.length > 0 && paths.every((path) => ownPath(bot, path));
+}
+
+export const CARD_EXPIRED_LINE = "That card expired. Ask me again when you're ready.";
+
+const enders = new WeakMap<AbortSignal, () => void>();
+
+/** The responder says how to end a turn whose answer is the person's, so a card that times out needs no model round. */
+export function endTurnOnExpiry(signal: AbortSignal, end: () => void): void {
+  enders.set(signal, end);
+}
+
+/**
+ * A card timed out: the bot says so in the chat in Gond's own words, and a turn answering the person
+ * ends there, since there is nothing left for the model to say. A turn on a teammate's errand goes on
+ * and hears `expiredText`, so it can report back.
+ */
+export function cardExpired(bot: Pick<Bot, "id">, threadId: string, signal?: AbortSignal): void {
+  postMessage({ threadId, author: bot.id, body: CARD_EXPIRED_LINE, answered: true });
+  if (signal) enders.get(signal)?.();
+}
+
+/**
+ * What a bot hears when its card timed out: the person was already told (`tellCardExpired`), so the
+ * turn ends quietly rather than going on without them or asking again unprompted.
+ */
+export function expiredText(card: string): string {
+  return `NOT done: nobody answered the card ${card} in time, so it expired, and the person has been told so in the chat. Don't ask again: if this was a teammate's errand, say in your answer that the person didn't answer the card; otherwise answer exactly ${QUIET_REPLY}.`;
 }
 
 export function boxPermission(level: ApprovalLevel): "ask" | "full" {
@@ -222,6 +249,8 @@ export async function askApproval(input: { bot: Bot; threadId: string; tool: str
       if (!pending().delete(approval.id)) return;
       resolveApproval(approval.id, "expired");
       resolve(answer("expired"));
+      // A stopped turn says what stopped on its own; only a card that ran out of time gets the line.
+      if (!input.signal?.aborted) cardExpired(bot, threadId, input.signal);
     };
     const timer = setTimeout(expire, approvalTimeoutMs());
     pending().set(approval.id, { resolve: (given) => (input.signal?.removeEventListener("abort", expire), resolve(given)), timer });

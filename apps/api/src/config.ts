@@ -40,5 +40,5 @@ export function turnTiming() {
 }
 
 export function approvalTimeoutMs() {
-  return Math.max(1, Number(env("APPROVAL_TIMEOUT_MINUTES") ?? 30) || 30) * 60_000;
+  return Math.max(1, Number(env("APPROVAL_TIMEOUT_MINUTES") ?? 15) || 15) * 60_000;
 }

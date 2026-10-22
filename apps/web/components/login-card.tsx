@@ -3,7 +3,7 @@
 import { LOGIN_FIELD_LABELS, type Bot, type LoginField, type SecretRequest } from "@gond/shared";
 import { LogIn } from "lucide-react";
 import { useState, type FormEvent } from "react";
-import { ActionCard, ActionCardDone, cheerOnFold } from "@/components/action-card";
+import { ActionCard, ActionCardDone, cheerOnFold, NOBODY_ANSWERED } from "@/components/action-card";
 import { Button } from "@/components/ui/button";
 import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -39,7 +39,7 @@ export function LoginCard({ request, bot, onAnswered }: { request: SecretRequest
       if (!decline) cheerOnFold(request.id);
       onAnswered(data.request);
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : "Could not send it.");
+      setError(failure instanceof Error ? failure.message : "Couldn't send it.");
     } finally {
       setBusy(false);
     }
@@ -49,7 +49,7 @@ export function LoginCard({ request, bot, onAnswered }: { request: SecretRequest
   const icon = <LogIn aria-hidden="true" />;
   if (request.status !== "pending") {
     const done = request.status === "given" ? { status: "Sent", tone: "ok" as const } : request.status === "declined" ? { status: "Not now", tone: "neutral" as const } : { status: "Expired", tone: "neutral" as const };
-    return <ActionCardDone id={request.id} bot={bot} icon={icon} title={`Sign in to ${site}`} by={name} status={done.status} tone={done.tone} />;
+    return <ActionCardDone id={request.id} bot={bot} icon={icon} title={`Sign in to ${site}`} by={request.status === "expired" ? NOBODY_ANSWERED : name} status={done.status} tone={done.tone} />;
   }
 
   return (

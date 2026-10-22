@@ -52,7 +52,7 @@ export function mcpRoutes() {
 
   app.patch("/mcp-servers/:id", async (c) => {
     const current = ownServer(c, c.req.param("id"));
-    if (!current) return c.json({ error: "No such server" }, 404);
+    if (!current) return c.json({ error: "Couldn't find that server" }, 404);
     const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
     const result = validate({ ...current, ...body });
     if ("error" in result) return c.json({ error: result.error }, 400);
@@ -64,7 +64,7 @@ export function mcpRoutes() {
 
   app.get("/mcp-servers/:id/icon", async (c) => {
     const server = ownServer(c, c.req.param("id"));
-    if (!server) return c.json({ error: "No such server" }, 404);
+    if (!server) return c.json({ error: "Couldn't find that server" }, 404);
     const icon = await resolveMcpIcon(server);
     if (!icon) return c.body(null, 404, { "Cache-Control": "private, max-age=3600" });
     if (icon.kind === "redirect") return c.redirect(icon.url, 302);
@@ -73,13 +73,13 @@ export function mcpRoutes() {
 
   app.post("/mcp-servers/:id/probe", async (c) => {
     const server = ownServer(c, c.req.param("id"));
-    if (!server) return c.json({ error: "No such server" }, 404);
+    if (!server) return c.json({ error: "Couldn't find that server" }, 404);
     return c.json({ result: await probeMcpServer(server.id), server: getMcpServer(server.id) });
   });
 
   app.post("/mcp-servers/:id/refresh", async (c) => {
     const server = ownServer(c, c.req.param("id"));
-    if (!server) return c.json({ error: "No such server" }, 404);
+    if (!server) return c.json({ error: "Couldn't find that server" }, 404);
     markMcpRefreshed(server.id);
     if (server.transport !== "http") return c.json({ server: getMcpServer(server.id), tools: null });
     // A probe goes without the sign-in's token, so a signed-in server would read as signed out.
@@ -100,7 +100,7 @@ export function mcpRoutes() {
 
   app.post("/mcp-servers/:id/login", async (c) => {
     const server = ownServer(c, c.req.param("id"));
-    if (!server) return c.json({ error: "No such server" }, 404);
+    if (!server) return c.json({ error: "Couldn't find that server" }, 404);
 
     const body = (await c.req.json().catch(() => ({}))) as { threadId?: unknown; app?: unknown };
     const threadId = typeof body.threadId === "string" && ownThread(c, body.threadId) ? body.threadId : undefined;
@@ -138,14 +138,14 @@ export function mcpRoutes() {
 
   app.delete("/mcp-servers/:id/login", (c) => {
     const server = ownServer(c, c.req.param("id"));
-    if (!server) return c.json({ error: "No such server" }, 404);
+    if (!server) return c.json({ error: "Couldn't find that server" }, 404);
     signOutMcp(server.id);
     return c.json({ server: getMcpServer(server.id) });
   });
 
   app.delete("/mcp-servers/:id", (c) => {
     const ok = Boolean(ownServer(c, c.req.param("id"))) && deleteMcpServer(c.req.param("id"));
-    return ok ? c.body(null, 204) : c.json({ error: "No such server" }, 404);
+    return ok ? c.body(null, 204) : c.json({ error: "Couldn't find that server" }, 404);
   });
 
   return app;
@@ -157,11 +157,11 @@ export function mcpProxyRoutes() {
 
   app.all("/mcp/:id/*", async (c) => {
     const server = getMcpServer(c.req.param("id"));
-    if (!server || server.transport !== "http" || !server.url) return c.json({ error: "No such MCP server" }, 404);
+    if (!server || server.transport !== "http" || !server.url) return c.json({ error: "Couldn't find that MCP server" }, 404);
     const token = c.req.header("x-gond-mcp-token") ?? c.req.header("x-kru-mcp-token") ?? "";
     const expected = mcpProxyToken(server.id) ?? "";
     // Never a 401 to the session: Claude Code reads one as an OAuth sign-in it should run itself.
-    if (!expected || token.length !== expected.length || !timingSafeEqualString(token, expected)) return c.json({ error: "Unauthorized" }, 403);
+    if (!expected || token.length !== expected.length || !timingSafeEqualString(token, expected)) return c.json({ error: "That token isn't valid for this server" }, 403);
     if (!server.enabled) return c.json({ error: "This MCP server is turned off" }, 503);
 
     const suffix = c.req.path.replace(/^\/api\/mcp\/[^/]+(\/mcp)?\/?/, "");

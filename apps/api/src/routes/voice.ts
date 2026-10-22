@@ -24,8 +24,8 @@ export function voiceRoutes() {
   app.put("/voice", async (c) => {
     const body = (await c.req.json().catch(() => null)) as { preference?: unknown; openaiModel?: unknown } | null;
     const { preference, openaiModel } = body ?? {};
-    if (preference === undefined && openaiModel === undefined) return c.json({ error: "Nothing to change" }, 400);
-    if (preference !== undefined && !isVoicePreference(preference)) return c.json({ error: "Pick automatic, xai or openai" }, 400);
+    if (preference === undefined && openaiModel === undefined) return c.json({ error: "There was nothing to change" }, 400);
+    if (preference !== undefined && !isVoicePreference(preference)) return c.json({ error: "Pick Automatic, xAI or OpenAI" }, 400);
     if (openaiModel !== undefined && (typeof openaiModel !== "string" || (openaiModel.trim() && !VOICE_MODEL_ID.test(openaiModel.trim())))) return c.json({ error: "That isn't a model id" }, 400);
     return c.json(setVoice(userId(c), { preference, openaiModel }));
   });

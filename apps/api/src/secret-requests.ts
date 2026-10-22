@@ -1,4 +1,5 @@
 import type { Bot, LoginField, SecretRequest } from "@gond/shared";
+import { cardExpired } from "./approvals.ts";
 import { approvalTimeoutMs } from "./config.ts";
 import { hasComposioKey } from "./data/composio-keys.ts";
 import { createSecretRequest, hasSecret, resolveSecretRequest } from "./data/secrets.ts";
@@ -12,7 +13,7 @@ function pending(): Map<string, Pending> {
   return (holder.__gondPendingSecrets ??= new Map());
 }
 
-export async function requestSecret(input: { bot: Bot; threadId: string; name: string; reason: string; target?: SecretRequest["target"]; site?: string; fields?: LoginField[] }): Promise<SecretRequest["status"] | "exists"> {
+export async function requestSecret(input: { bot: Bot; threadId: string; name: string; reason: string; target?: SecretRequest["target"]; site?: string; fields?: LoginField[]; signal?: AbortSignal }): Promise<SecretRequest["status"] | "exists"> {
   const target = input.target ?? "secret";
   const already = target === "login" ? false : target === "composio" ? hasComposioKey(input.bot.userId) : hasSecret(input.bot.userId, input.name);
   if (already) return "exists";
@@ -26,6 +27,7 @@ export async function requestSecret(input: { bot: Bot; threadId: string; name: s
       pending().delete(request.id);
       resolveSecretRequest(request.id, "expired");
       resolve("expired");
+      cardExpired(input.bot, input.threadId, input.signal);
     }, approvalTimeoutMs());
     pending().set(request.id, { resolve, timer });
   });

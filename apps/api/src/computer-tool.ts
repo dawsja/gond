@@ -1,5 +1,5 @@
 import { BROWSER_ONLY_STEPS, fromNativeAction, LOOK_STEPS, MAX_SCREEN_STEPS, SCREEN_STEP_TYPES, type Bot, type DesktopDriver, type Message, type ScreenStepType, type ScreenTarget, type Thread } from "@gond/shared";
-import { requestApproval, type Decision } from "./approvals.ts";
+import { expiredText, requestApproval, type Decision } from "./approvals.ts";
 import { BoxError, personHasControl, readBoxFileBytes, screenBatch, type BoxConfig, type ScreenResult, type ScreenStep, type ScreenView } from "./box.ts";
 import { getBot } from "./data/bots.ts";
 import { storeAttachment, postMessage } from "./data/threads.ts";
@@ -13,7 +13,7 @@ export const DISPLAY = { width: 1024, height: 640 };
 export const MAX_ACTIONS = 300;
 
 export const DENIED_TEXT = "The person denied the computer for this turn; say what you would have done.";
-export const EXPIRED_TEXT = "Nobody answered the approval for the computer in time; say what you would have done.";
+export const EXPIRED_TEXT = () => expiredText("to use the screen");
 export const TOO_MANY_TEXT = "Too many actions in one reply; finish, or tell the person where you got to.";
 // How long a batch waits for another reply to finish with the desktop before the bot is told to end its turn.
 export const SCREEN_WAIT_MS = 90_000;
@@ -269,7 +269,7 @@ export function computerTool(context: Context): { computer: DriverTool; browser:
       asked = await requestApproval({ bot, threadId: thread.id, tool: "computer", input: { target }, summary, signal: context.signal });
     }
     if (asked === "deny") return DENIED_TEXT;
-    if (asked === "expired") return EXPIRED_TEXT;
+    if (asked === "expired") return EXPIRED_TEXT();
     if (markDriving(thread.userId, { botId: bot.id, threadId: thread.id })) void emitDesktop(thread.userId);
     return null;
   };

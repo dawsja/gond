@@ -1,5 +1,5 @@
 import { QUIET_REPLY, handleOf, isClosing, isQuietReply, isStopRequest, mentionsIn, plainMarkdown, replyLine, roomTargets, type Bot, type ChatAttachment, type DesktopDriver, type Message, type Thread, type ToolLabelContext } from "@gond/shared";
-import { boxConfig, boxHome, ensureBotHome, interruptAgent, steerAgent, writeBoxFile, type BoxConfig } from "./box.ts";
+import { BoxError, boxConfig, boxHome, ensureBotHome, health, interruptAgent, steerAgent, writeBoxFile, type BoxConfig } from "./box.ts";
 import { isUpdating } from "./updater.ts";
 import { getAi } from "./data/ai.ts";
 import { getBot, getPrimary, listBots } from "./data/bots.ts";
@@ -30,8 +30,10 @@ import { skillsFor, skillsIndex, skillsReady } from "./skills.ts";
 import { renderSoul, systemPromptFor } from "./souls.ts";
 import { usableBot } from "./toolkits.ts";
 import { clearWork, clipOutput, createTurnClock, labelStep, recordStep, timingLine, type StepUpdate } from "./work.ts";
-import { boxPermission } from "./approvals.ts";
+import { boxPermission, endTurnOnExpiry } from "./approvals.ts";
+import { noteInterrupted, takeInterrupted, wasInterrupted } from "./resume.ts";
 import { turnTiming } from "./config.ts";
+import { answerOnCall, closeCallTurn } from "./calls.ts";
 import { appTools, baseTools, loadMemory, loadTeamMemory, MAX_CHAIN, MAX_ROOM_LINES, permissionTool, resultDepth, teamTools, TOOL_NOTES, transcript } from "./tools.ts";
 
 const CONTEXT_LINES = 30;
@@ -74,20 +76,37 @@ export function isBusy(botId: string, threadId?: string) {
   return false;
 }
 
-export type StopCause = "stopped" | "updating";
+export type StopCause = "stopped" | "updating" | "expired";
 
 export function stopCauseOf(signal: AbortSignal): StopCause | null {
   if (!signal.aborted) return null;
-  return signal.reason === "updating" ? "updating" : "stopped";
+  return signal.reason === "updating" || signal.reason === "expired" ? signal.reason : "stopped";
 }
 
 export function unansweredEnding(name: string, cause: StopCause | null, failure: string, setupError = false): { event: string | null; incident: boolean } {
   if (cause === "stopped") return { event: `${name} was stopped.`, incident: false };
-  if (cause === "updating") return { event: null, incident: false };
+  // A card that timed out already said so in the bot's own line (`cardExpired`).
+  if (cause === "updating" || cause === "expired") return { event: null, incident: false };
   return { event: failure, incident: !setupError };
 }
 
 export class TurnNotStarted extends Error {}
+
+// The computer went away (restarting, updating, down): the messages it cut off wait, and new ones
+// aren't started until it answers, checked again this often; one waiting this long is given up on.
+const AWAY_RETRY_MS = 15_000;
+export const AWAY_GIVE_UP_MS = 30 * 60_000;
+const away = globalThis as typeof globalThis & { __gondComputerAway?: number };
+
+export function computerAway(): boolean {
+  return Date.now() < (away.__gondComputerAway ?? 0);
+}
+
+async function computerAnswers(box: BoxConfig): Promise<boolean> {
+  const answers = await health(box).then((h) => h.ok && !h.updating, () => false);
+  if (!answers) away.__gondComputerAway = Date.now() + AWAY_RETRY_MS;
+  return answers;
+}
 
 export async function interrupt(threadId: string) {
   let stopped = 0;
@@ -270,8 +289,8 @@ export async function postFromPerson(thread: Thread, input: { body: string; atta
 
 // "stop" in the chat is Stop: everything halts, nothing reads the message as
 // a task, and the bot that was working says what it stopped.
-async function stopFromMessage(thread: Thread, body: string): Promise<Message> {
-  const message = postMessage({ threadId: thread.id, author: "you", body, answered: true });
+export async function stopFromMessage(thread: Thread, body: string, options: { spoken?: boolean } = {}): Promise<Message> {
+  const message = postMessage({ threadId: thread.id, author: "you", body, answered: true, spoken: options.spoken });
   const working = [...activeTurns().values()].find((turn) => turn.threadId === thread.id)?.botId;
   const bots = listBots({ includeHidden: true, userId: thread.userId });
   const author = working ?? targetsFor({ author: "you", body }, thread, bots, roomBefore(thread))[0]?.id;
@@ -400,6 +419,7 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
   else parent?.addEventListener("abort", follow, { once: true });
   const active: Active = { botId: bot.id, threadId: thread.id, userId: thread.userId, messageId: message.id, route: answerGoesTo(message), controller, startedAt: Date.now(), steer: async () => false };
   activeTurns().set(agentId, active);
+  if (active.route === "person") endTurnOnExpiry(controller.signal, () => controller.abort("expired" satisfies StopCause));
   const steers = new SteerQueue();
   clearWork(thread.id, bot.id);
   activity(thread.id, bot.id, "Thinking…");
@@ -419,10 +439,24 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
   let summaryRun: EngineRun | null = null;
 
   let broke: string | null = null;
+  // Cut off by the computer (an update, or it went away), not by anything wrong with the work: the
+  // message goes back to wait and is answered again once the computer is back.
+  let again = false;
+
+  let failed = false;
 
   const endUnanswered = async (failure: string, detail: string, setupError: boolean) => {
+    failed = true;
     const cause = stopCauseOf(controller.signal);
     stopped = cause === "stopped";
+    if (cause === "updating" || (!cause && box && !(await computerAnswers(box)))) {
+      if (Date.now() - Date.parse(message.createdAt) < AWAY_GIVE_UP_MS) {
+        again = true;
+        return;
+      }
+      postMessage({ threadId: thread.id, author: "system", kind: "event", body: `The computer didn't come back in time, so ${bot.name} couldn't answer. Send it again once it's up.`, answered: true });
+      return;
+    }
     const ending = unansweredEnding(bot.name, cause, failure, setupError);
     if (ending.event && !(cause === "stopped" && quietStops.has(thread.id))) postMessage({ threadId: thread.id, author: "system", kind: "event", body: ending.event, answered: true });
     if (!ending.incident) return;
@@ -439,9 +473,13 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
   const labels: ToolLabelContext = { home: ownerHome ? `${ownerHome}/${botHome(bot.id)}` : null, servers: mcpServersFor(bot).map((server) => ({ name: server.name })) };
 
   const clock = createTurnClock();
+  // What this turn finished, in words, for the turn that answers again if this one is cut off.
+  const done: string[] = [];
+  const resumed = takeInterrupted(message.id);
   const step = (raw: StepUpdate) => {
     clock.step(raw);
     const update = labelStep(raw, labels);
+    if (update.status === "done" && update.title && !update.quiet) done.push(hide(update.title));
     recordStep(thread.id, bot.id, {
       ...update,
       ...(update.title !== undefined ? { title: hide(update.title) } : {}),
@@ -490,9 +528,10 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
 
     const delivered = message.attachments.length ? await deliverAttachments(box, bot, message, controller.signal, { pdf: !run.native || readsPdf(run.native) }) : { files: [], inline: [] };
     controller.signal.throwIfAborted();
-    const prompt = promptFor(bot, thread, message, bots, delivered.files, { summary: getSummary(thread.id)?.summary });
+    const resumeNote = resumed ? `\n\n${resumed}` : "";
+    const prompt = promptFor(bot, thread, message, bots, delivered.files, { summary: getSummary(thread.id)?.summary }) + resumeNote;
     const since = run.native ? null : (seenBy().get(agentId) ?? null);
-    const followUp = since ? promptFor(bot, thread, message, bots, delivered.files, { since }) : undefined;
+    const followUp = since ? promptFor(bot, thread, message, bots, delivered.files, { since }) + resumeNote : undefined;
     summaryRun = run;
     const result = run.native
       ? await nativeTurn({
@@ -537,10 +576,12 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
       // Nothing for the person (in a room, often a line meant for another bot): nothing is posted.
     } else if (result.ok && result.text.trim()) {
       reply = scrub(result.text.trim());
-      deliverReply(bot, thread, message, reply);
+      if (!answerOnCall(message.id, reply)) {
+        deliverReply(bot, thread, message, reply);
 
-      if (bot.notify && (message.author === "you" || message.author === "routine")) {
-        void sendPush({ title: bot.name, body: plainMarkdown(reply).slice(0, 140), url: `/app/t/${thread.id}`, tag: thread.id, threadId: thread.id }, thread.userId);
+        if (bot.notify && (message.author === "you" || message.author === "routine")) {
+          void sendPush({ title: bot.name, body: plainMarkdown(reply).slice(0, 140), url: `/app/t/${thread.id}`, tag: thread.id, threadId: thread.id }, thread.userId);
+        }
       }
     } else {
       const detail = hide(result.error ?? (result.stopReason ? `stopped (${result.stopReason})` : "no reply"));
@@ -548,8 +589,13 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
     }
   } catch (error) {
     seenBy().delete(agentId);
-    const detail = hide(error instanceof Error ? error.message : "unknown error");
-    await endUnanswered(`${bot.name} hit a problem: ${detail.slice(0, 500)}`, detail, error instanceof EngineSetupError);
+    if (error instanceof BoxError && error.status === 409 && Date.now() - Date.parse(message.createdAt) < AWAY_GIVE_UP_MS) {
+      // The computer is still ending a turn of this bot's that Gond lost (it restarted just now): try again shortly.
+      again = true;
+    } else {
+      const detail = hide(error instanceof Error ? error.message : "unknown error");
+      await endUnanswered(`${bot.name} hit a problem: ${detail.slice(0, 500)}`, detail, error instanceof EngineSetupError);
+    }
   } finally {
     parent?.removeEventListener("abort", follow);
     steers.shut();
@@ -558,9 +604,14 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
     activeTurns().delete(agentId);
     clearWork(thread.id, bot.id);
     activity(thread.id, bot.id, null);
-    markAnswered(message.id);
+    if (again) {
+      noteInterrupted(message.id, done);
+      releaseClaim(message.id);
+    } else markAnswered(message.id);
     if (summaryRun && turnTiming()) console.log(timingLine(bot.name, `${summaryRun.engine}${summaryRun.model ? ` ${summaryRun.model}` : ""}`, clock.timing()));
   }
+  if (again) return "";
+  if (!reply) closeCallTurn(message.id, stopped ? "stopped" : failed ? "failed" : "quiet");
   await reportBack(bot, message, reply, stopped, broke);
   if (message.author === "routine") finishRoutineRun(message.id, Boolean(reply) || quiet);
   if (quiet) dropMessage(message.id);
@@ -675,7 +726,7 @@ async function raiseIncident(bot: Bot, thread: Thread, message: Message, detail:
 }
 
 export async function answerMessage(message: Message): Promise<void> {
-  if (isUpdating()) {
+  if (isUpdating() || computerAway()) {
     releaseClaim(message.id);
     return;
   }
@@ -686,7 +737,14 @@ export async function answerMessage(message: Message): Promise<void> {
   }
   const bots = listBots({ includeHidden: true, userId: thread.userId });
   const before = roomBefore(thread, message);
-  const targets = targetsFor(message, thread, bots, before).filter((b) => !isBusy(b.id, thread.id));
+  // A room's message answered again after a cut skips the bots that had already answered it.
+  const answeredAlready = wasInterrupted(message.id) ? new Set(recentMessages(thread.id, CONTEXT_LINES).filter((m) => m.createdAt > message.createdAt && m.kind === "message").map((m) => m.author)) : new Set<string>();
+  const owed = targetsFor(message, thread, bots, before).filter((b) => !answeredAlready.has(b.id));
+  if (answeredAlready.size && !owed.length) {
+    markAnswered(message.id);
+    return;
+  }
+  const targets = owed.filter((b) => !isBusy(b.id, thread.id));
   if (targets.length === 0) {
     const anyTarget = targetsFor(message, thread, bots, before);
     if (anyTarget.length === 0) {

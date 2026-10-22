@@ -82,7 +82,7 @@ export function AppsCard({ refresh = 0 }: { refresh?: number }) {
         await loadConnections();
       }
     } catch (failure) {
-      toast.add({ type: "error", title: `Could not connect ${name}.`, description: failure instanceof Error ? failure.message : undefined });
+      toast.add({ type: "error", title: `Couldn't connect ${name}.`, description: failure instanceof Error ? failure.message : undefined });
     } finally {
       setConnecting(null);
     }
@@ -99,7 +99,7 @@ export function AppsCard({ refresh = 0 }: { refresh?: number }) {
         <AppIcon toolkit={toolkit} logo={logo} size={22} />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[13.5px] font-medium">{name}</span>
-          <span className="block truncate text-[11.5px] text-muted-foreground">{c ? (c.status === "active" ? "Connected" : c.status === "pending" ? "Finishing sign-in…" : "Failed") : about}</span>
+          <span className="block truncate text-[11.5px] text-muted-foreground">{c ? (c.status === "active" ? "Connected" : c.status === "pending" ? "Finishing sign-in…" : "Didn't connect. Try again.") : about}</span>
         </span>
         {c ? (
           <span className="flex items-center gap-1.5">

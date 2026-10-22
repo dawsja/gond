@@ -76,7 +76,7 @@ export function PictureCropDialog({ file, title, onCancel, onDone }: { file: Fil
     try {
       await onDone(await cropToBlob(bitmap, crop, STAGE, AVATAR_SIZE));
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : "Could not prepare the picture.");
+      setError(failure instanceof Error ? failure.message : "Couldn't prepare the picture.");
     } finally {
       setBusy(false);
     }
@@ -143,7 +143,7 @@ export function usePicturePicker(title: string, save: (picture: Blob) => Promise
       if (gif.size > AVATAR_MAX_BYTES) throw new Error("The picture must be under 2 MB.");
       await save(gif);
     } catch (failure) {
-      toast.add({ type: "error", title: failure instanceof Error ? failure.message : "Could not save the picture." });
+      toast.add({ type: "error", title: failure instanceof Error ? failure.message : "Couldn't save the picture." });
     } finally {
       setBusy(false);
     }

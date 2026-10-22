@@ -115,7 +115,7 @@ export function SecretsCard() {
       for (const name of target.names) await del(`/api/secrets/${encodeURIComponent(name)}`);
       toast.add({ type: "success", title: `Forgot ${target.title}.` });
     } catch (failure) {
-      toast.add({ type: "error", title: `Could not forget ${target.title}.`, description: failure instanceof Error ? failure.message : undefined });
+      toast.add({ type: "error", title: `Couldn't forget ${target.title}.`, description: failure instanceof Error ? failure.message : undefined });
     } finally {
       setForgetting(null);
       void load();

@@ -68,7 +68,7 @@ async function pause(): Promise<string[]> {
   const until = Date.now() + 15_000;
   while (turns.size > 0 && Date.now() < until) await sleep(500);
   for (const threadId of threads) {
-    postMessage({ threadId, author: "system", kind: "event", body: "The computer is updating. Whatever was running stopped; send the request again once it's back.", answered: true });
+    postMessage({ threadId, author: "system", kind: "event", body: "The computer is updating. What was running stopped, and it carries on once the computer is back.", answered: true });
   }
   log(turns.size ? `${turns.size} turn(s) didn't stop in time; going on.` : threads.size ? `Stopped work in ${threads.size} conversation(s).` : "No bot was working.");
   return [...threads];
@@ -116,7 +116,7 @@ async function patchInPlace(box: BoxConfig): Promise<boolean> {
 
 async function run(options: { pull: boolean }): Promise<void> {
   const box = boxConfig();
-  if (!box) throw new Error("No box is configured. Set GOND_BOX_URL.");
+  if (!box) throw new Error("The computer isn't set up. Set GOND_BOX_URL on the API.");
   try {
     phase("pausing", "Pausing the computer…");
     const stopped = await pause();
@@ -179,7 +179,7 @@ export function startReset(): BoxUpdate {
 
 async function runReset(): Promise<void> {
   const box = boxConfig();
-  if (!box) throw new Error("No box is configured. Set GOND_BOX_URL.");
+  if (!box) throw new Error("The computer isn't set up. Set GOND_BOX_URL on the API.");
   try {
     phase("pausing", "Pausing the computer…");
     const stopped = await pause();

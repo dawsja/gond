@@ -61,8 +61,8 @@ describe("sign-in and cards", () => {
 
 describe("plain markdown", () => {
   test("a reply becomes one line of words for a notification", () => {
-    const reply = "# Storage\n\n:badge[Healthy — plenty of free space]{tone=ok}\n\n::meter{value=6 label=\"Root filesystem (`/`)\" text=\"6% used\" left=\"6.1 GB\" tone=ok}\n\n**Inode usage:** 2%\n\n:::warning\nSee `df -h`.\n:::";
-    expect(plainMarkdown(reply)).toBe("Storage Healthy — plenty of free space Root filesystem (/): 6% used Inode usage: 2% See df -h.");
+    const reply = "# Storage\n\n:badge[Healthy, plenty of free space]{tone=ok}\n\n::meter{value=6 label=\"Root filesystem (`/`)\" text=\"6% used\" left=\"6.1 GB\" tone=ok}\n\n**Inode usage:** 2%\n\n:::warning\nSee `df -h`.\n:::";
+    expect(plainMarkdown(reply)).toBe("Storage Healthy, plenty of free space Root filesystem (/): 6% used Inode usage: 2% See df -h.");
   });
   test("a meter without words says its percentage, and a plain badge is its label", () => {
     expect(plainMarkdown("::meter{value=3 max=8 label=\"Seats\"}")).toBe("Seats: 38%");

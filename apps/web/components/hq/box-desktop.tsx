@@ -415,7 +415,7 @@ export function DesktopView({
       if (disposed) return;
       if (!res.ok || !data.connection) {
         setStatus("error");
-        setMessage(data.error ?? "Could not open the screen.");
+        setMessage(data.error ?? "Couldn't open the screen.");
         return;
       }
       setStatus("connecting");

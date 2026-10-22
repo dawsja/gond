@@ -1,5 +1,5 @@
 import type { ProviderKind } from "@gond/shared";
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, jest, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -2426,7 +2426,7 @@ describe("handoffs", () => {
 
     const fake = Bun.serve({
       port: 0,
-      fetch: (request: Request) => (new URL(request.url).pathname.endsWith("/turn") ? new Response("timed out", { status: 500 }) : Response.json({})),
+      fetch: (request: Request) => (new URL(request.url).pathname.endsWith("/turn") ? new Response("timed out", { status: 500 }) : Response.json(new URL(request.url).pathname === "/health" ? { ok: true, agents: 0 } : {})),
     });
     const boxUrl = process.env.GOND_BOX_URL;
     const boxToken = process.env.GOND_BOX_TOKEN;
@@ -2561,7 +2561,7 @@ describe("the primary bot", () => {
     const { botInputSchema } = await import("@gond/shared");
     const fake = Bun.serve({
       port: 0,
-      fetch: (request: Request) => (new URL(request.url).pathname.endsWith("/turn") ? new Response("timed out", { status: 500 }) : Response.json({})),
+      fetch: (request: Request) => (new URL(request.url).pathname.endsWith("/turn") ? new Response("timed out", { status: 500 }) : Response.json(new URL(request.url).pathname === "/health" ? { ok: true, agents: 0 } : {})),
     });
     const boxUrl = process.env.GOND_BOX_URL;
     const boxToken = process.env.GOND_BOX_TOKEN;
@@ -3532,6 +3532,115 @@ describe("the computer", () => {
   });
 });
 
+describe("cards that expire", () => {
+  test("a restart sends what was being answered back to wait, marked as cut off, and expires the open cards", async () => {
+    const { createApproval, getApproval } = await import("../src/data/approvals.ts");
+    const { createSecretRequest, getSecretRequest } = await import("../src/data/secrets.ts");
+    const { postMessage, getMessage } = await import("../src/data/threads.ts");
+    const { createBot } = await import("../src/data/bots.ts");
+    const { ensureDatabase, releaseClaims } = await import("../src/db/init.ts");
+    const { takeInterrupted } = await import("../src/resume.ts");
+    const { botInputSchema } = await import("@gond/shared");
+    const bot = createBot(botInputSchema.parse({ name: "Cut Off" }), "u-admin");
+    const card = createApproval({ botId: bot.id, threadId: bot.threadId, tool: "Bash", summary: "Run: ls", input: { command: "ls" } });
+    const login = createSecretRequest({ botId: bot.id, threadId: bot.threadId, name: "ROUTER", reason: "to add DHCP reservations", target: "login", site: "TP-Link router", fields: [{ name: "ROUTER_PASSWORD", label: "Password", kind: "password" }] });
+    const asked = postMessage({ threadId: bot.threadId, author: "you", body: "Add the DHCP reservations" });
+    ensureDatabase().query("UPDATE gond_messages SET claimed_by = 'old-api' WHERE id = ?").run(asked.id);
+
+    releaseClaims(ensureDatabase());
+    expect(getApproval(card.id)?.status).toBe("expired");
+    expect(getSecretRequest(login.id)?.status).toBe("expired");
+    expect((ensureDatabase().query("SELECT claimed_by FROM gond_messages WHERE id = ?").get(asked.id) as { claimed_by: string | null }).claimed_by).toBeNull();
+    expect(getMessage(asked.id)).toBeTruthy();
+    expect(takeInterrupted(asked.id)).toContain("you were cut off");
+    expect(takeInterrupted(asked.id)).toBeNull();
+  });
+
+  test("a turn the computer cut off waits and is answered again once it's back, told what already ran", async () => {
+    const { createBot } = await import("../src/data/bots.ts");
+    const { botInputSchema } = await import("@gond/shared");
+    const { getThread, listMessages, postMessage } = await import("../src/data/threads.ts");
+    const { ensureDatabase } = await import("../src/db/init.ts");
+    const { botTurn, computerAway } = await import("../src/responder.ts");
+    let up = false;
+    const prompts: string[] = [];
+    const fake = Bun.serve({
+      port: 0,
+      async fetch(request: Request): Promise<Response> {
+        const path = new URL(request.url).pathname;
+        if (path === "/health") return Response.json({ ok: true, agents: 0, updating: !up });
+        if (!path.endsWith("/turn")) return Response.json({});
+        const body = (await request.json()) as { prompt: string };
+        prompts.push(body.prompt);
+        const result = up ? { type: "result", ok: true, text: "The reservations are in.", stopReason: null, recovered: false } : { type: "result", ok: false, text: "", error: "The box closed the turn", stopReason: null, recovered: false };
+        return new Response(`data: ${JSON.stringify(result)}\n\n`, { headers: { "Content-Type": "text/event-stream" } });
+      },
+    });
+    const boxUrl = process.env.GOND_BOX_URL;
+    const boxToken = process.env.GOND_BOX_TOKEN;
+    process.env.GOND_BOX_URL = `http://127.0.0.1:${fake.port}`;
+    process.env.GOND_BOX_TOKEN = "box-token";
+    try {
+      const bot = createBot(botInputSchema.parse({ name: "Resumer" }), "u-resume");
+      const thread = getThread(bot.threadId)!;
+      const asked = postMessage({ threadId: thread.id, author: "you", body: "Add the DHCP reservations" });
+      const state = () => ensureDatabase().query("SELECT answered_at, claimed_by FROM gond_messages WHERE id = ?").get(asked.id) as { answered_at: string | null; claimed_by: string | null };
+
+      expect(await botTurn(bot, thread, asked)).toBe("");
+      expect(state()).toEqual({ answered_at: null, claimed_by: null });
+      expect(computerAway()).toBe(true);
+      expect(listMessages(thread.id).filter((m) => m.id !== asked.id)).toEqual([]);
+
+      up = true;
+      (globalThis as { __gondComputerAway?: number }).__gondComputerAway = 0;
+      expect(await botTurn(bot, thread, asked)).toBe("The reservations are in.");
+      expect(prompts.at(-1)).toContain("you were cut off");
+      expect(state().answered_at).not.toBeNull();
+    } finally {
+      fake.stop(true);
+      if (boxUrl === undefined) delete process.env.GOND_BOX_URL;
+      else process.env.GOND_BOX_URL = boxUrl;
+      if (boxToken === undefined) delete process.env.GOND_BOX_TOKEN;
+      else process.env.GOND_BOX_TOKEN = boxToken;
+    }
+  });
+
+  test("a card that times out says so in a fixed line and ends the turn; a stopped one says nothing", async () => {
+    const { createBot } = await import("../src/data/bots.ts");
+    const { listMessages } = await import("../src/data/threads.ts");
+    const { askApproval, endTurnOnExpiry, CARD_EXPIRED_LINE } = await import("../src/approvals.ts");
+    const { requestSecret } = await import("../src/secret-requests.ts");
+    const { stopCauseOf, unansweredEnding } = await import("../src/responder.ts");
+    const { botInputSchema } = await import("@gond/shared");
+    const bot = createBot(botInputSchema.parse({ name: "Waiter", approval: "ask" }), "u-admin");
+    const lines = () => listMessages(bot.threadId).filter((m) => m.author === bot.id && m.kind === "message").map((m) => m.body);
+    jest.useFakeTimers();
+    try {
+      const turn = new AbortController();
+      endTurnOnExpiry(turn.signal, () => turn.abort("expired"));
+      const asking = askApproval({ bot, threadId: bot.threadId, tool: "Bash", input: { command: "sudo reboot" }, signal: turn.signal });
+      jest.advanceTimersByTime(15 * 60_000);
+      expect((await asking).decision).toBe("expired");
+      expect(lines()).toEqual([CARD_EXPIRED_LINE]);
+      expect(stopCauseOf(turn.signal)).toBe("expired");
+      expect(unansweredEnding("Waiter", "expired", "x")).toEqual({ event: null, incident: false });
+
+      const login = requestSecret({ bot, threadId: bot.threadId, name: "ROUTER", reason: "to add reservations", target: "login", site: "Router", fields: [{ name: "ROUTER_PASSWORD", label: "Password", kind: "password" }] });
+      jest.advanceTimersByTime(15 * 60_000);
+      expect(await login).toBe("expired");
+      expect(lines()).toEqual([CARD_EXPIRED_LINE, CARD_EXPIRED_LINE]);
+
+      const stopped = new AbortController();
+      const asked = askApproval({ bot, threadId: bot.threadId, tool: "Bash", input: { command: "sudo ls" }, signal: stopped.signal });
+      stopped.abort("stopped");
+      expect((await asked).decision).toBe("expired");
+      expect(lines()).toHaveLength(2);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+});
+
 describe("changing a secret", () => {
   test("the person replaces a saved value without ever seeing the old one, and it is encrypted afresh", async () => {
     await seedUsers(["u-sec-a", "user"], ["u-sec-b", "user"]);
@@ -3775,5 +3884,100 @@ describe("rooms and a bot's files", () => {
       if (boxToken === undefined) delete process.env.GOND_BOX_TOKEN;
       else process.env.GOND_BOX_TOKEN = boxToken;
     }
+  });
+});
+
+describe("calls", () => {
+  async function until(check: () => boolean, ms = 4000) {
+    const end = Date.now() + ms;
+    while (!check()) {
+      if (Date.now() > end) throw new Error("timed out");
+      await Bun.sleep(20);
+    }
+  }
+
+  test("a call relays the person's words, hands requests to the bot's turn, speaks its answer and hangs up on goodbye", async () => {
+    await seedUsers(["u-caller", "user"]);
+    const { createBot } = await import("../src/data/bots.ts");
+    const { getThread, listMessages } = await import("../src/data/threads.ts");
+    const { saveProvider } = await import("../src/data/providers.ts");
+    const { startCall, listen, answerOnCall, callOf } = await import("../src/calls.ts");
+    const { botInputSchema } = await import("@gond/shared");
+
+    const received: { type: string; [key: string]: unknown }[] = [];
+    let auth = "";
+    let socket: { send: (data: string) => void } | null = null;
+    const fake = Bun.serve({
+      port: 0,
+      fetch(req, server) {
+        auth = req.headers.get("authorization") ?? "";
+        return server.upgrade(req) ? undefined : new Response("no", { status: 400 });
+      },
+      websocket: {
+        open(ws) {
+          socket = ws;
+        },
+        message(ws, data) {
+          const event = JSON.parse(String(data)) as { type: string };
+          received.push(event);
+          if (event.type === "session.update") ws.send(JSON.stringify({ type: "session.updated" }));
+          if (event.type === "response.create") {
+            ws.send(JSON.stringify({ type: "response.created" }));
+            ws.send(JSON.stringify({ type: "response.done" }));
+          }
+        },
+      },
+    });
+    const say = (event: object) => socket!.send(JSON.stringify(event));
+    try {
+      const bot = createBot(botInputSchema.parse({ name: "Patch Caller", title: "Travel" }), "u-caller");
+      saveProvider("u-caller", "xai", { baseUrl: `http://127.0.0.1:${fake.port}/v1`, apiKey: "xai-test-key-1234567890" });
+      const thread = getThread(bot.threadId)!;
+      const started = startCall(thread, "u-caller");
+      if (!started.ok) throw new Error(started.error);
+      const events: { type: string }[] = [];
+      listen(started.call.id, (event) => events.push(event));
+
+      await until(() => events.some((e) => e.type === "ready"));
+      expect(auth).toBe("Bearer xai-test-key-1234567890");
+      const session = received.find((e) => e.type === "session.update") as unknown as { session: { tools: { name: string }[] } };
+      expect(session.session.tools.map((t) => t.name)).toEqual(["ask_bot", "bot_status", "end_call"]);
+      expect(listMessages(thread.id).some((m) => m.kind === "event" && m.body === "Call started")).toBe(true);
+
+      say({ type: "conversation.item.input_audio_transcription.completed", transcript: "Find me a flight to Denver on Friday" });
+      await until(() => listMessages(thread.id).some((m) => m.author === "you" && m.spoken));
+      expect(listMessages(thread.id).find((m) => m.author === "you" && m.spoken)!.body).toBe("Find me a flight to Denver on Friday");
+
+      say({ type: "response.function_call_arguments.done", name: "ask_bot", call_id: "c1", arguments: JSON.stringify({ request: "A nonstop flight to Denver on Friday morning" }) });
+      await until(() => listMessages(thread.id).some((m) => m.kind === "prompt"));
+      const prompt = listMessages(thread.id).find((m) => m.kind === "prompt")!;
+      expect(prompt.body).toContain("A nonstop flight to Denver on Friday morning");
+      expect(received.some((e) => e.type === "conversation.item.create" && (e.item as { call_id?: string }).call_id === "c1")).toBe(true);
+
+      expect(answerOnCall(prompt.id, "**Found** one at $284.")).toBe(true);
+      expect(answerOnCall(prompt.id, "again")).toBe(false);
+      await until(() => received.some((e) => e.type === "conversation.item.create" && JSON.stringify(e).includes("Found one at $284.")));
+      expect(listMessages(thread.id).some((m) => m.author === bot.id && m.body.includes("$284"))).toBe(false);
+
+      say({ type: "response.function_call_arguments.done", name: "bot_status", call_id: "c2", arguments: "{}" });
+      await until(() => received.some((e) => e.type === "conversation.item.create" && (e.item as { call_id?: string }).call_id === "c2"));
+      expect(JSON.stringify(received.at(-2) ?? {}) + JSON.stringify(received.at(-1) ?? {})).toContain("isn't working on anything");
+
+      say({ type: "conversation.item.input_audio_transcription.completed", transcript: "Ok thanks, bye!" });
+      say({ type: "response.output_audio_transcript.delta", delta: "Bye, safe travels." });
+      say({ type: "response.output_audio_transcript.done" });
+      await until(() => events.some((e) => e.type === "ended"));
+      const lines = listMessages(thread.id);
+      expect(lines.some((m) => m.author === bot.id && m.spoken && m.body === "Bye, safe travels.")).toBe(true);
+      expect(lines.at(-1)!.body).toBe("Call ended · under a minute");
+      expect(callOf("u-caller")).toBeNull();
+    } finally {
+      fake.stop(true);
+    }
+  });
+
+  test("an answer for a call that has ended goes into the chat instead", async () => {
+    const { answerOnCall } = await import("../src/calls.ts");
+    expect(answerOnCall("m-not-on-a-call", "Hello")).toBe(false);
   });
 });

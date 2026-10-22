@@ -58,7 +58,7 @@ export function McpDialog({ server, onClose, onSaved }: { server: McpServer | nu
       await onSaved();
       onClose();
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : "Could not save.");
+      setError(failure instanceof Error ? failure.message : "Couldn't save.");
       setBusy(false);
     }
   }

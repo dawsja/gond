@@ -1,5 +1,5 @@
 import { APP_CATALOG, replyLine, draftIdOf, emailDraftOf, emailName, sendDraftAction, QUIET_REPLY, REACTIONS, isReaction, BOT_COLORS, BOT_EXPRESSIONS, BOT_SHAPES, LOGIN_FIELD_KINDS, MAX_SENT_FILE_BYTES, SKILL_LIMITS, botInputSchema, composioCard, handleOf, joinCommandLine, mentionsIn, mediaTypeFor, mcpServerInputSchema, hasKeyHeader, pickBotName, plainMarkdown, skillFilePath, type Bot, type BotExpression, type BotShape, type McpServer, type McpServerInput, type Message, type SkillInput, type Thread } from "@gond/shared";
-import { askApproval, ENGINE_FILES_TEXT, requestApproval, SCRIPTED_SCREEN_TEXT, scriptsTheScreen, summarize, touchesEngine } from "./approvals.ts";
+import { askApproval, ENGINE_FILES_TEXT, expiredText, requestApproval, SCRIPTED_SCREEN_TEXT, scriptsTheScreen, summarize, touchesEngine } from "./approvals.ts";
 import { boxHome, readBoxFile, readBoxFileBytes, writeBoxFile, type BoxConfig } from "./box.ts";
 import { exactApp, searchIndex } from "./catalog.ts";
 import { catalogIndex, composioConfigured, executeAction, isReadOnlyAction, startConnection, toolsFor, type ComposioTool } from "./composio.ts";
@@ -293,10 +293,10 @@ export function baseTools(context: Context): Record<string, DriverTool> {
   };
 
   const askComposioKey = async (reason: string): Promise<string | null> => {
-    const status = await requestSecret({ bot, threadId: thread.id, name: "COMPOSIO_API_KEY", reason, target: "composio" });
+    const status = await requestSecret({ bot, threadId: thread.id, name: "COMPOSIO_API_KEY", reason, target: "composio", signal: context.signal });
     if (status === "given" || status === "exists") return null;
     if (status === "declined") return "The person declined to give their Composio API key, so connected apps stay off. Say what you can do without them.";
-    return "Nobody gave the Composio API key in time. Say so; they can also add it under Settings → Apps.";
+    return expiredText("for their Composio API key");
   };
   const alreadyAttached = (server: McpServer) => `${server.name} is already attached (${server.url ?? joinCommandLine([server.command ?? "", ...server.args])})${server.enabled ? "" : ", but turned off under Settings → Apps → MCP servers"}.`;
 
@@ -323,7 +323,7 @@ export function baseTools(context: Context): Record<string, DriverTool> {
     const envNote = Object.keys(env).length ? ` with ${Object.keys(env).join(", ")} set` : "";
     const decision = await requestApproval({ bot, threadId: thread.id, signal: context.signal, tool: "add_mcp_server", input: { name, command, args, env }, summary: `Add the MCP server ${name} (runs ${line}${envNote}) for all your bots` });
     if (decision === "deny") return "NOT added: the person said no.";
-    if (decision === "expired") return "NOT added: nobody approved it in time.";
+    if (decision === "expired") return expiredText(`to add the MCP server ${name}`);
     const server = saveMcpServer(checked.data);
     if (typeof server === "string") return server;
     return `Added ${name}; every bot gets its tools from its next reply. If they don't appear then, run the command yourself to see why.`;
@@ -418,7 +418,7 @@ export function baseTools(context: Context): Record<string, DriverTool> {
           return "Not posted: that is a pick between options, and ask_approval is only a yes or no on one act (allow does it, deny means don't). End your reply with ::choices[First option | Second option] and stop; the person's pick comes back as their message. Then call ask_approval for the act they picked, with a yes-or-no question like \"Copy golem's compose files?\", if it still needs one.";
         const decision = await requestApproval({ bot, threadId: thread.id, signal: context.signal, tool: "ask_approval", input: { summary: hideSecrets(summary.slice(0, 300)), ...card }, summary: summary.slice(0, 300) });
         if (decision === "allow" || decision === "always") return card.allow ? `The person chose "${card.allow}". Go ahead.` : "Allowed. Go ahead.";
-        if (decision === "expired") return "Nobody answered in time. Say so and stop, or ask again later.";
+        if (decision === "expired") return expiredText(`"${summary.slice(0, 120)}"`);
         return card.deny ? `The person chose "${card.deny}": don't do it. Do something else, or say what you would need.` : "Denied: the person said no. Do something else, or say what you would need.";
       },
     },
@@ -596,11 +596,11 @@ export function baseTools(context: Context): Record<string, DriverTool> {
       execute: async (input) => {
         const name = String(input.name ?? "").trim();
         if (!/^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(name)) return "NOT asked: name it in UPPER_SNAKE_CASE, like STRIPE_API_KEY.";
-        const status = await requestSecret({ bot, threadId: thread.id, name, reason: String(input.reason ?? "").trim().slice(0, 300) });
+        const status = await requestSecret({ bot, threadId: thread.id, name, reason: String(input.reason ?? "").trim().slice(0, 300), signal: context.signal });
         if (status === "exists") return `${name} is already stored. Use it with run_with_secrets ($${name} in a command), a type_login action (typed into a field on the screen), or {{secret:${name}}} in an MCP server's headers.`;
         if (status === "given") return `${name} is stored; you never see the value. Use it with run_with_secrets ($${name} in a command), a type_login action, or {{secret:${name}}} in an MCP server's headers (add_mcp_server), and carry on.`;
         if (status === "declined") return `The person declined to give ${name}. Say what you can do without it.`;
-        return `Nobody gave ${name} in time. Say so and stop, or ask again later.`;
+        return expiredText(`for ${name}`);
       },
     },
     request_login: {
@@ -631,12 +631,12 @@ export function baseTools(context: Context): Record<string, DriverTool> {
             for (const f of fields) holdLogin(thread.id, f.name, readLogin(bot.userId, f.name)!);
             return `The saved details for ${site} are ready. ${next}`;
           }
-          if (decision === "expired") return `Nobody answered about signing in to ${site} in time. Say so and stop.`;
+          if (decision === "expired") return expiredText(`to sign in to ${site}`);
         }
-        const status = await requestSecret({ bot, threadId: thread.id, name: prefix, reason: String(input.reason ?? "").trim().slice(0, 200) || `to sign you in to ${site}`, target: "login", site, fields });
+        const status = await requestSecret({ bot, threadId: thread.id, name: prefix, reason: String(input.reason ?? "").trim().slice(0, 200) || `to sign you in to ${site}`, target: "login", site, fields, signal: context.signal });
         if (status === "given" || status === "exists") return `The person filled it in. ${next}`;
         if (status === "declined") return `The person chose not to sign in to ${site}. Say what you can do without it.`;
-        return `Nobody filled in the sign-in for ${site} in time. Say so and stop, or ask again later.`;
+        return expiredText(`to sign in to ${site}`);
       },
     },
     set_composio_key: {
@@ -721,7 +721,7 @@ export function baseTools(context: Context): Record<string, DriverTool> {
         if (existing && existing.transport === "http" && Object.keys(headers).length && JSON.stringify(existing.headers) !== JSON.stringify(headers)) {
           const decision = await requestApproval({ bot, threadId: thread.id, signal: context.signal, tool: "add_mcp_server", input: { name: existing.name, url: existing.url, headers }, summary: `Change the MCP server ${existing.name}'s headers${keyNote(headers)}` });
           if (decision === "deny") return "NOT changed: the person said no.";
-          if (decision === "expired") return "NOT changed: nobody approved it in time.";
+          if (decision === "expired") return expiredText(`to change the MCP server ${existing.name}`);
           const updated = updateMcpServer(existing.id, { headers });
           if (!updated) return "NOT changed: the server is gone.";
           markMcpRefreshed(existing.id);
@@ -738,7 +738,7 @@ export function baseTools(context: Context): Record<string, DriverTool> {
         if (!checked.success) return `NOT added: ${checked.error.issues[0]?.message ?? "bad server"}.`;
         const decision = await requestApproval({ bot, threadId: thread.id, signal: context.signal, tool: "add_mcp_server", input: { name, url: parsed.href, ...(Object.keys(headers).length ? { headers } : {}) }, summary: `Add the MCP server ${name} (${parsed.href})${keyNote(headers)} for all your bots` });
         if (decision === "deny") return "NOT added: the person said no.";
-        if (decision === "expired") return "NOT added: nobody approved it in time.";
+        if (decision === "expired") return expiredText(`to add the MCP server ${name}`);
         const server = saveMcpServer(checked.data);
         if (typeof server === "string") return server;
         return afterSave(server, "Added");
@@ -1157,7 +1157,7 @@ export function permissionTool(context: Context): DriverTool {
       if (touchesEngine(tool, input)) return JSON.stringify({ behavior: "deny", message: ENGINE_FILES_TEXT });
       const { decision, note } = await askApproval({ bot, threadId: thread.id, signal: context.signal, tool, input });
       if (decision === "allow" || decision === "always") return JSON.stringify({ behavior: "allow", updatedInput: input });
-      const message = decision === "expired" ? `Nobody answered the approval for "${summarize(tool, input)}" in time. Say so and stop, or ask again later.` : note ? `The person wants changes to "${summarize(tool, input)}" first: "${note}". Make them and try again.` : `The person denied "${summarize(tool, input)}". Do something else, or say what you would need.`;
+      const message = decision === "expired" ? expiredText(`for "${summarize(tool, input)}"`) : note ? `The person wants changes to "${summarize(tool, input)}" first: "${note}". Make them and try again.` : `The person denied "${summarize(tool, input)}". Do something else, or say what you would need.`;
       return JSON.stringify({ behavior: "deny", message });
     },
   };
@@ -1189,7 +1189,7 @@ export async function appTools(context: Context): Promise<Record<string, DriverT
           const answer = await askApproval({ bot, threadId: thread.id, signal: context.signal, tool: slug, input, summary });
           if (answer.decision === "deny" && answer.note) return `NOT done: the person wants changes first: "${answer.note}". Make them and call ${slug} again with the new version; its card shows them what you changed, so don't write it out in your reply.`;
           if (answer.decision === "deny") return "NOT done: the person denied this action.";
-          if (answer.decision === "expired") return "NOT done: nobody approved this action in time.";
+          if (answer.decision === "expired") return expiredText(`for ${tool.name}`);
           edited = answer.edited;
           input = answer.input;
           send = answer.send;
@@ -1243,7 +1243,7 @@ export async function loadTeamMemory(box: BoxConfig, userId: string): Promise<st
  */
 export function transcript(thread: Thread, bots: Bot[], self: Bot, upTo: Message, count = 30, options: { after?: string | null } = {}): string {
   const after = options.after ?? null;
-  const lines = recentMessages(thread.id, count).filter((m) => m.createdAt <= upTo.createdAt && (!after || (m.createdAt > after && m.author !== self.id && (!m.steered || m.id === upTo.id))));
+  const lines = recentMessages(thread.id, count).filter((m) => m.createdAt <= upTo.createdAt && (!after || (m.createdAt > after && (m.author !== self.id || m.spoken) && (!m.steered || m.id === upTo.id))));
   return transcriptLines(lines, bots, self);
 }
 
@@ -1255,10 +1255,11 @@ export function transcriptLines(lines: Message[], bots: Bot[], self: Bot, clipAt
     .map((m) => {
       const nameOf = (author: string) => (author === "you" ? "Person" : author === "routine" ? "Routine" : author === "system" ? "Gond" : (names.get(author) ?? author) + (author === self.id ? " (you)" : ""));
       const via = m.fromThreadId && names.has(m.author) && m.author !== self.id ? " (teammate, by message)" : "";
+      const said = m.spoken ? (m.author === self.id ? " (your voice, on a call)" : " (on a call)") : "";
       const files = m.attachments.length ? ` [attached: ${m.attachments.map((a) => a.name).join(", ")}]` : "";
       const reactions = m.reactions.length ? ` [reactions: ${m.reactions.map((r) => `${nameOf(r.author)} ${r.emoji}`).join(", ")}]` : "";
       const body = m.body.length > clipAt ? `${m.body.slice(0, clipAt)}…` : m.body;
-      return `${nameOf(m.author)}${via}: ${replyLine(m.replyTo, nameOf)}${m.kind === "approval" ? `(asked for approval: ${body})` : m.kind === "signin" ? `(posted a sign-in card: ${body})` : body}${files}${reactions}`;
+      return `${nameOf(m.author)}${via}${said}: ${replyLine(m.replyTo, nameOf)}${m.kind === "approval" ? `(asked for approval: ${body})` : m.kind === "signin" ? `(posted a sign-in card: ${body})` : body}${files}${reactions}`;
     })
     .join("\n");
 }

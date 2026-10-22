@@ -4,7 +4,7 @@ import type { McpServerNote } from "./mcp-client.ts";
 import { skillBrief } from "./skills.ts";
 
 export function renderSoul(bot: Bot): string {
-  const lines = [`# ${bot.name}${bot.title ? ` — ${bot.title}` : ""}`, ""];
+  const lines = [`# ${bot.name}${bot.title ? `, ${bot.title}` : ""}`, ""];
   lines.push("## Role");
   lines.push(bot.description.trim() || `${bot.name} is a general-purpose teammate. It takes on whatever the person hands it, asks when the brief is unclear, and finishes the job end to end.`);
   lines.push("");

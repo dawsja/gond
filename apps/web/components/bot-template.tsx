@@ -84,7 +84,7 @@ export function ShareBotDialog({ botId, onClose }: { botId: string; onClose: () 
     try {
       const { url } = await post<{ url: string }>(`/api/bots/${botId}/share`);
       const copied = await copyToClipboard(url);
-      toast.add(copied ? { title: "Link copied", description: "Anyone signed in to this Gond can add a copy with it." } : { type: "error", title: "Couldn't copy the link." });
+      toast.add(copied ? { title: "Link copied.", description: "Anyone signed in to this Gond can add a copy with it." } : { type: "error", title: "Couldn't copy the link." });
     } catch (failure) {
       toast.add({ type: "error", title: failure instanceof Error ? failure.message : "Couldn't make the link." });
     } finally {

@@ -57,7 +57,7 @@ function filesLine(skill: Pick<Skill, "files">): string {
 
 export function skillsIndex(skills: Skill[]): string {
   if (skills.length === 0) return "- None yet. Save one with save_skill when a way of doing a job is worth keeping, or when the person asks you to make a skill; they can also write or import one under Settings → Skills.";
-  return skills.map((s) => `- /${s.slug}: ${s.name}${s.description ? ` — ${s.description.split("\n")[0]!.slice(0, 300)}` : ""}${filesLine(s)}`).join("\n");
+  return skills.map((s) => `- /${s.slug}: ${s.name}${s.description ? `. ${s.description.split("\n")[0]!.slice(0, 300)}` : ""}${filesLine(s)}`).join("\n");
 }
 
 export function skillsFor<T extends Skill>(text: string, skills: T[]): T[] {

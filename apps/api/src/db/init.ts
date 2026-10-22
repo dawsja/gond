@@ -2,15 +2,27 @@ import type { Database } from "bun:sqlite";
 import { reencryptOidcSecret } from "../data/oidc.ts";
 import { now } from "../ids.ts";
 import { encryptSecret, decryptSecret, isLegacySecret, SecretKeyError } from "../secrets.ts";
+import { noteInterrupted } from "../resume.ts";
 import { runMigrations } from "./migrations.ts";
 import { dbPath, getDb } from "./sqlite.ts";
 
 const holder = globalThis as typeof globalThis & { __gondDbReady?: string };
 
-function releaseClaims(db: Database) {
+/**
+ * At start nothing is running: the messages a turn had claimed go back to wait (marked as cut off, so
+ * their next turn checks before redoing anything), and every card still open expires, since no turn
+ * waits on it any more and it would otherwise hold its bot up for good.
+ */
+export function releaseClaims(db: Database): number {
+  const cut = db.query("SELECT id FROM gond_messages WHERE claimed_by IS NOT NULL AND answered_at IS NULL").all() as { id: string }[];
+  for (const { id } of cut) noteInterrupted(id);
   db.query("UPDATE gond_messages SET claimed_by = NULL WHERE claimed_by IS NOT NULL").run();
   const at = now();
-  db.query("UPDATE gond_approvals SET status = 'expired', resolved_at = ? WHERE status = 'pending'").run(at);
+  const cards =
+    db.query("UPDATE gond_approvals SET status = 'expired', resolved_at = ? WHERE status = 'pending'").run(at).changes +
+    db.query("UPDATE gond_secret_requests SET status = 'expired', resolved_at = ? WHERE status = 'pending'").run(at).changes;
+  if (cut.length || cards) console.info(`[gond] Picking up after a restart: ${cut.length} message(s) to answer again, ${cards} open card(s) expired`);
+  return cards;
 }
 
 const ENCRYPTED_COLUMNS = [

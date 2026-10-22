@@ -218,7 +218,7 @@ describe("composio", () => {
 describe("souls", () => {
   test("renderSoul says the primary bot's place in the team", () => {
     const soul = renderSoul(bot);
-    expect(soul).toContain("# Scout — Assistant");
+    expect(soul).toContain("# Scout, Assistant");
     expect(soul).toContain("## Your place in the team");
     expect(soul).toContain("You are the person's primary bot");
     expect(soul).not.toContain("Coordinating the team is the primary bot's job");
@@ -1281,5 +1281,33 @@ describe("message search index", () => {
     db.query("DELETE FROM gond_messages WHERE id = 'm1'").run();
     expect(hits("kopia")).toEqual([]);
     expect(hits("nothing")).toEqual(["m2"]);
+  });
+});
+
+describe("calls", () => {
+  test("a line that only closes the call hangs up, one that asks for more doesn't", async () => {
+    const { endsCall } = await import("../src/calls.ts");
+    for (const line of ["Bye", "Goodbye!", "OK thanks, bye.", "That's all", "that's it, thanks", "Thank you so much, that's all for now", "Bye Patch", "Hang up", "End the call please", "Alright, talk to you later", "I'm done"]) expect(endsCall(line, "Patch")).toBe(true);
+    for (const line of ["That's all I need, now book it", "bye the way can you check", "Is that all?", "Goodbye message for the team", "Find me a flight"]) expect(endsCall(line, "Patch")).toBe(false);
+  });
+
+  test("each voice's events read as the same signals", async () => {
+    const { readLiveEvent, readXaiEvent } = await import("../src/voice-link.ts");
+    expect(readLiveEvent({ type: "session.started" })).toEqual([{ kind: "ready" }]);
+    expect(readLiveEvent({ type: "session.input_transcript.delta", delta: "Find me" })).toEqual([{ kind: "heard", text: "Find me", final: false }]);
+    expect(readLiveEvent({ type: "session.delegation.created", delegation: { id: "item_1", type: "delegation", target: "client" } })).toEqual([{ kind: "delegate", id: "item_1", request: null }]);
+    expect(readLiveEvent({ type: "session.closed", reason: "expired" })).toEqual([{ kind: "closed", reason: "expired" }]);
+    expect(readXaiEvent({ type: "response.function_call_arguments.done", name: "ask_bot", call_id: "c1", arguments: '{"request":"Book it"}' })).toEqual([{ kind: "delegate", id: "c1", request: "Book it" }]);
+    expect(readXaiEvent({ type: "response.function_call_arguments.done", name: "ask_bot", call_id: "c1", arguments: "{oops" })).toEqual([{ kind: "delegate", id: "c1", request: null }]);
+    expect(readXaiEvent({ type: "response.function_call_arguments.done", name: "end_call", call_id: "c3", arguments: "{}" })).toEqual([{ kind: "hang-up", id: "c3" }]);
+    expect(readXaiEvent({ type: "input_audio_buffer.speech_started" })).toEqual([{ kind: "interrupt" }]);
+    expect(readXaiEvent({ type: "error", error: { message: "bad key" } })).toEqual([{ kind: "error", message: "bad key" }]);
+  });
+
+  test("a call's length reads in minutes", async () => {
+    const { callLength } = await import("../src/calls.ts");
+    expect(callLength(20_000)).toBe("under a minute");
+    expect(callLength(70_000)).toBe("1 min");
+    expect(callLength(5 * 60_000)).toBe("5 min");
   });
 });

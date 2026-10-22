@@ -46,7 +46,7 @@ export function mobileSignInRoutes() {
   app.get(`${BASE}/start`, async (c) => {
     const challenge = c.req.query("challenge");
     const which = signInApp(c.req.query("app"));
-    if (!isChallenge(challenge)) return c.json({ error: "Bad challenge" }, 400);
+    if (!isChallenge(challenge)) return c.json({ error: "The sign-in request isn't valid. Start again from the app." }, 400);
     if (!oidcReady()) return toApp(which, { error: "off" });
 
     const home = new URL(appUrl());

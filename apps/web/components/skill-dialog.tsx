@@ -56,7 +56,7 @@ export function SkillDialog({ skill: initial, onClose, onSaved }: { skill: Skill
         setBusy(false);
       }
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : "Could not save.");
+      setError(failure instanceof Error ? failure.message : "Couldn't save.");
       setBusy(false);
     }
   }
@@ -88,7 +88,7 @@ export function SkillDialog({ skill: initial, onClose, onSaved }: { skill: Skill
       setDraft(null);
       await onSaved();
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : "Could not save the file.");
+      setError(failure instanceof Error ? failure.message : "Couldn't save the file.");
     } finally {
       setBusy(false);
     }

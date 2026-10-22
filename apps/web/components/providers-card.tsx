@@ -48,7 +48,7 @@ export function ProviderForm({ kind, provider, onSaved, onCancel }: { kind: Prov
       setApiKey("");
       onSaved(data.provider);
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : "Could not save.");
+      setError(failure instanceof Error ? failure.message : "Couldn't save.");
     } finally {
       setBusy(false);
     }

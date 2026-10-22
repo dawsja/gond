@@ -30,7 +30,7 @@ export function RegisterForm() {
       router.refresh();
     } catch (failure) {
       setBusy(false);
-      setError(failure instanceof Error ? failure.message : "Could not create the account.");
+      setError(failure instanceof Error ? failure.message : "Couldn't create the account.");
     }
   }
 

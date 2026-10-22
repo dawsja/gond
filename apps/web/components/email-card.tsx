@@ -3,7 +3,7 @@
 import { emailAddress, emailDraftOf, emailEditable, emailName, sendDraftAction, wordDiff, type Approval, type ApprovalAnswer, type Bot, type EmailDraft, type EmailEdit, type Message } from "@gond/shared";
 import { ArrowUp, ChevronDown, ChevronUp, CornerUpLeft, Forward, Mail, NotebookPen, Paperclip, Pencil, Undo2 } from "lucide-react";
 import { useState, type ReactNode } from "react";
-import { ActionCard, ActionCardDone, cheerOnFold } from "@/components/action-card";
+import { ActionCard, ActionCardDone, cheerOnFold, NOBODY_ANSWERED } from "@/components/action-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput, InputGroupText } from "@/components/ui/input-group";
@@ -191,7 +191,7 @@ export function EmailApprovalCard({ message, approval, email, bot, noticed, onDe
     if (approval.outcome === "sent") return <ActionCardDone id={message.id} bot={bot} icon={icon} title="Email sent" by={by} status="Sent" tone="ok" />;
     if (approval.status === "allowed") return <ActionCardDone id={message.id} bot={bot} icon={icon} title={words.done} by={by} status={words.allowed} tone="ok" />;
     if (approval.status === "denied") return <ActionCardDone id={message.id} bot={bot} icon={icon} title={sendsDraft ? "Not sent" : words.title} by={emailGist(email)} status={words.denied} tone="bad" />;
-    return <ActionCardDone id={message.id} bot={bot} icon={icon} title={sendsDraft ? "Send this email?" : words.title} by={emailGist(email)} status="Expired" tone="neutral" />;
+    return <ActionCardDone id={message.id} bot={bot} icon={icon} title={sendsDraft ? "Send this email?" : words.title} by={NOBODY_ANSWERED} status="Expired" tone="neutral" />;
   }
 
   const changed = editing && JSON.stringify(fields) !== JSON.stringify(fieldsOf(email));

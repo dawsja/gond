@@ -6,6 +6,8 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type CSSProperties, type DragEvent, type FormEvent, type KeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { ApprovalCard } from "@/components/approval-card";
+import { CallButton, CallComposer, SpokenMark } from "@/components/call/call-controls";
+import { useCall } from "@/components/call/call-provider";
 import { QuoteInBubble, ReplyingTo } from "@/components/reply-quote";
 import { BotAvatar, RoomAvatar, roomMembers } from "@/components/bot-avatar";
 import { copyToClipboard } from "@/components/hq/clipboard";
@@ -268,6 +270,7 @@ function Line({ message, threadId, bots, threads, bot, approvals, isRoom, editin
             </span>
           ) : null}
           <BubbleContent className="rounded-2xl px-3.5 py-2">
+            {message.spoken ? <SpokenMark mine={mine} /> : null}
             {message.replyTo ? <QuoteInBubble quote={message.replyTo} name={nameOf(message.replyTo.author, bots)} color={colorOf(message.replyTo.author, bots)} onJump={onJump} /> : null}
             {message.body ? (
               <ChoicesContext.Provider value={mine ? {} : { pick: (option) => onPick(option, message.author), picked: answer }}>
@@ -419,6 +422,8 @@ function LoadEarlier({ onLoad }: { onLoad: () => Promise<boolean> }) {
 
 export function Conversation({ threadId }: { threadId: string }) {
   const { bots, threads, approvals, activity, refresh, boxUpdating, desktop } = useStore();
+  const { call } = useCall();
+  const onCall = call?.info.threadId === threadId ? call : null;
   const [info, setInfo] = useState<ThreadInfo | null>(null);
   const [missing, setMissing] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -662,7 +667,7 @@ export function Conversation({ threadId }: { threadId: string }) {
       setFiles([]);
       setReplying(null);
     } catch (failure) {
-      setNotice(failure instanceof Error ? failure.message : "Could not send.");
+      setNotice(failure instanceof Error ? failure.message : "Couldn't send.");
     } finally {
       setSending(false);
 
@@ -873,12 +878,13 @@ export function Conversation({ threadId }: { threadId: string }) {
               <span className="truncate text-[15px] leading-5 font-semibold">{info?.thread.name ?? "…"}</span>
               <span className={cn("truncate text-[11px] leading-3.5 font-normal opacity-70", (busy || boxUpdating) && "shimmer")}>
                 {bot ? bot.title || "Teammate" : info ? `${info.thread.members.length} bots` : ""}
-                {boxUpdating ? " · the computer is updating, replies wait" : busy ? " · working" : waitingOnYou ? " · waiting on you" : watches.length ? ` · watching ${watches.length === 1 ? "1 thing" : `${watches.length} things`}` : ""}
+                {boxUpdating ? " · the computer is updating, replies wait" : onCall ? " · on a call" : busy ? " · working" : waitingOnYou ? " · waiting on you" : watches.length ? ` · watching ${watches.length === 1 ? "1 thing" : `${watches.length} things`}` : ""}
               </span>
             </span>
           </Button>
           <span className="flex-1" />
 
+          {bot ? <CallButton threadId={threadId} bot={bot} /> : null}
           <Tooltip>
             <TooltipTrigger render={<Button size="icon-xl" aria-label="Toggle details" aria-pressed={panel} onClick={() => setPanel((p) => !p)} className={cn("pointer-events-auto hidden xwide:inline-flex", panel && "bg-primary-hover")} />}>
               <PanelRight aria-hidden="true" />
@@ -907,7 +913,7 @@ export function Conversation({ threadId }: { threadId: string }) {
           ) : null}
         </header>
         {driving.length && !screen ? (
-          <div className="pointer-events-none absolute inset-x-0 top-[calc(64px+var(--safe-top))] z-20 flex flex-wrap justify-center gap-2 px-3 wide:hidden">
+          <div className="pointer-events-none absolute inset-x-0 top-[calc(64px+var(--safe-top)+var(--call-pill-space))] z-20 flex flex-wrap justify-center gap-2 px-3 wide:hidden">
             {driving.map((b) => (
               <Button key={b.id} size="lg" onClick={() => setScreen(b.id)} className="pointer-events-auto">
                 {driving.length > 1 ? <BotAvatar bot={b} size={20} /> : <Monitor data-icon="inline-start" aria-hidden="true" />}
@@ -922,7 +928,7 @@ export function Conversation({ threadId }: { threadId: string }) {
           {jump ? <JumpToMessage key={jump.n} id={jump.id} ready={messages.length > 0} loaded={earlier === false} earlier={loadEarlier} /> : null}
           <FollowSent id={sent} />
           <MessageScroller className="flex-1">
-            <MessageScrollerViewport preserveScrollOnPrepend className="px-3 pt-[calc(64px+var(--safe-top))] pb-(--composer-h) sm:px-4">
+            <MessageScrollerViewport preserveScrollOnPrepend className="px-3 pt-[calc(64px+var(--safe-top)+var(--call-pill-space))] pb-(--composer-h) sm:px-4">
               <MessageScrollerContent className="gap-3 py-4">
                 {earlier && messages.length > 0 ? (
                   <MessageScrollerItem>
@@ -963,6 +969,35 @@ export function Conversation({ threadId }: { threadId: string }) {
                 ))}
                 </WatchesContext.Provider>
 
+                {onCall?.heard ? (
+                  <MessageScrollerItem key="call-heard">
+                    <MessageRow align="end">
+                      <MessageContent>
+                        <Bubble variant="default" align="end" className="max-w-[86%] opacity-70 sm:max-w-[78%]">
+                          <BubbleContent className="rounded-2xl px-3.5 py-2 text-[14px] leading-6">
+                            <SpokenMark mine />
+                            {onCall.heard}
+                          </BubbleContent>
+                        </Bubble>
+                      </MessageContent>
+                    </MessageRow>
+                  </MessageScrollerItem>
+                ) : null}
+                {onCall?.said ? (
+                  <MessageScrollerItem key="call-said">
+                    <MessageRow align="start">
+                      <MessageContent>
+                        <Bubble variant="outline" align="start" className="max-w-[86%] opacity-70 sm:max-w-[78%]">
+                          <BubbleContent className="rounded-2xl px-3.5 py-2 text-[14px] leading-6">
+                            <SpokenMark mine={false} />
+                            {onCall.said}
+                          </BubbleContent>
+                        </Bubble>
+                      </MessageContent>
+                    </MessageRow>
+                  </MessageScrollerItem>
+                ) : null}
+
                 {workingBots.length > 1 ? (
                   <MessageScrollerItem key="working">
                     <WorkLines working={workingBots} label={names(workingBots.map((w) => w.bot.name))} />
@@ -976,7 +1011,7 @@ export function Conversation({ threadId }: { threadId: string }) {
                 )}
               </MessageScrollerContent>
             </MessageScrollerViewport>
-            <MessageScrollerEdges top="calc(64px + var(--safe-top) + 24px)" bottom="calc(var(--composer-h) + 24px)" />
+            <MessageScrollerEdges top="calc(64px + var(--safe-top) + var(--call-pill-space) + 24px)" bottom="calc(var(--composer-h) + 24px)" />
             <MessageScrollerButton className="data-[direction=end]:bottom-[calc(var(--composer-h)+8px)]" />
           </MessageScroller>
         </MessageScrollerProvider>
@@ -1021,6 +1056,7 @@ export function Conversation({ threadId }: { threadId: string }) {
             </Marker>
           ) : null}
           {replying ? <ReplyingTo name={nameOf(replying.author, bots)} color={colorOf(replying.author, bots)} text={quoteText(replying)} onCancel={() => setReplying(null)} /> : null}
+          {onCall ? <CallComposer call={onCall} bot={bot ?? undefined} /> : (
           <div className="relative flex items-end gap-2.5">
           {slash ? <SlashMenu kind={slash.kind} skills={skills} bots={bots} query={slash.query} selected={slash.selected} onPickSkill={(skill) => insertSkill(skill.slug)} onPickBot={insertBot} /> : null}
           <Tooltip>
@@ -1074,6 +1110,7 @@ export function Conversation({ threadId }: { threadId: string }) {
             </InputGroupAddon>
           </InputGroup>
           </div>
+          )}
         </form>
       </section>
       {panel && info ? <RightPanel thread={info.thread} bot={bot} working={busy} screen={screenProps} /> : null}

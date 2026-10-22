@@ -55,7 +55,7 @@ export function NotificationsCard() {
       toast.add({ type: "success", title: "Notifications are on for this browser." });
     } catch (failure) {
       if (pushPermission() === "denied") setState("blocked");
-      toast.add({ type: "error", title: failure instanceof Error ? failure.message : "Could not turn notifications on." });
+      toast.add({ type: "error", title: failure instanceof Error ? failure.message : "Couldn't turn notifications on." });
     } finally {
       setBusy(false);
     }

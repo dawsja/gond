@@ -27,7 +27,7 @@ export function skillsRoutes() {
 
   app.post("/skills", async (c) => {
     const parsed = skillInputSchema.safeParse(await c.req.json().catch(() => ({})));
-    if (!parsed.success) return c.json({ error: parsed.error.issues[0]?.message ?? "Bad skill" }, 400);
+    if (!parsed.success) return c.json({ error: parsed.error.issues[0]?.message ?? "That skill isn't valid" }, 400);
     const skill = createSkill(userId(c), parsed.data);
     changed(c);
     return c.json({ skill }, 201);
@@ -36,7 +36,7 @@ export function skillsRoutes() {
   app.post("/skills/install", async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as { id?: string };
     const skill = installPackagedSkill(userId(c), String(body.id ?? ""));
-    if (!skill) return c.json({ error: "No such packaged skill" }, 404);
+    if (!skill) return c.json({ error: "Couldn't find that built-in skill" }, 404);
     changed(c);
     return c.json({ skill }, 201);
   });
@@ -61,7 +61,7 @@ export function skillsRoutes() {
     }
     const parsed = parseSkillMd(skillMd);
     const input = skillInputSchema.safeParse({ name: (parsed.name ?? nameFromFolder(folder ?? file.name.replace(/\.[^.]+$/, ""))).slice(0, SKILL_LIMITS.name), description: parsed.description.slice(0, SKILL_LIMITS.description), instructions: parsed.instructions });
-    if (!input.success) return c.json({ error: input.error.issues[0]?.path[0] === "instructions" ? "SKILL.md has no instructions" : (input.error.issues[0]?.message ?? "Bad skill") }, 400);
+    if (!input.success) return c.json({ error: input.error.issues[0]?.path[0] === "instructions" ? "SKILL.md has no instructions" : (input.error.issues[0]?.message ?? "That skill isn't valid") }, 400);
     try {
       const skill = createSkill(userId(c), input.data, "imported", { files, meta: parsed.meta });
       changed(c);
@@ -72,18 +72,18 @@ export function skillsRoutes() {
   });
 
   app.patch("/skills/:id", async (c) => {
-    if (!own(c)) return c.json({ error: "No such skill" }, 404);
+    if (!own(c)) return c.json({ error: "Couldn't find that skill" }, 404);
     const parsed = skillPatchSchema.safeParse(await c.req.json().catch(() => ({})));
-    if (!parsed.success) return c.json({ error: parsed.error.issues[0]?.message ?? "Bad skill" }, 400);
+    if (!parsed.success) return c.json({ error: parsed.error.issues[0]?.message ?? "That skill isn't valid" }, 400);
     const skill = updateSkill(c.req.param("id"), parsed.data);
-    if (!skill) return c.json({ error: "No such skill" }, 404);
+    if (!skill) return c.json({ error: "Couldn't find that skill" }, 404);
     changed(c);
     return c.json({ skill });
   });
 
   app.delete("/skills/:id", (c) => {
     const skill = own(c);
-    if (!skill) return c.json({ error: "No such skill" }, 404);
+    if (!skill) return c.json({ error: "Couldn't find that skill" }, 404);
     deleteSkill(skill.id);
     changed(c);
     return c.body(null, 204);
@@ -91,7 +91,7 @@ export function skillsRoutes() {
 
   app.get("/skills/:id/download", (c) => {
     const skill = own(c);
-    if (!skill) return c.json({ error: "No such skill" }, 404);
+    if (!skill) return c.json({ error: "Couldn't find that skill" }, 404);
     const zip = packSkill(skill, skillFiles(skill.id));
     return new Response(Buffer.from(zip), {
       headers: {
@@ -108,7 +108,7 @@ export function skillsRoutes() {
     const skill = own(c);
     const path = skillFilePath(c.req.query("path") ?? "");
     const file = skill && path ? skillFile(skill.id, path) : null;
-    if (!file) return c.json({ error: "No such file" }, 404);
+    if (!file) return c.json({ error: "Couldn't find that file" }, 404);
     if (c.req.query("raw") === undefined && isText(file.data)) return c.json({ path: file.path, content: new TextDecoder().decode(file.data), executable: file.executable });
     const name = file.path.split("/").pop() ?? "file";
     return new Response(Buffer.from(file.data), {
@@ -124,11 +124,11 @@ export function skillsRoutes() {
 
   app.put("/skills/:id/file", async (c) => {
     const skill = own(c);
-    if (!skill) return c.json({ error: "No such skill" }, 404);
+    if (!skill) return c.json({ error: "Couldn't find that skill" }, 404);
     const body = (await c.req.json().catch(() => ({}))) as { path?: unknown; content?: unknown; executable?: unknown };
     const path = skillFilePath(String(body.path ?? ""));
     if (!path) return c.json({ error: "Give the file a path inside the skill, like scripts/run.py" }, 400);
-    if (typeof body.content !== "string") return c.json({ error: "Content must be text" }, 400);
+    if (typeof body.content !== "string") return c.json({ error: "The file's content must be text" }, 400);
     const data = new TextEncoder().encode(body.content);
     try {
       putSkillFile(skill.id, { path, data, executable: typeof body.executable === "boolean" ? body.executable : looksExecutable(data) });
@@ -141,12 +141,12 @@ export function skillsRoutes() {
 
   app.post("/skills/:id/files", async (c) => {
     const skill = own(c);
-    if (!skill) return c.json({ error: "No such skill" }, 404);
+    if (!skill) return c.json({ error: "Couldn't find that skill" }, 404);
     const form = await c.req.formData().catch(() => null);
     if (!form) return c.json({ error: "Send the files as a form" }, 400);
     const dir = String(form.get("dir") ?? "").trim().replace(/^\/+|\/+$/g, "");
     const uploads = form.getAll("file").filter((f): f is File => f instanceof File);
-    if (!uploads.length) return c.json({ error: "No files" }, 400);
+    if (!uploads.length) return c.json({ error: "Add at least one file" }, 400);
     try {
       for (const upload of uploads) {
         if (upload.size > SKILL_LIMITS.fileBytes) throw new SkillFilesError(`"${upload.name}" is larger than ${SKILL_LIMITS.fileBytes / 1024 / 1024} MB.`);
@@ -165,11 +165,11 @@ export function skillsRoutes() {
 
   app.patch("/skills/:id/file", async (c) => {
     const skill = own(c);
-    if (!skill) return c.json({ error: "No such skill" }, 404);
+    if (!skill) return c.json({ error: "Couldn't find that skill" }, 404);
     const body = (await c.req.json().catch(() => ({}))) as { path?: unknown; to?: unknown; executable?: unknown };
     const from = skillFilePath(String(body.path ?? ""));
     const current = from ? skillFile(skill.id, from) : null;
-    if (!from || !current) return c.json({ error: "No such file" }, 404);
+    if (!from || !current) return c.json({ error: "Couldn't find that file" }, 404);
     try {
       if (typeof body.executable === "boolean") putSkillFile(skill.id, { ...current, executable: body.executable });
       if (body.to !== undefined) {
@@ -187,7 +187,7 @@ export function skillsRoutes() {
   app.delete("/skills/:id/file", (c) => {
     const skill = own(c);
     const path = skillFilePath(c.req.query("path") ?? "");
-    if (!skill || !path || !deleteSkillFile(skill.id, path)) return c.json({ error: "No such file" }, 404);
+    if (!skill || !path || !deleteSkillFile(skill.id, path)) return c.json({ error: "Couldn't find that file" }, 404);
     changed(c);
     return c.json({ skill: getSkill(skill.id) });
   });

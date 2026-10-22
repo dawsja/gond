@@ -45,7 +45,7 @@ function requireBox(c: Context<Env>): BoxConfig | Response {
   } catch (error) {
     return c.json({ error: (error as Error).message }, 503);
   }
-  return c.json({ error: "No box is configured. Set GOND_BOX_URL." }, 404);
+  return c.json({ error: "The computer isn't set up. Set GOND_BOX_URL on the API." }, 404);
 }
 
 function boxErrorResponse(c: Context<Env>, error: unknown) {
@@ -111,7 +111,7 @@ export function boxRoutes() {
     const box = requireBox(c);
     if (box instanceof Response) return box;
     const body = (await c.req.json().catch(() => ({}))) as { bot?: string; cols?: number; rows?: number };
-    if (body.bot && !ownBot(c, body.bot)) return c.json({ error: "No such bot" }, 404);
+    if (body.bot && !ownBot(c, body.bot)) return c.json({ error: "Couldn't find that bot" }, 404);
     try {
       return c.json({ terminal: await createTerminal(box, { bot: body.bot ?? null, cols: Number(body.cols) || 80, rows: Number(body.rows) || 24 }) });
     } catch (error) {
@@ -121,7 +121,7 @@ export function boxRoutes() {
 
   app.get("/box/terminals/:id/stream", (c) => {
     const id = c.req.param("id");
-    if (!STREAM_ID.test(id)) return c.json({ error: "Bad terminal id" }, 400);
+    if (!STREAM_ID.test(id)) return c.json({ error: "That terminal isn't valid" }, 400);
     const box = requireBox(c);
     if (box instanceof Response) return box;
     return proxyStream(c, box, `/terminals/${id}/stream`);
@@ -129,11 +129,11 @@ export function boxRoutes() {
 
   app.post("/box/terminals/:id/input", async (c) => {
     const id = c.req.param("id");
-    if (!STREAM_ID.test(id)) return c.json({ error: "Bad terminal id" }, 400);
+    if (!STREAM_ID.test(id)) return c.json({ error: "That terminal isn't valid" }, 400);
     const box = requireBox(c);
     if (box instanceof Response) return box;
     const body = (await c.req.json().catch(() => ({}))) as { data?: string };
-    if (typeof body.data !== "string") return c.json({ error: "Missing data" }, 400);
+    if (typeof body.data !== "string") return c.json({ error: "Nothing was sent" }, 400);
     try {
       await terminalInput(box, id, body.data);
       return c.json({ ok: true });
@@ -144,7 +144,7 @@ export function boxRoutes() {
 
   app.post("/box/terminals/:id/resize", async (c) => {
     const id = c.req.param("id");
-    if (!STREAM_ID.test(id)) return c.json({ error: "Bad terminal id" }, 400);
+    if (!STREAM_ID.test(id)) return c.json({ error: "That terminal isn't valid" }, 400);
     const box = requireBox(c);
     if (box instanceof Response) return box;
     const body = (await c.req.json().catch(() => ({}))) as { cols?: number; rows?: number };
@@ -158,7 +158,7 @@ export function boxRoutes() {
 
   app.delete("/box/terminals/:id", async (c) => {
     const id = c.req.param("id");
-    if (!STREAM_ID.test(id)) return c.json({ error: "Bad terminal id" }, 400);
+    if (!STREAM_ID.test(id)) return c.json({ error: "That terminal isn't valid" }, 400);
     const box = requireBox(c);
     if (box instanceof Response) return box;
     try {
@@ -176,7 +176,7 @@ export function boxRoutes() {
 
   app.get("/box/engines/:engine/sign-in", async (c) => {
     const engine = engineParam(c);
-    if (!engine) return c.json({ error: "No such engine" }, 404);
+    if (!engine) return c.json({ error: "Couldn't find that engine" }, 404);
     const box = requireBox(c);
     if (box instanceof Response) return box;
     try {
@@ -188,7 +188,7 @@ export function boxRoutes() {
 
   app.post("/box/engines/:engine/sign-in", async (c) => {
     const engine = engineParam(c);
-    if (!engine) return c.json({ error: "No such engine" }, 404);
+    if (!engine) return c.json({ error: "Couldn't find that engine" }, 404);
     const box = requireBox(c);
     if (box instanceof Response) return box;
     try {
@@ -203,7 +203,7 @@ export function boxRoutes() {
 
   app.post("/box/engines/:engine/sign-in/code", async (c) => {
     const engine = engineParam(c);
-    if (!engine) return c.json({ error: "No such engine" }, 404);
+    if (!engine) return c.json({ error: "Couldn't find that engine" }, 404);
     const box = requireBox(c);
     if (box instanceof Response) return box;
     const body = (await c.req.json().catch(() => ({}))) as { code?: unknown };
@@ -218,7 +218,7 @@ export function boxRoutes() {
 
   app.delete("/box/engines/:engine/sign-in", async (c) => {
     const engine = engineParam(c);
-    if (!engine) return c.json({ error: "No such engine" }, 404);
+    if (!engine) return c.json({ error: "Couldn't find that engine" }, 404);
     const box = requireBox(c);
     if (box instanceof Response) return box;
     try {
@@ -244,7 +244,7 @@ export function boxRoutes() {
 
   app.post("/box/desktop/:bot", async (c) => {
     const bot = ownBot(c, c.req.param("bot"));
-    if (!bot) return c.json({ error: "No such bot" }, 404);
+    if (!bot) return c.json({ error: "Couldn't find that bot" }, 404);
     const box = requireBox(c);
     if (box instanceof Response) return box;
     const body = (await c.req.json().catch(() => ({}))) as { width?: number; height?: number };
@@ -260,7 +260,7 @@ export function boxRoutes() {
 
   app.delete("/box/desktop/:bot", async (c) => {
     const bot = ownBot(c, c.req.param("bot"));
-    if (!bot) return c.json({ error: "No such bot" }, 404);
+    if (!bot) return c.json({ error: "Couldn't find that bot" }, 404);
     const box = requireBox(c);
     if (box instanceof Response) return box;
     try {
@@ -274,11 +274,11 @@ export function boxRoutes() {
 
   app.post("/box/desktop/:bot/control", async (c) => {
     const bot = ownBot(c, c.req.param("bot"));
-    if (!bot) return c.json({ error: "No such bot" }, 404);
+    if (!bot) return c.json({ error: "Couldn't find that bot" }, 404);
     const box = requireBox(c);
     if (box instanceof Response) return box;
     const body = (await c.req.json().catch(() => ({}))) as { holder?: unknown };
-    if (body.holder !== "person" && body.holder !== "free") return c.json({ error: "holder must be person or free" }, 400);
+    if (body.holder !== "person" && body.holder !== "free") return c.json({ error: "Take control or give it back" }, 400);
     try {
       await desktopControl(box, bot.id, { holder: body.holder });
     } catch (error) {
@@ -293,7 +293,7 @@ export function boxRoutes() {
 
   app.post("/box/desktop/:bot/connections", async (c) => {
     const bot = ownBot(c, c.req.param("bot"));
-    if (!bot) return c.json({ error: "No such bot" }, 404);
+    if (!bot) return c.json({ error: "Couldn't find that bot" }, 404);
     const box = requireBox(c);
     if (box instanceof Response) return box;
     const body = (await c.req.json().catch(() => ({}))) as { width?: number; height?: number };
@@ -308,9 +308,9 @@ export function boxRoutes() {
 
   app.get("/box/desktop/:bot/connections/:id/stream", (c) => {
     const bot = ownBot(c, c.req.param("bot"));
-    if (!bot) return c.json({ error: "No such bot" }, 404);
+    if (!bot) return c.json({ error: "Couldn't find that bot" }, 404);
     const id = c.req.param("id");
-    if (!STREAM_ID.test(id)) return c.json({ error: "Bad connection id" }, 400);
+    if (!STREAM_ID.test(id)) return c.json({ error: "That screen connection isn't valid" }, 400);
     const box = requireBox(c);
     if (box instanceof Response) return box;
     return proxyStream(c, box, screenStreamPath(bot.id, id));
@@ -318,13 +318,13 @@ export function boxRoutes() {
 
   app.post("/box/desktop/:bot/connections/:id/input", async (c) => {
     const bot = ownBot(c, c.req.param("bot"));
-    if (!bot) return c.json({ error: "No such bot" }, 404);
+    if (!bot) return c.json({ error: "Couldn't find that bot" }, 404);
     const id = c.req.param("id");
-    if (!STREAM_ID.test(id)) return c.json({ error: "Bad connection id" }, 400);
+    if (!STREAM_ID.test(id)) return c.json({ error: "That screen connection isn't valid" }, 400);
     const box = requireBox(c);
     if (box instanceof Response) return box;
     const body = (await c.req.json().catch(() => ({}))) as { data?: string };
-    if (typeof body.data !== "string") return c.json({ error: "Missing data" }, 400);
+    if (typeof body.data !== "string") return c.json({ error: "Nothing was sent" }, 400);
     try {
       await desktopInput(box, bot.id, id, body.data);
       return c.json({ ok: true });
@@ -335,9 +335,9 @@ export function boxRoutes() {
 
   app.delete("/box/desktop/:bot/connections/:id", async (c) => {
     const bot = ownBot(c, c.req.param("bot"));
-    if (!bot) return c.json({ error: "No such bot" }, 404);
+    if (!bot) return c.json({ error: "Couldn't find that bot" }, 404);
     const id = c.req.param("id");
-    if (!STREAM_ID.test(id)) return c.json({ error: "Bad connection id" }, 400);
+    if (!STREAM_ID.test(id)) return c.json({ error: "That screen connection isn't valid" }, 400);
     const box = requireBox(c);
     if (box instanceof Response) return box;
     try {
@@ -350,11 +350,11 @@ export function boxRoutes() {
 
   app.get("/bots/:id/files", async (c) => {
     const bot = ownBot(c, c.req.param("id"));
-    if (!bot) return c.json({ error: "No such bot" }, 404);
+    if (!bot) return c.json({ error: "Couldn't find that bot" }, 404);
     const box = requireBox(c);
     if (box instanceof Response) return box;
     const target = botFilePath(bot.id, c.req.query("path") ?? ".");
-    if (!target) return c.json({ error: "Bad path" }, 400);
+    if (!target) return c.json({ error: "Give a path inside the bot's folder" }, 400);
     try {
       const file = await readBoxFile(box, target);
       return c.json({ file: file.content === undefined ? file : { ...file, content: hideSecrets(file.content) } });
@@ -365,11 +365,11 @@ export function boxRoutes() {
 
   app.get("/bots/:id/files/raw", async (c) => {
     const bot = ownBot(c, c.req.param("id"));
-    if (!bot) return c.json({ error: "No such bot" }, 404);
+    if (!bot) return c.json({ error: "Couldn't find that bot" }, 404);
     const box = requireBox(c);
     if (box instanceof Response) return box;
     const target = botFilePath(bot.id, c.req.query("path") ?? "");
-    if (!target) return c.json({ error: "Bad path" }, 400);
+    if (!target) return c.json({ error: "Give a path inside the bot's folder" }, 400);
     try {
       const data = await readBoxFileBytes(box, target);
       if (containsSecret(data)) return c.json({ error: "That file holds a stored secret, so it can't be downloaded" }, 403);
@@ -392,12 +392,12 @@ export function boxRoutes() {
 
   app.put("/bots/:id/files", async (c) => {
     const bot = ownBot(c, c.req.param("id"));
-    if (!bot) return c.json({ error: "No such bot" }, 404);
+    if (!bot) return c.json({ error: "Couldn't find that bot" }, 404);
     const box = requireBox(c);
     if (box instanceof Response) return box;
     const body = (await c.req.json().catch(() => ({}))) as { path?: string; content?: string };
     const target = botFilePath(bot.id, String(body.path ?? ""));
-    if (!target || typeof body.content !== "string") return c.json({ error: "Bad path or content" }, 400);
+    if (!target || typeof body.content !== "string") return c.json({ error: "Give a path inside the bot's folder and text to write" }, 400);
     try {
       await writeBoxFile(box, target, body.content);
       return c.json({ ok: true });
@@ -408,11 +408,11 @@ export function boxRoutes() {
 
   app.delete("/bots/:id/files", async (c) => {
     const bot = ownBot(c, c.req.param("id"));
-    if (!bot) return c.json({ error: "No such bot" }, 404);
+    if (!bot) return c.json({ error: "Couldn't find that bot" }, 404);
     const box = requireBox(c);
     if (box instanceof Response) return box;
     const target = botFilePath(bot.id, c.req.query("path") ?? "");
-    if (!target || target === botHome(bot.id) + "/") return c.json({ error: "Bad path" }, 400);
+    if (!target || target === botHome(bot.id) + "/") return c.json({ error: "Give a path inside the bot's folder" }, 400);
     try {
       await deleteBoxFile(box, target);
       return c.body(null, 204);

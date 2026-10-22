@@ -4,7 +4,7 @@ import { claimDueRoutines, recordRoutineRun, routinePrompt } from "./data/routin
 import { TURNS_PER_PERSON } from "./config.ts";
 import { claimPendingMessages, postMessage, releaseClaim } from "./data/threads.ts";
 import { randomString } from "./ids.ts";
-import { activeTurns, answerMessage } from "./responder.ts";
+import { activeTurns, answerMessage, computerAway } from "./responder.ts";
 import { chaseStalledDelegations } from "./nudges.ts";
 import { isUpdating } from "./updater.ts";
 
@@ -63,7 +63,7 @@ export async function tick() {
       chaseStalledDelegations();
     }
 
-    if (isUpdating()) return;
+    if (isUpdating() || computerAway()) return;
     const busy = new Map<string, number>();
     for (const turn of activeTurns().values()) busy.set(turn.userId, (busy.get(turn.userId) ?? 0) + 1);
     const messages = claimPendingMessages(current.owner, (userId) => TURNS_PER_PERSON - (busy.get(userId) ?? 0));

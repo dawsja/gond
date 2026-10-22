@@ -22,6 +22,7 @@ import { threadsRoutes } from "./routes/threads.ts";
 import { authConfig, usersRoutes } from "./routes/users.ts";
 import { releaseRoutes } from "./routes/release.ts";
 import { voiceRoutes } from "./routes/voice.ts";
+import { callsRoutes } from "./routes/calls.ts";
 
 export type Env = { Variables: { session: Session } };
 
@@ -78,7 +79,7 @@ export function createApp() {
 
   app.get("/api/me/avatar", (c) => {
     const avatar = getAvatar(userId(c));
-    if (!avatar) return c.json({ error: "No picture" }, 404);
+    if (!avatar) return c.json({ error: "There's no picture" }, 404);
     return new Response(Buffer.from(avatar.data), {
       headers: { "Content-Type": avatar.mediaType, "Cache-Control": "private, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff" },
     });
@@ -122,14 +123,15 @@ export function createApp() {
   app.route("/api", secretsRoutes());
   app.route("/api", providerRoutes());
   app.route("/api", voiceRoutes());
+  app.route("/api", callsRoutes());
   app.route("/api", pushRoutes());
   app.route("/api", usersRoutes());
   app.route("/api", releaseRoutes());
 
-  app.notFound((c) => c.json({ error: "Not found" }, 404));
+  app.notFound((c) => c.json({ error: "There's nothing at that address" }, 404));
   app.onError((error, c) => {
     console.error("[gond]", error);
-    return c.json({ error: error.message || "Something went wrong" }, 500);
+    return c.json({ error: error.message || "Something went wrong. Try again in a moment." }, 500);
   });
   return app;
 }

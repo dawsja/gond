@@ -133,7 +133,7 @@ export function providerRoutes() {
 
   app.put("/providers/:kind", async (c) => {
     const kind = c.req.param("kind");
-    if (!isProviderKind(kind)) return c.json({ error: "No such provider" }, 404);
+    if (!isProviderKind(kind)) return c.json({ error: "Couldn't find that provider" }, 404);
     if (isPlanProvider(kind)) return c.json({ error: `A ${PROVIDER_LABELS[kind].name} is signed in to, not given a key.` }, 400);
     const parsed = providerInputSchema.safeParse(await c.req.json().catch(() => ({})));
     if (!parsed.success) return c.json({ error: parsed.error.issues[0]?.message ?? "Bad provider" }, 400);
@@ -148,15 +148,15 @@ export function providerRoutes() {
 
   app.post("/providers/:kind/check", async (c) => {
     const kind = c.req.param("kind");
-    if (!isProviderKind(kind) || !getProvider(userId(c), kind)) return c.json({ error: "No such provider" }, 404);
+    if (!isProviderKind(kind) || !getProvider(userId(c), kind)) return c.json({ error: "Couldn't find that provider" }, 404);
     return c.json({ provider: recordProviderCheck(userId(c), kind, await checkProvider(userId(c), kind)) });
   });
 
   app.delete("/providers/:kind", async (c) => {
     const kind = c.req.param("kind");
-    if (!isProviderKind(kind)) return c.json({ error: "No such provider" }, 404);
+    if (!isProviderKind(kind)) return c.json({ error: "Couldn't find that provider" }, 404);
     const gone = kind === "chatgpt" ? await signOutChatGpt(userId(c)) : kind === "grok" ? await signOutGrok(userId(c)) : deleteProvider(userId(c), kind);
-    if (!gone) return c.json({ error: "No such provider" }, 404);
+    if (!gone) return c.json({ error: "Couldn't find that provider" }, 404);
 
     releaseEngines(userId(c), kind, (other) => Boolean(getProvider(userId(c), other)));
     return c.body(null, 204);
@@ -200,7 +200,7 @@ export function llmProxyRoutes() {
 
   app.all("/llm/:kind/*", async (c) => {
     const kind = c.req.param("kind");
-    if (!isProviderKind(kind)) return c.json({ error: "No such provider" }, 404);
+    if (!isProviderKind(kind)) return c.json({ error: "Couldn't find that provider" }, 404);
     const token = presentedToken(c.req.raw.headers);
 
     // Tokens are random and unique; the lookup is by equality in the database, never by prefix.

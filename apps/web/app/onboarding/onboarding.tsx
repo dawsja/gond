@@ -75,7 +75,7 @@ export function Onboarding() {
       setAi(data.ai);
       setError(null);
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : "Could not save.");
+      setError(failure instanceof Error ? failure.message : "Couldn't save.");
     }
   }
 
@@ -108,7 +108,7 @@ export function Onboarding() {
       router.refresh();
     } catch (failure) {
       setBusy(false);
-      setError(failure instanceof Error ? failure.message : "Could not finish setup.");
+      setError(failure instanceof Error ? failure.message : "Couldn't finish setup.");
     }
   }
 

@@ -53,7 +53,7 @@ export function McpCard() {
         setSigningIn(null);
       }
     } catch (failure) {
-      toast.add({ type: "error", title: failure instanceof Error ? failure.message : "Could not start the sign-in." });
+      toast.add({ type: "error", title: failure instanceof Error ? failure.message : "Couldn't start the sign-in." });
       setSigningIn(null);
       void load();
     }

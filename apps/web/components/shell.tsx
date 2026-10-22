@@ -2,6 +2,8 @@
 
 import { Suspense, useEffect, useState, type ReactNode } from "react";
 import { BotDialog } from "@/components/bot-dialog";
+import { CallPill } from "@/components/call/call-controls";
+import { CallProvider } from "@/components/call/call-provider";
 import { ShareBotDialog, SharedTemplate } from "@/components/bot-template";
 import { ComputerPanel } from "@/components/computer-panel";
 import { ShellNotifications } from "@/components/shell-notifications";
@@ -19,6 +21,7 @@ export function Shell({ user, children }: { user: SessionUser; children: ReactNo
   const [dialog, setDialog] = useState<ShellDialog>(null);
   return (
     <StoreProvider user={user}>
+      <CallProvider>
       <SidebarProvider style={{ "--sidebar-width": "300px" } as React.CSSProperties} className="h-dvh min-h-0 overflow-hidden">
         <AppSidebar onOpen={setDialog} />
         <SidebarInset className="min-h-0 min-w-0">
@@ -42,6 +45,8 @@ export function Shell({ user, children }: { user: SessionUser; children: ReactNo
       <ViewingReport />
       <VersionWatch />
       <StrayDrops />
+      <CallPill />
+      </CallProvider>
     </StoreProvider>
   );
 }

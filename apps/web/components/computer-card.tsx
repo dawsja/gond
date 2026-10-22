@@ -54,7 +54,7 @@ export function ComputerCard({ status, admin, onCheck }: { status: BoxStatus | n
     try {
       await post(kind === "update" ? "/api/box/update" : "/api/box/reset", kind === "update" ? { pull: true } : {});
     } catch (failure) {
-      toast.add({ type: "error", title: failure instanceof Error ? failure.message : `Could not start the ${kind}.` });
+      toast.add({ type: "error", title: failure instanceof Error ? failure.message : `Couldn't start the ${kind}.` });
     }
   }
 

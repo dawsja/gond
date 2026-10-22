@@ -47,7 +47,7 @@ export function ChatsScreen({ className }: { className?: string }) {
           </>
         )}
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-[calc(16px+var(--safe-bottom))]">
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 pt-(--call-pill-space) pb-[calc(16px+var(--safe-bottom))]">
         <BotRows rows={rows} hits={hits} query={query} setQuery={setQuery} lookAs="sheet" onOpen={onOpen} onAsk={setAsk} />
       </div>
       <ThreadConfirms ask={ask} onClose={() => setAsk(null)} />

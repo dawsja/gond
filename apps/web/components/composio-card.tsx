@@ -45,7 +45,7 @@ export function ComposioCard({ onChange }: { onChange: () => void }) {
       toast.add({ type: "success", title: "Composio key saved." });
       onChange();
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : "Could not save.");
+      setError(failure instanceof Error ? failure.message : "Couldn't save.");
     } finally {
       setBusy(false);
     }
@@ -57,7 +57,7 @@ export function ComposioCard({ onChange }: { onChange: () => void }) {
       await load();
       onChange();
     } catch (failure) {
-      toast.add({ type: "error", title: failure instanceof Error ? failure.message : "Could not remove the key." });
+      toast.add({ type: "error", title: failure instanceof Error ? failure.message : "Couldn't remove the key." });
     } finally {
       setRemoving(false);
     }

@@ -1,5 +1,5 @@
 import type { Bot, Thread } from "@gond/shared";
-import { ENGINE_FILES_TEXT, requestApproval, SCRIPTED_SCREEN_TEXT, scriptsTheScreen, summarize, touchesEngine } from "./approvals.ts";
+import { ENGINE_FILES_TEXT, expiredText, requestApproval, SCRIPTED_SCREEN_TEXT, scriptsTheScreen, summarize, touchesEngine } from "./approvals.ts";
 import { execOnBox, readBoxFile, writeBoxFile, type BoxConfig } from "./box.ts";
 import type { DriverTool } from "./driver.ts";
 import { hideSecrets, readSecret } from "./data/secrets.ts";
@@ -36,7 +36,7 @@ async function allowed(context: Context, tool: string, input: Record<string, unk
   if (touchesEngine(tool, input)) return ENGINE_FILES_TEXT;
   const decision = await requestApproval({ bot: context.bot, threadId: context.thread.id, tool, input, signal: context.signal });
   if (decision === "allow" || decision === "always") return null;
-  if (decision === "expired") return `Nobody answered the approval for "${summarize(tool, input)}" in time. Say so and stop, or try something else.`;
+  if (decision === "expired") return expiredText(`for "${summarize(tool, input)}"`);
   return `The person denied "${summarize(tool, input)}". Do something else, or say what you would need.`;
 }
 

@@ -35,7 +35,7 @@ export function connectionsRoutes() {
   app.delete("/composio", (c) => {
     const me = userId(c);
     const before = composioKey(me);
-    if (!clearComposioKey(me)) return c.json({ error: "No key saved" }, 404);
+    if (!clearComposioKey(me)) return c.json({ error: "There's no Composio key saved" }, 404);
     keyChanged(me, before);
     return c.json({ source: composioKeySource(me) } satisfies ComposioKeyStatus);
   });
@@ -54,7 +54,7 @@ export function connectionsRoutes() {
 
   app.post("/connections/:toolkit/refresh", async (c) => {
     const connection = await refreshConnection(userId(c), c.req.param("toolkit").toLowerCase());
-    return connection ? c.json({ connection }) : c.json({ error: "Not connected" }, 404);
+    return connection ? c.json({ connection }) : c.json({ error: "That app isn't connected" }, 404);
   });
 
   app.get("/connections/callback", async (c) => {
@@ -65,7 +65,7 @@ export function connectionsRoutes() {
     return c.redirect(`${appUrl()}${where}?connected=${encodeURIComponent(toolkit)}`);
   });
 
-  app.delete("/connections/:toolkit", async (c) => ((await disconnect(userId(c), c.req.param("toolkit").toLowerCase())) ? c.body(null, 204) : c.json({ error: "Not connected" }, 404)));
+  app.delete("/connections/:toolkit", async (c) => ((await disconnect(userId(c), c.req.param("toolkit").toLowerCase())) ? c.body(null, 204) : c.json({ error: "That app isn't connected" }, 404)));
 
   return app;
 }

@@ -39,7 +39,7 @@ export function threadsRoutes() {
 
   app.get("/threads/:id", (c) => {
     const thread = ownThread(c, c.req.param("id"));
-    if (!thread) return c.json({ error: "No such conversation" }, 404);
+    if (!thread) return c.json({ error: "Couldn't find that conversation" }, 404);
     const bot = thread.botId ? getBot(thread.botId) : null;
     const turns = [...activeTurns().values()].filter((t) => t.threadId === thread.id);
 
@@ -48,13 +48,13 @@ export function threadsRoutes() {
 
   app.get("/threads/:id/work", (c) => {
     const thread = ownThread(c, c.req.param("id"));
-    if (!thread) return c.json({ error: "No such conversation" }, 404);
+    if (!thread) return c.json({ error: "Couldn't find that conversation" }, 404);
     return c.json({ work: workFor(thread.id) });
   });
 
   app.get("/threads/:id/messages", (c) => {
     const thread = ownThread(c, c.req.param("id"));
-    if (!thread) return c.json({ error: "No such conversation" }, 404);
+    if (!thread) return c.json({ error: "Couldn't find that conversation" }, 404);
     const messages = listMessages(thread.id, { after: c.req.query("after") ?? null, before: c.req.query("before") ?? null, limit: Number(c.req.query("limit")) || 200, includeSent: true });
     return c.json({ messages });
   });
@@ -62,11 +62,11 @@ export function threadsRoutes() {
   app.put("/threads/:id/messages/:messageId/reaction", async (c) => {
     const thread = ownThread(c, c.req.param("id"));
     const message = thread ? getMessage(c.req.param("messageId")) : null;
-    if (!thread || !message || message.threadId !== thread.id) return c.json({ error: "No such message" }, 404);
+    if (!thread || !message || message.threadId !== thread.id) return c.json({ error: "Couldn't find that message" }, 404);
     if (message.kind !== "message" || ["you", "system", "routine"].includes(message.author)) return c.json({ error: "Only a bot's message takes a reaction" }, 400);
     const body = (await c.req.json().catch(() => null)) as { emoji?: unknown } | null;
     const emoji = body?.emoji ?? null;
-    if (emoji !== null && !isReaction(emoji)) return c.json({ error: "Not a reaction" }, 400);
+    if (emoji !== null && !isReaction(emoji)) return c.json({ error: "Pick one of the reactions on offer" }, 400);
     return c.json({ reactions: setReaction(message, "you", emoji) });
   });
 
@@ -74,7 +74,7 @@ export function threadsRoutes() {
   app.post("/threads/:id/messages/:messageId/less", async (c) => {
     const thread = ownThread(c, c.req.param("id"));
     const message = thread ? getMessage(c.req.param("messageId")) : null;
-    if (!thread || !message || message.threadId !== thread.id) return c.json({ error: "No such message" }, 404);
+    if (!thread || !message || message.threadId !== thread.id) return c.json({ error: "Couldn't find that message" }, 404);
     if (message.kind !== "message" || !getBot(message.author)) return c.json({ error: "Only something a bot said takes this" }, 400);
     const body = (await c.req.json().catch(() => null)) as { watch?: unknown } | null;
     const watch = typeof body?.watch === "string" ? body.watch.replace(/["\r\n]/g, " ").trim().slice(0, 80) : "";
@@ -91,13 +91,13 @@ export function threadsRoutes() {
   app.get("/threads/:id/exchange", (c) => {
     const thread = ownThread(c, c.req.param("id"));
     const other = ownThread(c, c.req.query("with") ?? "");
-    if (!thread || !other) return c.json({ error: "No such conversation" }, 404);
+    if (!thread || !other) return c.json({ error: "Couldn't find that conversation" }, 404);
     return c.json({ thread, other, messages: listExchange(thread.id, other.id) });
   });
 
   app.post("/threads/:id/messages", async (c) => {
     const thread = ownThread(c, c.req.param("id"));
-    if (!thread) return c.json({ error: "No such conversation" }, 404);
+    if (!thread) return c.json({ error: "Couldn't find that conversation" }, 404);
     let body = "";
 
     let after = false;
@@ -133,13 +133,13 @@ export function threadsRoutes() {
   });
 
   app.post("/threads/:id/read", (c) => {
-    if (!ownThread(c, c.req.param("id"))) return c.json({ error: "No such conversation" }, 404);
+    if (!ownThread(c, c.req.param("id"))) return c.json({ error: "Couldn't find that conversation" }, 404);
     markThreadRead(c.req.param("id"));
     return c.json({ ok: true });
   });
 
   app.post("/threads/:id/interrupt", async (c) => {
-    if (!ownThread(c, c.req.param("id"))) return c.json({ error: "No such conversation" }, 404);
+    if (!ownThread(c, c.req.param("id"))) return c.json({ error: "Couldn't find that conversation" }, 404);
     const { stopped, dropped } = await stopThread(c.req.param("id"));
     return c.json({ ok: true, stopped, dropped });
   });
@@ -161,30 +161,30 @@ export function threadsRoutes() {
   app.patch("/rooms/:id", async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as { name?: unknown; members?: unknown; pinned?: unknown };
     const before = ownThread(c, c.req.param("id"));
-    if (!before || before.kind !== "room") return c.json({ error: "No such room" }, 404);
+    if (!before || before.kind !== "room") return c.json({ error: "Couldn't find that room" }, 404);
     const bots = listBots({ includeHidden: true, userId: userId(c) });
     const known = new Set(bots.map((b) => b.id));
     const name = body.name === undefined ? undefined : String(body.name).trim().slice(0, 80);
     if (name === "") return c.json({ error: "Give the room a name" }, 400);
     const members = Array.isArray(body.members) ? [...new Set(body.members.map(String).filter((id) => known.has(id)))] : undefined;
     if (members && members.length === 0) return c.json({ error: "Keep at least one bot in the room" }, 400);
-    if (body.pinned !== undefined && typeof body.pinned !== "boolean") return c.json({ error: "pinned is true or false" }, 400);
+    if (body.pinned !== undefined && typeof body.pinned !== "boolean") return c.json({ error: "Pinned must be on or off" }, 400);
     const thread = updateRoom(before.id, { name, members, pinned: body.pinned as boolean | undefined });
-    if (!thread) return c.json({ error: "No such room" }, 404);
+    if (!thread) return c.json({ error: "Couldn't find that room" }, 404);
     const change = roomChange(before, thread, (id) => bots.find((b) => b.id === id)?.name ?? "A bot", thread.members.length > 1 ? [answererOf(before.members, bots), answererOf(thread.members, bots)] : [null, null]);
     if (change) postMessage({ threadId: thread.id, author: "system", kind: "event", body: change, answered: true });
     return c.json({ thread: getThread(thread.id) ?? thread });
   });
 
   app.delete("/rooms/:id", async (c) => {
-    if (!ownThread(c, c.req.param("id"))) return c.json({ error: "No such room" }, 404);
+    if (!ownThread(c, c.req.param("id"))) return c.json({ error: "Couldn't find that room" }, 404);
     await stopThread(c.req.param("id"));
-    return deleteRoom(c.req.param("id")) ? c.body(null, 204) : c.json({ error: "No such room" }, 404);
+    return deleteRoom(c.req.param("id")) ? c.body(null, 204) : c.json({ error: "Couldn't find that room" }, 404);
   });
 
   app.get("/attachments/:id", (c) => {
     const file = attachmentOwner(c.req.param("id")) === userId(c) ? getAttachment(c.req.param("id")) : null;
-    if (!file) return c.json({ error: "No such file" }, 404);
+    if (!file) return c.json({ error: "Couldn't find that file" }, 404);
 
     // Only types that can't run script open in the tab; the rest (HTML, SVG, anything a bot made) download.
     const inline = c.req.query("download") === undefined && INLINE_TYPES.has(file.meta.mediaType);

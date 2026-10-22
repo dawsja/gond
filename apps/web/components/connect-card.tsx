@@ -46,7 +46,7 @@ export function ConnectCard({ message, bot, toolkit }: { message: Message; bot: 
       }
       await load();
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : "Could not start the connection.");
+      setError(failure instanceof Error ? failure.message : "Couldn't start the connection.");
     } finally {
       setBusy(false);
     }

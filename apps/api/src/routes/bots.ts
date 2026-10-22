@@ -25,7 +25,7 @@ export function botsRoutes() {
   // A bot as a template: a .bot file to pass on, or a link anyone signed in here can add a copy from.
   app.get("/bots/:id/template", (c) => {
     const bot = ownBot(c, c.req.param("id"));
-    if (!bot) return c.json({ error: "No such bot" }, 404);
+    if (!bot) return c.json({ error: "Couldn't find that bot" }, 404);
     return new Response(Buffer.from(botFile(bot)), {
       headers: {
         "Content-Type": "application/zip",
@@ -39,12 +39,12 @@ export function botsRoutes() {
 
   app.get("/bots/:id/template/summary", (c) => {
     const bot = ownBot(c, c.req.param("id"));
-    return bot ? c.json({ template: summaryOf(bundleOf(bot)) }) : c.json({ error: "No such bot" }, 404);
+    return bot ? c.json({ template: summaryOf(bundleOf(bot)) }) : c.json({ error: "Couldn't find that bot" }, 404);
   });
 
   app.post("/bots/:id/share", (c) => {
     const bot = ownBot(c, c.req.param("id"));
-    if (!bot) return c.json({ error: "No such bot" }, 404);
+    if (!bot) return c.json({ error: "Couldn't find that bot" }, 404);
     return c.json({ url: `${appUrl()}/app?template=${shareToken(bot.id)}` });
   });
 
@@ -66,7 +66,7 @@ export function botsRoutes() {
   app.get("/templates/:token/picture", (c) => {
     const bot = sharedBot(c.req.param("token"));
     const picture = bot ? getBotAvatar(bot.id) : null;
-    if (!picture) return c.json({ error: "No picture" }, 404);
+    if (!picture) return c.json({ error: "There's no picture" }, 404);
     return new Response(Buffer.from(picture.data), { headers: { "Content-Type": picture.mediaType, "Cache-Control": "private, max-age=300", "X-Content-Type-Options": "nosniff" } });
   });
 
@@ -89,14 +89,14 @@ export function botsRoutes() {
   app.post("/bots/from-template", async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as { templateId?: string; toolkits?: string[]; enableRoutine?: boolean };
     const template = templateById(String(body.templateId ?? ""));
-    if (!template) return c.json({ error: "No such template" }, 404);
+    if (!template) return c.json({ error: "Couldn't find that template" }, 404);
     const bot = await addFromTemplate(template, userId(c), { toolkits: allowedToolkits(Array.isArray(body.toolkits) ? body.toolkits.map(String) : template.toolkits), enableRoutine: body.enableRoutine === true });
     return c.json({ bot }, 201);
   });
 
   app.get("/bots/:id", (c) => {
     const bot = ownBot(c, c.req.param("id"));
-    return bot ? c.json({ bot, rules: listRules(bot.id) }) : c.json({ error: "No such bot" }, 404);
+    return bot ? c.json({ bot, rules: listRules(bot.id) }) : c.json({ error: "Couldn't find that bot" }, 404);
   });
 
   app.patch("/bots/:id", async (c) => {
@@ -107,10 +107,10 @@ export function botsRoutes() {
     if (typeof body.hidden === "boolean") extra.hidden = body.hidden;
     if (typeof body.pinned === "boolean") extra.pinned = body.pinned;
     if (typeof body.position === "number") extra.position = body.position;
-    if (!ownBot(c, c.req.param("id"))) return c.json({ error: "No such bot" }, 404);
+    if (!ownBot(c, c.req.param("id"))) return c.json({ error: "Couldn't find that bot" }, 404);
     const toolkits = parsed.data.toolkits !== undefined ? { toolkits: allowedToolkits(parsed.data.toolkits) } : {};
     const bot = updateBot(c.req.param("id"), { ...parsed.data, ...toolkits, ...extra });
-    if (!bot) return c.json({ error: "No such bot" }, 404);
+    if (!bot) return c.json({ error: "Couldn't find that bot" }, 404);
     await syncSoul(bot);
     return c.json({ bot });
   });
@@ -118,7 +118,7 @@ export function botsRoutes() {
   app.get("/bots/:id/avatar", (c) => {
     const bot = ownBot(c, c.req.param("id"));
     const avatar = bot ? getBotAvatar(bot.id) : null;
-    if (!avatar) return c.json({ error: "No picture" }, 404);
+    if (!avatar) return c.json({ error: "There's no picture" }, 404);
     return new Response(Buffer.from(avatar.data), {
       headers: { "Content-Type": avatar.mediaType, "Cache-Control": "private, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff" },
     });
@@ -126,7 +126,7 @@ export function botsRoutes() {
 
   app.put("/bots/:id/avatar", async (c) => {
     const bot = ownBot(c, c.req.param("id"));
-    if (!bot) return c.json({ error: "No such bot" }, 404);
+    if (!bot) return c.json({ error: "Couldn't find that bot" }, 404);
     const form = await c.req.formData().catch(() => null);
     const file = form?.get("file");
     if (!(file instanceof File)) return c.json({ error: "Send the picture as a file" }, 400);
@@ -140,14 +140,14 @@ export function botsRoutes() {
 
   app.delete("/bots/:id/avatar", (c) => {
     const bot = ownBot(c, c.req.param("id"));
-    if (!bot) return c.json({ error: "No such bot" }, 404);
+    if (!bot) return c.json({ error: "Couldn't find that bot" }, 404);
     clearBotAvatar(bot.id);
     return c.body(null, 204);
   });
 
   app.post("/bots/:id/primary", async (c) => {
     const bot = ownBot(c, c.req.param("id"));
-    if (!bot) return c.json({ error: "No such bot" }, 404);
+    if (!bot) return c.json({ error: "Couldn't find that bot" }, 404);
     const previous = getPrimary(userId(c));
     const primary = setPrimary(userId(c), bot.id);
     if (!primary) return c.json({ error: "A hidden bot can't be the primary one" }, 400);
@@ -158,7 +158,7 @@ export function botsRoutes() {
 
   app.delete("/bots/:id", async (c) => {
     const bot = ownBot(c, c.req.param("id"));
-    if (!bot) return c.json({ error: "No such bot" }, 404);
+    if (!bot) return c.json({ error: "Couldn't find that bot" }, 404);
     await stopBot(bot);
     deleteBot(bot.id);
     const box = boxConfig(userId(c));
@@ -166,11 +166,11 @@ export function botsRoutes() {
     return c.body(null, 204);
   });
 
-  app.get("/bots/:id/rules", (c) => (ownBot(c, c.req.param("id")) ? c.json({ rules: listRules(c.req.param("id")) }) : c.json({ error: "No such bot" }, 404)));
+  app.get("/bots/:id/rules", (c) => (ownBot(c, c.req.param("id")) ? c.json({ rules: listRules(c.req.param("id")) }) : c.json({ error: "Couldn't find that bot" }, 404)));
   app.delete("/bots/:id/rules", async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as { rule?: string };
-    if (!body.rule) return c.json({ error: "Missing rule" }, 400);
-    if (!ownBot(c, c.req.param("id"))) return c.json({ error: "No such bot" }, 404);
+    if (!body.rule) return c.json({ error: "Say which rule to forget" }, 400);
+    if (!ownBot(c, c.req.param("id"))) return c.json({ error: "Couldn't find that bot" }, 404);
     removeRule(c.req.param("id"), body.rule);
     return c.body(null, 204);
   });

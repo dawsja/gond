@@ -153,7 +153,7 @@ need. These also work in `.env`, and nothing needs them:
 | `COMPOSIO_API_KEY` | The admin's Composio key until they add their own in Settings → Apps | none |
 | `COMPOSIO_TOOLKITS` | Narrows the app list, comma-separated slugs | every app in the list |
 | `GOND_MCP_CLIENT_ID`, `GOND_MCP_CLIENT_SECRET` | An OAuth client for an MCP server that won't register one | none |
-| `GOND_APPROVAL_TIMEOUT_MINUTES` | How long an approval card waits | `30` |
+| `GOND_APPROVAL_TIMEOUT_MINUTES` | How long a card that needs you (an approval, a sign-in, a key) waits before it expires | `15` |
 | `GOND_NUDGE_MINUTES` | How long a handed-off task waits before a nudge | `120` |
 | `GOND_TURN_TIMING` | Set to `1` to log how long each bot turn took and where the time went | off |
 | `BOT_IDLE_MS` | How long an idle bot session stays open | `600000` |

@@ -39,7 +39,7 @@ export function VoiceCard() {
       setVoice(await api<VoiceSettings>("/api/voice", { method: "PUT", body: JSON.stringify(patch) }));
       if (patch.openaiModel !== undefined) setModel(null);
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : "Could not save.");
+      setError(failure instanceof Error ? failure.message : "Couldn't save.");
     } finally {
       setSaving(false);
     }

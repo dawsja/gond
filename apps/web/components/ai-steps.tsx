@@ -167,7 +167,7 @@ export function AiSteps({ ai, status, onChange, onRefresh }: { ai: AiSettings; s
         onChange(data.ai);
         return true;
       } catch (failure) {
-        setError(failure instanceof Error ? failure.message : "Could not save.");
+        setError(failure instanceof Error ? failure.message : "Couldn't save.");
         return false;
       } finally {
         setSaving(false);

@@ -26,7 +26,7 @@ export function VersionWatch() {
       } catch {
         /* storage off: nothing to compare */
       }
-      if (seen && seen !== data.version && data.version !== "dev") toast.add({ title: "Gond is up to date", description: `Version ${data.version}` });
+      if (seen && seen !== data.version && data.version !== "dev") toast.add({ title: "Gond is up to date.", description: `Version ${data.version}` });
       return;
     }
     if (data.version !== first.current) window.location.reload();

@@ -36,7 +36,7 @@ export function UsersCard() {
       await del(`/api/users/${user.id}`);
       toast.add({ type: "success", title: `${user.name} removed.`, description: "Their bots, conversations and files on the computer are gone." });
     } catch (failure) {
-      toast.add({ type: "error", title: failure instanceof Error ? failure.message : "Could not remove them." });
+      toast.add({ type: "error", title: failure instanceof Error ? failure.message : "Couldn't remove them." });
     }
     await load();
   }

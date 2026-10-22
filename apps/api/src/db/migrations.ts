@@ -644,6 +644,8 @@ const MIGRATIONS: Array<string | ((db: Database) => void)> = [
     created_at TEXT NOT NULL
   );
   `,
+  // Said out loud on a call rather than typed.
+  `ALTER TABLE gond_messages ADD COLUMN spoken INTEGER NOT NULL DEFAULT 0;`,
 ];
 
 export const RENAME_VERSION = MIGRATIONS.indexOf(renameLegacyObjects) + 1;

@@ -38,7 +38,7 @@ export function RoomDialog({ threadId = null, onClose }: { threadId?: string | n
       }
       onClose();
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : existing ? "Could not save the group." : "Could not create the room.");
+      setError(failure instanceof Error ? failure.message : existing ? "Couldn't save the group." : "Couldn't create the room.");
       setBusy(false);
     }
   }

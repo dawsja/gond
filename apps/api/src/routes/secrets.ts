@@ -12,12 +12,12 @@ export function secretsRoutes() {
 
   app.get("/secret-requests/:id", (c) => {
     const request = getSecretRequest(c.req.param("id"));
-    return request && ownThread(c, request.threadId) ? c.json({ request }) : c.json({ error: "No such request" }, 404);
+    return request && ownThread(c, request.threadId) ? c.json({ request }) : c.json({ error: "Couldn't find that request" }, 404);
   });
 
   app.post("/secret-requests/:id", async (c) => {
     const request = getSecretRequest(c.req.param("id"));
-    if (!request || !ownThread(c, request.threadId)) return c.json({ error: "No such request" }, 404);
+    if (!request || !ownThread(c, request.threadId)) return c.json({ error: "Couldn't find that request" }, 404);
     if (request.status !== "pending") return c.json({ request });
     const body = (await c.req.json().catch(() => ({}))) as { value?: string; values?: Record<string, unknown>; remember?: boolean; decline?: boolean };
     if (body.decline) return c.json({ request: answerSecretRequest(request.id, "declined") });
@@ -47,12 +47,12 @@ export function secretsRoutes() {
     if (typeof body.value !== "string" || !body.value) return c.json({ error: "Type the new value" }, 400);
     if (body.value.length > 8_000) return c.json({ error: "That's too long" }, 400);
     const name = c.req.param("name");
-    if (!changeSecret(userId(c), name, body.value)) return c.json({ error: "No such secret" }, 404);
+    if (!changeSecret(userId(c), name, body.value)) return c.json({ error: "Couldn't find that secret" }, 404);
     forgetHeldLogin(name, listThreads({ userId: userId(c) }).map((t) => t.id));
     return c.json({ ok: true });
   });
 
-  app.delete("/secrets/:name", (c) => (deleteSecret(userId(c), c.req.param("name")) ? c.json({ ok: true }) : c.json({ error: "No such secret" }, 404)));
+  app.delete("/secrets/:name", (c) => (deleteSecret(userId(c), c.req.param("name")) ? c.json({ ok: true }) : c.json({ error: "Couldn't find that secret" }, 404)));
 
   return app;
 }

@@ -12,6 +12,9 @@ import { cn } from "@/lib/utils";
 // an old answered card loaded from history doesn't.
 const answeredHere = new Set<string>();
 
+/** Under an expired card's title: why it closed. */
+export const NOBODY_ANSWERED = "Nobody answered in time";
+
 /** Call as the person answers a card, so its folded line hops. */
 export function cheerOnFold(id: string) {
   answeredHere.add(id);

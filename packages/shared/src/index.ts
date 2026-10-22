@@ -143,6 +143,8 @@ export type Message = {
   fromThreadId: string | null;
 
   steered: boolean;
+  /** Said out loud on a call: the person's words as heard, or what the bot's voice said. */
+  spoken: boolean;
 
   reactions: Reaction[];
   /** The message this one answers, quoted: who wrote it and its first words, or its first file's name. */
@@ -516,6 +518,28 @@ export function pickVoiceProvider(preference: VoicePreference, has: (kind: Voice
   if (preference !== "auto" && has(preference)) return preference;
   return VOICE_PROVIDERS.find(has) ?? null;
 }
+
+/**
+ * A live call with a bot runs on a speaking model with the person's own key: OpenAI's GPT-Live or
+ * xAI's realtime voice. It only talks; anything past small talk it hands to the bot's own turn.
+ */
+export const CALL_MODELS: Record<VoiceProvider, { model: string; voice: string; label: string }> = {
+  xai: { model: "grok-voice-latest", voice: "eve", label: "xAI Grok" },
+  openai: { model: "gpt-live-1", voice: "marin", label: "OpenAI" },
+};
+/** Both sides of a call are mono 16-bit PCM at this rate. */
+export const CALL_SAMPLE_RATE = 24_000;
+export const CALL_MAX_MINUTES = 60;
+export type CallInfo = { id: string; threadId: string; botId: string; provider: VoiceProvider; startedAt: string };
+/** What a call's stream tells the page: its audio, what is being said before it settles into the chat, and how it ends. */
+export type CallEvent =
+  | { type: "ready" }
+  | { type: "audio"; data: string }
+  | { type: "heard"; text: string }
+  | { type: "said"; text: string }
+  | { type: "settled"; who: "you" | "bot" }
+  | { type: "interrupt" }
+  | { type: "ended"; reason: string | null };
 
 export const CLI_ENGINES = ["claude"] as const;
 export type CliEngine = (typeof CLI_ENGINES)[number];

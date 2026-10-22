@@ -22,6 +22,8 @@ const buttonVariants = cva(
         destructive:
           "bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40",
         link: "text-primary underline-offset-4 hover:underline",
+        // Ending a call, the one solid red: every phone draws hang-up this way.
+        hangup: "bg-hangup text-white [--surface:var(--hangup)] hover:bg-[color-mix(in_oklch,var(--hangup),var(--foreground)_8%)] focus-visible:ring-destructive/30",
       },
       size: {
         default:

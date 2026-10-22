@@ -362,6 +362,28 @@ what is here. The README says what Gond is; this says how it is made.
   model can be renamed there, for a server of the person's own like a
   local Whisper. `Permissions-Policy` allows
   the microphone for the app's own origin and nothing else.
+- **A bot can be called.** The phone circle in a bot's header
+  (`CallButton` in `components/call/call-controls.tsx`, never in a room)
+  starts a call on the person's xAI or OpenAI key, the one Settings →
+  Voice picks; without one a tap says where to add one. The call lives in
+  `CallProvider` (`call-provider.tsx`, inside the shell, so it outlives
+  every screen): the microphone goes up as 24 kHz PCM from an AudioWorklet
+  (`public/call-capture.js`, `lib/call-audio.ts`) in short POSTs, and the
+  voice comes down the call's SSE stream and plays in order
+  (`CallPlayer`), the same SSE-and-POST shape as the screen, since the
+  API is reached through Next's proxy. In the call's own chat the
+  composer is the call (`CallComposer`: mute, what is happening and the
+  clock, `CallWave`, hang up); what each side says shows faded as it is
+  said and then lands as a bubble with a small mic or speaker
+  (`SpokenMark`, `Message.spoken`). Anywhere else the call shrinks: on a
+  phone to an ink pill under the header (`CallPill`, which sets
+  `--call-pill-space` so screens leave room for it), on a wide screen to
+  a card in the sidebar above the profile (`CallBar`, with mute, the
+  bot's screen and hang up); a tap goes back to the chat, and while the
+  bot waits on a card either one shows the card's question with "Needs
+  you". Leaving the chat never hangs up, and one call runs at a time
+  (calling another bot asks first). Hang-up is the one solid red,
+  `variant="hangup"` on `--hangup`, in both themes.
 - **Steps are recorded, never shown.** While a bot works the conversation
   shows one line of what it is doing (`WorkLine`); the work log behind it
   is kept by the API but the web never lists it. When several work at once
@@ -452,7 +474,16 @@ what is here. The README says what Gond is; this says how it is made.
   Then `secret-card.tsx`, `login-card.tsx`, `signin-card.tsx` and
   `connect-card.tsx`. A new kind of card goes there too, so they never
   drift. What is waiting is said by the "Needs you" badge and the buttons
-  inside, and the conversation's header pill says "waiting on you".
+  inside, and the conversation's header pill says "waiting on you". A card
+  nobody answers within `GOND_APPROVAL_TIMEOUT_MINUTES` (15) folds to a
+  grey Expired pill ("Nobody answered in time"), and Gond posts the bot's
+  line itself (`cardExpired`, `CARD_EXPIRED_LINE`), never the model. A turn
+  answering the person then ends there, aborted with the cause `expired`
+  (quiet, like an update: no event, no incident), so no model round is
+  spent on it; a turn on a teammate's errand goes on and hears
+  `expiredText`, so it can report back. A card closed by Stop says
+  nothing. A card still open when the API starts expires with no line
+  (see "A restart never strands a bot").
 - **Settings is sections, not a scroll.** `SETTINGS_SECTIONS` in
   `lib/settings-sections.ts` is the list (account, appearance, team, ai,
   voice, computer, skills, apps, secrets, auth, about), each marked `admin`
@@ -474,6 +505,20 @@ what is here. The README says what Gond is; this says how it is made.
   with the link to the repository). All three are everybody's.
 - Copy is plain English in sentence case, short, no exclamation marks. Say
   "the computer" to the person, "the box" in code and docs for developers.
+  No em dashes anywhere, in copy, prompts, comments or docs: use a comma,
+  a colon, a semicolon or a new sentence.
+- **Every message a person can see reads like a person wrote it**, errors
+  most of all: the toasts, a card's or a dialog's error line, and every
+  `{ error }` a route answers, since the web shows that text as it is. Say
+  what happened and, when there is one, what to do next ("Couldn't find
+  that bot", "The picture must be under 2 MB", "Can't reach Gond. Check
+  your connection and try again."). Contractions ("Couldn't", never "Could
+  not"), no field names, codes, statuses or ids ("Bad path", "pinned is
+  true or false", "Request failed (500)" are all wrong), and nothing a
+  person can't act on. A web fallback after `failure.message` follows the
+  same rules, and a request that comes back with no message gets
+  `statusMessage` in `lib/api.ts`, never a bare status. Text only a bot
+  reads (a tool's error) is written for the model and can be exact.
 
 ## API
 
@@ -526,7 +571,7 @@ what is here. The README says what Gond is; this says how it is made.
   scanned**: `indexApps` (`src/catalog.ts`) reads every name, slug,
   category and description once into squashed text, its words, and a
   bitmask of the characters it holds, so a search is one integer test per
-  app and then scoring — nothing is allocated per keystroke. The search is
+  app and then scoring; nothing is allocated per keystroke. The search is
   forgiving (a few letters in order: `gsheet` finds Google Sheets) and
   pure, so it is tested without a network. `/api/catalog` answers one page
   at a time and Settings → Apps is a page and shadcn `Pagination`
@@ -640,6 +685,21 @@ what is here. The README says what Gond is; this says how it is made.
   the shell), and the first page on each device after an update says so
   once. The desktop app updates itself apart (see The shape); Android
   can't do it without asking.
+- **A restart never strands a bot.** Turns live in memory, so at start
+  (`releaseClaims` in `db/init.ts`) every message a turn had claimed goes
+  back to wait and is marked cut off (`src/resume.ts`), and every card
+  still open expires. A turn the computer cuts off (an update stopping it,
+  or the computer not answering its health check after a turn fails, or
+  answering that the bot is still busy) isn't an incident either: the
+  message goes back to wait with the steps that already ran, nothing new
+  starts until the computer answers again (`computerAway`, checked every
+  15 s), and one still waiting after 30 minutes is given up with a line
+  saying so. The turn that answers a cut-off message again hears so ahead
+  of its prompt (`takeInterrupted`): what ran, and to check before redoing
+  anything with an effect. In a room it skips the bots that had answered
+  already. On the computer, an API that hangs up interrupts the CLI turn
+  and keeps its session, so the bot resumes it. Anything new that a turn
+  waits on, or that holds a bot, needs the same treatment at start.
 - Long work is started by the dispatcher (`src/dispatcher.ts`) and awaited
   in the responder (`src/responder.ts`); a tick stays quick. While the
   computer updates or resets (`src/updater.ts`), nothing new starts and
@@ -989,6 +1049,32 @@ what is here. The README says what Gond is; this says how it is made.
   answers `{ text }`. The format is read from the file's extension (Bun's
   multipart parser drops a part's own type). Audio is never stored or
   logged.
+- **A call is the bot's voice, not another bot** (`src/calls.ts`,
+  `src/voice-link.ts`, `src/routes/calls.ts`). The API holds the call:
+  `POST /api/threads/:id/call` opens a WebSocket to the person's voice
+  model with their key (`CALL_MODELS`: OpenAI's GPT-Live with client
+  delegation, or xAI's realtime voice with `ask_bot`, `bot_status` and
+  `end_call` tools), so the key never reaches the page, and the page
+  hears it on `/api/calls/:id/stream` and sends audio to
+  `/api/calls/:id/audio`. Each provider's events read as the same
+  signals (`readLiveEvent`, `readXaiEvent`, pure and tested). The voice
+  only talks: anything past small talk it hands over, and that becomes a
+  hidden prompt (`callPrompt`) the dispatcher answers as a normal turn of
+  the bot's, on its own engine, with its memory, tools, cards and
+  approvals; `botTurn` gives that answer to the voice instead of the chat
+  (`answerOnCall`, and `closeCallTurn` when it ended with nothing), and
+  posts it as usual if the call has ended. What each side says is posted
+  as it settles (a pause of `SETTLE_MS`), answered and `spoken`, and the
+  bot's transcript marks its voice's lines, which its own session never
+  heard. The voice learns the bot's progress from the work line
+  (`session.thinking.append` for GPT-Live, `bot_status` for xAI) and is
+  told when a card comes up, which is still only answered by a tap. A
+  spoken "stop" is Stop (`stopFromMessage`), and a line that only closes
+  ("that's all", "ok thanks, bye", `endsCall`) or xAI's `end_call` hangs
+  up after the voice's goodbye. A call posts "Call started" and "Call
+  ended · 5 min", ends when its page stops listening for `ORPHAN_MS`, at
+  `CALL_MAX_MINUTES`, or when its person is deleted, and lives in memory,
+  so a restart ends it and its hand-overs are answered in the chat.
 - **Secrets never leave the API.** `src/data/secrets.ts` stores them
   encrypted, per person, and only `readSecret`/`injectSecrets` decrypt, at
   the moment of use: the MCP proxy in `src/routes/mcp.ts`, which fills a
@@ -1415,8 +1501,9 @@ changed and why, written for the person reading the log.
   admin's.
 - The web app never talks to the box; the API does, with a bearer token,
   over the Compose network.
-- The Docker socket on the API exists only for Settings → Team →
-  Update and Reset. Nothing else may use it.
+- The Docker socket on the API exists only for updating: Settings →
+  Team → Update and Reset, and updating Gond itself from Settings →
+  About. Nothing else may use it.
 - A stored secret is never returned by a route, never written in plain
   text, and never appears in a message: only injected by the API at the
   point of use. A value reaches the box only as keystrokes a `type_login`

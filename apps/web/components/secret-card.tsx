@@ -3,7 +3,7 @@
 import type { Bot, Message, SecretRequest } from "@gond/shared";
 import { KeyRound } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
-import { ActionCard, ActionCardDone, cheerOnFold } from "@/components/action-card";
+import { ActionCard, ActionCardDone, cheerOnFold, NOBODY_ANSWERED } from "@/components/action-card";
 import { LoginCard } from "@/components/login-card";
 import { useLiveEvents } from "@/components/hq/live-events";
 import { Button } from "@/components/ui/button";
@@ -45,7 +45,7 @@ export function SecretCard({ message, bot }: { message: Message; bot: Bot | unde
 
   if (request.status !== "pending") {
     const done = request.status === "given" ? { status: "Saved", tone: "ok" as const } : request.status === "declined" ? { status: "Not now", tone: "neutral" as const } : { status: "Expired", tone: "neutral" as const };
-    return <ActionCardDone id={message.id} bot={bot} icon={icon} title={label} by={`${name} · ${composio ? "connected apps" : "secret"}`} status={done.status} tone={done.tone} />;
+    return <ActionCardDone id={message.id} bot={bot} icon={icon} title={label} by={request.status === "expired" ? NOBODY_ANSWERED : `${name} · ${composio ? "connected apps" : "secret"}`} status={done.status} tone={done.tone} />;
   }
 
   async function answer(event?: FormEvent, decline = false) {
@@ -59,7 +59,7 @@ export function SecretCard({ message, bot }: { message: Message; bot: Bot | unde
       setRequest(data.request);
       setValue("");
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : "Could not save.");
+      setError(failure instanceof Error ? failure.message : "Couldn't save.");
     } finally {
       setBusy(false);
     }

@@ -48,7 +48,7 @@ function McpSignInCard({ message, bot }: { message: Message; bot: Bot | undefine
       }
     } catch (failure) {
       setBusy(false);
-      setError(failure instanceof Error ? failure.message : "Could not start the sign-in.");
+      setError(failure instanceof Error ? failure.message : "Couldn't start the sign-in.");
       void load();
     }
   }

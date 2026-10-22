@@ -13,7 +13,7 @@ export function pushRoutes() {
 
   app.post("/push/subscriptions", async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as { endpoint?: string; keys?: { p256dh?: string; auth?: string }; device?: unknown };
-    if (!body.endpoint || !body.keys?.p256dh || !body.keys.auth) return c.json({ error: "Not a push subscription" }, 400);
+    if (!body.endpoint || !body.keys?.p256dh || !body.keys.auth) return c.json({ error: "This browser sent an incomplete push subscription. Turn notifications off and on again." }, 400);
     const device = deviceOf(body.device);
     saveSubscription({ endpoint: body.endpoint, keys: { p256dh: body.keys.p256dh, auth: body.keys.auth } }, userId(c), c.req.header("user-agent") ?? "", device);
     return c.json({ ok: true, subscriptions: countSubscriptions(userId(c)) }, 201);
@@ -21,15 +21,15 @@ export function pushRoutes() {
 
   app.delete("/push/subscriptions", async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as { endpoint?: string };
-    if (!body.endpoint) return c.json({ error: "Which subscription?" }, 400);
+    if (!body.endpoint) return c.json({ error: "Say which subscription to remove" }, 400);
     removeSubscription(body.endpoint, userId(c));
     return c.json({ ok: true, subscriptions: countSubscriptions(userId(c)) });
   });
 
   app.post("/push/viewing", async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as { client?: unknown; threadId?: unknown; timezone?: unknown; device?: unknown; active?: unknown };
-    if (typeof body.client !== "string" || !/^[\w-]{1,64}$/.test(body.client)) return c.json({ error: "Which window?" }, 400);
-    if (body.threadId !== null && (typeof body.threadId !== "string" || !/^[\w-]{1,64}$/.test(body.threadId))) return c.json({ error: "Which conversation?" }, 400);
+    if (typeof body.client !== "string" || !/^[\w-]{1,64}$/.test(body.client)) return c.json({ error: "Say which window this is" }, 400);
+    if (body.threadId !== null && (typeof body.threadId !== "string" || !/^[\w-]{1,64}$/.test(body.threadId))) return c.json({ error: "Say which conversation is open" }, 400);
     markViewing(userId(c), body.client, body.threadId);
     const device = deviceOf(body.device);
     if (device && body.active === true) markActive(userId(c), device);

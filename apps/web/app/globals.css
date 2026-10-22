@@ -24,6 +24,19 @@
   }
 }
 
+/* Room a call's pill takes under the header on a phone, when the call is away from this screen. */
+:root {
+  --call-pill-space: 0px;
+}
+:root[data-call-pill] {
+  --call-pill-space: 52px;
+}
+@media (width >= 48rem) {
+  :root:not([data-shell="android"])[data-call-pill] {
+    --call-pill-space: 0px;
+  }
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -47,6 +60,7 @@
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
+  --color-hangup: var(--hangup);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -160,6 +174,8 @@
   --magenta: #b8307f;
   --grape: #8250df;
   --ember: #c2301a;
+  /* A phone's hang-up red, deep enough for a white icon in both themes. */
+  --hangup: #c2301a;
   --tone-ok: #1a7d38;
   --tone-warn: #8a5a00;
   --tone-bad: #c2301a;
@@ -245,6 +261,7 @@
   --magenta: #f28bca;
   --grape: #c58af9;
   --ember: #cf6679;
+  --hangup: #c4372b;
   --tone-ok: #a5d6a7;
   --tone-warn: #ffe082;
   --tone-bad: #ef9a9a;

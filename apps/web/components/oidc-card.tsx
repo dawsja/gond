@@ -46,7 +46,7 @@ export function OidcCard() {
       setForm((f) => ({ ...f, clientSecret: "" }));
       toast.add({ type: "success", title: "Provider saved.", description: data.oidc.enabled ? "The sign-in page shows its button." : "Turn it on when the provider has the redirect URL." });
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : "Could not save.");
+      setError(failure instanceof Error ? failure.message : "Couldn't save.");
     } finally {
       setBusy(false);
     }
@@ -56,7 +56,7 @@ export function OidcCard() {
     try {
       setState(await patch<Reply>("/api/oidc", { enabled: on }));
     } catch (failure) {
-      toast.add({ type: "error", title: failure instanceof Error ? failure.message : "Could not change it." });
+      toast.add({ type: "error", title: failure instanceof Error ? failure.message : "Couldn't change it." });
     }
   }
 

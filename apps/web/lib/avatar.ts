@@ -38,11 +38,11 @@ export async function cropToBlob(bitmap: ImageBitmap, crop: Crop, stage: number,
   canvas.width = size;
   canvas.height = size;
   const context = canvas.getContext("2d");
-  if (!context) throw new Error("Could not prepare the picture.");
+  if (!context) throw new Error("Couldn't prepare the picture.");
   context.imageSmoothingQuality = "high";
   context.drawImage(bitmap, source.x, source.y, source.side, source.side, 0, 0, size, size);
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
-  if (!blob) throw new Error("Could not prepare the picture.");
+  if (!blob) throw new Error("Couldn't prepare the picture.");
   if (blob.size > AVATAR_MAX_BYTES) throw new Error("The picture must be under 2 MB.");
   return blob;
 }
