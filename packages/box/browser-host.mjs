@@ -136,11 +136,10 @@ function uniqueName(dir, wanted, exists) {
 }
 
 /*
- * Every bot of the person's shares this one Chrome, its profile and sign-ins,
- * but each works in tabs of its own: a batch runs on its bot's tab, lists only
- * its bot's tabs, and a tab a page opens belongs to whoever owns the page that
- * opened it. Batches still run one at a time (the host's queue), so the bot
- * whose batch runs has its tab in front.
+ * A host is one bot's Chrome now (one per screen), but the tabs are still kept
+ * per bot: a batch runs on its bot's tab, lists only its bot's tabs, and a tab a
+ * page opens belongs to whoever owns the page that opened it. Batches run one
+ * at a time (the host's queue).
  */
 export function createBrowser({ launch, clipboard = xclipClipboard, downloadsDir = path.join(os.homedir(), "Downloads") }) {
   let context = null;

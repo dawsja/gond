@@ -9,6 +9,9 @@ import { postMessage } from "../data/threads.ts";
 import { stopBot, syncSoul } from "../responder.ts";
 import { addFromTemplate, greet, templateById } from "../templates.ts";
 import { allowedToolkits } from "../toolkits.ts";
+import { MAX_BOT_BUNDLE_BYTES, unpackBot } from "../bot-bundle.ts";
+import { addFromBundle, botFile, bundleOf, sharedBot, shareToken, summaryOf } from "../bot-templates.ts";
+import { appUrl } from "../config.ts";
 
 export function botsRoutes() {
   const app = new Hono<Env>();
@@ -18,6 +21,60 @@ export function botsRoutes() {
   app.get("/bots/name", (c) => c.json({ name: pickBotName(listBots({ includeHidden: true, userId: userId(c) }).map((b) => b.name)) }));
 
   app.get("/templates", (c) => c.json({ templates: BOT_TEMPLATES }));
+
+  // A bot as a template: a .bot file to pass on, or a link anyone signed in here can add a copy from.
+  app.get("/bots/:id/template", (c) => {
+    const bot = ownBot(c, c.req.param("id"));
+    if (!bot) return c.json({ error: "No such bot" }, 404);
+    return new Response(Buffer.from(botFile(bot)), {
+      headers: {
+        "Content-Type": "application/zip",
+        "Content-Disposition": `attachment; filename="${bot.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "bot"}.bot"`,
+        "Content-Security-Policy": "sandbox",
+        "Cache-Control": "no-store",
+        "X-Content-Type-Options": "nosniff",
+      },
+    });
+  });
+
+  app.get("/bots/:id/template/summary", (c) => {
+    const bot = ownBot(c, c.req.param("id"));
+    return bot ? c.json({ template: summaryOf(bundleOf(bot)) }) : c.json({ error: "No such bot" }, 404);
+  });
+
+  app.post("/bots/:id/share", (c) => {
+    const bot = ownBot(c, c.req.param("id"));
+    if (!bot) return c.json({ error: "No such bot" }, 404);
+    return c.json({ url: `${appUrl()}/app?template=${shareToken(bot.id)}` });
+  });
+
+  app.post("/bots/import", async (c) => {
+    const form = await c.req.formData().catch(() => null);
+    const file = form?.get("file");
+    if (!(file instanceof File)) return c.json({ error: "Send the template as a file" }, 400);
+    if (file.size > MAX_BOT_BUNDLE_BYTES) return c.json({ error: `A .bot file must be under ${MAX_BOT_BUNDLE_BYTES / 1024 / 1024} MB` }, 413);
+    const bundle = unpackBot(new Uint8Array(await file.arrayBuffer()));
+    if ("error" in bundle) return c.json({ error: bundle.error }, 400);
+    return c.json({ bot: await addFromBundle(bundle, userId(c)) }, 201);
+  });
+
+  app.get("/templates/:token", (c) => {
+    const bot = sharedBot(c.req.param("token"));
+    return bot ? c.json({ template: summaryOf(bundleOf(bot)) }) : c.json({ error: "That link doesn't lead to a bot any more" }, 404);
+  });
+
+  app.get("/templates/:token/picture", (c) => {
+    const bot = sharedBot(c.req.param("token"));
+    const picture = bot ? getBotAvatar(bot.id) : null;
+    if (!picture) return c.json({ error: "No picture" }, 404);
+    return new Response(Buffer.from(picture.data), { headers: { "Content-Type": picture.mediaType, "Cache-Control": "private, max-age=300", "X-Content-Type-Options": "nosniff" } });
+  });
+
+  app.post("/templates/:token", async (c) => {
+    const bot = sharedBot(c.req.param("token"));
+    if (!bot) return c.json({ error: "That link doesn't lead to a bot any more" }, 404);
+    return c.json({ bot: await addFromBundle(bundleOf(bot), userId(c)) }, 201);
+  });
 
   app.post("/bots", async (c) => {
     const parsed = botInputSchema.safeParse(await c.req.json().catch(() => ({})));

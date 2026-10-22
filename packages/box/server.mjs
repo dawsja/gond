@@ -62,11 +62,13 @@ const SSE_KEEPALIVE_MS = 15_000;
 const DESKTOP_DISPLAY = Number(process.env.DESKTOP_DISPLAY || 1);
 const DESKTOP_SCRIPT = process.env.DESKTOP_SCRIPT || path.join(path.dirname(fileURLToPath(import.meta.url)), "desktop.sh");
 const BROWSER_HOST = path.join(path.dirname(fileURLToPath(import.meta.url)), "browser-host.mjs");
-const MAX_DESKTOP_CONNECTIONS = 4;
+const MAX_DESKTOP_CONNECTIONS = 6;
 
 const DESKTOP_START_MS = 30_000;
 
-const DESKTOP_IDLE_MS = 2 * 60 * 60 * 1000;
+const DESKTOP_IDLE_MS = 30 * 60 * 1000;
+// Screens a person's bots keep running at once; each is a display and a Chrome.
+const SCREENS_PER_PERSON = Math.max(1, Number(process.env.GOND_SCREENS_PER_PERSON) || 3);
 // The bots' hold lapses when no batch has come for this long, so a turn the API lost can't keep the person out.
 const BOTS_HOLD_MS = 10 * 60 * 1000;
 const VNCCONFIG_MS = 5_000;
@@ -115,21 +117,24 @@ function asUser(account) {
   return account.uid !== undefined ? { uid: account.uid, gid: account.gid } : {};
 }
 
-// Each person's bots share one browser on that person's desktop, run as them.
+// Each bot's browser runs on its own screen with its own profile, as the person.
 const browsers = createBrowsers({
-  start: (account) =>
-    spawn(process.execPath, [BROWSER_HOST], {
+  start: (account, bot) => {
+    const screen = screenOf(account, bot);
+    if (!screen) throw new HttpError(502, "The screen isn't running");
+    return spawn(process.execPath, [BROWSER_HOST], {
       cwd: account.home,
       env: agentEnv(account, {
-        ...displayEnv(account),
-        XDG_RUNTIME_DIR: account.run,
-        GOND_BROWSER_PROFILE: account.browser,
+        ...displayEnv(screen),
+        XDG_RUNTIME_DIR: screen.run,
+        GOND_BROWSER_PROFILE: screen.profile,
         CHROME_BIN: process.env.CHROME_BIN || "/usr/local/bin/google-chrome",
       }),
       ...asUser(account),
       detached: true,
       stdio: ["pipe", "pipe", "pipe"],
-    }),
+    });
+  },
   log: (text) => console.warn(`[box] ${text}`),
 });
 
@@ -146,9 +151,9 @@ function own(target, account) {
   }
 }
 
-/** The folders the files API never opens in a home: the CLIs' sign-ins, the bots' browser profile (its cookies) and the skills link (root's, written by the API). */
+/** The folders the files API never opens in a home: the CLIs' sign-ins, the bots' browser profiles (their cookies) and the skills link (root's, written by the API). */
 function forbiddenIn(account) {
-  return [...account.logins, account.browser, account.skills];
+  return [...account.logins, account.browser, account.browsers, account.skills];
 }
 
 export class HttpError extends Error {
@@ -792,8 +797,12 @@ function dropSignIn(account, engine) {
   signIns.delete(key);
 }
 
-const desktops = new Map();
+// One screen per bot of each person: its own display, its own runtime dir (the X cookie and the VNC
+// socket, the person's alone) and its own Chrome, so bots work side by side instead of taking turns.
+const screens = new Map();
 const connections = new Map();
+
+const screenKey = (account, bot) => `${account.id ?? ""}\n${bot}`;
 
 export function desktopSize(body) {
   const width = Math.min(Math.max(Math.floor(Number(body.width)) || 1280, 640), 4096);
@@ -801,16 +810,50 @@ export function desktopSize(body) {
   return { width, height };
 }
 
-export function desktopSlot(account) {
-  return { display: DESKTOP_DISPLAY + account.slot };
+/** The lowest display no running screen has. */
+export function freeDisplay(used, first = DESKTOP_DISPLAY) {
+  let display = first;
+  while (used.has(display)) display += 1;
+  return display;
 }
 
-function vncSocketPath(account) {
-  return path.join(account.run, "vnc.sock");
+/**
+ * The screen to stop so another can start when a person has `cap` running: the one used longest
+ * ago that nobody watches and no bot or person drives; null when every one is in use.
+ */
+export function screenToStop(running, cap, viewers) {
+  if (running.length < cap) return undefined;
+  return running.filter((screen) => viewers(screen) === 0 && screen.control.holder === "free").sort((a, b) => a.used - b.used)[0] ?? null;
 }
 
-function displayEnv(account) {
-  return { DISPLAY: `:${desktopSlot(account).display}`, XAUTHORITY: path.join(account.run, "Xauthority") };
+function screensOf(account) {
+  return [...screens.values()].filter((screen) => screen.user === account.id);
+}
+
+function screenOf(account, bot) {
+  return screens.get(screenKey(account, bot)) ?? null;
+}
+
+function vncSocketPath(screen) {
+  return path.join(screen.run, "vnc.sock");
+}
+
+function displayEnv(screen) {
+  return { DISPLAY: `:${screen.display}`, XAUTHORITY: path.join(screen.run, "Xauthority") };
+}
+
+// Run as the person, never as root: these are paths in their home, theirs to point anywhere.
+const PREPARE_SCREEN = 'mkdir -p -m 700 "$1" && if [ -n "$4" ] && [ ! -e "$3" ] && [ -d "$2" ]; then mkdir -p "$(dirname "$3")" && mv "$2" "$3"; fi';
+
+/**
+ * Makes a bot's screen's runtime dir, and answers its Chrome profile; the profile from before each
+ * bot had its own becomes the primary bot's, sign-ins and all.
+ */
+async function prepareScreen(account, bot, run, primary) {
+  const profile = path.join(account.browsers, bot);
+  const done = await runAsUser(account, ["sh", "-c", PREPARE_SCREEN, "sh", run, account.browser, profile, primary ? "1" : ""], { cwd: account.home, timeoutMs: 10_000 });
+  if (done.exitCode !== 0) throw new HttpError(500, `The screen couldn't be set up: ${done.output.trim().slice(-300)}`);
+  return profile;
 }
 
 function connectVnc(socketPath) {
@@ -824,64 +867,69 @@ function connectVnc(socketPath) {
   });
 }
 
-function viewersOf(account) {
+function viewersOf(account, bot) {
   let n = 0;
-  for (const connection of connections.values()) if (connection.user === account.id) n += 1;
+  for (const connection of connections.values()) if (connection.user === account.id && (bot === undefined || connection.bot === bot)) n += 1;
   return n;
 }
 
-function desktopStatus(account) {
-  const desktop = desktops.get(account.id);
+function screenStatus(account, bot) {
+  const screen = screenOf(account, bot);
   return {
-    running: Boolean(desktop),
-    ready: Boolean(desktop?.ready),
-    width: desktop?.width ?? null,
-    height: desktop?.height ?? null,
-    viewers: viewersOf(account),
-    control: desktop?.control.holder ?? "free",
+    bot,
+    running: Boolean(screen),
+    ready: Boolean(screen?.ready),
+    width: screen?.width ?? null,
+    height: screen?.height ?? null,
+    viewers: viewersOf(account, bot),
+    control: screen?.control.holder ?? "free",
   };
 }
 
+function listScreens(account) {
+  return { screens: screensOf(account).map((screen) => screenStatus(account, screen.bot)) };
+}
+
 /** While the bots hold the screen, the person's viewers are shown it and nothing they do reaches it, whatever their page sends. */
-async function applyViewerInput(account, desktop) {
-  const accept = desktop.control.holder === "bots" ? 0 : 1;
-  if (desktop.viewerInput === accept) return;
-  desktop.viewerInput = accept;
+async function applyViewerInput(account, screen) {
+  const accept = screen.control.holder === "bots" ? 0 : 1;
+  if (screen.viewerInput === accept) return;
+  screen.viewerInput = accept;
   const results = await Promise.all(
-    VIEWER_INPUT.map((name) => runAsUser(account, ["vncconfig", "-set", `${name}=${accept}`], { cwd: account.home, timeoutMs: VNCCONFIG_MS, env: displayEnv(account) }).catch((error) => ({ exitCode: 1, output: error.message }))),
+    VIEWER_INPUT.map((name) => runAsUser(account, ["vncconfig", "-set", `${name}=${accept}`], { cwd: account.home, timeoutMs: VNCCONFIG_MS, env: displayEnv(screen) }).catch((error) => ({ exitCode: 1, output: error.message }))),
   );
   const failed = results.find((result) => result.exitCode !== 0);
   if (failed) {
-    desktop.viewerInput = null;
+    screen.viewerInput = null;
     console.warn(`[box] couldn't ${accept ? "give back" : "hold"} the viewers' input: ${failed.output.trim().slice(0, 200)}`);
   }
 }
 
-async function changeControl(account, desktop, holder, by = null) {
-  if (desktop.botsHold) clearTimeout(desktop.botsHold);
-  desktop.botsHold = null;
+async function changeControl(account, screen, holder, by = null) {
+  if (screen.botsHold) clearTimeout(screen.botsHold);
+  screen.botsHold = null;
   if (holder === "bots") {
-    desktop.botsHold = setTimeout(() => {
-      if (desktops.get(account.id) === desktop && desktop.control.holder === "bots") void changeControl(account, desktop, "free");
+    screen.botsHold = setTimeout(() => {
+      if (screens.get(screen.key) === screen && screen.control.holder === "bots") void changeControl(account, screen, "free");
     }, BOTS_HOLD_MS);
-    desktop.botsHold.unref?.();
+    screen.botsHold.unref?.();
   }
-  if (desktop.control.holder !== holder) desktop.control = { holder, by, since: new Date().toISOString() };
-  await applyViewerInput(account, desktop);
+  if (screen.control.holder !== holder) screen.control = { holder, by, since: new Date().toISOString() };
+  await applyViewerInput(account, screen);
 }
 
-async function setDesktopControl(account, body) {
+async function setDesktopControl(account, bot, body) {
   let next;
   try {
-    next = controlTransition(desktops.get(account.id)?.control.holder ?? "free", body);
+    next = controlTransition(screenOf(account, bot)?.control.holder ?? "free", body);
   } catch (error) {
     throw new HttpError(error.status ?? 400, error.message);
   }
-  const desktop = desktops.get(account.id);
-  if (!desktop) throw new HttpError(404, "The desktop isn't running");
-  await desktop.readyPromise;
-  if (next) await changeControl(account, desktop, next);
-  return desktopStatus(account);
+  const screen = screenOf(account, bot);
+  if (!screen) throw new HttpError(404, "That screen isn't running");
+  await screen.readyPromise;
+  if (next) await changeControl(account, screen, next);
+  return screenStatus(account, bot);
 }
 
 let systemBus = null;
@@ -910,45 +958,64 @@ function ensureSystemBus() {
   systemBus = child;
 }
 
-async function ensureDesktop(account, body = {}) {
-  const running = desktops.get(account.id);
+async function ensureDesktop(account, bot, body = {}) {
+  const running = screenOf(account, bot);
   if (running) {
     await running.readyPromise;
-    return desktopStatus(account);
+    return screenStatus(account, bot);
   }
-  const { width, height } = desktopSize(body);
-  const { display } = desktopSlot(account);
-  ensureSystemBus();
+  const run = path.join(account.run, "screens", bot);
   fs.mkdirSync(account.run, { recursive: true, mode: 0o700 });
   own(account.run, account);
+  const profile = await prepareScreen(account, bot, run, body.primary === true);
+  // Another request may have started it while that ran; from here to `screens.set` nothing waits.
+  const started = screenOf(account, bot);
+  if (started) {
+    await started.readyPromise;
+    return screenStatus(account, bot);
+  }
+  const stop = screenToStop(screensOf(account), SCREENS_PER_PERSON, (screen) => viewersOf(account, screen.bot));
+  if (stop === null) throw new HttpError(429, `${SCREENS_PER_PERSON} of your bots are using their screens; one frees up when a bot finishes.`, "screens_full");
+  if (stop) stopDesktop(account, stop.bot);
+  const { width, height } = desktopSize(body);
+  const display = freeDisplay(new Set([...screens.values()].map((screen) => screen.display)));
+  ensureSystemBus();
   const child = spawn("bash", [DESKTOP_SCRIPT], {
     cwd: account.home,
     env: agentEnv(account, {
       DISPLAY: `:${display}`,
       DESKTOP_WIDTH: String(width),
       DESKTOP_HEIGHT: String(height),
-      XDG_RUNTIME_DIR: account.run,
+      XDG_RUNTIME_DIR: run,
       XDG_CONFIG_HOME: path.join(account.home, ".config"),
       XDG_DATA_HOME: path.join(account.home, ".local", "share"),
+      // A Chrome the person opens on this screen is the bot's, so it has the bot's sign-ins.
+      GOND_BROWSER_PROFILE: profile,
     }),
     ...asUser(account),
     detached: true,
     stdio: ["ignore", "pipe", "pipe"],
   });
-  const started = {
+  const screen = {
+    key: screenKey(account, bot),
     user: account.id,
+    bot,
+    display,
+    run,
+    profile,
     child,
     width,
     height,
     ready: false,
     idle: null,
+    used: Date.now(),
     readyPromise: null,
     control: { holder: "free", by: null, since: new Date().toISOString() },
     botsHold: null,
     viewerInput: 1,
     lastShot: 0,
   };
-  desktops.set(account.id, started);
+  screens.set(screen.key, screen);
   let log = "";
   const collect = (chunk) => {
     log = (log + chunk.toString("utf8")).slice(-4000);
@@ -956,51 +1023,58 @@ async function ensureDesktop(account, body = {}) {
   child.stdout.on("data", collect);
   child.stderr.on("data", collect);
   child.on("exit", (code, signal) => {
-    const unexpected = desktops.get(account.id) === started;
+    const unexpected = screens.get(screen.key) === screen;
     if (unexpected) {
-      desktops.delete(account.id);
-      browsers.close(account.id);
+      screens.delete(screen.key);
+      browsers.close(account.id, bot);
     }
-    if (started.idle) clearTimeout(started.idle);
-    for (const connection of connections.values()) if (connection.user === account.id) closeConnection(connection.id);
-    if (unexpected) console.warn(`[box] ${account.name}'s desktop exited (${signal ?? code}): ${log.trim().slice(-500)}`);
+    if (screen.idle) clearTimeout(screen.idle);
+    for (const connection of connections.values()) if (connection.user === account.id && connection.bot === bot) closeConnection(connection.id);
+    if (unexpected) console.warn(`[box] ${account.name}'s screen for ${bot} exited (${signal ?? code}): ${log.trim().slice(-500)}`);
   });
-  child.on("error", (error) => console.error(`[box] ${account.name}'s desktop failed to start`, error));
+  child.on("error", (error) => console.error(`[box] ${account.name}'s screen for ${bot} failed to start`, error));
 
-  started.readyPromise = (async () => {
+  screen.readyPromise = (async () => {
     const deadline = Date.now() + DESKTOP_START_MS;
     while (Date.now() < deadline) {
-      if (desktops.get(account.id) !== started) throw new HttpError(502, `The desktop didn't start: ${log.trim().slice(-300) || "no output"}`);
+      if (screens.get(screen.key) !== screen) throw new HttpError(502, `The screen didn't start: ${log.trim().slice(-300) || "no output"}`);
       try {
-        const probe = await connectVnc(vncSocketPath(account));
+        const probe = await connectVnc(vncSocketPath(screen));
         probe.destroy();
-        started.ready = true;
-        touchDesktop(account);
+        screen.ready = true;
+        touchDesktop(account, bot);
         return;
       } catch {
         await new Promise((resolve) => setTimeout(resolve, 250));
       }
     }
-    stopDesktop(account);
-    throw new HttpError(504, "The desktop didn't start in time");
+    stopDesktop(account, bot);
+    throw new HttpError(504, "The screen didn't start in time");
   })();
-  await started.readyPromise;
-  return desktopStatus(account);
+  await screen.readyPromise;
+  return screenStatus(account, bot);
 }
 
-function touchDesktop(account) {
-  const desktop = desktops.get(account.id);
-  if (!desktop) return;
-  if (desktop.idle) clearTimeout(desktop.idle);
-  desktop.idle = null;
-  if (viewersOf(account) === 0) desktop.idle = setTimeout(() => stopDesktop(account), DESKTOP_IDLE_MS);
+function touchDesktop(account, bot) {
+  const screen = screenOf(account, bot);
+  if (!screen) return;
+  screen.used = Date.now();
+  if (screen.idle) clearTimeout(screen.idle);
+  screen.idle = null;
+  if (viewersOf(account, bot) === 0) screen.idle = setTimeout(() => stopDesktop(account, bot), DESKTOP_IDLE_MS);
 }
 
-function stopDesktop(account) {
-  const current = desktops.get(account.id);
-  desktops.delete(account.id);
-  browsers.close(account.id);
-  for (const connection of connections.values()) if (connection.user === account.id) closeConnection(connection.id);
+/** Stops a bot's screen and its browser, or every screen of the person's without a bot. */
+function stopDesktop(account, bot) {
+  if (bot === undefined) {
+    for (const screen of screensOf(account)) stopDesktop(account, screen.bot);
+    browsers.close(account.id);
+    return { ok: true };
+  }
+  const current = screenOf(account, bot);
+  screens.delete(screenKey(account, bot));
+  browsers.close(account.id, bot);
+  for (const connection of connections.values()) if (connection.user === account.id && connection.bot === bot) closeConnection(connection.id);
   if (!current) return { ok: true };
   if (current.idle) clearTimeout(current.idle);
   if (current.botsHold) clearTimeout(current.botsHold);
@@ -1020,32 +1094,32 @@ function stopDesktop(account) {
   return { ok: true };
 }
 
-async function createConnection(account, body) {
+async function createConnection(account, bot, body) {
   if (viewersOf(account) >= MAX_DESKTOP_CONNECTIONS) {
-    throw new HttpError(429, `At most ${MAX_DESKTOP_CONNECTIONS} desktop viewers at once`);
+    throw new HttpError(429, `At most ${MAX_DESKTOP_CONNECTIONS} screen viewers at once`);
   }
-  await ensureDesktop(account, body);
-  const desktop = desktops.get(account.id);
+  await ensureDesktop(account, bot, body);
+  const screen = screenOf(account, bot);
   let socket;
   try {
-    socket = await connectVnc(vncSocketPath(account));
+    socket = await connectVnc(vncSocketPath(screen));
   } catch (error) {
-    throw new HttpError(502, `Could not reach the desktop's VNC server: ${error.message}`);
+    throw new HttpError(502, `Could not reach the screen's VNC server: ${error.message}`);
   }
   const id = randomBytes(8).toString("hex");
-  const connection = { id, user: account.id, socket, response: null, claim: null };
+  const connection = { id, user: account.id, bot, socket, response: null, claim: null };
   socket.pause();
   socket.on("error", () => closeConnection(id));
   socket.on("close", () => closeConnection(id));
   connection.claim = setTimeout(() => closeConnection(id), CONNECTION_CLAIM_MS);
   connections.set(id, connection);
-  touchDesktop(account);
-  return { id, width: desktop?.width ?? null, height: desktop?.height ?? null };
+  touchDesktop(account, bot);
+  return { id, width: screen?.width ?? null, height: screen?.height ?? null };
 }
 
-function existingConnection(account, id) {
+function existingConnection(account, bot, id) {
   const connection = connections.get(id);
-  if (!connection || connection.user !== account.id) throw new HttpError(404, "No such desktop connection");
+  if (!connection || connection.user !== account.id || connection.bot !== bot) throw new HttpError(404, "No such screen connection");
   return connection;
 }
 
@@ -1058,15 +1132,15 @@ function closeConnection(id) {
   connection.response?.end();
   connection.response = null;
   const account = accounts.get(connection.user);
-  if (account) touchDesktop(account);
+  if (account) touchDesktop(account, connection.bot);
   return { ok: true };
 }
 
 function stopAllDesktops() {
-  for (const id of [...desktops.keys()]) {
-    const account = accounts.get(id);
-    if (account) stopDesktop(account);
-    else desktops.delete(id);
+  for (const screen of [...screens.values()]) {
+    const account = accounts.get(screen.user);
+    if (account) stopDesktop(account, screen.bot);
+    else screens.delete(screen.key);
   }
   for (const connection of [...connections.values()]) closeConnection(connection.id);
   browsers.closeAll();
@@ -1104,21 +1178,28 @@ function streamConnection(request, response, connection) {
 
 async function desktopRoute(request, response, parts, account) {
   if (parts.length === 1) {
-    if (request.method === "GET") return desktopStatus(account);
-    if (request.method === "POST") return ensureDesktop(account, await readJson(request));
+    if (request.method === "GET") return listScreens(account);
     if (request.method === "DELETE") return stopDesktop(account);
     throw new HttpError(404, "Not found");
   }
-  if (parts.length === 2 && parts[1] === "control") {
-    if (request.method === "POST") return setDesktopControl(account, await readJson(request));
+  const bot = parts[1];
+  if (!ID.test(bot)) throw new HttpError(404, "Not found");
+  if (parts.length === 2) {
+    if (request.method === "GET") return screenStatus(account, bot);
+    if (request.method === "POST") return ensureDesktop(account, bot, await readJson(request));
+    if (request.method === "DELETE") return stopDesktop(account, bot);
     throw new HttpError(404, "Not found");
   }
-  if (parts[1] !== "connections") throw new HttpError(404, "Not found");
-  const id = parts[2];
-  const action = parts[3];
-  if (request.method === "POST" && !id) return createConnection(account, await readJson(request));
+  if (parts.length === 3 && parts[2] === "control") {
+    if (request.method === "POST") return setDesktopControl(account, bot, await readJson(request));
+    throw new HttpError(404, "Not found");
+  }
+  if (parts[2] !== "connections") throw new HttpError(404, "Not found");
+  const id = parts[3];
+  const action = parts[4];
+  if (request.method === "POST" && !id) return createConnection(account, bot, await readJson(request));
   if (!id) throw new HttpError(404, "Not found");
-  const connection = existingConnection(account, id);
+  const connection = existingConnection(account, bot, id);
   if (request.method === "DELETE" && !action) return closeConnection(id);
   if (request.method === "GET" && action === "stream") {
     streamConnection(request, response, connection);
@@ -1161,14 +1242,14 @@ async function takeScreenshot(account, desktop, signal) {
   const gap = desktop.lastShot + SCREENSHOT_GAP_MS - Date.now();
   if (gap > 0) await new Promise((resolve) => setTimeout(resolve, gap));
   desktop.lastShot = Date.now();
-  const dir = path.join(account.run, "computer");
+  const dir = path.join(desktop.run, "computer");
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   own(dir, account);
   const shot = path.join(dir, "shot.png");
   const thumb = path.join(dir, "shot-thumb.png");
   const size = thumbSize(desktop);
   const wantThumb = size.width !== desktop.width || size.height !== desktop.height;
-  const scrot = (args) => runAsUser(account, ["scrot", "-o", ...args, shot], { cwd: account.home, timeoutMs: SCREENSHOT_MS, env: displayEnv(account), signal });
+  const scrot = (args) => runAsUser(account, ["scrot", "-o", ...args, shot], { cwd: account.home, timeoutMs: SCREENSHOT_MS, env: displayEnv(desktop), signal });
   let result = await scrot(wantThumb ? ["-t", `${size.width}x${size.height}`] : []);
   try {
     let full = readShot(dir, "shot.png");
@@ -1203,10 +1284,10 @@ async function computerRoute(request, response, account) {
   if (body.saveTo !== undefined && typeof body.saveTo !== "string") throw new HttpError(400, "saveTo must be a path");
   const target = body.target ?? "desktop";
   const saveTo = body.saveTo ? writableInsideHome(body.saveTo, account.home, forbiddenIn(account)) : null;
-  await ensureDesktop(account);
-  const desktop = desktops.get(account.id);
-  if (!desktop) throw new HttpError(502, "The desktop isn't running");
-  touchDesktop(account);
+  await ensureDesktop(account, body.bot, { primary: body.primary === true });
+  const desktop = screenOf(account, body.bot);
+  if (!desktop) throw new HttpError(502, "The screen isn't running");
+  touchDesktop(account, body.bot);
   let steps;
   try {
     steps = parseSteps(body.steps, target, target === "browser" ? VIEWPORT : desktop);
@@ -1250,7 +1331,7 @@ async function computerRoute(request, response, account) {
   const done = [];
   const outputs = [];
   let failed = null;
-  const xclip = { ...asUser(account), env: agentEnv(account, displayEnv(account)), cwd: account.home, detached: true };
+  const xclip = { ...asUser(account), env: agentEnv(account, displayEnv(desktop)), cwd: account.home, detached: true };
   for (const [index, step] of steps.entries()) {
     if (abort.signal.aborted) throw new HttpError(499, "The request was closed");
     if (step.type === "wait") await new Promise((resolve) => setTimeout(resolve, step.ms));
@@ -1259,7 +1340,7 @@ async function computerRoute(request, response, account) {
         if (step.type === "paste" && step.text !== null) await writeXclip(step.text, spawn, xclip);
         const keys = step.type === "copy" ? ["ctrl+c"] : step.type === "paste" ? ["ctrl+v"] : [];
         if (keys.length) {
-          const pressed = await runAsUser(account, ["xdotool", "key", "--clearmodifiers", ...keys], { cwd: account.home, timeoutMs: STEP_TIMEOUT_MS, env: displayEnv(account), signal: abort.signal });
+          const pressed = await runAsUser(account, ["xdotool", "key", "--clearmodifiers", ...keys], { cwd: account.home, timeoutMs: STEP_TIMEOUT_MS, env: displayEnv(desktop), signal: abort.signal });
           if (pressed.exitCode !== 0) throw new Error(pressed.output.trim().slice(-300) || `xdotool exited ${pressed.exitCode}`);
         }
         if (step.type !== "paste") {
@@ -1276,7 +1357,7 @@ async function computerRoute(request, response, account) {
     }
     const argv = xdotoolArgv(step);
     if (argv) {
-      const result = await runAsUser(account, argv, { cwd: account.home, timeoutMs: stepTimeoutMs(step), env: displayEnv(account), input: xdotoolStdin(step), signal: abort.signal });
+      const result = await runAsUser(account, argv, { cwd: account.home, timeoutMs: stepTimeoutMs(step), env: displayEnv(desktop), input: xdotoolStdin(step), signal: abort.signal });
       if (result.exitCode !== 0) {
         if (abort.signal.aborted) throw new HttpError(499, "The request was closed");
         failed = { index, message: result.output.trim().slice(-300) || `xdotool exited ${result.exitCode}` };
@@ -1838,7 +1919,7 @@ export function startServer({ port = PORT, host = HOST } = {}) {
   accounts.restore();
   const server = createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", "http://box");
-    if (url.pathname === "/health") return send(response, 200, { ok: true, agents: agents.size, desktops: desktops.size, updating: Boolean(update && update.finishedAt === null) });
+    if (url.pathname === "/health") return send(response, 200, { ok: true, agents: agents.size, screens: screens.size, updating: Boolean(update && update.finishedAt === null) });
     if (!authorized(request, token)) return send(response, 401, { error: "Unauthorized" });
     try {
       const result = await route(request, response, url);

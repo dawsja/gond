@@ -1,4 +1,4 @@
-import { QUIET_REPLY, handleOf, isClosing, isQuietReply, isStopRequest, mentionsIn, plainMarkdown, roomTargets, type Bot, type ChatAttachment, type DesktopDriver, type Message, type Thread, type ToolLabelContext } from "@gond/shared";
+import { QUIET_REPLY, handleOf, isClosing, isQuietReply, isStopRequest, mentionsIn, plainMarkdown, replyLine, roomTargets, type Bot, type ChatAttachment, type DesktopDriver, type Message, type Thread, type ToolLabelContext } from "@gond/shared";
 import { boxConfig, boxHome, ensureBotHome, interruptAgent, steerAgent, writeBoxFile, type BoxConfig } from "./box.ts";
 import { isUpdating } from "./updater.ts";
 import { getAi } from "./data/ai.ts";
@@ -223,13 +223,13 @@ const HANDED_BACK_STEER =
 const HANDED_BACK_PROMPT =
   "The person took control of the screen while you were working on it and has now given it back. Take a screenshot to see what they did, then carry on with the work from there, without redoing their part. If it is already finished, tell them in a line.";
 
-const DESKTOP_FREE_STEER = "The desktop you were waiting for is free now: take a screenshot and carry on with what you were going to do on it.";
+const DESKTOP_FREE_STEER = "Your screen you were waiting for is free now: take a screenshot and carry on with what you were going to do on it.";
 const DESKTOP_FREE_PROMPT =
-  "The desktop was busy with another bot's work when you needed it, and it is free now. Take a screenshot and carry on with what you were going to do on it. If it is already done or no longer needed, tell the person in a line.";
+  "Your screen was busy with your work in another conversation when you needed it, and it is free now. Take a screenshot and carry on with what you were going to do on it. If it is already done or no longer needed, tell the person in a line.";
 
-/** The person gave the screen back: each bot it was taken from carries on, in its running turn or a new one. */
-export async function tellHandedBack(userId: string): Promise<void> {
-  await carryOn(userId, handedBack(userId), HANDED_BACK_STEER, HANDED_BACK_PROMPT);
+/** The person gave a bot's screen back: each reply it was taken from carries on, in its running turn or a new one. */
+export async function tellHandedBack(userId: string, botId: string): Promise<void> {
+  await carryOn(userId, handedBack(userId, botId), HANDED_BACK_STEER, HANDED_BACK_PROMPT);
 }
 
 async function carryOn(userId: string, drivers: DesktopDriver[], steerWith: string, prompt: string): Promise<void> {
@@ -260,11 +260,11 @@ export async function steer(turns: Active[], body: string): Promise<boolean> {
   return taken.some(Boolean);
 }
 
-export async function postFromPerson(thread: Thread, input: { body: string; attachments?: ChatAttachment[]; after?: boolean }): Promise<Message> {
-  if (!input.attachments?.length && isStopRequest(input.body) && hasWork(thread.id)) return stopFromMessage(thread, input.body);
+export async function postFromPerson(thread: Thread, input: { body: string; attachments?: ChatAttachment[]; after?: boolean; replyTo?: string | null }): Promise<Message> {
+  if (!input.attachments?.length && !input.replyTo && isStopRequest(input.body) && hasWork(thread.id)) return stopFromMessage(thread, input.body);
   const turns = !input.after && !input.attachments?.length ? steerableTurns(thread, { author: "you", body: input.body }) : [];
-  const message = postMessage({ threadId: thread.id, author: "you", body: input.body, attachments: input.attachments, steered: turns.length > 0 });
-  if (turns.length && !(await steer(turns, input.body))) unsteer(message.id);
+  const message = postMessage({ threadId: thread.id, author: "you", body: input.body, attachments: input.attachments, steered: turns.length > 0, replyTo: input.replyTo });
+  if (turns.length && !(await steer(turns, `${replyLine(message.replyTo, (author) => (author === "you" ? "you" : (getBot(author)?.name ?? author)))}${input.body}`))) unsteer(message.id);
   return getMessage(message.id) ?? message;
 }
 

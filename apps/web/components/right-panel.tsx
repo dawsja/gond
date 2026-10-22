@@ -1,13 +1,13 @@
 "use client";
 
-import { APPROVAL_LEVEL_LABELS, type Bot, type Routine, type Thread } from "@gond/shared";
+import { APPROVAL_LEVEL_LABELS, screenOf, type Bot, type Routine, type Thread } from "@gond/shared";
 import { Clock } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BotAvatar } from "@/components/bot-avatar";
 import { BotFiles } from "@/components/bot-files";
 import { useLiveEvents } from "@/components/hq/live-events";
 import { RoutineDetails, setRoutineEnabled } from "@/components/routine-dialog";
-import { SCREEN_PREVIEW_MS, ScreenPanel, SleepingScreen, useScreenAwake, wakeScreen } from "@/components/screen-panel";
+import { SCREEN_PREVIEW_MS, ScreenPanel, SleepingScreen, useScreenAwake, useScreenDrivers, wakeScreen } from "@/components/screen-panel";
 import { openShellDialog } from "@/components/shell";
 import { useStore } from "@/components/store";
 import { Button } from "@/components/ui/button";
@@ -21,9 +21,9 @@ import { cn } from "@/lib/utils";
 /** The bot's screen in the panel: live while a bot or the person uses it and for a while after, asleep otherwise. */
 function ComputerSlot({ thread, bot, screen }: { thread: Thread; bot: Bot; screen?: ScreenProps }) {
   const { desktop } = useStore();
-  const driving = Boolean(desktop?.drivers.some((driver) => driver.threadId === thread.id));
+  const driving = Boolean(desktop?.drivers.some((driver) => driver.threadId === thread.id && driver.botId === bot.id));
   const awake = useScreenAwake(bot.id);
-  const live = driving || desktop?.control === "person" || awake;
+  const live = driving || screenOf(desktop, bot.id).control === "person" || awake;
   const wasDriving = useRef(driving);
 
   useEffect(() => {
@@ -31,12 +31,12 @@ function ComputerSlot({ thread, bot, screen }: { thread: Thread; bot: Bot; scree
     wasDriving.current = driving;
   }, [driving, bot.id]);
 
-  const open = () => (screen ? screen.onExpand() : openShellDialog({ kind: "computer", botId: bot.id }));
+  const open = () => (screen ? screen.onExpand(bot.id) : openShellDialog({ kind: "computer", botId: bot.id }));
 
-  if (screen?.expanded) {
+  if (screen?.open === bot.id) {
     return <div className="flex aspect-[16/10] w-full items-center justify-center rounded-xl border bg-muted text-[12px] text-muted-foreground">Showing on screen</div>;
   }
-  if (live && screen) return <ScreenPanel threadId={thread.id} botId={bot.id} expanded={false} onExpand={screen.onExpand} onCollapse={screen.onCollapse} />;
+  if (live && screen) return <ScreenPanel threadId={thread.id} botId={bot.id} expanded={false} onExpand={() => screen.onExpand(bot.id)} onCollapse={screen.onCollapse} />;
   return <SleepingScreen bot={bot} onWake={open} />;
 }
 
@@ -53,12 +53,14 @@ function RoutineRow({ routine, onOpen, onChange }: { routine: Routine; onOpen: (
   );
 }
 
-export type ScreenProps = { expanded: boolean; onExpand: () => void; onCollapse: () => void };
+/** Which bot's screen the conversation shows full size, if any. */
+export type ScreenProps = { open: string | null; onExpand: (botId: string) => void; onCollapse: () => void };
 
 export function RightPanelContent({ thread, bot, screen }: { thread: Thread; bot: Bot | null; working: boolean; screen?: ScreenProps }) {
   const { bots } = useStore();
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [viewing, setViewing] = useState<Routine | null>(null);
+  const drivers = useScreenDrivers(thread.id);
 
   const load = useCallback(async () => {
     if (!bot) return;
@@ -92,6 +94,14 @@ export function RightPanelContent({ thread, bot, screen }: { thread: Thread; bot
             Edit group
           </Button>
         </section>
+        {drivers.map((driver) => (
+          <section key={driver.id}>
+            <h2 className="text-[12px] font-medium uppercase tracking-wide text-muted-foreground">{driver.name}&apos;s computer</h2>
+            <div className="mt-2">
+              <ComputerSlot thread={thread} bot={driver} screen={screen} />
+            </div>
+          </section>
+        ))}
       </>
     );
   }

@@ -1,7 +1,7 @@
 "use client";
 
 import type { Bot } from "@gond/shared";
-import { ArrowRightLeft, Pencil, Pin, PinOff, Trash2, type LucideIcon } from "lucide-react";
+import { ArrowRightLeft, Pencil, Pin, PinOff, Share2, Trash2, type LucideIcon } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { Confirm } from "@/components/confirm-dialog";
 import type { ShellDialog } from "@/components/shell";
@@ -34,6 +34,7 @@ export function threadActions({ thread, bot, bots, onOpen, onAsk, refresh }: { t
             .then(() => refresh())
             .catch(failed(bot.pinned ? "Couldn't unpin it." : "Couldn't pin it.")),
       },
+      { id: "share", label: "Share as template", icon: Share2, run: () => onOpen({ kind: "share-bot", botId: bot.id }) },
     ]);
     if (bot.primary && bots.some((b) => b.id !== bot.id && !b.hidden)) {
       groups.push([{ id: "transfer", label: "Transfer primary bot", icon: ArrowRightLeft, run: () => onAsk({ kind: "transfer", thread }) }]);

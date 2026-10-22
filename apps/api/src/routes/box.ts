@@ -18,6 +18,7 @@ import {
   readBoxFile,
   readBoxFileBytes,
   resetBoxHome,
+  screenStreamPath,
   startDesktop,
   startEngineSignIn,
   stopDesktop,
@@ -238,12 +239,17 @@ export function boxRoutes() {
     }
   });
 
-  app.post("/box/desktop", async (c) => {
+  // Every bot has a screen of its own; each route names it, and answers 404 for anyone else's bot.
+  const screenSize = (body: { width?: unknown; height?: unknown }) => ({ width: Number(body.width) || 1280, height: Number(body.height) || 800 });
+
+  app.post("/box/desktop/:bot", async (c) => {
+    const bot = ownBot(c, c.req.param("bot"));
+    if (!bot) return c.json({ error: "No such bot" }, 404);
     const box = requireBox(c);
     if (box instanceof Response) return box;
     const body = (await c.req.json().catch(() => ({}))) as { width?: number; height?: number };
     try {
-      await startDesktop(box, { width: Number(body.width) || 1280, height: Number(body.height) || 800 });
+      await startDesktop(box, bot.id, { ...screenSize(body), primary: bot.primary });
     } catch (error) {
       return boxErrorResponse(c, error);
     }
@@ -252,11 +258,13 @@ export function boxRoutes() {
     return c.json({ desktop });
   });
 
-  app.delete("/box/desktop", async (c) => {
+  app.delete("/box/desktop/:bot", async (c) => {
+    const bot = ownBot(c, c.req.param("bot"));
+    if (!bot) return c.json({ error: "No such bot" }, 404);
     const box = requireBox(c);
     if (box instanceof Response) return box;
     try {
-      await stopDesktop(box);
+      await stopDesktop(box, bot.id);
     } catch (error) {
       return boxErrorResponse(c, error);
     }
@@ -264,43 +272,53 @@ export function boxRoutes() {
     return c.body(null, 204);
   });
 
-  app.post("/box/desktop/control", async (c) => {
+  app.post("/box/desktop/:bot/control", async (c) => {
+    const bot = ownBot(c, c.req.param("bot"));
+    if (!bot) return c.json({ error: "No such bot" }, 404);
     const box = requireBox(c);
     if (box instanceof Response) return box;
     const body = (await c.req.json().catch(() => ({}))) as { holder?: unknown };
     if (body.holder !== "person" && body.holder !== "free") return c.json({ error: "holder must be person or free" }, 400);
     try {
-      await desktopControl(box, { holder: body.holder });
+      await desktopControl(box, bot.id, { holder: body.holder });
     } catch (error) {
       return boxErrorResponse(c, error);
     }
-    if (body.holder === "person") tookControl(userId(c));
-    else void tellHandedBack(userId(c));
+    if (body.holder === "person") tookControl(userId(c), bot.id);
+    else void tellHandedBack(userId(c), bot.id);
     const desktop = await desktopState(userId(c)).catch(() => null);
     void emitDesktop(userId(c));
     return c.json({ desktop });
   });
 
-  app.post("/box/desktop/connections", async (c) => {
+  app.post("/box/desktop/:bot/connections", async (c) => {
+    const bot = ownBot(c, c.req.param("bot"));
+    if (!bot) return c.json({ error: "No such bot" }, 404);
     const box = requireBox(c);
     if (box instanceof Response) return box;
     const body = (await c.req.json().catch(() => ({}))) as { width?: number; height?: number };
     try {
-      return c.json({ connection: await connectDesktop(box, { width: Number(body.width) || 1280, height: Number(body.height) || 800 }) });
+      const connection = await connectDesktop(box, bot.id, { ...screenSize(body), primary: bot.primary });
+      void emitDesktop(userId(c));
+      return c.json({ connection });
     } catch (error) {
       return boxErrorResponse(c, error);
     }
   });
 
-  app.get("/box/desktop/connections/:id/stream", (c) => {
+  app.get("/box/desktop/:bot/connections/:id/stream", (c) => {
+    const bot = ownBot(c, c.req.param("bot"));
+    if (!bot) return c.json({ error: "No such bot" }, 404);
     const id = c.req.param("id");
     if (!STREAM_ID.test(id)) return c.json({ error: "Bad connection id" }, 400);
     const box = requireBox(c);
     if (box instanceof Response) return box;
-    return proxyStream(c, box, `/desktop/connections/${id}/stream`);
+    return proxyStream(c, box, screenStreamPath(bot.id, id));
   });
 
-  app.post("/box/desktop/connections/:id/input", async (c) => {
+  app.post("/box/desktop/:bot/connections/:id/input", async (c) => {
+    const bot = ownBot(c, c.req.param("bot"));
+    if (!bot) return c.json({ error: "No such bot" }, 404);
     const id = c.req.param("id");
     if (!STREAM_ID.test(id)) return c.json({ error: "Bad connection id" }, 400);
     const box = requireBox(c);
@@ -308,20 +326,22 @@ export function boxRoutes() {
     const body = (await c.req.json().catch(() => ({}))) as { data?: string };
     if (typeof body.data !== "string") return c.json({ error: "Missing data" }, 400);
     try {
-      await desktopInput(box, id, body.data);
+      await desktopInput(box, bot.id, id, body.data);
       return c.json({ ok: true });
     } catch (error) {
       return boxErrorResponse(c, error);
     }
   });
 
-  app.delete("/box/desktop/connections/:id", async (c) => {
+  app.delete("/box/desktop/:bot/connections/:id", async (c) => {
+    const bot = ownBot(c, c.req.param("bot"));
+    if (!bot) return c.json({ error: "No such bot" }, 404);
     const id = c.req.param("id");
     if (!STREAM_ID.test(id)) return c.json({ error: "Bad connection id" }, 400);
     const box = requireBox(c);
     if (box instanceof Response) return box;
     try {
-      await disconnectDesktop(box, id);
+      await disconnectDesktop(box, bot.id, id);
       return c.body(null, 204);
     } catch (error) {
       return boxErrorResponse(c, error);

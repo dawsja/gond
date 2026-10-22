@@ -145,8 +145,19 @@ export type Message = {
   steered: boolean;
 
   reactions: Reaction[];
+  /** The message this one answers, quoted: who wrote it and its first words, or its first file's name. */
+  replyTo: Quote | null;
   createdAt: string;
 };
+
+export type Quote = { id: string; author: MessageAuthor; text: string };
+
+export const QUOTE_CHARS = 280;
+
+/** How a bot reads a reply: `(replying to Patch: "…") ` ahead of the person's words. */
+export function replyLine(quote: Quote | null, nameOf: (author: MessageAuthor) => string): string {
+  return quote ? `(replying to ${nameOf(quote.author)}: "${quote.text.slice(0, 200)}${quote.text.length > 200 ? "…" : ""}") ` : "";
+}
 
 export const MAX_ATTACHMENTS = 6;
 export const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
@@ -187,11 +198,43 @@ export type Approval = {
   rule: string | null;
   createdAt: string;
   resolvedAt: string | null;
+  /** How an email card ended past yes or no: sent from a draft, saved as one, or sent back with changes asked. */
+  outcome: ApprovalOutcome | null;
+  /** The person changed the letter on the card before it went; `input` is what went. */
+  edited: boolean;
+  /** What the person said when they turned it down ("make it less formal"). */
+  note: string | null;
+  /** The draft this one redrafts after the person asked for changes, to mark what changed. */
+  revises: { tool: string; input: Record<string, unknown> } | null;
 };
+
+export type ApprovalOutcome = "sent" | "saved" | "changes";
+
+export const MAX_APPROVAL_NOTE = 2000;
+
+const editedList = z.array(z.string().trim().min(3).max(320)).max(50);
+
+export const emailEditSchema = z.object({
+  to: editedList,
+  cc: editedList,
+  bcc: editedList,
+  subject: z.string().max(998),
+  body: z.string().max(100_000),
+});
+
+export type EmailEdit = z.infer<typeof emailEditSchema>;
 
 export const approvalDecisionSchema = z.object({
   decision: z.enum(["allow", "deny", "always"]),
+  /** On a draft's card: send it rather than leave it saved. */
+  send: z.boolean().optional(),
+  /** On an email's card: the letter as the person changed it. */
+  edit: emailEditSchema.optional(),
+  /** With a deny: what to change, told to the bot. */
+  note: z.string().trim().min(1).max(MAX_APPROVAL_NOTE).optional(),
 });
+
+export type ApprovalAnswer = z.infer<typeof approvalDecisionSchema>;
 
 export type Routine = {
   id: string;
@@ -230,6 +273,29 @@ export const routineInputSchema = routineFields.extend({
 });
 
 export const routinePatchSchema = routineFields.partial();
+
+/** What `bot.json` in a `.bot` file says: a bot's job and look and its routines, never its memory, secrets or chats. */
+export const BOT_TEMPLATE_FORMAT = "gond.bot/1";
+
+export const botTemplateSchema = z.object({
+  format: z.literal(BOT_TEMPLATE_FORMAT),
+  name: botFields.shape.name,
+  title: botFields.shape.title.default(""),
+  description: botFields.shape.description.default(""),
+  color: botFields.shape.color.default(BOT_COLORS[0]),
+  expression: botFields.shape.expression.default("happy"),
+  shape: botFields.shape.shape.default("cog"),
+  approval: botFields.shape.approval.default("auto"),
+  routines: z
+    .array(z.object({ name: routineFields.shape.name, cron: routineFields.shape.cron, prompt: routineFields.shape.prompt, watch: z.boolean().default(false), skill: z.string().trim().max(80).nullable().default(null) }))
+    .max(20)
+    .default([]),
+});
+
+export type BotTemplateFile = z.infer<typeof botTemplateSchema>;
+
+/** A template as the person sees it before adding it: who the bot is and what comes with it. */
+export type BotTemplateSummary = Pick<BotTemplateFile, "name" | "title" | "description" | "color" | "expression" | "shape"> & { picture: boolean; skills: string[]; routines: string[] };
 export type RoutineInput = z.infer<typeof routineInputSchema>;
 
 export type AppCatalogEntry = { toolkit: string; name: string; icon: string; category: string; logo?: string; description?: string };
@@ -631,6 +697,32 @@ export const BOX_UPDATE_PHASE_LABELS: Record<BoxUpdatePhase, string> = {
   done: "Updated",
   failed: "Update failed",
 };
+
+/** Updating Gond itself from Settings → About: the step it is on. */
+export type ServerUpdatePhase = "idle" | "pulling" | "computer" | "web" | "server" | "done" | "failed";
+
+export type ServerUpdate = {
+  /** The version this server runs, "dev" when it wasn't built by a release. */
+  current: string;
+  latest: string | null;
+  available: boolean;
+  /** What changed since `current`, one line each, from the commits between the two releases. */
+  notes: string[];
+  /** Why this server can't update itself, when it can't (no Docker socket, say). */
+  blocked: string | null;
+  phase: ServerUpdatePhase;
+  error: string | null;
+};
+
+/** Whether release `a` (1.2.3, with or without a v) is newer than `b`; anything that isn't one never is. */
+export function newerVersion(a: string, b: string): boolean {
+  const parse = (v: string) => /^v?(\d+)\.(\d+)\.(\d+)$/.exec(v.trim())?.slice(1).map(Number) ?? null;
+  const x = parse(a);
+  const y = parse(b);
+  if (!x || !y) return false;
+  for (let i = 0; i < 3; i += 1) if (x[i] !== y[i]) return x[i]! > y[i]!;
+  return false;
+}
 
 export type BoxUpdate = {
   phase: BoxUpdatePhase;
@@ -1717,15 +1809,27 @@ export const DESKTOP_CONTROL_LABELS: Record<DesktopControl, string> = {
 
 export type DesktopDriver = { botId: string; threadId: string };
 
-export type DesktopState = {
+/** One bot's screen on the computer: every bot has its own, started when it or the person first needs it. */
+export type ScreenState = {
+  botId: string;
   running: boolean;
   ready: boolean;
   width: number | null;
   height: number | null;
   viewers: number;
   control: DesktopControl;
+};
+
+/** The person's bots' screens that are running, and which conversations have a bot at one. */
+export type DesktopState = {
+  screens: ScreenState[];
   drivers: DesktopDriver[];
 };
+
+/** A bot's screen as the state has it, asleep when it isn't running. */
+export function screenOf(desktop: DesktopState | null | undefined, botId: string): ScreenState {
+  return desktop?.screens.find((screen) => screen.botId === botId) ?? { botId, running: false, ready: false, width: null, height: null, viewers: 0, control: "free" };
+}
 
 /** An email a connected app is about to send, read from the action's own input. */
 export type EmailDraft = {
@@ -1801,18 +1905,144 @@ export function emailText(body: string): string {
     .trim();
 }
 
-export function emailDraftOf(tool: string, input: Record<string, unknown>): EmailDraft | null {
+export function emailMode(tool: string): { app: string; mode: EmailDraft["mode"] } | null {
   const name = bareToolName(tool).toUpperCase();
   const app = EMAIL_APPS[name.split("_")[0] ?? ""];
   if (!app) return null;
-  const mode = /(^|_)REPLY(_|$)/.test(name) ? "reply" : /(^|_)FORWARD(_|$)/.test(name) ? "forward" : /(^|_)SEND(_|$)/.test(name) ? "send" : /(^|_)DRAFT(_|$)/.test(name) ? "draft" : null;
-  if (!mode) return null;
+  const word = (w: string) => new RegExp(`(^|_)${w}(_|$)`).test(name);
+  // A draft reply (Outlook's CREATE_DRAFT_REPLY) only saves; sending a saved draft names nothing to show.
+  const mode = word("DRAFT") && !word("SEND") ? "draft" : word("REPLY") ? "reply" : word("FORWARD") ? "forward" : word("SEND") ? "send" : null;
+  return mode ? { app, mode } : null;
+}
+
+export function emailDraftOf(tool: string, input: Record<string, unknown>): EmailDraft | null {
+  const { app, mode } = emailMode(tool) ?? {};
+  if (!app || !mode) return null;
   const to = emailList(input, EMAIL_FIELDS.to);
   const rawBody = EMAIL_FIELDS.body.map((key) => input[key]).find((value): value is string => typeof value === "string" && value.trim() !== "");
   const subject = typeof input.subject === "string" && input.subject.trim() ? input.subject.trim() : null;
   // A send that only names a saved draft carries nothing to show; the plain card says what it is.
   if (!to.length && !rawBody && !subject) return null;
   return { mode, app, to, cc: emailList(input, EMAIL_FIELDS.cc), bcc: emailList(input, EMAIL_FIELDS.bcc), subject, body: rawBody ? emailText(rawBody) : null, files: emailFiles(input) };
+}
+
+/** Only a connected app's own action (a Composio slug) can be edited or sent from its card; Gond runs it. */
+export function emailEditable(tool: string): boolean {
+  return !tool.startsWith("mcp__") && emailMode(tool) !== null;
+}
+
+/** The app's action that sends a saved draft, and the input naming it, for a draft card's Send. */
+export function sendDraftAction(tool: string): { slug: string; idKey: string } | null {
+  if (!emailEditable(tool) || emailMode(tool)?.mode !== "draft") return null;
+  const name = tool.toUpperCase();
+  if (name.startsWith("GMAIL_")) return { slug: "GMAIL_SEND_DRAFT", idKey: "draft_id" };
+  if (name.startsWith("OUTLOOK_")) return { slug: "OUTLOOK_SEND_DRAFT", idKey: "message_id" };
+  return null;
+}
+
+/**
+ * The id of the draft an app just saved, from what its action answered: Gmail answers the draft
+ * (`id`, its message under it), Outlook the draft message (`id`), either sometimes wrapped.
+ */
+export function draftIdOf(result: unknown): string | null {
+  const seen: unknown[] = [result];
+  for (let depth = 0; depth < 3 && seen.length; depth += 1) {
+    const level = seen.splice(0);
+    for (const value of level) {
+      if (typeof value === "string") {
+        try {
+          seen.push(JSON.parse(value));
+        } catch {
+          /* not JSON */
+        }
+        continue;
+      }
+      if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+      const entry = value as Record<string, unknown>;
+      for (const key of ["draft_id", "draftId", "id"]) if (typeof entry[key] === "string" && (entry[key] as string).trim()) return (entry[key] as string).trim();
+      for (const key of ["data", "response_data", "draft", "result"]) if (entry[key] !== undefined) seen.push(entry[key]);
+    }
+  }
+  return null;
+}
+
+/** The address in "Dana Ruiz <dana@ruizdesign.co>", or the text as it is. */
+export function emailAddress(recipient: string): string {
+  return /<([^<>\s]+@[^<>\s]+)>/.exec(recipient)?.[1] ?? recipient.trim();
+}
+
+const escapeHtml = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+/**
+ * The action's input with the person's edits written back where the letter came from: a field
+ * keeps its key and its shape (a string, a list, Gmail's first address apart from the rest,
+ * Graph's `{ emailAddress }`), and a field they didn't change is left exactly as it was.
+ */
+export function editedEmailInput(tool: string, input: Record<string, unknown>, edit: EmailEdit): Record<string, unknown> {
+  const draft = emailDraftOf(tool, input);
+  const out: Record<string, unknown> = { ...input };
+  const name = bareToolName(tool).toUpperCase();
+  const same = (a: string[], b: string[]) => a.length === b.length && a.every((value, i) => emailAddress(value) === emailAddress(b[i]!));
+  const writeList = (keys: readonly string[], shown: string[], next: string[], fallback: string) => {
+    if (same(shown, next)) return;
+    const present = keys.filter((key) => input[key] !== undefined && input[key] !== null && input[key] !== "");
+    for (const key of present) delete out[key];
+    const addresses = next.map(emailAddress);
+    if (present.includes("recipient_email") || (!present.length && fallback === "recipient_email")) {
+      if (addresses[0]) out.recipient_email = addresses[0];
+      if (addresses.length > 1) out.extra_recipients = addresses.slice(1);
+      return;
+    }
+    const key = present[0] ?? fallback;
+    const was = input[key];
+    const sample = Array.isArray(was) ? was[0] : was;
+    if (typeof was === "string") out[key] = addresses.join(", ");
+    else if (sample && typeof sample === "object" && "emailAddress" in sample) out[key] = addresses.map((address) => ({ emailAddress: { address } }));
+    else if (sample && typeof sample === "object") out[key] = addresses.map((email) => ({ email }));
+    else out[key] = addresses;
+  };
+  const gmail = name.startsWith("GMAIL_");
+  writeList(EMAIL_FIELDS.to, draft?.to ?? [], edit.to, gmail ? "recipient_email" : /SEND_EMAIL/.test(name) ? "to" : "to_recipients");
+  writeList(EMAIL_FIELDS.cc, draft?.cc ?? [], edit.cc, gmail ? "cc" : /DRAFT$/.test(name) ? "cc_recipients" : "cc_emails");
+  writeList(EMAIL_FIELDS.bcc, draft?.bcc ?? [], edit.bcc, gmail ? "bcc" : /DRAFT$/.test(name) ? "bcc_recipients" : "bcc_emails");
+  if (edit.subject.trim() !== (draft?.subject ?? "")) out.subject = edit.subject.trim();
+  if (edit.body.trim() !== (draft?.body ?? "").trim()) {
+    const key = EMAIL_FIELDS.body.find((k) => typeof input[k] === "string" && (input[k] as string).trim() !== "") ?? (/REPLY_TO_THREAD/.test(name) ? "message_body" : /DRAFT_REPLY|REPLY_EMAIL/.test(name) ? "comment" : "body");
+    // The person edited words, not markup: HTML in, HTML out, their line breaks kept.
+    out[key] = input.is_html === true ? escapeHtml(edit.body.trim()).replace(/\r?\n/g, "<br>") : edit.body.trim();
+  }
+  return out;
+}
+
+export type DiffPart = { text: string; change: "same" | "added" | "removed" };
+
+/** A word-by-word diff of two drafts, for a redraft's marks: spaces go with the word before them, line breaks stand alone. */
+export function wordDiff(before: string, after: string): DiffPart[] {
+  const split = (text: string) => text.match(/\S+[^\S\n]*|\s+/g) ?? [];
+  const a = split(before);
+  const b = split(after);
+  // Past this a redraft is a new letter; marking every word says nothing.
+  if (a.length * b.length > 250_000) return [{ text: after, change: "same" }];
+  const key = (word: string) => word.trim();
+  const lcs: number[][] = Array.from({ length: a.length + 1 }, () => new Array<number>(b.length + 1).fill(0));
+  for (let i = a.length - 1; i >= 0; i -= 1) for (let j = b.length - 1; j >= 0; j -= 1) lcs[i]![j] = key(a[i]!) === key(b[j]!) ? lcs[i + 1]![j + 1]! + 1 : Math.max(lcs[i + 1]![j]!, lcs[i]![j + 1]!);
+  const parts: DiffPart[] = [];
+  const push = (text: string, change: DiffPart["change"]) => {
+    const last = parts.at(-1);
+    if (last?.change === change) last.text += text;
+    else parts.push({ text, change });
+  };
+  let i = 0;
+  let j = 0;
+  while (i < a.length || j < b.length) {
+    if (i < a.length && j < b.length && key(a[i]!) === key(b[j]!)) {
+      push(b[j]!, "same");
+      i += 1;
+      j += 1;
+    } else if (i < a.length && (j >= b.length || lcs[i + 1]![j]! >= lcs[i]![j + 1]!)) push(a[i++]!, "removed");
+    else push(b[j++]!, "added");
+  }
+  return parts;
 }
 
 /** "Dana Ruiz <dana@ruizdesign.co>" is Dana Ruiz to a person; a bare address stays an address. */

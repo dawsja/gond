@@ -252,3 +252,16 @@ test("a browser step can name an element by label instead, for a page it hasn't 
   rejects([{ type: "click", label: "x".repeat(MAX_LABEL_CHARS + 1) }], /label must be/, "browser");
   rejects([{ type: "click", label: "Checkout" }], /on the desktop use x and y/);
 });
+
+test("each bot's screen takes the lowest free display, and a full set gives up the one used longest ago that nobody is on", async () => {
+  const { freeDisplay, screenToStop } = await import("../server.mjs");
+  assert.equal(freeDisplay(new Set(), 1), 1);
+  assert.equal(freeDisplay(new Set([1, 2, 4]), 1), 3);
+  const screen = (bot, used, holder = "free") => ({ bot, used, control: { holder } });
+  const none = () => 0;
+  assert.equal(screenToStop([screen("a", 1)], 3, none), undefined);
+  assert.equal(screenToStop([screen("a", 5), screen("b", 2), screen("c", 9)], 3, none)?.bot, "b");
+  assert.equal(screenToStop([screen("a", 5), screen("b", 2, "bots"), screen("c", 9)], 3, none)?.bot, "a");
+  assert.equal(screenToStop([screen("a", 5), screen("b", 2), screen("c", 9, "person")], 3, (s) => (s.bot === "b" ? 1 : 0))?.bot, "a");
+  assert.equal(screenToStop([screen("a", 5, "bots"), screen("b", 2, "person"), screen("c", 9, "bots")], 3, none), null);
+});

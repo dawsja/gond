@@ -626,6 +626,24 @@ const MIGRATIONS: Array<string | ((db: Database) => void)> = [
   `,
   // When the person last refreshed an MCP server; a new value relaunches the sessions that use it.
   `ALTER TABLE gond_mcp_servers ADD COLUMN refreshed_at TEXT;`,
+  // An email card's answer past yes or no: sent from a draft, saved, or sent back with a note;
+  // whether the person edited the letter; and the draft a redraft follows, to mark what changed.
+  `
+  ALTER TABLE gond_approvals ADD COLUMN outcome TEXT;
+  ALTER TABLE gond_approvals ADD COLUMN note TEXT;
+  ALTER TABLE gond_approvals ADD COLUMN edited INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE gond_approvals ADD COLUMN revises TEXT;
+  `,
+  // The message the person replied to, quoted with theirs.
+  `ALTER TABLE gond_messages ADD COLUMN reply_to TEXT;`,
+  // A bot shared as a template: whoever is signed in here with the link can add a copy of it.
+  `
+  CREATE TABLE gond_bot_shares (
+    token TEXT PRIMARY KEY,
+    bot_id TEXT NOT NULL UNIQUE REFERENCES gond_bots (id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL
+  );
+  `,
 ];
 
 export const RENAME_VERSION = MIGRATIONS.indexOf(renameLegacyObjects) + 1;

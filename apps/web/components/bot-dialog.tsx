@@ -2,7 +2,7 @@
 
 import { APPROVAL_LEVELS, APPROVAL_LEVEL_LABELS, BOT_COLORS, BOT_EXPRESSIONS, BOT_LIMITS, BOT_SHAPES, BOT_SHAPE_LABELS, type Bot, type BotExpression, type BotShape } from "@gond/shared";
 import { useRouter } from "next/navigation";
-import { ImagePlus } from "lucide-react";
+import { ImagePlus, Upload } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import { GondBot } from "@/components/hq/gond-bot";
 import { usePicturePicker } from "@/components/picture-crop-dialog";
@@ -73,6 +73,23 @@ export function BotDialog({ botId, onClose }: { botId: string | null; onClose: (
       onClose();
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "Could not save.");
+      setBusy(false);
+    }
+  }
+
+  /** A bot someone shared as a .bot file: made as it is, then opened. */
+  async function importBot(file: File) {
+    setBusy(true);
+    setError(null);
+    try {
+      const upload = new FormData();
+      upload.append("file", file, file.name);
+      const { bot } = await api<{ bot: Bot }>("/api/bots/import", { method: "POST", body: upload });
+      await refresh();
+      router.push(`/app/t/${bot.threadId}`);
+      onClose();
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : "Couldn't import it.");
       setBusy(false);
     }
   }
@@ -178,6 +195,17 @@ export function BotDialog({ botId, onClose }: { botId: string | null; onClose: (
 
             {error ? <FieldError>{error}</FieldError> : null}
             <DialogFooter>
+              {existing ? null : (
+                <Button type="button" variant="ghost" disabled={busy} render={<label />} nativeButton={false} className="cursor-pointer sm:mr-auto">
+                  <Upload data-icon="inline-start" aria-hidden="true" />
+                  Import a .bot file
+                  <input type="file" accept=".bot,application/zip" className="sr-only" onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    event.target.value = "";
+                    if (file) void importBot(file);
+                  }} />
+                </Button>
+              )}
               <Button type="button" variant="outline" onClick={onClose}>
                 Cancel
               </Button>

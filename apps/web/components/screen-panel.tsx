@@ -1,6 +1,6 @@
 "use client";
 
-import { DESKTOP_CONTROL_LABELS } from "@gond/shared";
+import { DESKTOP_CONTROL_LABELS, screenOf } from "@gond/shared";
 import type { Bot } from "@gond/shared";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { BotAvatar } from "@/components/bot-avatar";
@@ -51,6 +51,29 @@ export function useScreenAwake(botId: string): boolean {
   );
 }
 
+/**
+ * The bots that have used their screens for this conversation while it was open, the ones at it now
+ * included, so a room, which has no bot of its own, shows each of its bots' screens.
+ */
+export function useScreenDrivers(threadId: string): Bot[] {
+  const { desktop, botById } = useStore();
+  const driving = (desktop?.drivers ?? []).filter((driver) => driver.threadId === threadId).map((driver) => driver.botId);
+  const key = driving.join(",");
+  const [seen, setSeen] = useState<{ threadId: string; botIds: string[] }>({ threadId, botIds: [] });
+  useEffect(() => {
+    if (!key) return;
+    void Promise.resolve().then(() =>
+      setSeen((current) => {
+        const kept = current.threadId === threadId ? current.botIds : [];
+        const added = key.split(",").filter((id) => !kept.includes(id));
+        return added.length || current.threadId !== threadId ? { threadId, botIds: [...kept, ...added] } : current;
+      }),
+    );
+  }, [key, threadId]);
+  const ids = seen.threadId === threadId ? seen.botIds : [];
+  return [...ids, ...driving.filter((id) => !ids.includes(id))].map((id) => botById(id)).filter((b): b is Bot => Boolean(b));
+}
+
 /** The panel while nobody uses the computer: the bot asleep, and no connection to the desktop. */
 export function SleepingScreen({ bot, onWake }: { bot: Pick<Bot, "name" | "color" | "shape">; onWake: () => void }) {
   return (
@@ -72,7 +95,7 @@ export function SleepingScreen({ bot, onWake }: { bot: Pick<Bot, "name" | "color
 
 export function ScreenPanel({ botId, expanded, onExpand, onCollapse }: { threadId: string; botId: string; expanded: boolean; onExpand: () => void; onCollapse: () => void }) {
   const { desktop, botById } = useStore();
-  const control = desktop?.control ?? "free";
+  const control = screenOf(desktop, botId).control;
   const bot = botById(botId);
   const name = bot?.name ?? "The bot";
   const [report, setReport] = useState<DesktopReport>(INITIAL_REPORT);
@@ -86,12 +109,13 @@ export function ScreenPanel({ botId, expanded, onExpand, onCollapse }: { threadI
   if (expanded) {
     return (
       <DesktopScreen
+        botId={botId}
         title={name}
         wideTitle={`${name} · Screen`}
         icon={bot ? <BotAvatar bot={bot} size={32} /> : null}
         driver={name}
         control={control}
-        onControlChange={changeDesktopControl}
+        onControlChange={(holder) => changeDesktopControl(botId, holder)}
         onClose={onCollapse}
         closeLabel="Hide"
         backdropLabel="Hide the screen"
@@ -102,7 +126,7 @@ export function ScreenPanel({ botId, expanded, onExpand, onCollapse }: { threadI
   return (
     <div className="relative w-full overflow-hidden rounded-xl border border-primary-edge bg-card">
       <div className="aspect-[16/10] w-full">
-        <DesktopView viewOnly quality="thumb" onStatus={setReport} className="h-full" />
+        <DesktopView botId={botId} viewOnly quality="thumb" onStatus={setReport} className="h-full" />
       </div>
       <button type="button" onClick={onExpand} aria-label={`Watch ${name}'s screen`} className="group absolute inset-0 outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
         <span className="absolute top-2 left-2 inline-flex items-center gap-1.5 rounded-full border border-primary-edge bg-primary px-2 py-0.5 text-[11px] text-primary-foreground">

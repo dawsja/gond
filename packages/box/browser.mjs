@@ -5,6 +5,8 @@ export const BROWSER_IDLE_MS = 30 * 60_000;
 // Chrome's first start in a fresh profile, on top of the batch's own time.
 export const LAUNCH_MS = 60_000;
 
+const keyOf = (accountId, bot) => `${accountId ?? ""}\n${bot}`;
+
 export class BrowserError extends Error {
   constructor(status, message) {
     super(message);
@@ -13,10 +15,11 @@ export class BrowserError extends Error {
 }
 
 /**
- * One persistent browser host per person (browser-host.mjs, started as them
- * by `start`), kept between batches and turns so the page, its tabs and its
- * sign-ins stay put. A host that exits or stops answering is dropped, and the
- * next batch starts another on the same profile.
+ * One persistent browser host per bot of each person (browser-host.mjs,
+ * started as them by `start` on that bot's screen and profile), kept between
+ * batches and turns so the page, its tabs and its sign-ins stay put. A host
+ * that exits or stops answering is dropped, and the next batch starts another
+ * on the same profile.
  */
 export function createBrowsers({ start, idleMs = BROWSER_IDLE_MS, launchMs = LAUNCH_MS, batchMs = batchTimeoutMs, log = () => undefined }) {
   const hosts = new Map();
@@ -24,7 +27,7 @@ export function createBrowsers({ start, idleMs = BROWSER_IDLE_MS, launchMs = LAU
   const stop = (host) => {
     if (host.idle) clearTimeout(host.idle);
     host.idle = null;
-    if (hosts.get(host.user) === host) hosts.delete(host.user);
+    if (hosts.get(host.key) === host) hosts.delete(host.key);
     if (host.dead) return;
     host.dead = true;
     try {
@@ -44,12 +47,13 @@ export function createBrowsers({ start, idleMs = BROWSER_IDLE_MS, launchMs = LAU
     stop(host);
   };
 
-  const hostFor = (account) => {
-    const running = hosts.get(account.id);
+  const hostFor = (account, bot) => {
+    const key = keyOf(account.id, bot);
+    const running = hosts.get(key);
     if (running && !running.dead) return running;
-    const child = start(account);
-    const host = { user: account.id, child, pending: new Map(), next: 1, dead: false, idle: null, log: "", lines: { pending: "" } };
-    hosts.set(account.id, host);
+    const child = start(account, bot);
+    const host = { key, user: account.id, bot, child, pending: new Map(), next: 1, dead: false, idle: null, log: "", lines: { pending: "" } };
+    hosts.set(key, host);
     child.stdout.setEncoding("utf8");
     child.stdout.on("data", (chunk) => {
       for (const line of takeLines(host.lines, chunk)) {
@@ -71,7 +75,7 @@ export function createBrowsers({ start, idleMs = BROWSER_IDLE_MS, launchMs = LAU
       host.log = (host.log + chunk.toString("utf8")).slice(-4000);
     });
     child.on("exit", (code, signal) => {
-      if (!host.dead) log(`browser for ${account.id} exited (${signal ?? code})`);
+      if (!host.dead) log(`browser for ${account.id}'s ${bot} exited (${signal ?? code})`);
       fail(host, "The browser closed");
     });
     child.on("error", (error) => fail(host, `The browser didn't start (${error.message})`));
@@ -79,8 +83,8 @@ export function createBrowsers({ start, idleMs = BROWSER_IDLE_MS, launchMs = LAU
     return host;
   };
 
-  const request = (account, message, timeoutMs, signal) => {
-    const host = hostFor(account);
+  const request = (account, bot, message, timeoutMs, signal) => {
+    const host = hostFor(account, bot);
     if (host.idle) clearTimeout(host.idle);
     host.idle = null;
     const id = host.next++;
@@ -111,15 +115,14 @@ export function createBrowsers({ start, idleMs = BROWSER_IDLE_MS, launchMs = LAU
     });
   };
 
+  const of = (accountId, bot) => [...hosts.values()].filter((host) => host.user === accountId && (bot === undefined || host.bot === bot));
+
   return {
-    run: (account, steps, signal, options = {}) => request(account, { op: "run", steps, ...options }, batchMs(steps) + launchMs, signal),
-    running: (accountId) => {
-      const host = hosts.get(accountId);
-      return Boolean(host && !host.dead);
-    },
-    close: (accountId) => {
-      const host = hosts.get(accountId);
-      if (host) fail(host, "The browser was closed");
+    run: (account, steps, signal, options = {}) => request(account, options.bot ?? "", { op: "run", steps, ...options }, batchMs(steps) + launchMs, signal),
+    running: (accountId, bot) => of(accountId, bot).some((host) => !host.dead),
+    /** Closes a bot's browser, or every one of the person's without a bot. */
+    close: (accountId, bot) => {
+      for (const host of of(accountId, bot)) fail(host, "The browser was closed");
     },
     closeAll: () => {
       for (const host of [...hosts.values()]) fail(host, "The browser was closed");

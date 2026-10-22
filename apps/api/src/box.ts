@@ -378,34 +378,42 @@ export function listAgents(config: BoxConfig): Promise<{ agents: { id: string; u
   return call(config, "GET", "/agents", undefined, 10_000);
 }
 
-export type DesktopStatus = { running: boolean; ready: boolean; width: number | null; height: number | null; viewers: number; control: DesktopControl };
+export type DesktopStatus = { bot: string; running: boolean; ready: boolean; width: number | null; height: number | null; viewers: number; control: DesktopControl };
 
-export function desktopStatus(config: BoxConfig): Promise<DesktopStatus> {
+const screenPath = (bot: string) => `/desktop/${encodeURIComponent(bot)}`;
+
+/** The person's bots' screens that are running. */
+export function desktopScreens(config: BoxConfig): Promise<{ screens: DesktopStatus[] }> {
   return call(config, "GET", "/desktop", undefined, 10_000);
 }
 
-export function startDesktop(config: BoxConfig, size: { width: number; height: number }): Promise<DesktopStatus> {
-  return call(config, "POST", "/desktop", size, 45_000);
+/** `primary` on the first start of the primary bot's screen hands it the browser profile from before each bot had its own. */
+export function startDesktop(config: BoxConfig, bot: string, body: { width: number; height: number; primary?: boolean }): Promise<DesktopStatus> {
+  return call(config, "POST", screenPath(bot), body, 45_000);
 }
 
-export async function stopDesktop(config: BoxConfig): Promise<void> {
-  await call(config, "DELETE", "/desktop");
+export async function stopDesktop(config: BoxConfig, bot?: string): Promise<void> {
+  await call(config, "DELETE", bot ? screenPath(bot) : "/desktop");
 }
 
-export function connectDesktop(config: BoxConfig, size: { width: number; height: number }): Promise<{ id: string; width: number | null; height: number | null }> {
-  return call(config, "POST", "/desktop/connections", size, 45_000);
+export function connectDesktop(config: BoxConfig, bot: string, body: { width: number; height: number; primary?: boolean }): Promise<{ id: string; width: number | null; height: number | null }> {
+  return call(config, "POST", `${screenPath(bot)}/connections`, body, 45_000);
 }
 
-export function desktopInput(config: BoxConfig, id: string, data: string): Promise<{ ok: true }> {
-  return call(config, "POST", `/desktop/connections/${id}/input`, { data });
+export function desktopInput(config: BoxConfig, bot: string, id: string, data: string): Promise<{ ok: true }> {
+  return call(config, "POST", `${screenPath(bot)}/connections/${id}/input`, { data });
 }
 
-export async function disconnectDesktop(config: BoxConfig, id: string): Promise<void> {
-  await call(config, "DELETE", `/desktop/connections/${id}`);
+export async function disconnectDesktop(config: BoxConfig, bot: string, id: string): Promise<void> {
+  await call(config, "DELETE", `${screenPath(bot)}/connections/${id}`);
 }
 
-export function desktopControl(config: BoxConfig, body: { holder: "person" | "free"; from?: "bots" }, signal?: AbortSignal): Promise<DesktopStatus> {
-  return call(config, "POST", "/desktop/control", body, 10_000, signal);
+export function desktopControl(config: BoxConfig, bot: string, body: { holder: "person" | "free"; from?: "bots" }, signal?: AbortSignal): Promise<DesktopStatus> {
+  return call(config, "POST", `${screenPath(bot)}/control`, body, 10_000, signal);
+}
+
+export function screenStreamPath(bot: string, id: string): string {
+  return `${screenPath(bot)}/connections/${id}/stream`;
 }
 
 /** One step as the box takes it: coordinates in real screen (or page) pixels, a sign-in already filled in. */
@@ -415,6 +423,7 @@ export type ScreenView = "both" | "text" | "image";
 
 export type ScreenBatch = {
   bot: string;
+  primary?: boolean;
   target: ScreenTarget;
   steps: ScreenStep[];
   view?: ScreenView;

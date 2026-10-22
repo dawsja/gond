@@ -1,4 +1,4 @@
-import { isWatchRun, routineName, type ChatAttachment, type Message, type MessageAuthor, type MessageKind, type Reaction, type ReactionEmoji, type Thread } from "@gond/shared";
+import { isWatchRun, plainMarkdown, QUOTE_CHARS, routineName, type ChatAttachment, type Quote, type Message, type MessageAuthor, type MessageKind, type Reaction, type ReactionEmoji, type Thread } from "@gond/shared";
 import { ensureDatabase, transaction } from "../db/init.ts";
 import { botsChanged, emit, threadChanged } from "../events.ts";
 import { newId, now } from "../ids.ts";
@@ -28,6 +28,7 @@ type MessageRow = {
   claimed_by: string | null;
   answered_at: string | null;
   steered: number;
+  reply_to: string | null;
   created_at: string;
 };
 
@@ -53,8 +54,18 @@ function toMessage(row: MessageRow): Message {
     fromThreadId: row.from_thread_id,
     steered: row.steered === 1,
     reactions: reactionsOf(row.id),
+    replyTo: row.reply_to ? quoteOf(row.reply_to) : null,
     createdAt: row.created_at,
   };
+}
+
+/** A message as a reply quotes it; null once it is gone. */
+function quoteOf(id: string): Quote | null {
+  const row = ensureDatabase().query("SELECT author, body, attachments FROM gond_messages WHERE id = ?").get(id) as Pick<MessageRow, "author" | "body" | "attachments"> | null;
+  if (!row) return null;
+  const words = plainMarkdown(row.body);
+  const text = words || parseAttachments(row.attachments)[0]?.name || "";
+  return { id, author: row.author, text: text.length > QUOTE_CHARS ? `${text.slice(0, QUOTE_CHARS - 1)}…` : text };
 }
 
 export function reactionsOf(messageId: string): Reaction[] {
@@ -196,6 +207,8 @@ export type NewMessage = {
   wake?: boolean;
 
   steered?: boolean;
+
+  replyTo?: string | null;
 };
 
 export function postMessage(input: NewMessage): Message {
@@ -205,9 +218,9 @@ export function postMessage(input: NewMessage): Message {
   const needsAnswer = !input.answered && !input.steered && ((kind === "message" && (input.author === "you" || input.author === "routine" || Boolean(input.fromThreadId) || Boolean(input.wake))) || kind === "prompt");
   transaction((db) => {
     db.query(
-      `INSERT INTO gond_messages (id, thread_id, author, kind, body, attachments, depth, approval_id, from_thread_id, answered_at, steered, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(id, input.threadId, input.author, kind, input.body, JSON.stringify(input.attachments ?? []), input.depth ?? 0, input.approvalId ?? null, input.fromThreadId ?? null, needsAnswer ? null : at, input.steered ? 1 : 0, at);
+      `INSERT INTO gond_messages (id, thread_id, author, kind, body, attachments, depth, approval_id, from_thread_id, answered_at, steered, reply_to, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(id, input.threadId, input.author, kind, input.body, JSON.stringify(input.attachments ?? []), input.depth ?? 0, input.approvalId ?? null, input.fromThreadId ?? null, needsAnswer ? null : at, input.steered ? 1 : 0, input.replyTo ?? null, at);
     db.query("UPDATE gond_threads SET updated_at = ? WHERE id = ?").run(at, input.threadId);
     if (input.author === "you") db.query("UPDATE gond_threads SET last_read_at = ? WHERE id = ?").run(at, input.threadId);
     for (const file of input.attachments ?? []) db.query("UPDATE gond_attachments SET message_id = ? WHERE id = ?").run(id, file.id);

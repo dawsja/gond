@@ -1,6 +1,7 @@
 "use client";
 
-import { BOX_UPDATE_PHASE_LABELS } from "@gond/shared";
+import { BOX_UPDATE_PHASE_LABELS, screenOf } from "@gond/shared";
+import { screenUrl } from "@/components/hq/box-desktop";
 import { BoxDesktop } from "@/components/hq/desktop-screen";
 import { useStore } from "@/components/store";
 import { Button } from "@/components/ui/button";
@@ -8,14 +9,16 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { toast } from "@/components/ui/toast";
 import { post } from "@/lib/api";
 
-export function changeDesktopControl(holder: "person" | "free") {
-  void post("/api/box/desktop/control", { holder }).catch((failure: unknown) => {
+export function changeDesktopControl(botId: string, holder: "person" | "free") {
+  void post(`${screenUrl(botId)}/control`, { holder }).catch((failure: unknown) => {
     toast.add({ type: "error", title: failure instanceof Error && failure.message ? failure.message : "Couldn't change who has control." });
   });
 }
 
-export function ComputerPanel({ onClose }: { onClose: () => void }) {
-  const { boxUpdating, boxUpdate, desktop } = useStore();
+/** A bot's computer, the primary bot's when none is named. */
+export function ComputerPanel({ botId, onClose }: { botId: string | null; onClose: () => void }) {
+  const { boxUpdating, boxUpdate, desktop, bots, botById } = useStore();
+  const bot = (botId ? botById(botId) : null) ?? bots.find((b) => b.primary && !b.hidden) ?? null;
 
   if (boxUpdating) {
     return (
@@ -35,9 +38,10 @@ export function ComputerPanel({ onClose }: { onClose: () => void }) {
     );
   }
 
+  if (!bot) return null;
   return (
     <div className="fixed inset-0 z-[70]">
-      <BoxDesktop onClose={onClose} control={desktop?.control ?? "free"} onControlChange={changeDesktopControl} />
+      <BoxDesktop bot={bot} onClose={onClose} control={screenOf(desktop, bot.id).control} onControlChange={(holder) => changeDesktopControl(bot.id, holder)} />
     </div>
   );
 }

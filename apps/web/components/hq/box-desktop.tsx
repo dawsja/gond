@@ -129,10 +129,13 @@ class SseChannel implements RawChannel {
   private queue: Uint8Array[] = [];
   private sending = false;
 
-  constructor(private readonly id: string) {}
+  constructor(
+    private readonly base: string,
+    private readonly id: string,
+  ) {}
 
   start() {
-    const source = new EventSource(`/api/box/desktop/connections/${this.id}/stream`);
+    const source = new EventSource(`${this.base}/connections/${this.id}/stream`);
     this.source = source;
     source.onopen = () => {
       if (this.readyState !== "connecting") return;
@@ -166,7 +169,7 @@ class SseChannel implements RawChannel {
       offset += part.length;
     }
     try {
-      const res = await fetch(`/api/box/desktop/connections/${this.id}/input`, {
+      const res = await fetch(`${this.base}/connections/${this.id}/input`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ data: toBase64(merged) }),
@@ -185,7 +188,7 @@ class SseChannel implements RawChannel {
   close() {
     if (this.readyState === "closed" || this.readyState === "closing") return;
     this.readyState = "closing";
-    void fetch(`/api/box/desktop/connections/${this.id}`, { method: "DELETE" }).catch(() => undefined);
+    void fetch(`${this.base}/connections/${this.id}`, { method: "DELETE" }).catch(() => undefined);
     this.end(true);
   }
 
@@ -200,7 +203,11 @@ class SseChannel implements RawChannel {
   }
 }
 
+/** Where a bot's screen is reached through the API. */
+export const screenUrl = (botId: string) => `/api/box/desktop/${encodeURIComponent(botId)}`;
+
 export function DesktopView({
+  botId,
   viewOnly,
   trackpad = false,
   quality,
@@ -209,6 +216,7 @@ export function DesktopView({
   className,
   ref,
 }: {
+  botId: string;
   viewOnly: boolean;
   trackpad?: boolean;
   quality: DesktopQuality;
@@ -395,7 +403,7 @@ export function DesktopView({
     void (async () => {
       const { viewOnly, quality } = settings.current;
       // Nobody resizes the session: every view sees the bots' own screen, fitted inside it.
-      const res = await fetch("/api/box/desktop/connections", {
+      const res = await fetch(`${screenUrl(botId)}/connections`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(DEFAULT_SIZE),
@@ -407,14 +415,14 @@ export function DesktopView({
       if (disposed) return;
       if (!res.ok || !data.connection) {
         setStatus("error");
-        setMessage(data.error ?? "Could not open the box desktop.");
+        setMessage(data.error ?? "Could not open the screen.");
         return;
       }
       setStatus("connecting");
 
       const { default: RFBClient } = await import("@novnc/novnc");
       if (disposed) return;
-      channel = new SseChannel(data.connection.id);
+      channel = new SseChannel(screenUrl(botId), data.connection.id);
       client = new RFBClient(node, channel, { shared: true });
       client.scaleViewport = true;
       client.resizeSession = false;
@@ -459,7 +467,7 @@ export function DesktopView({
       if (client && !finished) client.disconnect();
       else channel?.close();
     };
-  }, [attempt, visible, onRemoteClipboard, layout]);
+  }, [attempt, visible, onRemoteClipboard, layout, botId]);
 
   useEffect(() => {
     const client = rfb.current;

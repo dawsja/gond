@@ -1,6 +1,6 @@
 "use client";
 
-import { DESKTOP_CONTROL_LABELS, type DesktopControl } from "@gond/shared";
+import { DESKTOP_CONTROL_LABELS, type Bot, type DesktopControl } from "@gond/shared";
 import {
   ArrowDownUp,
   ChevronLeft,
@@ -11,7 +11,6 @@ import {
   Ellipsis,
   Hand,
   Keyboard,
-  Monitor,
   MonitorOff,
   MousePointer2,
   MousePointerClick,
@@ -25,7 +24,8 @@ import {
 } from "lucide-react";
 import { useCallback, useRef, useState, type ReactNode, type RefObject } from "react";
 
-import { DesktopFrame, DesktopToolbar, DesktopView, INITIAL_REPORT, type DesktopReport, type DesktopViewHandle } from "@/components/hq/box-desktop";
+import { BotAvatar } from "@/components/bot-avatar";
+import { DesktopFrame, DesktopToolbar, DesktopView, INITIAL_REPORT, screenUrl, type DesktopReport, type DesktopViewHandle } from "@/components/hq/box-desktop";
 import { useStore } from "@/components/store";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -337,6 +337,7 @@ function PhoneControls({
  * clipboard and the keyboard in the corners, and a pinch to zoom.
  */
 export function DesktopScreen({
+  botId,
   title,
   wideTitle,
   icon,
@@ -348,6 +349,7 @@ export function DesktopScreen({
   backdropLabel,
   onStop,
 }: {
+  botId: string;
   title: string;
   wideTitle: string;
   icon: ReactNode;
@@ -360,8 +362,8 @@ export function DesktopScreen({
   onStop?: () => void;
 }) {
   const { desktop } = useStore();
-  // A bot that is driving holds the screen from its first batch, before the box's own lock arrives.
-  const control: DesktopControl = reported === "free" && desktop?.drivers.length ? "bots" : reported;
+  // A bot that is driving holds its screen from its first batch, before the box's own lock arrives.
+  const control: DesktopControl = reported === "free" && desktop?.drivers.some((driver) => driver.botId === botId) ? "bots" : reported;
   const frame = useRef<HTMLDivElement>(null);
   const view = useRef<DesktopViewHandle>(null);
   const [report, setReport] = useState<DesktopReport>(INITIAL_REPORT);
@@ -384,7 +386,7 @@ export function DesktopScreen({
       backdropLabel={backdropLabel}
       bar={<DesktopToolbar title={wideTitle} icon={icon} driver={driver} report={report} control={control} onControlChange={onControlChange} view={view} onHelp={() => setHelp(true)} onStop={onStop} onClose={close} closeLabel={closeLabel} className="hidden wide:flex" />}
     >
-      <DesktopView ref={view} viewOnly={control === "bots"} trackpad={trackpad} quality="full" onStatus={setReport} onKeyboard={setKeyboardOpen} />
+      <DesktopView ref={view} botId={botId} viewOnly={control === "bots"} trackpad={trackpad} quality="full" onStatus={setReport} onKeyboard={setKeyboardOpen} />
       <PhoneControls
         title={title}
         icon={icon}
@@ -408,23 +410,25 @@ export function DesktopScreen({
   );
 }
 
-export function BoxDesktop({ onClose, control, onControlChange }: { onClose: () => void; control: DesktopControl; onControlChange: (holder: "person" | "free") => void }) {
+/** A bot's whole computer, opened from its panel: the screen as the page, with Stop. */
+export function BoxDesktop({ bot, onClose, control, onControlChange }: { bot: Bot; onClose: () => void; control: DesktopControl; onControlChange: (holder: "person" | "free") => void }) {
   const stopDesktop = useCallback(async () => {
-    await fetch("/api/box/desktop", { method: "DELETE" }).catch(() => undefined);
+    await fetch(screenUrl(bot.id), { method: "DELETE" }).catch(() => undefined);
     onClose();
-  }, [onClose]);
+  }, [bot.id, onClose]);
 
   return (
     <DesktopScreen
-      title="Computer"
-      wideTitle="Box · Desktop"
-      icon={<Monitor className="size-6" aria-hidden="true" />}
-      driver="A bot"
+      botId={bot.id}
+      title={bot.name}
+      wideTitle={`${bot.name} · Computer`}
+      icon={<BotAvatar bot={bot} size={32} />}
+      driver={bot.name}
       control={control}
       onControlChange={onControlChange}
       onClose={onClose}
-      closeLabel="Hide (the desktop keeps running)"
-      backdropLabel="Hide desktop"
+      closeLabel="Hide (the screen keeps running)"
+      backdropLabel="Hide the screen"
       onStop={() => void stopDesktop()}
     />
   );

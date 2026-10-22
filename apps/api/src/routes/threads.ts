@@ -101,12 +101,14 @@ export function threadsRoutes() {
     let body = "";
 
     let after = false;
+    let replyTo: string | null = null;
     const attachments: ChatAttachment[] = [];
     const type = c.req.header("content-type") ?? "";
     if (type.startsWith("multipart/form-data")) {
       const form = await c.req.formData();
       body = String(form.get("body") ?? "");
       after = form.get("after") === "1";
+      replyTo = typeof form.get("replyTo") === "string" ? String(form.get("replyTo")) : null;
       const files = form.getAll("files").filter((f): f is File => f instanceof File);
       if (files.length > MAX_ATTACHMENTS) return c.json({ error: `At most ${MAX_ATTACHMENTS} files per message` }, 400);
       for (const file of files) {
@@ -116,14 +118,17 @@ export function threadsRoutes() {
         attachments.push(storeAttachment({ name: file.name.slice(0, 200), mediaType, data: new Uint8Array(await file.arrayBuffer()) }));
       }
     } else {
-      const json = (await c.req.json().catch(() => ({}))) as { body?: string; after?: boolean };
+      const json = (await c.req.json().catch(() => ({}))) as { body?: string; after?: boolean; replyTo?: unknown };
       body = String(json.body ?? "");
       after = json.after === true;
+      replyTo = typeof json.replyTo === "string" ? json.replyTo : null;
     }
+    const quoted = replyTo ? getMessage(replyTo) : null;
+    if (replyTo && (quoted?.threadId !== thread.id || quoted.kind !== "message")) return c.json({ error: "That message isn't in this conversation" }, 400);
     body = body.trim();
     if (!body && attachments.length === 0) return c.json({ error: "Say something" }, 400);
     if (body.length > MAX_BODY) return c.json({ error: "That message is too long" }, 400);
-    const message = await postFromPerson(thread, { body, attachments, after });
+    const message = await postFromPerson(thread, { body, attachments, after, replyTo });
     return c.json({ message }, 201);
   });
 

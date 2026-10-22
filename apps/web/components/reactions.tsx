@@ -42,21 +42,40 @@ export function ReactionPicker({ message, onReact }: { message: Message; onReact
   );
 }
 
-/** The reactions on a bubble, pinned to its lower corner on the side away from the avatar. */
+function who(list: string[]): string {
+  return list.length < 2 ? list.join("") : `${list.slice(0, -1).join(", ")} and ${list.at(-1)}`;
+}
+
+/**
+ * The reactions on a bubble, pinned to its lower corner on the side away from the avatar: one chip
+ * per emoji with how many gave it, the way a chat app shows them, so two bots' 👍 is "👍 2".
+ */
 export function ReactionBadges({ message, bots, mine, onReact }: { message: Message; bots: Bot[]; mine: boolean; onReact: (emoji: ReactionEmoji) => void }) {
   if (!message.reactions.length) return null;
+  const groups = new Map<ReactionEmoji, string[]>();
+  for (const reaction of message.reactions) {
+    const name = reaction.author === "you" ? "You" : (bots.find((b) => b.id === reaction.author)?.name ?? "A bot");
+    groups.set(reaction.emoji, [...(groups.get(reaction.emoji) ?? []), name]);
+  }
   return (
     <span className={cn("absolute -bottom-3 z-10 flex gap-1", mine ? "left-2" : "right-2")}>
-      {message.reactions.map((reaction) => {
-        const who = reaction.author === "you" ? "You" : (bots.find((b) => b.id === reaction.author)?.name ?? "A bot");
-        const chip = "inline-flex h-6 min-w-7 animate-pop items-center justify-center rounded-full border border-primary-edge bg-card px-1.5 text-[13px] leading-none shadow-subtle motion-reduce:animate-none";
-        return reaction.author === "you" ? (
-          <button key={reaction.author} type="button" aria-label={`Remove your ${reaction.emoji}`} title="Tap to remove" onClick={() => onReact(reaction.emoji)} className={cn(chip, "outline-none focus-visible:ring-3 focus-visible:ring-ring/50 pointer-coarse:h-7")}>
-            {reaction.emoji}
+      {[...groups].map(([emoji, names]) => {
+        const yours = names.includes("You");
+        const label = `${who(names)} reacted ${emoji}`;
+        const chip = "inline-flex h-6 min-w-7 animate-pop items-center justify-center gap-1 rounded-full border border-primary-edge bg-card px-1.5 text-[13px] leading-none shadow-subtle motion-reduce:animate-none";
+        const content = (
+          <>
+            {emoji}
+            {names.length > 1 ? <span className="text-[12px] font-medium text-muted-foreground tabular-nums">{names.length}</span> : null}
+          </>
+        );
+        return yours ? (
+          <button key={emoji} type="button" aria-label={`${label}. Remove yours`} title={`${who(names)} reacted. Tap to remove yours`} onClick={() => onReact(emoji)} className={cn(chip, "outline-none focus-visible:ring-3 focus-visible:ring-ring/50 pointer-coarse:h-7")}>
+            {content}
           </button>
         ) : (
-          <span key={reaction.author} role="img" aria-label={`${who} reacted ${reaction.emoji}`} title={`${who} reacted`} className={chip}>
-            {reaction.emoji}
+          <span key={emoji} role="img" aria-label={label} title={`${who(names)} reacted`} className={chip}>
+            {content}
           </span>
         );
       })}

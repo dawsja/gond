@@ -106,6 +106,8 @@ export class Accounts {
     account.claude = dirs.claude ?? path.join(home, ".claude");
     account.run = dirs.run ?? path.join(home, ".run");
     account.browser = dirs.browser ?? path.join(home, ".config", "gond-browser");
+    // Each bot's own Chrome profile, one folder per bot; the old shared one above becomes the primary bot's.
+    account.browsers = dirs.browsers ?? path.join(home, ".config", "gond-browser-bots");
 
     account.logins = [account.claude];
     return account;
@@ -422,7 +424,7 @@ const BOT_KEEPS = new Set(["MEMORY.md", "SOUL.md", "memory"]);
 
 /** What `refreshHome` does with each path in a home: keep it, look inside it, or remove it. */
 export function homeKeeps(account) {
-  const exact = [account.claude, account.browser, account.skills].map((dir) => path.resolve(dir));
+  const exact = [account.claude, account.browser, account.browsers, account.skills].map((dir) => path.resolve(dir));
   const bots = path.resolve(account.bots);
   const team = path.resolve(account.team);
   return (full, isDir) => {

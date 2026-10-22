@@ -160,6 +160,15 @@ export function startUpdate(options: { pull?: boolean } = {}): BoxUpdate {
   return boxUpdate();
 }
 
+/** Updates the computer to the end, as part of Gond's own update; true when it finished. */
+export async function updateComputer(): Promise<boolean> {
+  if (isUpdating()) return false;
+  holder.__gondBoxUpdate = { ...IDLE, log: [], startedAt: new Date().toISOString(), kind: "update" };
+  emit({ topic: "box" });
+  await run({ pull: true });
+  return boxUpdate().phase === "done";
+}
+
 export function startReset(): BoxUpdate {
   if (isUpdating()) return boxUpdate();
   holder.__gondBoxUpdate = { ...IDLE, log: [], startedAt: new Date().toISOString(), kind: "reset" };

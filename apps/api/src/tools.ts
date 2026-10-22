@@ -1,5 +1,5 @@
-import { APP_CATALOG, emailDraftOf, emailName, QUIET_REPLY, REACTIONS, isReaction, BOT_COLORS, BOT_EXPRESSIONS, BOT_SHAPES, LOGIN_FIELD_KINDS, MAX_SENT_FILE_BYTES, SKILL_LIMITS, botInputSchema, composioCard, handleOf, joinCommandLine, mentionsIn, mediaTypeFor, mcpServerInputSchema, hasKeyHeader, pickBotName, plainMarkdown, skillFilePath, type Bot, type BotExpression, type BotShape, type McpServer, type McpServerInput, type Message, type SkillInput, type Thread } from "@gond/shared";
-import { ENGINE_FILES_TEXT, requestApproval, SCRIPTED_SCREEN_TEXT, scriptsTheScreen, summarize, touchesEngine } from "./approvals.ts";
+import { APP_CATALOG, replyLine, draftIdOf, emailDraftOf, emailName, sendDraftAction, QUIET_REPLY, REACTIONS, isReaction, BOT_COLORS, BOT_EXPRESSIONS, BOT_SHAPES, LOGIN_FIELD_KINDS, MAX_SENT_FILE_BYTES, SKILL_LIMITS, botInputSchema, composioCard, handleOf, joinCommandLine, mentionsIn, mediaTypeFor, mcpServerInputSchema, hasKeyHeader, pickBotName, plainMarkdown, skillFilePath, type Bot, type BotExpression, type BotShape, type McpServer, type McpServerInput, type Message, type SkillInput, type Thread } from "@gond/shared";
+import { askApproval, ENGINE_FILES_TEXT, requestApproval, SCRIPTED_SCREEN_TEXT, scriptsTheScreen, summarize, touchesEngine } from "./approvals.ts";
 import { boxHome, readBoxFile, readBoxFileBytes, writeBoxFile, type BoxConfig } from "./box.ts";
 import { exactApp, searchIndex } from "./catalog.ts";
 import { catalogIndex, composioConfigured, executeAction, isReadOnlyAction, startConnection, toolsFor, type ComposioTool } from "./composio.ts";
@@ -13,7 +13,7 @@ import { userTimezone } from "./data/prefs.ts";
 import { listConnections } from "./data/settings.ts";
 import { createSkill, getSkill, getSkillBySlug, listSkills, skillFiles, updateSkill } from "./data/skills.ts";
 import { createRoutine, deleteRoutine, listRoutines, previewRuns, recordRoutineRun, routinePrompt, updateRoutine } from "./data/routines.ts";
-import { createRoom, getThread, listMessages, listThreads, markAnswered, postMessage, recentMessages, searchMessages, setReaction, storeAttachment } from "./data/threads.ts";
+import { botLinesSincePerson, createRoom, getThread, listMessages, listThreads, markAnswered, postMessage, recentMessages, searchMessages, setReaction, storeAttachment } from "./data/threads.ts";
 import type { DriverTool } from "./driver.ts";
 import { holdLogin, loginFields, loginPrefix, rememberable } from "./logins.ts";
 import { checkMcpHeaders, secretNamesIn } from "./mcp.ts";
@@ -90,7 +90,7 @@ export const TOOL_NOTES = [
   `react puts an emoji on the person's message you are answering, as a person taps one in a chat: 👍 or ❤️ when they thank you, agree or close ("thanks!", "perfect", "that will be all"), the others when they fit. When the reaction says it all, react and answer with exactly ${QUIET_REPLY}: nothing more is posted and nobody is notified. Otherwise react and reply as usual. Most messages need no reaction.`,
   "post_message adds a line to the conversation you are in before your final answer, e.g. to say what you are starting on. Your final answer is posted for you; don't repeat it. Both only ever reach the person: a teammate hears from you through message_bot, ask_bot or delegate_bot, or through your final answer when its own message woke you.",
   "list_bots shows the team with each bot's id, job and whether it is busy.",
-  "message_bot sends a teammate a note and returns at once; its answer comes back to your conversation as a message, without starting another turn of yours, and never shows in the person's chat with it. Use it to hand something over without waiting; use ask_bot when you need the answer now.",
+  "message_bot sends a teammate a note and returns at once; its answer comes back to your conversation as a message, without starting another turn of yours, and never shows in the person's chat with it. Use it to hand something over without waiting; use ask_bot when you need the answer now. In a room, a member is told in the room: an @mention in your answer, or message_bot, which says it there for everyone to see; never a private note.",
   "delegate_bot hands a teammate a self-contained brief (outcome, sources, constraints, deliverable, review point) in its own conversation and returns immediately. The result comes back to you here as a new message from that teammate; report it to the person then, not before. When you hand on part of a task that was handed to you, it stays open: the results come back to you, and your reply once the last of them is in is what goes back to whoever handed it to you, so don't relay results with message_bot.",
   "list_handoffs is the truth about what you handed out: check it before you tell anyone what is in flight or done, and before you plan the next round. When the plan changes under a brief that is out, amend_handoff replaces it and cancel_handoff withdraws it; don't send a second brief and leave the teammate to guess which one wins.",
   "follow_up wakes you later in this conversation with a note to yourself. Use it when you are waiting on something that doesn't message you (a build, a deadline, a quiet teammate) so the work carries on without the person having to nudge you.",
@@ -478,7 +478,7 @@ export function baseTools(context: Context): Record<string, DriverTool> {
           .join("\n") || "No bots.",
     },
     message_bot: {
-      description: "Send a teammate a note and return at once. Its answer comes back to your conversation without waking you.",
+      description: "Send a teammate a note and return at once. Its answer comes back to your conversation without waking you. In a room, a note to another member is said in the room, with an @mention, for everyone to see.",
       inputSchema: schema({ bot: { type: "string", description: "The teammate's id, name or @handle." }, text: { type: "string" } }, ["bot", "text"]),
       execute: async (input) => {
         if (depth > MAX_CHAIN) return "NOT sent: too many bot-to-bot hops. Bring the person in.";
@@ -487,6 +487,13 @@ export function baseTools(context: Context): Record<string, DriverTool> {
         if (target.id === bot.id) return "NOT sent: that's you.";
         const text = String(input.text ?? "").trim();
         if (!text) return "NOT sent: empty message.";
+        if (thread.kind === "room" && thread.members.includes(target.id)) {
+          // A group chat, like the person's: what one member tells another there is said where everyone sees it.
+          const body = hideSecrets((mentionsIn(text).includes(handleOf(target.name)) ? text : `@${handleOf(target.name)} ${text}`).slice(0, 8000));
+          const wake = botLinesSincePerson(thread.id) < MAX_ROOM_LINES;
+          postMessage({ threadId: thread.id, author: bot.id, body, depth, answered: !wake, wake });
+          return wake ? `${target.name} is in this room, so it was said here, where the person sees it too; ${target.name} answers here. Don't repeat it in your answer.` : `Said here, but the room is waiting for the person before any bot answers. Don't repeat it in your answer.`;
+        }
         postMessage({ threadId: target.threadId, author: bot.id, body: hideSecrets(text.slice(0, 8000)), depth, fromThreadId: thread.id });
         return `Sent to ${target.name}. Its answer will come back here.`;
       },
@@ -1148,9 +1155,9 @@ export function permissionTool(context: Context): DriverTool {
       const input = (raw.input && typeof raw.input === "object" ? raw.input : {}) as Record<string, unknown>;
       if (scriptsTheScreen(tool, input)) return JSON.stringify({ behavior: "deny", message: SCRIPTED_SCREEN_TEXT });
       if (touchesEngine(tool, input)) return JSON.stringify({ behavior: "deny", message: ENGINE_FILES_TEXT });
-      const decision = await requestApproval({ bot, threadId: thread.id, signal: context.signal, tool, input });
+      const { decision, note } = await askApproval({ bot, threadId: thread.id, signal: context.signal, tool, input });
       if (decision === "allow" || decision === "always") return JSON.stringify({ behavior: "allow", updatedInput: input });
-      const message = decision === "expired" ? `Nobody answered the approval for "${summarize(tool, input)}" in time. Say so and stop, or ask again later.` : `The person denied "${summarize(tool, input)}". Do something else, or say what you would need.`;
+      const message = decision === "expired" ? `Nobody answered the approval for "${summarize(tool, input)}" in time. Say so and stop, or ask again later.` : note ? `The person wants changes to "${summarize(tool, input)}" first: "${note}". Make them and try again.` : `The person denied "${summarize(tool, input)}". Do something else, or say what you would need.`;
       return JSON.stringify({ behavior: "deny", message });
     },
   };
@@ -1171,17 +1178,31 @@ export async function appTools(context: Context): Promise<Record<string, DriverT
     out[slug] = {
       description: `${tool.toolkit?.name ?? tool.toolkit?.slug ?? "App"}: ${tool.description ?? tool.name}`.slice(0, 1000),
       inputSchema: tool.inputParameters ?? { type: "object", properties: {} },
-      execute: async (input) => {
+      execute: async (asked) => {
+        let input = asked;
+        let send = false;
+        let edited = false;
         if (!isReadOnlyAction(slug)) {
           const first = Object.entries(input).find(([, v]) => typeof v === "string") as [string, string] | undefined;
           const email = emailDraftOf(slug, input);
           const summary = email ? `${tool.name} to ${email.to.map(emailName).join(", ") || "the thread"}${email.subject ? `: ${email.subject.slice(0, 160)}` : ""}` : `${tool.name}${first ? `: ${first[1].slice(0, 160)}` : ""}`;
-          const decision = await requestApproval({ bot, threadId: thread.id, signal: context.signal, tool: slug, input, summary });
-          if (decision === "deny") return "NOT done: the person denied this action.";
-          if (decision === "expired") return "NOT done: nobody approved this action in time.";
+          const answer = await askApproval({ bot, threadId: thread.id, signal: context.signal, tool: slug, input, summary });
+          if (answer.decision === "deny" && answer.note) return `NOT done: the person wants changes first: "${answer.note}". Make them and call ${slug} again with the new version; its card shows them what you changed, so don't write it out in your reply.`;
+          if (answer.decision === "deny") return "NOT done: the person denied this action.";
+          if (answer.decision === "expired") return "NOT done: nobody approved this action in time.";
+          edited = answer.edited;
+          input = answer.input;
+          send = answer.send;
         }
         const result = await executeAction(bot.userId, slug, input, tool.toolkit?.slug);
-        return clip(typeof result === "string" ? result : JSON.stringify(result, null, 1));
+        const text = clip(typeof result === "string" ? result : JSON.stringify(result, null, 1));
+        const changed = edited ? `The person edited the letter on the card before it went; this is what went: ${JSON.stringify(emailDraftOf(slug, input))}\n` : "";
+        const sending = send ? sendDraftAction(slug) : null;
+        if (!sending) return `${changed}${text}`;
+        const id = draftIdOf(result);
+        if (!id) return `${changed}The person tapped Send, but the draft was only saved: its id wasn't in the answer, so it couldn't be sent. Tell them it is waiting in their drafts.\n${text}`;
+        await executeAction(bot.userId, sending.slug, { [sending.idKey]: id }, tool.toolkit?.slug);
+        return `${changed}Sent: the person tapped Send on the draft's card, so it went out rather than waiting as a draft. Say it was sent, in a line.`;
       },
     };
   }
@@ -1237,7 +1258,7 @@ export function transcriptLines(lines: Message[], bots: Bot[], self: Bot, clipAt
       const files = m.attachments.length ? ` [attached: ${m.attachments.map((a) => a.name).join(", ")}]` : "";
       const reactions = m.reactions.length ? ` [reactions: ${m.reactions.map((r) => `${nameOf(r.author)} ${r.emoji}`).join(", ")}]` : "";
       const body = m.body.length > clipAt ? `${m.body.slice(0, clipAt)}…` : m.body;
-      return `${nameOf(m.author)}${via}: ${m.kind === "approval" ? `(asked for approval: ${body})` : m.kind === "signin" ? `(posted a sign-in card: ${body})` : body}${files}${reactions}`;
+      return `${nameOf(m.author)}${via}: ${replyLine(m.replyTo, nameOf)}${m.kind === "approval" ? `(asked for approval: ${body})` : m.kind === "signin" ? `(posted a sign-in card: ${body})` : body}${files}${reactions}`;
     })
     .join("\n");
 }

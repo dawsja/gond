@@ -58,19 +58,31 @@ export type ContainerInfo = {
   Id: string;
   Name: string;
   Image: string;
-  Config: { Image: string; Labels?: Record<string, string>; [key: string]: unknown };
+  Config: { Image: string; Labels?: Record<string, string>; Env?: string[]; [key: string]: unknown };
   HostConfig: Record<string, unknown>;
   NetworkSettings: { Networks?: Record<string, Record<string, unknown>> };
   State: { Running: boolean; Status: string };
+  Mounts?: { Source: string; Destination: string }[];
 };
+
+type ImageConfig = { Env?: string[]; Cmd?: string[] | null; Entrypoint?: string[] | null; WorkingDir?: string; Labels?: Record<string, string> | null };
 
 export function inspectContainer(idOrName: string): Promise<ContainerInfo> {
   return json<ContainerInfo>("GET", `/containers/${encodeURIComponent(idOrName)}/json`);
 }
 
+/** The container this API runs in. */
+export function selfContainer(): Promise<ContainerInfo> {
+  return inspectContainer(hostname());
+}
+
 export async function findBoxContainer(): Promise<ContainerInfo> {
-  const named = (env("BOX_CONTAINER") ?? "").trim();
-  if (named) return inspectContainer(named);
+  return findServiceContainer("box", env("BOX_CONTAINER"));
+}
+
+/** A Compose service's container in this API's project (`box`, `web`), or the one named. */
+export async function findServiceContainer(service: string, named?: string): Promise<ContainerInfo> {
+  if (named?.trim()) return inspectContainer(named.trim());
   let project: string | null = null;
   try {
     const self = await inspectContainer(hostname());
@@ -78,10 +90,10 @@ export async function findBoxContainer(): Promise<ContainerInfo> {
   } catch {
     /* not in a container we can see; fall back to any box service */
   }
-  const filters = { label: ["com.docker.compose.service=box", ...(project ? [`com.docker.compose.project=${project}`] : [])] };
+  const filters = { label: [`com.docker.compose.service=${service}`, ...(project ? [`com.docker.compose.project=${project}`] : [])] };
   const list = await json<{ Id: string }[]>("GET", `/containers/json?all=true&filters=${encodeURIComponent(JSON.stringify(filters))}`);
-  if (list.length === 0) throw new DockerError("No box container found. Set GOND_BOX_CONTAINER to its name if it isn't the Compose `box` service.", 404);
-  if (list.length > 1 && !project) throw new DockerError("Several box containers found; set GOND_BOX_CONTAINER to the one to update.", 409);
+  if (list.length === 0) throw new DockerError(service === "box" ? "No box container found. Set GOND_BOX_CONTAINER to its name if it isn't the Compose `box` service." : `No ${service} container found in this Compose project.`, 404);
+  if (list.length > 1 && !project) throw new DockerError(`Several ${service} containers found${service === "box" ? "; set GOND_BOX_CONTAINER to the one to update" : ""}.`, 409);
   return inspectContainer(list[0]!.Id);
 }
 
@@ -152,6 +164,14 @@ export async function recreateContainer(info: ContainerInfo, image: string, onLo
   }
   const { Hostname: _hostname, ...config } = info.Config as { Hostname?: string; [key: string]: unknown };
   void _hostname;
+  // Inspect folds the old image's own settings into the container's; left in, they would hold the new
+  // image to the old one's environment (its version among them), command and labels.
+  const old = await json<{ Config?: ImageConfig }>("GET", `/images/${encodeURIComponent(info.Image)}/json`).then((i) => i.Config ?? {}, () => ({}) as ImageConfig);
+  const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+  const fromImage = new Set(old.Env ?? []);
+  if (Array.isArray(config.Env)) config.Env = (config.Env as string[]).filter((entry) => !fromImage.has(entry));
+  for (const key of ["Cmd", "Entrypoint", "WorkingDir"] as const) if (key in config && same(config[key], old[key])) delete config[key];
+  for (const [key, value] of Object.entries(old.Labels ?? {})) if (labels[key] === value) delete labels[key];
   const body = { ...config, Image: image, Labels: labels, HostConfig: info.HostConfig, NetworkingConfig: { EndpointsConfig: endpoints } };
 
   onLog(`Stopping ${name}…`);
@@ -164,4 +184,23 @@ export async function recreateContainer(info: ContainerInfo, image: string, onLo
   onLog("Starting it…");
   await request("POST", `/containers/${created.Id}/start`, undefined, 60_000);
   return created.Id;
+}
+
+/**
+ * Starts a short-lived container from the API's own new image that replaces this one
+ * (`self-update.ts`): a container can't recreate itself, since stopping it ends the code doing it.
+ */
+export async function replaceSelf(self: ContainerInfo): Promise<void> {
+  const socket = dockerSocket();
+  const mount = (self.Mounts ?? []).find((m) => m.Destination === socket);
+  if (!mount) throw new DockerError(`The API's Docker socket at ${socket} isn't a mount Docker can hand on.`, 0);
+  const name = `${self.Name.replace(/^\//, "")}-updater`;
+  await request("DELETE", `/containers/${encodeURIComponent(name)}?force=true`).catch(() => undefined);
+  const created = await json<{ Id: string }>("POST", `/containers/create?name=${encodeURIComponent(name)}`, {
+    Image: self.Config.Image,
+    Cmd: ["bun", "run", "src/self-update.ts", self.Id],
+    Env: [`GOND_DOCKER_SOCK=${socket}`],
+    HostConfig: { AutoRemove: true, Binds: [`${mount.Source}:${socket}`] },
+  });
+  await request("POST", `/containers/${created.Id}/start`, undefined, 60_000);
 }

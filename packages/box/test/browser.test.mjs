@@ -12,7 +12,7 @@ const start = () => spawn(process.execPath, [FAKE_HOST], { detached: true, stdio
 const alice = { id: "alice" };
 const bob = { id: "bob" };
 
-test("each person keeps one browser host across batches, and a dead one is replaced", async () => {
+test("each bot keeps one browser host across batches, and a dead one is replaced", async () => {
   const browsers = createBrowsers({ start, launchMs: 5_000 });
   try {
     const first = await browsers.run(alice, [{ type: "screenshot" }]);
@@ -21,6 +21,11 @@ test("each person keeps one browser host across batches, and a dead one is repla
     assert.deepEqual(second.steps, [{ type: "click" }]);
     const other = await browsers.run(bob, [{ type: "screenshot" }]);
     assert.notEqual(other.pid, first.pid);
+    const otherBot = await browsers.run(alice, [{ type: "screenshot" }], undefined, { bot: "b-net" });
+    assert.notEqual(otherBot.pid, first.pid);
+    browsers.close("alice", "b-net");
+    assert.equal(browsers.running("alice", "b-net"), false);
+    assert.equal(browsers.running("alice"), true);
 
     await assert.rejects(browsers.run(alice, [{ type: "die" }]), (error) => error.status === 502 && /closed/.test(error.message));
     assert.equal(browsers.running("alice"), false);

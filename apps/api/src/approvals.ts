@@ -1,5 +1,5 @@
 import { posix } from "node:path";
-import { approvalLine, emailDraftOf, type Approval, type ApprovalLevel, type Bot } from "@gond/shared";
+import { approvalLine, editedEmailInput, emailDraftOf, emailEditable, emailMode, sendDraftAction, type Approval, type ApprovalAnswer, type ApprovalLevel, type Bot } from "@gond/shared";
 import { boxHome } from "./box.ts";
 import { approvalTimeoutMs } from "./config.ts";
 import { addRule, createApproval, getApproval, listApprovals, listRules, resolveApproval } from "./data/approvals.ts";
@@ -9,8 +9,11 @@ import { hideSecrets } from "./data/secrets.ts";
 import { postMessage } from "./data/threads.ts";
 import { sendPush } from "./push.ts";
 
-type Pending = { resolve: (decision: Decision) => void; timer: ReturnType<typeof setTimeout> };
+type Pending = { resolve: (answer: Answer) => void; timer: ReturnType<typeof setTimeout> };
 export type Decision = "allow" | "deny" | "always" | "expired";
+
+/** A decision and what came with it on an email's card: the letter as the person left it, Send on a draft, a note on a no. */
+export type Answer = { decision: Decision; input: Record<string, unknown>; edited: boolean; send: boolean; note: string | null };
 
 const holder = globalThis as typeof globalThis & { __gondPendingApprovals?: Map<string, Pending> };
 
@@ -180,7 +183,19 @@ export function scriptsTheScreen(tool: string, input: Record<string, unknown>): 
 }
 
 export async function requestApproval(input: { bot: Bot; threadId: string; tool: string; input: Record<string, unknown>; summary?: string; signal?: AbortSignal }): Promise<Decision> {
+  return (await askApproval(input)).decision;
+}
+
+/** The email card this one redrafts: the bot's last in the conversation, if the person sent it back with changes. */
+function redrafting(botId: string, threadId: string, tool: string): Approval["revises"] {
+  if (!emailMode(tool)) return null;
+  const last = listApprovals({ threadId, limit: 10 }).find((a) => a.botId === botId && emailDraftOf(a.tool, a.input));
+  return last?.outcome === "changes" ? { tool: last.tool, input: last.input } : null;
+}
+
+export async function askApproval(input: { bot: Bot; threadId: string; tool: string; input: Record<string, unknown>; summary?: string; signal?: AbortSignal }): Promise<Answer> {
   const { threadId, tool } = input;
+  const answer = (decision: Decision): Answer => ({ decision, input: input.input, edited: false, send: false, note: null });
 
   /*
    * The level as it is right now, not as it was when the turn started: a
@@ -188,17 +203,17 @@ export async function requestApproval(input: { bot: Bot; threadId: string; tool:
    * exactly when a person does it.
    */
   const bot = getBot(input.bot.id) ?? input.bot;
-  if (bot.approval === "full") return "allow";
-  if (READ_ONLY.has(tool)) return "allow";
-  if (inOwnHome(bot, tool, input.input)) return "allow";
+  if (bot.approval === "full") return answer("allow");
+  if (READ_ONLY.has(tool)) return answer("allow");
+  if (inOwnHome(bot, tool, input.input)) return answer("allow");
   for (const rule of listRules(bot.id)) {
-    if (ruleMatches(rule, tool, input.input)) return "allow";
+    if (ruleMatches(rule, tool, input.input)) return answer("allow");
   }
-  if (bot.approval === "auto" && !mustAsk(tool, input.input, bot)) return "allow";
-  const approval = createApproval({ botId: bot.id, threadId, tool, summary: hideSecrets(input.summary ?? summarize(tool, input.input)), input: input.input });
+  if (bot.approval === "auto" && !mustAsk(tool, input.input, bot)) return answer("allow");
+  const approval = createApproval({ botId: bot.id, threadId, tool, summary: hideSecrets(input.summary ?? summarize(tool, input.input)), input: input.input, revises: redrafting(bot.id, threadId, tool) });
   postMessage({ threadId, author: bot.id, kind: "approval", body: approval.summary, approvalId: approval.id, answered: true });
   if (bot.notify) void sendPush({ title: `${bot.name} needs your approval`, body: approval.summary.slice(0, 140), url: `/app/t/${threadId}`, tag: threadId, threadId }, bot.userId);
-  return new Promise<Decision>((resolve) => {
+  return new Promise<Answer>((resolve) => {
     // Nobody answered in time, or the turn that asked was stopped: the card
     // closes, so a late tap can't run something for work that's over.
     const expire = () => {
@@ -206,27 +221,47 @@ export async function requestApproval(input: { bot: Bot; threadId: string; tool:
       input.signal?.removeEventListener("abort", expire);
       if (!pending().delete(approval.id)) return;
       resolveApproval(approval.id, "expired");
-      resolve("expired");
+      resolve(answer("expired"));
     };
     const timer = setTimeout(expire, approvalTimeoutMs());
-    pending().set(approval.id, { resolve: (decision) => (input.signal?.removeEventListener("abort", expire), resolve(decision)), timer });
+    pending().set(approval.id, { resolve: (given) => (input.signal?.removeEventListener("abort", expire), resolve(given)), timer });
     if (input.signal?.aborted) expire();
     else input.signal?.addEventListener("abort", expire, { once: true });
   });
 }
 
-export function decide(id: string, decision: "allow" | "deny" | "always"): Approval | null {
+/** Why an answer can't apply to this card, or null when it can. */
+export function answerProblem(approval: Approval, given: ApprovalAnswer): string | null {
+  const email = emailDraftOf(approval.tool, approval.input);
+  if (given.send && (given.decision !== "allow" || !sendDraftAction(approval.tool))) return "Only a draft's card can send it";
+  if (given.edit && (given.decision === "deny" || !email || !emailEditable(approval.tool))) return "Only an email's card can be edited";
+  if (given.edit && ![...given.edit.to, ...given.edit.cc, ...given.edit.bcc].every((who) => /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(emailAddressOf(who)))) return "Check the addresses";
+  if (given.edit && !given.edit.to.length && !given.edit.cc.length && !given.edit.bcc.length && email?.mode !== "reply" && email?.mode !== "draft") return "Add someone to send it to";
+  if (given.note && given.decision !== "deny") return "A note goes with a no";
+  if (given.decision === "always" && email) return "An email asks every time";
+  return null;
+}
+
+const emailAddressOf = (who: string) => /<([^<>]+)>/.exec(who)?.[1]?.trim() ?? who.trim();
+
+export function decide(id: string, given: ApprovalAnswer): Approval | null {
   const approval = getApproval(id);
   if (!approval) return null;
   if (approval.status !== "pending") return approval;
+  const { decision } = given;
   const rule = decision === "always" && approval.tool !== "ask_approval" ? ruleFor(approval.tool, approval.input) : null;
   if (rule) addRule(approval.botId, rule);
-  const resolved = resolveApproval(id, decision === "deny" ? "denied" : "allowed", rule);
+  const email = emailDraftOf(approval.tool, approval.input);
+  const input = given.edit ? editedEmailInput(approval.tool, approval.input, given.edit) : approval.input;
+  const edited = given.edit && JSON.stringify(input) !== JSON.stringify(approval.input) ? input : undefined;
+  const note = decision === "deny" ? (given.note?.trim() ?? null) : null;
+  const outcome = note ? "changes" : decision === "deny" || email?.mode !== "draft" ? null : given.send ? "sent" : "saved";
+  const resolved = resolveApproval(id, decision === "deny" ? "denied" : "allowed", rule, { outcome, note: note ? hideSecrets(note) : null, input: edited });
   const waiter = pending().get(id);
   if (waiter) {
     clearTimeout(waiter.timer);
     pending().delete(id);
-    waiter.resolve(decision);
+    waiter.resolve({ decision, input, edited: Boolean(edited), send: Boolean(given.send) && decision === "allow", note });
   }
   return resolved;
 }

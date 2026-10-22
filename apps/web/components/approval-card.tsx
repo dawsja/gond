@@ -1,20 +1,17 @@
 "use client";
 
-import { bareToolName, emailDraftOf, ruleLabel, type Approval, type Bot, type Message } from "@gond/shared";
-import { CornerUpLeft, CreditCard, FilePen, Forward, Globe, KeyRound, LogIn, Mail, Monitor, NotebookPen, Plug, Send, ShieldQuestion, SquareTerminal, Trash2 } from "lucide-react";
+import { bareToolName, emailDraftOf, ruleLabel, type Approval, type ApprovalAnswer, type Bot, type Message } from "@gond/shared";
+import { CreditCard, FilePen, Globe, KeyRound, LogIn, Monitor, Plug, Send, ShieldQuestion, SquareTerminal, Trash2 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { ActionCard, ActionCardDone, ActionCode, ActionRows, cheerOnFold, type ActionItem, type ActionRow } from "@/components/action-card";
-import { EMAIL_WORDS, EmailLetter, emailGist } from "@/components/email-card";
+import { EmailApprovalCard } from "@/components/email-card";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 
-export type Decision = "allow" | "deny" | "always";
+export type Decision = ApprovalAnswer["decision"];
 
-
-type Shape = { icon: ReactNode; title: string; by: string; body: ReactNode; allow: string; deny: string; always: boolean; note?: string; done?: { title: string; by: string; allowed: string; denied: string } };
-
-const EMAIL_ICONS = { send: <Mail aria-hidden="true" />, reply: <CornerUpLeft aria-hidden="true" />, forward: <Forward aria-hidden="true" />, draft: <NotebookPen aria-hidden="true" /> };
+type Shape = { icon: ReactNode; title: string; by: string; body: ReactNode; allow: string; deny: string; always: boolean; note?: string };
 
 const KIND_ICONS: Record<string, ReactNode> = {
   purchase: <CreditCard aria-hidden="true" />,
@@ -54,21 +51,6 @@ function shapeOf(message: Message, approval: Approval | null, name: string): Sha
   const input = approval?.input ?? {};
   const tool = bareToolName(approval?.tool ?? "");
   const base = { allow: "Allow once", deny: "Deny", always: true };
-  const email = emailDraftOf(tool, input);
-  if (email) {
-    const words = EMAIL_WORDS[email.mode];
-    return {
-      icon: EMAIL_ICONS[email.mode],
-      title: words.title,
-      by: `${name} · ${email.app}`,
-      body: <EmailLetter draft={email} />,
-      allow: words.allow,
-      deny: words.deny,
-      always: false,
-      note: email.mode === "draft" ? `Nothing is saved until you tap Save draft. To change it, tell ${name} what to change.` : `Nothing goes out until you tap ${words.allow}. To change it, tell ${name} what to change.`,
-      done: { title: words.done, by: emailGist(email), allowed: words.allowed, denied: words.denied },
-    };
-  }
   switch (tool) {
     case "ask_approval": {
       const rows = rowsOf(input.details);
@@ -105,7 +87,13 @@ function shapeOf(message: Message, approval: Approval | null, name: string): Sha
   }
 }
 
-export function ApprovalCard({ message, approval, bot, noticed = false, onDecide }: { message: Message; approval: Approval | null; bot: Bot | undefined; noticed?: boolean; onDecide: (id: string, decision: Decision) => Promise<void> }) {
+export function ApprovalCard({ message, approval, bot, noticed = false, onDecide }: { message: Message; approval: Approval | null; bot: Bot | undefined; noticed?: boolean; onDecide: (id: string, answer: ApprovalAnswer) => Promise<void> }) {
+  const email = approval ? emailDraftOf(approval.tool, approval.input) : null;
+  if (approval && email) return <EmailApprovalCard message={message} approval={approval} email={email} bot={bot} noticed={noticed} onDecide={onDecide} />;
+  return <ToolApprovalCard message={message} approval={approval} bot={bot} noticed={noticed} onDecide={onDecide} />;
+}
+
+function ToolApprovalCard({ message, approval, bot, noticed, onDecide }: { message: Message; approval: Approval | null; bot: Bot | undefined; noticed: boolean; onDecide: (id: string, answer: ApprovalAnswer) => Promise<void> }) {
   const [busy, setBusy] = useState<Decision | null>(null);
   const status = approval?.status ?? "pending";
   const shape = shapeOf(message, approval, bot?.name ?? "A bot");
@@ -114,7 +102,7 @@ export function ApprovalCard({ message, approval, bot, noticed = false, onDecide
     setBusy(decision);
     if (decision !== "deny") cheerOnFold(message.id);
     try {
-      await onDecide(message.approvalId, decision);
+      await onDecide(message.approvalId, { decision });
     } finally {
       setBusy(null);
     }
@@ -123,12 +111,12 @@ export function ApprovalCard({ message, approval, bot, noticed = false, onDecide
     const custom = approval?.tool === "ask_approval";
     const done =
       status === "allowed"
-        ? { status: approval?.rule ? "Always" : (shape.done?.allowed ?? (custom ? shape.allow : "Allowed")), tone: "ok" as const }
+        ? { status: approval?.rule ? "Always" : custom ? shape.allow : "Allowed", tone: "ok" as const }
         : status === "denied"
-          ? { status: shape.done?.denied ?? (custom ? shape.deny : "Denied"), tone: "bad" as const }
+          ? { status: custom ? shape.deny : "Denied", tone: "bad" as const }
           : { status: "Expired", tone: "neutral" as const };
-    const title = status === "allowed" && shape.done ? shape.done.title : shape.title;
-    const by = approval?.rule ? `From now on: ${ruleLabel(approval.rule)}` : (shape.done?.by ?? shape.by);
+    const title = shape.title;
+    const by = approval?.rule ? `From now on: ${ruleLabel(approval.rule)}` : shape.by;
     return <ActionCardDone id={message.id} bot={bot} icon={shape.icon} title={title} by={by} status={done.status} tone={done.tone} />;
   }
   return (
@@ -151,7 +139,7 @@ export function ApprovalCard({ message, approval, bot, noticed = false, onDecide
               Always
             </Button>
           ) : null}
-          <Button size="xl" variant="outline" className={cn("w-full", approval?.tool !== "ask_approval" && !shape.done && "text-destructive")} disabled={Boolean(busy)} onClick={() => void decide("deny")}>
+          <Button size="xl" variant="outline" className={cn("w-full", approval?.tool !== "ask_approval" && "text-destructive")} disabled={Boolean(busy)} onClick={() => void decide("deny")}>
             {busy === "deny" ? <Spinner data-icon="inline-start" /> : null}
             {shape.deny}
           </Button>

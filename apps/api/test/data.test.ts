@@ -125,7 +125,7 @@ describe("data", () => {
       const pending = ask(tool, input, summary);
       const card = listMessages(bot.threadId).at(-1)!;
       expect(card.kind).toBe("approval");
-      decide(card.approvalId!, "deny");
+      decide(card.approvalId!, { decision: "deny" });
       expect(await pending).toBe("deny");
     }
     expect(count()).toBe(before + carded.length);
@@ -133,7 +133,7 @@ describe("data", () => {
     const rulesBefore = listRules(bot.id);
     const pending = ask("ask_approval", { summary: "Pay the invoice" }, "Pay the invoice");
     const card = listMessages(bot.threadId).at(-1)!;
-    expect(decide(card.approvalId!, "always")?.rule).toBeNull();
+    expect(decide(card.approvalId!, { decision: "always" })?.rule).toBeNull();
     expect(await pending).toBe("always");
     expect(listRules(bot.id)).toEqual(rulesBefore);
 
@@ -141,6 +141,47 @@ describe("data", () => {
     const after = count();
     expect(await ask("ask_approval", { summary: "Pay the invoice" }, "Pay the invoice")).toBe("allow");
     expect(count()).toBe(after);
+    deleteBot(bot.id);
+  });
+
+  test("an email card sends what the person edited, sends a draft on Send, and sends one back with their note", async () => {
+    const { createBot, deleteBot } = await import("../src/data/bots.ts");
+    const { listMessages } = await import("../src/data/threads.ts");
+    const { getApproval } = await import("../src/data/approvals.ts");
+    const { askApproval, answerProblem, decide } = await import("../src/approvals.ts");
+    const { botInputSchema } = await import("@gond/shared");
+    const bot = createBot(botInputSchema.parse({ name: "Mailer", approval: "auto" }), "u-admin");
+    const letter = { recipient_email: "dana@ruizdesign.co", subject: "VM for the staging site", body: "Hi Dana, you can deploy from Monday." };
+    const card = () => getApproval(listMessages(bot.threadId).at(-1)!.approvalId!)!;
+
+    const first = askApproval({ bot, threadId: bot.threadId, tool: "GMAIL_CREATE_EMAIL_DRAFT", input: letter });
+    expect(card().revises).toBeNull();
+    expect(answerProblem(card(), { decision: "allow", note: "x" })).toBe("A note goes with a no");
+    expect(answerProblem(card(), { decision: "always" })).toBe("An email asks every time");
+    expect(answerProblem(card(), { decision: "allow", edit: { to: ["not an address"], cc: [], bcc: [], subject: "s", body: "b" } })).toBe("Check the addresses");
+    decide(card().id, { decision: "deny", note: "Less formal, and it's ready today" });
+    expect(await first).toMatchObject({ decision: "deny", note: "Less formal, and it's ready today" });
+    expect(card()).toMatchObject({ status: "denied", outcome: "changes", note: "Less formal, and it's ready today" });
+
+    const redraft = { ...letter, body: "Hey Dana! you can deploy today." };
+    const second = askApproval({ bot, threadId: bot.threadId, tool: "GMAIL_CREATE_EMAIL_DRAFT", input: redraft });
+    expect(card().revises).toEqual({ tool: "GMAIL_CREATE_EMAIL_DRAFT", input: letter });
+    decide(card().id, { decision: "allow", send: true, edit: { to: ["Dana Ruiz <dana@ruizdesign.co>", "leo@park.io"], cc: [], bcc: [], subject: "VM for the staging site", body: "Hey Dana! you can deploy today." } });
+    const sent = await second;
+    expect(sent).toMatchObject({ decision: "allow", send: true, edited: true, input: { ...redraft, extra_recipients: ["leo@park.io"] } });
+    expect(card()).toMatchObject({ status: "allowed", outcome: "sent", edited: true, input: { ...redraft, extra_recipients: ["leo@park.io"] } });
+
+    const third = askApproval({ bot, threadId: bot.threadId, tool: "GMAIL_SEND_EMAIL", input: letter });
+    expect(card().revises).toBeNull();
+    expect(answerProblem(card(), { decision: "allow", send: true })).toBe("Only a draft's card can send it");
+    decide(card().id, { decision: "allow" });
+    expect(await third).toMatchObject({ decision: "allow", send: false, edited: false });
+    expect(card()).toMatchObject({ outcome: null, edited: false });
+
+    const bash = askApproval({ bot, threadId: bot.threadId, tool: "Bash", input: { command: "sudo reboot" } });
+    expect(answerProblem(card(), { decision: "allow", edit: { to: ["a@b.co"], cc: [], bcc: [], subject: "s", body: "b" } })).toBe("Only an email's card can be edited");
+    decide(card().id, { decision: "deny" });
+    await bash;
     deleteBot(bot.id);
   });
 
@@ -164,7 +205,7 @@ describe("data", () => {
       const card = listMessages(bot.threadId).at(-1)!;
       expect(card.kind).toBe("approval");
       const { decide } = await import("../src/approvals.ts");
-      decide(card.approvalId!, "deny");
+      decide(card.approvalId!, { decision: "deny" });
       expect(await pending).toBe("deny");
     }
   });
@@ -260,6 +301,34 @@ describe("data", () => {
     expect(listMessages(alex.threadId, { includeSent: true, after: hello.createdAt }).map((m) => m.id)).toEqual([back.id]);
     expect(listExchange(alex.threadId, newbie.threadId).map((m) => m.id)).toEqual([hello.id, back.id]);
     expect(listExchange(newbie.threadId, alex.threadId).map((m) => m.id)).toEqual([hello.id, back.id]);
+  });
+
+  test("in a room, a note to another member is said in the room for everyone, never privately", async () => {
+    const { createBot } = await import("../src/data/bots.ts");
+    const { createRoom, getThread, listMessages } = await import("../src/data/threads.ts");
+    const { baseTools } = await import("../src/tools.ts");
+    const { botInputSchema } = await import("@gond/shared");
+    const patch = createBot(botInputSchema.parse({ name: "Patchy", title: "Servers" }), "u-admin");
+    const net = createBot(botInputSchema.parse({ name: "Netty", title: "Network" }), "u-admin");
+    const outsider = createBot(botInputSchema.parse({ name: "Outer", title: "Finance" }), "u-admin");
+    const room = createRoom("Lab", [patch.id, net.id], "u-admin");
+    const context = { box: { url: "http://box.invalid", token: "t", user: "u-admin" }, bot: patch, thread: room, message: { depth: 0 } as never, askBot: async () => "", syncSoul: async () => undefined, stopWork: async () => false, isWorking: () => false };
+    const tool = baseTools(context).message_bot!;
+
+    expect(await tool.execute({ bot: "Netty", text: "The VM is up, you can start your part." }, "c1")).toContain("said here");
+    const said = listMessages(room.id).at(-1)!;
+    expect(said).toMatchObject({ author: patch.id, body: "@netty The VM is up, you can start your part." });
+    const { ensureDatabase } = await import("../src/db/init.ts");
+    expect(ensureDatabase().query("SELECT answered_at FROM gond_messages WHERE id = ?").get(said.id)).toEqual({ answered_at: null });
+    expect(listMessages(net.threadId)).toEqual([]);
+
+    await tool.execute({ bot: "netty", text: "@netty and the DNS record too." }, "c2");
+    expect(listMessages(room.id).at(-1)!.body).toBe("@netty and the DNS record too.");
+
+    expect(await tool.execute({ bot: "Outer", text: "Budget for the VM?" }, "c3")).toContain("Sent to Outer");
+    expect(listMessages(outsider.threadId).map((m) => m.body)).toEqual(["Budget for the VM?"]);
+    expect(listMessages(room.id)).toHaveLength(2);
+    expect(getThread(net.threadId)).toBeTruthy();
   });
 
   test("any bot creates a teammate with create_bot", async () => {
@@ -718,27 +787,33 @@ describe("data", () => {
     }
   });
 
-  test("the desktop goes to one reply at a time, and the ones turned away hear when it is free", async () => {
+  test("each bot has its own screen, which goes to one of its replies at a time, and the ones turned away hear when it is free", async () => {
     const { releaseComputer, waitForScreen, desktopHolder } = await import("../src/desktop.ts");
+    // One bot at work in three conversations, and a second bot alongside.
     const ada = { botId: "b-ada", threadId: "t-ada" };
+    const room = { botId: "b-ada", threadId: "t-room" };
+    const other = { botId: "b-ada", threadId: "t-other" };
     const bo = { botId: "b-bo", threadId: "t-bo" };
-    const cy = { botId: "b-cy", threadId: "t-cy" };
     const user = "u-desk";
 
     expect(await waitForScreen(user, ada, "desktop", 50)).toBeNull();
-    expect(desktopHolder(user)).toEqual(ada);
+    expect(desktopHolder(user, "b-ada")).toEqual(ada);
+    expect(await waitForScreen(user, bo, "desktop", 50)).toBeNull();
+    expect(desktopHolder(user, "b-bo")).toEqual(bo);
     expect(await waitForScreen(user, ada, "browser", 50)).toBeNull();
-    expect(await waitForScreen(user, bo, "browser", 50)).toEqual(ada);
-    expect(await waitForScreen(user, bo, "desktop", 50)).toEqual(ada);
+    expect(await waitForScreen(user, room, "browser", 50)).toEqual(ada);
+    expect(await waitForScreen(user, room, "desktop", 50)).toEqual(ada);
 
-    const waiting = waitForScreen(user, cy, "desktop", 5_000);
+    const waiting = waitForScreen(user, other, "desktop", 5_000);
     await new Promise((resolve) => setTimeout(resolve, 100));
-    expect(await releaseComputer(user, ada.threadId, { botId: ada.botId })).toEqual([bo]);
+    expect(await releaseComputer(user, ada.threadId, { botId: ada.botId })).toEqual([room]);
     expect(await waiting).toBeNull();
-    expect(desktopHolder(user)).toEqual(cy);
-    expect(await releaseComputer(user, cy.threadId, { botId: cy.botId })).toEqual([]);
-    expect(desktopHolder(user)).toBeNull();
-    expect(await waitForScreen(user, bo, "browser", 50)).toBeNull();
+    expect(desktopHolder(user, "b-ada")).toEqual(other);
+    expect(desktopHolder(user, "b-bo")).toEqual(bo);
+    expect(await releaseComputer(user, other.threadId, { botId: other.botId })).toEqual([]);
+    expect(desktopHolder(user, "b-ada")).toBeNull();
+    expect(await waitForScreen(user, room, "browser", 50)).toBeNull();
+    await releaseComputer(user, bo.threadId, { botId: bo.botId });
   });
 
   test("a server that wants a bearer token gets it from a secret in its headers, never on the computer", async () => {
@@ -1969,6 +2044,31 @@ describe("stop", () => {
     }
   });
 
+  test("a reply carries a quote of the message it answers, and the bot reads it", async () => {
+    const { createBot } = await import("../src/data/bots.ts");
+    const { botInputSchema } = await import("@gond/shared");
+    const { getMessage, postMessage, dropMessage } = await import("../src/data/threads.ts");
+    const { transcriptLines } = await import("../src/tools.ts");
+    const { threadsRoutes } = await import("../src/routes/threads.ts");
+    const { Hono } = await import("hono");
+    const bot = createBot(botInputSchema.parse({ name: "Quoted" }), "u-quote");
+    const other = createBot(botInputSchema.parse({ name: "Elsewhere" }), "u-quote");
+    const said = postMessage({ threadId: bot.threadId, author: bot.id, body: "**Want me** to also check the backups on the NAS?", answered: true });
+    const app = asPerson(new Hono(), "u-quote").route("/api", threadsRoutes());
+    const post = (threadId: string, body: Record<string, unknown>) => app.request(`/api/threads/${threadId}/messages`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+
+    const res = await post(bot.threadId, { body: "Yes, and tonight", replyTo: said.id, after: true });
+    expect(res.status).toBe(201);
+    const { message } = (await res.json()) as { message: { id: string; replyTo: unknown } };
+    expect(message.replyTo).toEqual({ id: said.id, author: bot.id, text: "Want me to also check the backups on the NAS?" });
+    expect(transcriptLines([getMessage(message.id)!], [bot], bot)).toBe('Person: (replying to Quoted (you): "Want me to also check the backups on the NAS?") Yes, and tonight');
+
+    const away = postMessage({ threadId: other.threadId, author: other.id, body: "Elsewhere", answered: true });
+    expect((await post(bot.threadId, { body: "x", replyTo: away.id })).status).toBe(400);
+    dropMessage(said.id);
+    expect(getMessage(message.id)!.replyTo).toBeNull();
+  });
+
   test("a reaction is one per author, shows in the transcript, and can be the whole answer", async () => {
     const { createBot } = await import("../src/data/bots.ts");
     const { botInputSchema } = await import("@gond/shared");
@@ -2163,7 +2263,7 @@ describe("stop", () => {
     expect(await pending).toBe("expired");
     expect(getApproval(card.approvalId!)?.status).toBe("expired");
 
-    expect(decide(card.approvalId!, "allow")?.status).toBe("expired");
+    expect(decide(card.approvalId!, { decision: "allow" })?.status).toBe("expired");
   });
 });
 
@@ -2848,18 +2948,21 @@ describe("the computer", () => {
     png.write("IHDR", 12, "latin1");
     png.writeUInt32BE(1024, 16);
     png.writeUInt32BE(640, 20);
-    const state = { control: "free" as "free" | "bots" | "person", actions: [] as Record<string, unknown>[], batches: [] as { bot: string; target: string; steps: Record<string, unknown>[]; saveTo?: string }[], controlCalls: [] as Record<string, unknown>[], uploads: new Map<string, Uint8Array>(), previews: [] as { path: string; type: string | null }[] };
+    const state = { control: "free" as "free" | "bots" | "person", actions: [] as Record<string, unknown>[], batches: [] as { bot: string; target: string; steps: Record<string, unknown>[]; saveTo?: string }[], controlCalls: [] as Record<string, unknown>[], controlBots: [] as string[], primaries: [] as boolean[], bot: "b1", full: 0, uploads: new Map<string, Uint8Array>(), previews: [] as { path: string; type: string | null }[] };
     const server = Bun.serve({
       port: 0,
       async fetch(request: Request) {
         const url = new URL(request.url);
-        const status = () => ({ running: true, ready: true, width: 2048, height: 1280, viewers: 0, control: state.control });
-        if (url.pathname === "/desktop" && request.method === "GET") return Response.json(status());
-        if (url.pathname === "/desktop/control") {
+        // One screen stands in for every bot's: its control is the one the tests set.
+        const status = (bot = state.bot) => ({ bot, running: true, ready: true, width: 2048, height: 1280, viewers: 0, control: state.control });
+        if (url.pathname === "/desktop" && request.method === "GET") return Response.json({ screens: [status()] });
+        const control = /^\/desktop\/([\w-]+)\/control$/.exec(url.pathname);
+        if (control) {
           const body = (await request.json()) as { holder: "person" | "free"; from?: "bots" };
           state.controlCalls.push(body);
+          state.controlBots.push(control[1]!);
           if (!body.from || state.control === "bots") state.control = body.holder;
-          return Response.json(status());
+          return Response.json(status(control[1]!));
         }
         if (url.pathname === "/files/raw" && request.method === "PUT") {
           const path = url.searchParams.get("path")!;
@@ -2874,8 +2977,14 @@ describe("the computer", () => {
           return Response.json({ ok: true, mediaType: "image/jpeg", data: "c21hbGw=", size: 5 });
         }
         if (url.pathname === "/computer") {
-          const body = (await request.json()) as { bot: string; target: string; steps: Record<string, unknown>[]; saveTo?: string };
+          const { primary, ...body } = (await request.json()) as { bot: string; primary?: boolean; target: string; steps: Record<string, unknown>[]; saveTo?: string };
           state.batches.push(body);
+          state.primaries.push(Boolean(primary));
+          state.bot = body.bot;
+          if (state.full > 0) {
+            state.full -= 1;
+            return Response.json({ error: "3 of your bots are using their screens", code: "screens_full" }, { status: 429 });
+          }
           state.actions.push(...body.steps);
           if (body.steps.some((step) => step.type === "bogus")) return Response.json({ error: "Step 1: Unknown step \"bogus\"" }, { status: 400 });
           const input = body.steps.some((step) => step.type !== "screenshot" && step.type !== "wait");
@@ -2909,7 +3018,7 @@ describe("the computer", () => {
   }
 
   const desktopMemory = globalThis as { __gondDesktopWaiters?: Map<string, Set<unknown>> } & Record<string, unknown>;
-  const untilWaiting = () => until(() => desktopMemory.__gondDesktopWaiters?.get("u-admin")?.size);
+  const untilWaiting = () => until(() => [...(desktopMemory.__gondDesktopWaiters ?? new Map<string, Set<unknown>>())].some(([key, set]) => key.startsWith("u-admin\n") && set.size));
 
   async function withBox<T>(run: (box: ReturnType<typeof fakeBox>) => Promise<T>): Promise<T> {
     const box = fakeBox();
@@ -2987,7 +3096,7 @@ describe("the computer", () => {
       const approval = listMessages(otherThread.id).at(-1)!;
       expect(approval.kind).toBe("approval");
       expect(approval.body).toBe("Sign in to Uber Eats with your saved details");
-      decide(approval.approvalId!, "allow");
+      decide(approval.approvalId!, { decision: "allow" });
       expect(String(await again)).toContain("saved details for Uber Eats are ready");
       await computerTool({ box, bot: other, thread: otherThread }).browser.execute({ actions: [{ type: "type_login", name: "UBER_EATS_EMAIL" }] }, "t3");
       expect(state.actions.at(-1)).toEqual({ type: "type", text: "me@example.com", secret: true });
@@ -3020,14 +3129,14 @@ describe("the computer", () => {
       const card = listMessages(thread.id).at(-1)!;
       expect(card.kind).toBe("approval");
       expect(card.body).toBe("Type PVE_ROOT_PASSWORD into the screen");
-      decide(card.approvalId!, "deny");
+      decide(card.approvalId!, { decision: "deny" });
       const before = state.batches.length;
       expect(String(await denied)).toContain("NOT typed");
       expect(state.batches.length).toBe(before);
 
       const typing = tools.computer.execute({ actions: [{ type: "type_login", name: "PVE_ROOT_PASSWORD", submit: true }] }, "t2");
       await openCard(thread.id);
-      decide(listMessages(thread.id).at(-1)!.approvalId!, "allow");
+      decide(listMessages(thread.id).at(-1)!.approvalId!, { decision: "allow" });
       expect(JSON.stringify(await typing)).not.toContain("root-pw-5678");
       expect(state.batches.at(-1)!.steps).toEqual([{ type: "type", text: "root-pw-5678", secret: true }, { type: "key", key: "Enter" }]);
       await releaseComputer("u-admin", thread.id, { botId: bot.id });
@@ -3062,8 +3171,8 @@ describe("the computer", () => {
       await openCard(bot.threadId);
       let card = listMessages(bot.threadId).at(-1)!;
       expect(card.kind).toBe("approval");
-      expect(card.body).toBe("Use the computer (the mouse and keyboard on your desktop)");
-      decide(card.approvalId!, "allow");
+      expect(card.body).toBe("Use the computer (the mouse and keyboard on Eyes's screen)");
+      decide(card.approvalId!, { decision: "allow" });
       const clicked = (await pending) as { type: string }[];
       expect(clicked[1]!.type).toBe("image");
       expect(state.actions.at(-1)).toEqual({ type: "click", x: 200, y: 100 });
@@ -3082,7 +3191,7 @@ describe("the computer", () => {
       await openCard(bot.threadId);
       card = listMessages(bot.threadId).at(-1)!;
       expect(card.kind).toBe("approval");
-      decide(card.approvalId!, "deny");
+      decide(card.approvalId!, { decision: "deny" });
       expect(await pending).toBe(DENIED_TEXT);
       const denied = count();
       expect(await tool.execute({ action: "type", text: "x" }, "c7")).toBe(DENIED_TEXT);
@@ -3095,7 +3204,7 @@ describe("the computer", () => {
       pending = tool.execute({ action: "left_click", coordinate: [1, 1] }, "c9");
       await openCard(bot.threadId);
       card = listMessages(bot.threadId).at(-1)!;
-      expect(decide(card.approvalId!, "always")?.rule).toBe("computer");
+      expect(decide(card.approvalId!, { decision: "always" })?.rule).toBe("computer");
       await pending;
       expect(listRules(bot.id)).toContain("computer");
       const saved = count();
@@ -3141,7 +3250,7 @@ describe("the computer", () => {
       expect(looked).toHaveLength(2);
       expect(settled).toBe(false);
       state.control = "free";
-      expect(handedBack("u-admin")).toEqual([]);
+      expect(handedBack("u-admin", bot.id)).toEqual([]);
       const back = (await pending) as { type: string; text?: string }[];
       expect(back[0]).toEqual({ type: "text", text: HANDED_BACK_TEXT });
       expect(back.at(-1)!.type).toBe("image");
@@ -3155,19 +3264,23 @@ describe("the computer", () => {
       expect(await waiting).toBe(PERSON_HAS_CONTROL_TEXT);
       const before = listMessages(thread.id).length;
       state.control = "free";
-      await tellHandedBack("u-admin");
+      await tellHandedBack("u-admin", "b-someone-else");
+      expect(listMessages(thread.id)).toHaveLength(before);
+      await tellHandedBack("u-admin", bot.id);
       const told = listMessages(thread.id).slice(before);
       expect(told.map((m) => [m.author, m.kind])).toEqual([["system", "prompt"]]);
       expect(told[0]!.body).toContain("given it back");
 
       await releaseComputer("u-admin", thread.id, { botId: bot.id });
-      tookControl("u-admin");
-      expect(handedBack("u-admin")).toEqual([]);
+      tookControl("u-admin", bot.id);
+      expect(handedBack("u-admin", bot.id)).toEqual([]);
       const { markDriving } = await import("../src/desktop.ts");
       markDriving("u-admin", { botId: bot.id, threadId: thread.id });
-      tookControl("u-admin");
+      tookControl("u-admin", "b-someone-else");
+      expect(handedBack("u-admin", "b-someone-else")).toEqual([]);
+      tookControl("u-admin", bot.id);
       await stopThread(thread.id, { quiet: true });
-      expect(handedBack("u-admin")).toEqual([]);
+      expect(handedBack("u-admin", bot.id)).toEqual([]);
       await releaseComputer("u-admin", thread.id);
       deleteBot(bot.id);
     });
@@ -3212,8 +3325,9 @@ describe("the computer", () => {
       const { desktopState, driversOf } = await import("../src/desktop.ts");
       expect(driversOf("u-admin")).toEqual([]);
       state.control = "bots";
-      expect((await desktopState("u-admin")).control).toBe("free");
+      expect((await desktopState("u-admin")).screens).toEqual([{ botId: "b1", running: true, ready: true, width: 2048, height: 1280, viewers: 0, control: "free" }]);
       expect(state.controlCalls.at(-1)).toEqual({ holder: "free", from: "bots" });
+      expect(state.controlBots.at(-1)).toBe("b1");
     });
   });
 
@@ -3270,8 +3384,8 @@ describe("the computer", () => {
       const pending = tools.browser.execute({ actions: [{ type: "navigate", url: "example.com" }, { type: "click", x: 640, y: 400 }] }, "b1");
       await openCard(bot.threadId);
       const card = listMessages(bot.threadId).at(-1)!;
-      expect(card.body).toBe("Use the computer (the browser on your desktop)");
-      decide(card.approvalId!, "allow");
+      expect(card.body).toBe("Use the computer (the browser on Shopper's screen)");
+      decide(card.approvalId!, { decision: "allow" });
       const page = (await pending) as { type: string; text?: string }[];
       expect(page[0]!.text).toBe("Page 1280x800: Example at https://example.com/\nAll 2 actions ran.");
       expect(state.batches.at(-1)).toEqual({ bot: bot.id, target: "browser", steps: [{ type: "navigate", url: "example.com" }, { type: "click", x: 640, y: 400 }] });
@@ -3336,19 +3450,23 @@ describe("the computer", () => {
         state.control = "bots" as typeof state.control;
         expect(markDriving("u-admin", { botId: "b1", threadId: "t1" })).toBe(true);
         expect(markDriving("u-admin", { botId: "b1", threadId: "t1" })).toBe(false);
+        expect(markDriving("u-admin", { botId: "b1", threadId: "t-room" })).toBe(true);
         expect(markDriving("u-admin", { botId: "b2", threadId: "t2" })).toBe(true);
         const before = state.controlCalls.length;
         await releaseComputer("u-admin", "t1", { botId: "b1" });
-        expect(driversOf("u-admin")).toEqual([{ botId: "b2", threadId: "t2" }]);
+        expect(driversOf("u-admin")).toEqual([{ botId: "b1", threadId: "t-room" }, { botId: "b2", threadId: "t2" }]);
         expect(state.controlCalls).toHaveLength(before);
         expect(state.control as string).toBe("bots");
         await releaseComputer("u-admin", "t2");
+        expect(state.controlBots.slice(before)).toEqual(["b2"]);
+        await releaseComputer("u-admin", "t-room");
         expect(driversOf("u-admin")).toEqual([]);
         expect(state.controlCalls.at(-1)).toEqual({ holder: "free", from: "bots" });
+        expect(state.controlBots.slice(before)).toEqual(["b2", "b1"]);
         expect(state.control as string).toBe("free");
         expect(seen.length).toBeGreaterThanOrEqual(2);
         expect(seen.every((event) => event.userId === "u-admin")).toBe(true);
-        expect((await desktopState("u-admin")).control).toBe("free");
+        expect((await desktopState("u-admin")).screens[0]!.control).toBe("free");
         await new Promise((resolve) => setTimeout(resolve, 30));
         expect(owner.text()).toContain('"topic":"desktop"');
         expect(other.text()).not.toContain('"topic":"desktop"');
@@ -3360,22 +3478,165 @@ describe("the computer", () => {
     });
   });
 
-  test("the control route hands the desktop to the person and back, never to the bots", async () => {
+  test("the control route hands a bot's screen to the person and back, never to the bots, and only for their own bot", async () => {
     await withBox(async ({ state }) => {
+      await seedUsers(["u-screen-other", "user"]);
       const { boxRoutes } = await import("../src/routes/box.ts");
+      const { createBot, deleteBot } = await import("../src/data/bots.ts");
+      const { botInputSchema } = await import("@gond/shared");
       const { Hono } = await import("hono");
+      const bot = createBot(botInputSchema.parse({ name: "Screen Owner" }), "u-admin");
+      state.bot = bot.id;
       const app = asPerson(new Hono(), "u-admin");
       app.route("/api", boxRoutes());
-      expect((await app.request("/api/box/desktop/control", { method: "POST", body: JSON.stringify({ holder: "bots" }) })).status).toBe(400);
-      const taken = await app.request("/api/box/desktop/control", { method: "POST", body: JSON.stringify({ holder: "person" }) });
+      const control = (holder: string) => app.request(`/api/box/desktop/${bot.id}/control`, { method: "POST", body: JSON.stringify({ holder }) });
+      expect((await control("bots")).status).toBe(400);
+      const taken = await control("person");
       expect(taken.status).toBe(200);
-      expect(((await taken.json()) as { desktop: { control: string; drivers: unknown[] } }).desktop).toMatchObject({ control: "person", drivers: [] });
+      expect(((await taken.json()) as { desktop: { screens: { botId: string; control: string }[]; drivers: unknown[] } }).desktop).toMatchObject({ screens: [{ botId: bot.id, control: "person" }], drivers: [] });
       expect(state.control).toBe("person");
-      const freed = await app.request("/api/box/desktop/control", { method: "POST", body: JSON.stringify({ holder: "free" }) });
-      expect(((await freed.json()) as { desktop: { control: string } }).desktop.control).toBe("free");
+      expect(state.controlBots.at(-1)).toBe(bot.id);
+      const freed = await control("free");
+      expect(((await freed.json()) as { desktop: { screens: { control: string }[] } }).desktop.screens[0]!.control).toBe("free");
       const status = await app.request("/api/box/desktop");
-      expect(((await status.json()) as { desktop: { running: boolean; control: string } }).desktop).toMatchObject({ running: true, control: "free" });
+      expect(((await status.json()) as { desktop: { screens: { running: boolean }[] } }).desktop.screens[0]).toMatchObject({ running: true });
+      const stranger = asPerson(new Hono(), "u-screen-other").route("/api", boxRoutes());
+      expect((await stranger.request(`/api/box/desktop/${bot.id}/control`, { method: "POST", body: JSON.stringify({ holder: "person" }) })).status).toBe(404);
+      deleteBot(bot.id);
     });
+  });
+
+  test("a batch waits while every screen is in use, and the bot hears so if none frees up", async () => {
+    await withBox(async ({ state }) => {
+      const { createBot, deleteBot } = await import("../src/data/bots.ts");
+      const { getThread } = await import("../src/data/threads.ts");
+      const { boxConfig } = await import("../src/box.ts");
+      const { computerTool, SCREENS_FULL_TEXT } = await import("../src/computer-tool.ts");
+      const { releaseComputer } = await import("../src/desktop.ts");
+      const { botInputSchema } = await import("@gond/shared");
+      const bot = createBot(botInputSchema.parse({ name: "Queued", approval: "full" }), "u-admin");
+      const thread = getThread(bot.threadId)!;
+      state.full = 1;
+      const shot = (await computerTool({ box: boxConfig("u-admin")!, bot, thread }).computer.execute({ actions: [{ type: "screenshot" }] }, "c1")) as unknown[];
+      expect(shot).toHaveLength(2);
+      expect(state.primaries.at(-1)).toBe(false);
+      state.full = 1_000;
+      const stop = new AbortController();
+      const waiting = computerTool({ box: boxConfig("u-admin")!, bot, thread, signal: stop.signal }).computer.execute({ actions: [{ type: "screenshot" }] }, "c2");
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      stop.abort();
+      expect(await waiting).toBe(SCREENS_FULL_TEXT);
+      await releaseComputer("u-admin", thread.id);
+      deleteBot(bot.id);
+    });
+  });
+});
+
+describe("bot templates", () => {
+  test("a bot goes out as a .bot file or a link with its job, look, routines and their skills, and comes back no more trusting than Auto", async () => {
+    await seedUsers(["u-tpl-a", "user"], ["u-tpl-b", "user"]);
+    const { Hono } = await import("hono");
+    const { createBot, listBots, setBotAvatar, getBotAvatar } = await import("../src/data/bots.ts");
+    const { createSkill, listSkills } = await import("../src/data/skills.ts");
+    const { createRoutine, listRoutines } = await import("../src/data/routines.ts");
+    const { botsRoutes } = await import("../src/routes/bots.ts");
+    const { unpackBot } = await import("../src/bot-bundle.ts");
+    const { botInputSchema } = await import("@gond/shared");
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
+    const patch = createBot(botInputSchema.parse({ name: "Patch", title: "Servers", description: "Keeps the Proxmox cluster healthy.", color: "#11998A", approval: "full" }), "u-tpl-a");
+    setBotAvatar(patch.id, png);
+    const skill = createSkill("u-tpl-a", { name: "Proxmox health", description: "Checks every node", instructions: "Run pvesh get /nodes and read it." });
+    createRoutine(patch.id, { name: "Nightly backup check", cron: "0 2 * * *", timezone: "UTC", prompt: "Check last night's backups.", enabled: true, watch: false, skillId: skill.id });
+    const mine = asPerson(new Hono(), "u-tpl-a").route("/api", botsRoutes());
+    const theirs = asPerson(new Hono(), "u-tpl-b").route("/api", botsRoutes());
+
+    const file = await mine.request(`/api/bots/${patch.id}/template`);
+    expect(file.headers.get("content-disposition")).toContain('filename="patch.bot"');
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const bundle = unpackBot(bytes);
+    if ("error" in bundle) throw new Error(bundle.error);
+    expect(bundle.bot).toMatchObject({ name: "Patch", title: "Servers", approval: "full", routines: [{ name: "Nightly backup check", skill: skill.slug }] });
+    expect([...bundle.skills.keys()]).toEqual([skill.slug]);
+    expect(JSON.stringify(bundle.bot)).not.toContain(patch.id);
+    expect((await theirs.request(`/api/bots/${patch.id}/template`)).status).toBe(404);
+
+    const form = new FormData();
+    form.append("file", new File([bytes], "patch.bot"));
+    const added = await theirs.request("/api/bots/import", { method: "POST", body: form });
+    expect(added.status).toBe(201);
+    const copy = ((await added.json()) as { bot: { id: string; name: string; approval: string; userId: string } }).bot;
+    expect(copy).toMatchObject({ name: "Patch", approval: "auto", userId: "u-tpl-b" });
+    expect(getBotAvatar(copy.id)?.mediaType).toBe("image/png");
+    const imported = listSkills("u-tpl-b").find((s) => s.slug === skill.slug)!;
+    expect(imported.instructions).toBe("Run pvesh get /nodes and read it.");
+    expect(listRoutines(copy.id)).toMatchObject([{ name: "Nightly backup check", enabled: false, skillId: imported.id }]);
+
+    const link = ((await (await mine.request(`/api/bots/${patch.id}/share`, { method: "POST" })).json()) as { url: string }).url;
+    const token = new URL(link).searchParams.get("template")!;
+    expect(((await (await mine.request(`/api/bots/${patch.id}/share`, { method: "POST" })).json()) as { url: string }).url).toBe(link);
+    expect(((await (await theirs.request(`/api/templates/${token}`)).json()) as { template: unknown }).template).toEqual({ name: "Patch", title: "Servers", description: "Keeps the Proxmox cluster healthy.", color: "#11998A", expression: "happy", shape: "cog", picture: true, skills: [skill.slug], routines: ["Nightly backup check"] });
+    const again = await theirs.request(`/api/templates/${token}`, { method: "POST" });
+    expect(((await again.json()) as { bot: { name: string } }).bot.name).toBe("Patch 2");
+    expect(listSkills("u-tpl-b").filter((s) => s.slug.startsWith(skill.slug))).toHaveLength(1);
+    expect((await theirs.request("/api/templates/not-a-real-token", { method: "POST" })).status).toBe(404);
+
+    const junk = new FormData();
+    junk.append("file", new File([new Uint8Array([1, 2, 3])], "x.bot"));
+    expect((await theirs.request("/api/bots/import", { method: "POST", body: junk })).status).toBe(400);
+    expect(listBots({ userId: "u-tpl-b" }).filter((b) => b.name.startsWith("Patch"))).toHaveLength(2);
+  });
+});
+
+describe("updating Gond", () => {
+  test("a recreated container takes its new image's settings, and the API is replaced by a helper", async () => {
+    const { recreateContainer, replaceSelf } = await import("../src/docker.ts");
+    const { releaseNotes } = await import("../src/release.ts");
+    const socket = `${process.env.GOND_DATA_DIR}/docker.sock`;
+    const seen: { method: string; path: string; body: unknown }[] = [];
+    const server = Bun.serve({
+      unix: socket,
+      async fetch(request: Request) {
+        const url = new URL(request.url);
+        const text = await request.text();
+        seen.push({ method: request.method, path: url.pathname + url.search, body: text ? JSON.parse(text) : null });
+        if (url.pathname === "/images/sha256%3Aold/json") return Response.json({ Config: { Env: ["PATH=/usr/bin", "GOND_VERSION=0.2.45"], Cmd: ["bun", "run", "src/index.ts"], WorkingDir: "/app/apps/api", Labels: { "org.opencontainers.image.version": "0.2.45" } } });
+        if (url.pathname.startsWith("/images/")) return Response.json({ Id: "sha256:new" });
+        if (url.pathname.startsWith("/containers/create")) return Response.json({ Id: "c-new" });
+        return new Response(null, { status: 204 });
+      },
+    });
+    const before = process.env.GOND_DOCKER_SOCK;
+    process.env.GOND_DOCKER_SOCK = socket;
+    try {
+      const info = {
+        Id: "c-old",
+        Name: "/gond-api-1",
+        Image: "sha256:old",
+        Config: { Image: "ghcr.io/dawsja/gond-api:latest", Env: ["PATH=/usr/bin", "GOND_VERSION=0.2.45", "APP_URL=https://gond.home.lan"], Cmd: ["bun", "run", "src/index.ts"], WorkingDir: "/app/apps/api", Labels: { "org.opencontainers.image.version": "0.2.45", "com.docker.compose.service": "api" } },
+        HostConfig: { Binds: ["/var/run/docker.sock:/var/run/docker.sock"] },
+        NetworkSettings: { Networks: {} },
+        State: { Running: true, Status: "running" },
+        Mounts: [{ Source: "/var/run/docker.sock", Destination: socket }],
+      };
+      await recreateContainer(info, info.Config.Image, () => undefined);
+      const created = seen.find((r) => r.path.startsWith("/containers/create"))!.body as Record<string, unknown>;
+      expect(created.Env).toEqual(["APP_URL=https://gond.home.lan"]);
+      expect(created).not.toHaveProperty("Cmd");
+      expect(created).not.toHaveProperty("WorkingDir");
+      expect(created.Labels).toEqual({ "com.docker.compose.service": "api" });
+
+      seen.length = 0;
+      await replaceSelf(info);
+      const helper = seen.find((r) => r.path.startsWith("/containers/create"))!;
+      expect(helper.path).toContain("name=gond-api-1-updater");
+      expect(helper.body).toMatchObject({ Image: "ghcr.io/dawsja/gond-api:latest", Cmd: ["bun", "run", "src/self-update.ts", "c-old"], HostConfig: { AutoRemove: true, Binds: [`/var/run/docker.sock:${socket}`] } });
+      expect(seen.at(-1)!.path).toBe("/containers/c-new/start");
+    } finally {
+      server.stop(true);
+      if (before === undefined) delete process.env.GOND_DOCKER_SOCK;
+      else process.env.GOND_DOCKER_SOCK = before;
+    }
+    expect(releaseNotes(["Show a room as its bots\n\nlong body", "Merge branch 'x'", "Reply to a message by quoting it"])).toEqual(["Reply to a message by quoting it", "Show a room as its bots"]);
   });
 });
 

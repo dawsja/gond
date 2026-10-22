@@ -1,17 +1,19 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { Suspense, useEffect, useState, type ReactNode } from "react";
 import { BotDialog } from "@/components/bot-dialog";
+import { ShareBotDialog, SharedTemplate } from "@/components/bot-template";
 import { ComputerPanel } from "@/components/computer-panel";
 import { ShellNotifications } from "@/components/shell-notifications";
 import { RoomDialog } from "@/components/room-dialog";
 import { AppSidebar } from "@/components/sidebar";
 import { ViewingReport } from "@/components/viewing-report";
+import { VersionWatch } from "@/components/version-watch";
 import { StoreProvider } from "@/components/store";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import type { SessionUser } from "@/lib/session";
 
-export type ShellDialog = { kind: "new-bot" } | { kind: "edit-bot"; botId: string } | { kind: "new-room" } | { kind: "edit-room"; threadId: string } | { kind: "computer"; botId?: string | null } | null;
+export type ShellDialog = { kind: "new-bot" } | { kind: "edit-bot"; botId: string } | { kind: "new-room" } | { kind: "edit-room"; threadId: string } | { kind: "computer"; botId?: string | null } | { kind: "share-bot"; botId: string } | null;
 
 export function Shell({ user, children }: { user: SessionUser; children: ReactNode }) {
   const [dialog, setDialog] = useState<ShellDialog>(null);
@@ -27,12 +29,18 @@ export function Shell({ user, children }: { user: SessionUser; children: ReactNo
       {dialog?.kind === "new-room" || dialog?.kind === "edit-room" ? <RoomDialog threadId={dialog.kind === "edit-room" ? dialog.threadId : null} onClose={() => setDialog(null)} /> : null}
       {dialog?.kind === "computer" ? (
         <ComputerPanel
+          botId={dialog.botId ?? null}
           onClose={() => setDialog(null)}
         />
       ) : null}
+      {dialog?.kind === "share-bot" ? <ShareBotDialog botId={dialog.botId} onClose={() => setDialog(null)} /> : null}
+      <Suspense>
+        <SharedTemplate />
+      </Suspense>
       <ShellDialogBridge open={setDialog} />
       <ShellNotifications />
       <ViewingReport />
+      <VersionWatch />
       <StrayDrops />
     </StoreProvider>
   );

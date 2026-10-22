@@ -216,11 +216,15 @@ what is here. The README says what Gond is; this says how it is made.
   threads, approvals, activity, you (`me`) and the box update; it refetches
   on `/api/events` topics. Add a topic in `packages/shared` and handle it
   there rather than polling from a component.
-- **A bot's screen is live in its conversation.** The store holds
-  `desktop` (`DesktopState`: loaded from `/api/box/desktop`, replaced by
-  every `desktop` event; a 503 while the computer updates leaves it as it
-  was). `hq/box-desktop.tsx` is `DesktopView` (one noVNC connection, the
-  canvas, paste and the phone keyboard; `viewOnly`,
+- **A bot's screen is live in its conversation.** Every bot has a screen
+  of its own (see Box), so the store holds `desktop` (`DesktopState`: the
+  screens running, one `ScreenState` per bot, `screenOf` for one, and the
+  drivers; loaded from `/api/box/desktop`, replaced by every `desktop`
+  event; a 503 while the computer updates leaves it as it was), and every
+  view names its bot: the routes are `/api/box/desktop/:bot/…`
+  (`screenUrl`). `hq/box-desktop.tsx` is `DesktopView` (one noVNC
+  connection to one bot's screen, the canvas, paste and the phone
+  keyboard; `botId`, `viewOnly`,
   `quality: "thumb" | "full"`, `onStatus`, and it only connects while it
   has a size, so a hidden panel holds no connection), `DesktopToolbar`
   (the status as an icon, a green check while connected and a grey cross
@@ -254,10 +258,13 @@ what is here. The README says what Gond is; this says how it is made.
   while it is open and there is one connection per visible view. The
   right panel shows it when `desktop.drivers` names the thread, else the
   grey placeholder; on a phone a "Watching the screen" pill under the
-  header opens it. The bot's ⋯ and long-press menu has no computer item:
+  header opens it. A room has no bot of its own, so it shows a card for
+  each of its bots at a screen there (`useScreenDrivers`), keeping each one
+  while the conversation is open, and on a phone a pill per screen
+  ("Patch's screen"). The bot's ⋯ and long-press menu has no computer item:
   the right panel shows it on a wide screen and the details sheet on a
   phone.
-  Taking control is `POST /api/box/desktop/control` (`changeDesktopControl`
+  Taking control is `POST /api/box/desktop/:bot/control` (`changeDesktopControl`
   in `computer-panel.tsx`); the result arrives as the `desktop` event.
 - **A bot can wear a picture instead of its mascot.** Edit profile uploads
   one through the same picker as your own (`usePicturePicker` in
@@ -290,7 +297,9 @@ what is here. The README says what Gond is; this says how it is made.
   next ("Patch answers next"); a steered line says whom it
   went to; and a `::choices` tap in a room is sent as `@handle option` to the
   bot that offered it. A bot's own line still wakes only those it
-  @mentions. A room turn's prompt says to answer exactly `NOTHING_NEW` when
+  @mentions, and a room is a group chat for the bots too: `message_bot`
+  from a room turn to another member is said in the room as an
+  @mention, waking them there, never as a private note. A room turn's prompt says to answer exactly `NOTHING_NEW` when
   the line isn't for it, to cover an earlier question of the person's that
   was for it, and to @mention a member whose part a question is rather than
   telling the person to ask them.
@@ -312,12 +321,27 @@ what is here. The README says what Gond is; this says how it is made.
   bubble shows when it was sent, and taps again hides it (`showsTime` in
   `conversation.tsx` leaves links, buttons, pictures and a selection
   alone). "Sent while working" always shows.
+- **A message can be answered by quoting it.** Reply is in a bubble's
+  menu (right-click or a long press), and on a touch screen a bubble
+  dragged right is a reply (`use-swipe-to-reply.ts`, clear of the left
+  edge that swipe-back owns). The quote sits above the composer
+  (`ReplyingTo` in `reply-quote.tsx`, Escape or × drops it, the
+  placeholder says "Reply to Patch"), and the sent bubble carries it at
+  its top in the author's colour; a tap goes to the original and
+  outlines it. The message keeps `reply_to`, and `Message.replyTo` is the
+  quote (`quoteOf`: author and first words, null once the original is
+  gone); the route takes only a message of the same conversation. A bot
+  reads it as `(replying to Patch: "…")` ahead of the words (`replyLine`,
+  in the transcript and in a steer). A reply in a room goes where any
+  line of the person's goes (`roomTargets`); quoting a bot doesn't
+  address it.
 - **Reactions are a chat's tapbacks** (`REACTIONS` in shared: 👍 ❤️ 😂
   😮 😢 🙏), one per author per message (`gond_message_reactions`,
   `setReaction`). The person reacts to a bot's message from its context
   menu, right-click or a long press, the row of emoji above Copy
   (`components/reactions.tsx`); tapping theirs again, or its badge on the
-  bubble's corner, takes it off. A change is the `reactions` live event
+  bubble's corner, takes it off. The badges are one per emoji with how
+  many gave it ("👍 2" when two bots agree), each naming who reacted. A change is the `reactions` live event
   with the message's reactions as they stand, merged into the list in
   place, since a `thread` event only appends.
 - **The person can talk instead of typing.** The mic in the composer
@@ -407,7 +431,19 @@ what is here. The README says what Gond is; this says how it is made.
   Send and Don't send and no Always. A reply or a forward asks on Auto like
   a send (`OUTWARD_ACTION`), and so does saving a draft, which goes nowhere
   but would otherwise reach the person only as the bot's retelling; the
-  prompt tells a bot the card shows the letter, so its reply doesn't.
+  prompt tells a bot the card shows the letter, so its reply doesn't. A
+  connected app's own action (`emailEditable`) can be changed on its card:
+  the pencil turns the letter into fields, and what the person sends is
+  that letter (`edit` on the answer, written back into the keys it came
+  from by `editedEmailInput`, only the fields they changed). A draft's card
+  says Send, Save as draft and Not now: Send saves it and sends it with the
+  app's send-draft action (`sendDraftAction`, the id from `draftIdOf`), as
+  Composio's docs advise. "Ask for changes" turns it down with a `note` the
+  bot hears, folding to "Changes asked"; the bot's next email card in that
+  conversation `revises` it, and its letter marks what changed
+  (`wordDiff`, added on `bg-diff-added`, removed struck through on
+  `bg-diff-removed`). An approval keeps how it ended (`outcome`: sent,
+  saved, changes), whether it was `edited`, and the `note`.
   Then `secret-card.tsx`, `login-card.tsx`, `signin-card.tsx` and
   `connect-card.tsx`. A new kind of card goes there too, so they never
   drift. What is waiting is said by the "Needs you" badge and the buttons
@@ -427,9 +463,10 @@ what is here. The README says what Gond is; this says how it is made.
   desktop and the last row of the Settings list on a phone (`useSignOut`).
   Account is the person themselves (picture, password, notifications);
   Appearance is how it looks (the theme, which stays on the device, the
-  color, and the desktop's menu bar); About is the app (the server it is
-  connected to, the version and updates, `about-card.tsx` with the link to
-  the repository). All three are everybody's.
+  color, and the desktop's menu bar); About is the app (the server's
+  version and, for the admin, updating it, `server-update-card.tsx`; the
+  server an app is connected to, its version and updates; `about-card.tsx`
+  with the link to the repository). All three are everybody's.
 - Copy is plain English in sentence case, short, no exclamation marks. Say
   "the computer" to the person, "the box" in code and docs for developers.
 
@@ -579,6 +616,25 @@ what is here. The README says what Gond is; this says how it is made.
   on a phone, a popover in the sidebar, the approvals as their full cards
   and each noticed thing a row to its conversation, with Mark all seen
   marking those conversations read.
+- **Gond updates itself from Settings → About** (`src/release.ts`,
+  `server-update-card.tsx`). The API image knows its release
+  (`GOND_VERSION`, a build arg CI sets from the tag; "dev" otherwise, and a
+  dev server doesn't offer to update). `GET /api/server/update` (the
+  admin's) compares it with GitHub's latest release, at most every ten
+  minutes unless `?check=1`, and what's new is the commit subjects between
+  the two (`releaseNotes`), since they are written for people. Update
+  (`POST`, `startServerUpdate`) pulls the web and API images, updates the
+  computer as Team → Update does (`updateComputer`), recreates the web
+  container, and last starts a helper container from the new API image
+  (`replaceSelf`, `src/self-update.ts`) that replaces the API, since a
+  container can't recreate itself. `recreateContainer` leaves out what
+  inspect folded in from the old image (its environment, the version among
+  it, command and labels), so a new image's own apply. Every page asks
+  `GET /api/version` when it comes back to the foreground or its live
+  events reconnect and reloads when the version changed (`VersionWatch` in
+  the shell), and the first page on each device after an update says so
+  once. The desktop app updates itself apart (see The shape); Android
+  can't do it without asking.
 - Long work is started by the dispatcher (`src/dispatcher.ts`) and awaited
   in the responder (`src/responder.ts`); a tick stays quick. While the
   computer updates or resets (`src/updater.ts`), nothing new starts and
@@ -645,7 +701,25 @@ what is here. The README says what Gond is; this says how it is made.
   halted. There is no Stop button anywhere, in a conversation or over
   all of them; the web's only stop is that message (the composer's
   `interrupt` call is the same `stopThread`). A bot can't be duplicated
-  and a conversation can't be cleared: neither has a route.
+  and a conversation can't be cleared: neither has a route (a template,
+  below, is a new bot made from what a bot is, not a copy of it).
+- **A bot can be shared as a template.** Share as template in its ⋯ menu
+  (`bot-template.tsx`) says what goes and what never does, and gives a
+  `.bot` file (`GET /api/bots/:id/template`) or a link
+  (`POST /api/bots/:id/share`, a token in `gond_bot_shares`,
+  `/app?template=…`) that anyone signed in to this server can open to
+  add a copy (`SharedTemplate` in the shell, `GET`/`POST
+  /api/templates/:token`, always the bot as it is now). New bot imports
+  a `.bot` (`POST /api/bots/import`). A `.bot` is a zip
+  (`src/bot-bundle.ts`, pure and tested): `bot.json`
+  (`botTemplateSchema` in shared: the name, job, look, approval level and
+  routines, each with its skill's slug), the picture (kept only when its
+  bytes are one) and each skill those routines use as a `.skill`. Memory,
+  secrets, conversations, connected apps and MCP servers never go in.
+  `addFromBundle` (`src/bot-templates.ts`) makes the bot under a free
+  name, never more trusting than Auto whatever the file says, uses a skill
+  the person already has by that slug and adds the rest to their library,
+  and brings the routines in switched off, on the person's time zone.
 - **A message to a working bot steers it.** When every bot a person's
   message is for is already working in that conversation,
   `postFromPerson` (`src/responder.ts`) hands it to their running turns
@@ -781,13 +855,14 @@ what is here. The README says what Gond is; this says how it is made.
   and Claude Code sessions get `--disallowedTools Bash(xdotool:*)` and
   friends at every level (`SCREEN_SCRIPTING_DENIED`). What the broker
   never sees (a CLI on Always allow, a script it can't recognise) only the
-  prompt forbids. `src/desktop.ts` keeps who is
+  prompt forbids. Every bot has a screen and a browser of its own on its
+  owner's account, so bots work side by side. `src/desktop.ts` keeps who is
   driving per person (`markDriving` on the first input, `releaseComputer`
-  in `botTurn`'s `finally`, Stop included), frees the box's lock when the
-  last driver leaves, and emits the `desktop` live event (`desktopState`:
-  the box's status plus the drivers). The lock on the box has three
-  states, free, bots and person: the person takes it from the panel
-  (`POST /api/box/desktop/control`, never `bots`), and while they hold it
+  in `botTurn`'s `finally`, Stop included), frees a screen's lock when its
+  bot's last driver leaves, and emits the `desktop` live event
+  (`desktopState`: the box's screens plus the drivers). Each screen's lock
+  has three states, free, bots and person: the person takes it from that
+  bot's panel (`POST /api/box/desktop/:bot/control`, never `bots`), and while they hold it
   the box answers an input batch, browser or desktop, with 409
   `person_has_control`. The tool then waits for the screen back
   (`untilHandedBack`, up to `HANDBACK_WAIT_MS`, ended by Stop) and
@@ -803,16 +878,22 @@ what is here. The README says what Gond is; this says how it is made.
   box's lock arrives. A lock the box holds for bots the API no longer
   runs (it restarted mid-turn) is freed by `desktopState`, and the box
   lets the bots' hold lapse after ten minutes without a batch, so a free
-  screen is always the person's. Between the bots, the desktop's mouse and
-  keyboard go to one reply at a time (`waitForScreen` in `src/desktop.ts`,
-  in memory): a desktop batch with input takes it, first come first served,
-  until that reply ends or leaves it alone for `DESKTOP_LAPSE_MS` while
-  another waits; a browser batch waits for a desktop another reply holds
-  without taking it, since bringing its tab forward would cover that
-  screen. A batch waits up to `SCREEN_WAIT_MS`, then the bot hears who has
-  it (`screenBusyText`) and ends its turn, and when the holder's reply ends
-  (`releaseComputer`) each bot turned away is told it is free, steering its
-  running turn or with a hidden prompt, as after a hand back. The lock binds the tools the prompt
+  screen is always the person's. A bot at work in two conversations at once
+  (a room and its own chat) has one screen, which goes to one of its
+  replies at a time (`waitForScreen` in `src/desktop.ts`, in memory, keyed
+  by person and bot): a desktop batch with input takes it, first come first
+  served, until that reply ends or leaves it alone for `DESKTOP_LAPSE_MS`
+  while another waits; a browser batch waits for a desktop the other reply
+  holds without taking it, since bringing its page forward would cover
+  that screen. A batch waits up to `SCREEN_WAIT_MS`, then the bot hears it
+  (`screenBusyText`) and ends its turn, and when the holder's reply ends
+  (`releaseComputer`) each reply turned away is told it is free, steering
+  its running turn or with a hidden prompt, as after a hand back. A batch
+  the box turns away because the person's screens are all in use (429
+  `screens_full`) is tried again every second up to `SCREEN_WAIT_MS`, then
+  the bot hears `SCREENS_FULL_TEXT`. The batch carries `primary`, so the
+  primary bot's first screen takes over the browser profile from before
+  every bot had its own. The lock binds the tools the prompt
   names and nothing more: a bot's Bash runs as the same uid and could set
   DISPLAY itself, so it is a courtesy between the person and a bot that
   follows its house rules, not a security boundary.
@@ -1132,9 +1213,9 @@ what is here. The README says what Gond is; this says how it is made.
   `/etc/passwd` doesn't survive a container recreate but the homes do.
   Every route about a home takes the person from `X-Gond-User`
   (`accountFor`) and runs as them: `agentEnv(account)`, `asUser(account)`,
-  `botDir(account, id)`, a terminal in their home, a desktop on their own
-  display and VNC port (`desktopSlot`), and sessions, terminals and
-  desktop connections answer 404 for anyone else's. Separation is Unix
+  `botDir(account, id)`, a terminal in their home, a screen per bot on a
+  display of its own, and sessions, terminals and screen connections
+  answer 404 for anyone else's. Separation is Unix
   permissions inside one container: real, but not a hard security
   boundary. Without root (a dev checkout) every account shares this
   process's user and only the homes differ.
@@ -1180,25 +1261,34 @@ what is here. The README says what Gond is; this says how it is made.
   desktop's steps are xdotool argv (`xdotoolArgv`; text goes on stdin,
   never in an argument). A drag is a hand's on both: a held press, small
   moves along `dragPath` and `hold` over the drop spot before the release,
-  since drag-and-drop lists ignore a pointer that jumps to its end. The
-  browser is one host per person
-  (`browser-host.mjs`, started as them by `browser.mjs`): it holds a
-  Playwright persistent context, Chrome headed on their display with its
-  profile in `~/.config/gond-browser` (which the files API never opens),
-  maximized (its page the window's size; 1280×800 only headless). Every
-  bot of the person's shares it, sign-ins and all, but works in tabs of its
-  own (`bot` on the batch): a batch runs on its bot's tab and brings it to
-  the front, the answer lists only that bot's tabs, `tab` and `close_tab`
-  count only them, and a tab a page opens belongs to whoever owns the page
-  that opened it (one with no opener, to the bot that ran last). Dialogs,
-  downloads and the pointer are kept per bot the same way. It talks JSON
-  lines on stdio, so no port is open to anyone else; it stays up between
-  batches and closes after 30 idle minutes, when the desktop stops, or
-  on a reset, and the next batch starts a new one on the same profile. A
-  host that stops answering is killed. `GET /desktop` carries `control`:
-  `free`, `bots` or `person`; `POST /desktop/control`
+  since drag-and-drop lists ignore a pointer that jumps to its end. **Every
+  bot has a screen of its own** (`screens` in `server.mjs`, keyed by
+  person and bot, `bot` on every batch): its own display (the lowest free,
+  `freeDisplay`), its own runtime dir `~/.run/screens/<bot>` with the X
+  cookie and the VNC socket, its own lock, and its own Chrome with its own
+  profile in `~/.config/gond-browser-bots/<bot>` (which the files API
+  never opens and a home reset keeps). The folders are made, and the
+  profile from before (`~/.config/gond-browser`) moved to the primary
+  bot's on its first start (`primary` on the request), as the person
+  (`prepareScreen`), never as root, since the paths are theirs to point
+  anywhere. A screen starts on its bot's first batch or viewer and stops
+  after 30 idle minutes; a person keeps at most `GOND_SCREENS_PER_PERSON`
+  (3) running, and a fourth gives way to the one used longest ago that
+  nobody watches or drives (`screenToStop`), else is refused with 429
+  `screens_full`. The browser is one host per bot (`browser-host.mjs`,
+  started as the person by `browser.mjs` on that screen): it holds a
+  Playwright persistent context, Chrome headed with that profile,
+  maximized (its page the window's size; 1280×800 only headless). It
+  talks JSON lines on stdio, so no port is open to anyone else; it stays
+  up between batches and closes after 30 idle minutes, when its screen
+  stops, or on a reset, and the next batch starts a new one on the same
+  profile. A host that stops answering is killed. `GET /desktop` lists the
+  person's running screens, each with its `control`: `free`, `bots` or
+  `person`; `POST /desktop/<bot>/control`
   `{ holder: "person" | "free", from?: "bots" }` moves it (`from: "bots"`
-  only frees what the bots held) and 404s when no desktop runs. A batch
+  only frees what the bots held) and 404s when that screen isn't running;
+  `/desktop/<bot>` starts, reads and stops one and `/desktop/<bot>/connections`
+  are its viewers. A batch
   with input while the person holds control is 409
   `{ code: "person_has_control" }`. Every change of holder goes through
   `changeControl`: while it is `bots`, `vncconfig` sets Xtigervnc's
@@ -1227,7 +1317,7 @@ what is here. The README says what Gond is; this says how it is made.
   sessions close, every process of theirs is killed, and `refreshHome`
   empties the home but for what `homeKeeps` keeps, every memory (each
   bot's `MEMORY.md`, `memory/` and `SOUL.md`, and the team's), the CLIs'
-  sign-ins and the browser profile. Everything else goes, the bots' work
+  sign-ins and the browser profiles. Everything else goes, the bots' work
   files included, and the home is made again; sessions resume.
   Everything else is made again as it is used: an account on the next
   request about a home, a bot's home and SOUL.md on its next turn, the
@@ -1259,8 +1349,10 @@ what is here. The README says what Gond is; this says how it is made.
   `xfce/`, copied to `/etc/xdg`, so whatever a person changes stays in
   their own `~/.config`; the dock's Chrome, Files and Terminal are written
   once into theirs. Every Chrome starts through `google-chrome.sh`, which
-  passes the flags the box needs and opens the bots' profile for a window
-  the person opens, so they and their bots share sign-ins. The bots'
+  passes the flags the box needs and opens the profile of the bot whose
+  screen it is on (`GOND_BROWSER_PROFILE`, set for the screen's session)
+  for a window the person opens, so what they sign in to there, that bot
+  is signed in to. The bots'
   Chrome is maximized with its page as big as the window and no
   automation bar; if the person's own window holds the profile when a bot
   needs the browser, it is closed first (`freeProfile`), since two can't
@@ -1298,7 +1390,7 @@ changed and why, written for the person reading the log.
   set up and is a user.
 - All bots, everyone's, share one computer, and every person has their
   own Linux account on it: their own home, their bots' files, their CLI
-  sign-ins, their terminals and their desktop. Separate bots are not a
+  sign-ins, their terminals and a screen for each of their bots. Separate bots are not a
   security boundary there; separate people are Unix permissions inside
   one container, which keeps their work apart but is not a hard boundary
   either. The container and the unprivileged users are. Rows in the

@@ -3,13 +3,14 @@
 # CHROME_BIN and the `google-chrome` on PATH.
 # The box denies the namespaces and setuid helper the sandbox needs; the
 # container and its unprivileged user are the isolation.
-# A window the person opens uses the bots' browser profile, so what they sign
-# in to there, their bots are signed in to. A headless run or one that names
-# its own profile is left alone.
+# A window the person opens uses the browser profile of the bot whose screen it
+# is on (the screen sets GOND_BROWSER_PROFILE), so what they sign in to there,
+# that bot is signed in to. A headless run or one that names its own profile is
+# left alone.
 case " $* " in
   *" --user-data-dir="* | *" --headless"*) ;;
   *)
-    profile="$HOME/.config/gond-browser"
+    profile="${GOND_BROWSER_PROFILE:-$HOME/.config/gond-browser}"
     # A lock from before the box's container was made again names its old
     # hostname; Chrome can't check it and refuses the profile, so it goes.
     lock=$(readlink "$profile/SingletonLock" 2>/dev/null)

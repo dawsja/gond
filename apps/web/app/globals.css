@@ -72,6 +72,9 @@
   --color-tint-ink: var(--tint-ink);
   --color-tone-ok-wash: color-mix(in srgb, var(--tone-ok) 14%, var(--bubble-bot));
   --color-tone-ok-edge: color-mix(in srgb, var(--tone-ok) 30%, var(--primary-edge));
+  /* A redraft's marks on the letter, which is drawn on --primary. */
+  --color-diff-added: color-mix(in srgb, var(--tone-ok) 22%, var(--primary));
+  --color-diff-removed: color-mix(in srgb, var(--tone-bad) 16%, var(--primary));
   --color-bubble-bot: var(--bubble-bot);
   --color-bubble-inset: var(--bubble-inset);
   --color-control-foreground: var(--control-foreground);

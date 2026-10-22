@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { addressedIn, BOT_TEMPLATES, CURATED_TOOLKITS, emailDraftOf, emailName, emailText, LEGACY_MOBILE_SIGN_IN_CALLBACK, MOBILE_SIGN_IN_CALLBACK, SIGN_IN_APPS, approvalLine, botInputSchema, composioCard, composioCardToolkit, fromNativeAction, gerund, handleOf, isClosing, isQuietReply, isQuietTool, isStopRequest, routineName, joinCommandLine, mentionsIn, pickBotName, pickVoiceProvider, plainMarkdown, roomAnswerer, roomTargets, ruleLabel, splitCommandLine, toolLabel, toolLine } from "../src/index.ts";
+import { addressedIn, newerVersion, BOT_TEMPLATES, CURATED_TOOLKITS, draftIdOf, editedEmailInput, emailDraftOf, emailEditable, emailName, emailText, sendDraftAction, wordDiff, LEGACY_MOBILE_SIGN_IN_CALLBACK, MOBILE_SIGN_IN_CALLBACK, SIGN_IN_APPS, approvalLine, botInputSchema, composioCard, composioCardToolkit, fromNativeAction, gerund, handleOf, isClosing, isQuietReply, isQuietTool, isStopRequest, routineName, joinCommandLine, mentionsIn, pickBotName, pickVoiceProvider, plainMarkdown, roomAnswerer, roomTargets, ruleLabel, splitCommandLine, toolLabel, toolLine } from "../src/index.ts";
 
 describe("shared", () => {
   test("pickBotName avoids taken names and numbers when exhausted", () => {
@@ -262,6 +262,63 @@ describe("pickVoiceProvider", () => {
     expect(emailDraftOf("GMAIL_DELETE_MESSAGE", { message_id: "m1" })).toBeNull();
     expect(emailDraftOf("SLACK_SEND_MESSAGE", { channel: "c", text: "hi" })).toBeNull();
     expect(emailDraftOf("OUTLOOK_SEND_EMAIL", { to_recipients: [{ emailAddress: { name: "Ann Lee", address: "ann@x.com" } }], subject: "s" })?.to).toEqual(["Ann Lee <ann@x.com>"]);
+  });
+
+  test("a draft reply is a draft, and only an app's own draft can be sent from its card", () => {
+    expect(emailDraftOf("OUTLOOK_CREATE_DRAFT_REPLY", { message_id: "m1", comment: "On it." })?.mode).toBe("draft");
+    expect(sendDraftAction("GMAIL_CREATE_EMAIL_DRAFT")).toEqual({ slug: "GMAIL_SEND_DRAFT", idKey: "draft_id" });
+    expect(sendDraftAction("OUTLOOK_CREATE_DRAFT_REPLY")).toEqual({ slug: "OUTLOOK_SEND_DRAFT", idKey: "message_id" });
+    expect(sendDraftAction("GMAIL_SEND_EMAIL")).toBeNull();
+    expect(sendDraftAction("mcp__mail__GMAIL_CREATE_EMAIL_DRAFT")).toBeNull();
+    expect(emailEditable("OUTLOOK_SEND_EMAIL")).toBe(true);
+    expect(emailEditable("mcp__mail__GMAIL_SEND_EMAIL")).toBe(false);
+    expect(emailEditable("SLACK_SEND_MESSAGE")).toBe(false);
+  });
+
+  test("a saved draft's id is read from what the app answered", () => {
+    expect(draftIdOf({ id: "r-77", message: { id: "m1", threadId: "t1" } })).toBe("r-77");
+    expect(draftIdOf({ response_data: { id: "r-9" } })).toBe("r-9");
+    expect(draftIdOf({ data: JSON.stringify({ draft_id: "d-1" }) })).toBe("d-1");
+    expect(draftIdOf({ ok: true })).toBeNull();
+  });
+
+  test("an edit goes back into the keys the letter came from, and nothing it didn't change moves", () => {
+    const gmail = { recipient_email: "dana@ruizdesign.co", cc: ["ops@x.co"], subject: "VM", body: "<p>Hi Dana,</p>", is_html: true, thread_id: "t1" };
+    const shown = emailDraftOf("GMAIL_CREATE_EMAIL_DRAFT", gmail)!;
+    const unchanged = editedEmailInput("GMAIL_CREATE_EMAIL_DRAFT", gmail, { to: shown.to, cc: shown.cc, bcc: [], subject: shown.subject!, body: shown.body! });
+    expect(unchanged).toEqual(gmail);
+    const edited = editedEmailInput("GMAIL_CREATE_EMAIL_DRAFT", gmail, { to: ["Dana Ruiz <dana@ruizdesign.co>", "leo@park.io"], cc: shown.cc, bcc: [], subject: "VM ready", body: "Hey Dana,\nIt's <up>." });
+    expect(edited).toEqual({ ...gmail, recipient_email: "dana@ruizdesign.co", extra_recipients: ["leo@park.io"], subject: "VM ready", body: "Hey Dana,<br>It's &lt;up&gt;." });
+    const outlook = { to_recipients: [{ emailAddress: { address: "ann@x.com" } }], subject: "s", body: "b" };
+    expect(editedEmailInput("OUTLOOK_CREATE_DRAFT", outlook, { to: ["bo@x.com"], cc: ["cy@x.com"], bcc: [], subject: "s", body: "b" })).toEqual({ ...outlook, to_recipients: [{ emailAddress: { address: "bo@x.com" } }], cc_recipients: ["cy@x.com"] });
+    expect(editedEmailInput("OUTLOOK_SEND_EMAIL", { to: "a@x.com, b@x.com", subject: "s", body: "b" }, { to: ["a@x.com"], cc: [], bcc: [], subject: "s", body: "b" }).to).toBe("a@x.com");
+  });
+
+  test("a redraft marks the words it added and took out", () => {
+    expect(wordDiff("Hi Dana, you can deploy from Monday.", "Hey Dana! you can deploy today.")).toEqual([
+      { text: "Hi Dana, ", change: "removed" },
+      { text: "Hey Dana! ", change: "added" },
+      { text: "you can deploy ", change: "same" },
+      { text: "from Monday.", change: "removed" },
+      { text: "today.", change: "added" },
+    ]);
+    expect(wordDiff("Hi Dana,\n\nDeploy from Monday.\n\nThanks", "Hey Dana!\n\nDeploy today.\n\nThanks")).toEqual([
+      { text: "Hi Dana,", change: "removed" },
+      { text: "Hey Dana!", change: "added" },
+      { text: "\n\nDeploy ", change: "same" },
+      { text: "from Monday.", change: "removed" },
+      { text: "today.", change: "added" },
+      { text: "\n\nThanks", change: "same" },
+    ]);
+    expect(wordDiff("same", "same")).toEqual([{ text: "same", change: "same" }]);
+  });
+
+  test("a release is newer only by its numbers", () => {
+    expect(newerVersion("0.2.47", "0.2.46")).toBe(true);
+    expect(newerVersion("v0.10.0", "0.9.9")).toBe(true);
+    expect(newerVersion("0.2.46", "0.2.46")).toBe(false);
+    expect(newerVersion("0.2.47", "dev")).toBe(false);
+    expect(newerVersion("1.0.0-rc1", "0.9.0")).toBe(false);
   });
 
   test("an email body is words, never markup", () => {

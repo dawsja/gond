@@ -1,11 +1,11 @@
 "use client";
 
-import { plainMarkdown, type Approval, type Bot, type Message } from "@gond/shared";
+import { plainMarkdown, type Approval, type ApprovalAnswer, type Bot, type Message } from "@gond/shared";
 import { ChevronDown, ChevronRight, Eye } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
-import { ApprovalCard, type Decision } from "@/components/approval-card";
+import { ApprovalCard } from "@/components/approval-card";
 import { BotAvatar } from "@/components/bot-avatar";
 import { shortTime } from "@/components/sidebar";
 import { useStore, type ThreadRow } from "@/components/store";
@@ -29,6 +29,7 @@ const messageOf = (approval: Approval): Message => ({
   fromThreadId: null,
   steered: false,
   reactions: [],
+  replyTo: null,
   createdAt: approval.createdAt,
 });
 
@@ -81,9 +82,9 @@ function List({ close, className }: { close: () => void; className?: string }) {
   const { approvals, noticed, botById } = useWorthALook();
   const { refresh } = useStore();
 
-  async function decide(id: string, decision: Decision) {
+  async function decide(id: string, answer: ApprovalAnswer) {
     try {
-      await post(`/api/approvals/${id}`, { decision });
+      await post(`/api/approvals/${id}`, answer);
       await refresh();
     } catch (failure) {
       toast.add({ type: "error", title: failure instanceof Error ? failure.message : "Couldn't send your answer." });

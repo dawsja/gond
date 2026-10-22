@@ -259,6 +259,7 @@ test("resetting a home keeps memories and sign-ins, and takes everything install
       ".team/MEMORY.md",
       ".claude/.credentials.json",
       ".config/gond-browser/Default/Cookies",
+      ".config/gond-browser-bots/b1/Default/Cookies",
     ];
     const gone = [
       ".bots/b1/report.md",

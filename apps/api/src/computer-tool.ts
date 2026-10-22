@@ -25,9 +25,16 @@ class ScreenBusy extends Error {
 }
 
 export function screenBusyText(holder: DesktopDriver, bot: Pick<Bot, "id">): string {
-  const who = holder.botId === bot.id ? "You are using the desktop in another conversation" : `${getBot(holder.botId)?.name ?? "Another bot"} is using the desktop`;
-  return `${who}, so nothing in this batch ran: the mouse and keyboard go to one reply at a time, and your browser tab is on that screen too. End your turn: say in a line what you were about to do and that you'll carry on once the desktop is free. You'll be told when it is.`;
+  const who = holder.botId === bot.id ? "You are using your screen in another conversation" : `${getBot(holder.botId)?.name ?? "Another bot"} is using your screen`;
+  return `${who}, so nothing in this batch ran: its mouse and keyboard go to one reply at a time, and your browser is on that screen too. End your turn: say in a line what you were about to do and that you'll carry on once your screen is free. You'll be told when it is.`;
 }
+
+export const SCREENS_FULL_TEXT =
+  "Nothing in this batch ran: the person's other bots are using every screen the computer keeps running for them at once. End your turn: say in a line what you were about to do and that you'll carry on in a few minutes, when one frees up.";
+
+class ScreensFull extends Error {}
+
+const screensFull = (error: unknown) => error instanceof BoxError && error.status === 429 && error.code === "screens_full";
 // How long a batch waits for the person to give the screen back before the bot is told to end its turn.
 export const HANDBACK_WAIT_MS = 10 * 60 * 1000;
 export const PERSON_HAS_CONTROL_TEXT = `The person has taken control of the mouse and keyboard and kept it for ${HANDBACK_WAIT_MS / 60_000} minutes, so your input was not sent. End your turn: say in a line what you were doing and that you'll carry on when they give the screen back. You'll be told when they do; never fight for the mouse.`;
@@ -229,7 +236,23 @@ export function computerTool(context: Context): { computer: DriverTool; browser:
       const holder = await waitForScreen(thread.userId, { botId: bot.id, threadId: thread.id }, target, SCREEN_WAIT_MS, context.signal);
       if (holder) throw new ScreenBusy(holder);
     }
-    const result = await screenBatch(box, { bot: bot.id, target, steps, ...(view ? { view } : {}), ...(pictures || view === "text" ? {} : { saveTo: screenFile }) }, context.signal);
+    const batch = { bot: bot.id, primary: bot.primary, target, steps, ...(view ? { view } : {}), ...(pictures || view === "text" ? {} : { saveTo: screenFile }) };
+    // A screen frees up when another bot's turn ends; until then the batch waits, as for its own screen.
+    const deadline = Date.now() + SCREEN_WAIT_MS;
+    let result: ScreenResult;
+    for (;;) {
+      try {
+        result = await screenBatch(box, batch, context.signal);
+        break;
+      } catch (error) {
+        if (!screensFull(error) || context.signal?.aborted || Date.now() >= deadline) throw screensFull(error) ? new ScreensFull() : error;
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, 1_000);
+          context.signal?.addEventListener("abort", () => (clearTimeout(timer), resolve()), { once: true });
+        });
+        if (context.signal?.aborted) throw new ScreensFull();
+      }
+    }
     if (target === "desktop") scale = scaleOf(result) ?? scale;
     return result;
   };
@@ -242,7 +265,7 @@ export function computerTool(context: Context): { computer: DriverTool; browser:
 
   const mayUseInput = async (target: ScreenTarget): Promise<string | null> => {
     if (asked === null) {
-      const summary = target === "browser" ? "Use the computer (the browser on your desktop)" : "Use the computer (the mouse and keyboard on your desktop)";
+      const summary = target === "browser" ? `Use the computer (the browser on ${bot.name}'s screen)` : `Use the computer (the mouse and keyboard on ${bot.name}'s screen)`;
       asked = await requestApproval({ bot, threadId: thread.id, tool: "computer", input: { target }, summary, signal: context.signal });
     }
     if (asked === "deny") return DENIED_TEXT;
@@ -296,6 +319,7 @@ export function computerTool(context: Context): { computer: DriverTool; browser:
         result = await send(target, [{ type: "screenshot" }], target === "browser" ? "image" : undefined);
       } catch (error) {
         if (error instanceof ScreenBusy) return screenBusyText(error.holder, bot);
+        if (error instanceof ScreensFull) return SCREENS_FULL_TEXT;
         throw error;
       }
       if (target === "browser" && (!result.url || result.url === "about:blank")) return "NOT sent: the browser has no page open. Open the page first, or send the desktop.";
@@ -311,6 +335,7 @@ export function computerTool(context: Context): { computer: DriverTool; browser:
       result = await send(target, [{ type: "screenshot" }]);
     } catch (error) {
       if (error instanceof ScreenBusy) return screenBusyText(error.holder, bot);
+      if (error instanceof ScreensFull) return SCREENS_FULL_TEXT;
       throw error;
     }
     const shown = answer(result, 0);
@@ -364,6 +389,7 @@ export function computerTool(context: Context): { computer: DriverTool; browser:
         return typeof shown === "string" ? `${shown}\n${note}` : [...shown, { type: "text", text: note }];
       } catch (error) {
         if (error instanceof ScreenBusy) return screenBusyText(error.holder, bot);
+        if (error instanceof ScreensFull) return SCREENS_FULL_TEXT;
         if (personHasControl(error)) return afterHandBack(target);
         if (error instanceof BoxError && error.status === 400) return `NOT done: ${error.message}. Nothing in this batch ran.`;
         throw error;

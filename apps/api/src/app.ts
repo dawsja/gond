@@ -20,6 +20,7 @@ import { routinesRoutes } from "./routes/routines.ts";
 import { settingsRoutes } from "./routes/settings.ts";
 import { threadsRoutes } from "./routes/threads.ts";
 import { authConfig, usersRoutes } from "./routes/users.ts";
+import { releaseRoutes } from "./routes/release.ts";
 import { voiceRoutes } from "./routes/voice.ts";
 
 export type Env = { Variables: { session: Session } };
@@ -64,7 +65,7 @@ export function createApp() {
     await next();
   });
 
-  for (const path of ["/api/box/update", "/api/box/reset", "/api/onboarding/*", "/api/users", "/api/users/*", "/api/oidc", "/api/oidc/*"]) {
+  for (const path of ["/api/server/update", "/api/box/update", "/api/box/reset", "/api/onboarding/*", "/api/users", "/api/users/*", "/api/oidc", "/api/oidc/*"]) {
     app.use(path, requireAdmin);
   }
   app.on(["POST", "PATCH", "PUT", "DELETE"], ["/api/settings"], requireAdmin);
@@ -123,6 +124,7 @@ export function createApp() {
   app.route("/api", voiceRoutes());
   app.route("/api", pushRoutes());
   app.route("/api", usersRoutes());
+  app.route("/api", releaseRoutes());
 
   app.notFound((c) => c.json({ error: "Not found" }, 404));
   app.onError((error, c) => {
