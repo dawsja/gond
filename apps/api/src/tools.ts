@@ -1,4 +1,4 @@
-import { APP_CATALOG, emailDraftOf, emailName, QUIET_REPLY, REACTIONS, isReaction, BOT_COLORS, BOT_EXPRESSIONS, BOT_SHAPES, LOGIN_FIELD_KINDS, MAX_SENT_FILE_BYTES, SKILL_LIMITS, botInputSchema, composioCard, handleOf, joinCommandLine, mentionsIn, mediaTypeFor, mcpServerInputSchema, pickBotName, plainMarkdown, skillFilePath, type Bot, type BotExpression, type BotShape, type McpServer, type McpServerInput, type Message, type SkillInput, type Thread } from "@gond/shared";
+import { APP_CATALOG, emailDraftOf, emailName, QUIET_REPLY, REACTIONS, isReaction, BOT_COLORS, BOT_EXPRESSIONS, BOT_SHAPES, LOGIN_FIELD_KINDS, MAX_SENT_FILE_BYTES, SKILL_LIMITS, botInputSchema, composioCard, handleOf, joinCommandLine, mentionsIn, mediaTypeFor, mcpServerInputSchema, hasKeyHeader, pickBotName, plainMarkdown, skillFilePath, type Bot, type BotExpression, type BotShape, type McpServer, type McpServerInput, type Message, type SkillInput, type Thread } from "@gond/shared";
 import { ENGINE_FILES_TEXT, requestApproval, SCRIPTED_SCREEN_TEXT, scriptsTheScreen, summarize, touchesEngine } from "./approvals.ts";
 import { boxHome, readBoxFile, readBoxFileBytes, writeBoxFile, type BoxConfig } from "./box.ts";
 import { exactApp, searchIndex } from "./catalog.ts";
@@ -7,8 +7,8 @@ import { createBot, findBot, getBot, listBots, updateBot } from "./data/bots.ts"
 import { sendPush } from "./push.ts";
 import { createDelegation, finishDelegation, getDelegation, handoffWorkedOn, listDelegationsForBot, openChildren, type Delegation } from "./data/delegations.ts";
 import { cancelFollowUp, createFollowUp, listFollowUps } from "./data/follow-ups.ts";
-import { createMcpServer, getMcpServer, listMcpServers } from "./data/mcp.ts";
-import { allSecretValues, containsSecret, hideSecrets, listSecrets, readLogin } from "./data/secrets.ts";
+import { createMcpServer, getMcpServer, listMcpServers, markMcpRefreshed, updateMcpServer } from "./data/mcp.ts";
+import { allSecretValues, containsSecret, hasSecret, hideSecrets, listSecrets, readLogin } from "./data/secrets.ts";
 import { userTimezone } from "./data/prefs.ts";
 import { listConnections } from "./data/settings.ts";
 import { createSkill, getSkill, getSkillBySlug, listSkills, skillFiles, updateSkill } from "./data/skills.ts";
@@ -16,6 +16,7 @@ import { createRoutine, deleteRoutine, listRoutines, previewRuns, recordRoutineR
 import { createRoom, getThread, listMessages, listThreads, markAnswered, postMessage, recentMessages, searchMessages, setReaction, storeAttachment } from "./data/threads.ts";
 import type { DriverTool } from "./driver.ts";
 import { holdLogin, loginFields, loginPrefix, rememberable } from "./logins.ts";
+import { checkMcpHeaders, secretNamesIn } from "./mcp.ts";
 import { probeMcpServer } from "./mcp-oauth.ts";
 import { botHome, LEGACY_TEAM_MEMORY_PATH, memoryPath, MAX_MEMORY_BYTES, teamDir, teamMemoryPath } from "./memory.ts";
 import { requestSecret } from "./secret-requests.ts";
@@ -105,7 +106,7 @@ export const TOOL_NOTES = [
   "Connected-app tools (names starting with the app, like GMAIL_SEND_EMAIL) act on the person's real accounts. Reads go through; writes may wait for the person's approval. Say what you sent, created or changed.",
   "team_memory_update replaces the team memory (its path is in the Team memory section), shared by every bot of the person. Keep it to what the whole team needs.",
   "use_skill returns a skill's full instructions and its files by slug. save_skill adds one to the person's library: best from a folder you built in your home (SKILL.md with name and description frontmatter, then the Markdown instructions: steps, decision rules, expected output, what to check with the person first, and how to run each script; beside it scripts/, references/, assets/), or a .skill file, or instructions and text files in the call. update_skill changes one. Every one of the person's bots gets it at once, at ~/.skills/<slug>/.",
-  "connect_app connects one of the person's own apps (in their Composio project): it checks whether Gond can connect it through Composio, asks for their Composio key with a masked card when there isn't one yet (set_composio_key does that on its own), and posts a Connect card they tap to sign in. When the app isn't there but has an MCP server, use add_mcp_server with its URL (from the person, or its official docs; never guess one): it asks the person to approve, adds the server for every one of their bots, and posts a Sign in card when the server needs one. A server that runs as a command on the computer (like `uv run -m some_mcp`) goes in with add_mcp_server too: install it first, check it starts, then give the command and its args with absolute paths or names on PATH (~/.local/bin is on it) and any environment it needs, never a secret. Every bot gets its tools from its next reply.",
+  "connect_app connects one of the person's own apps (in their Composio project): it checks whether Gond can connect it through Composio, asks for their Composio key with a masked card when there isn't one yet (set_composio_key does that on its own), and posts a Connect card they tap to sign in. When the app isn't there but has an MCP server, use add_mcp_server with its URL (from the person, or its official docs; never guess one): it asks the person to approve, adds the server for every one of their bots, and posts a Sign in card when the server needs one. A server that wants a key or bearer token instead takes it in headers as {{secret:NAME}}, once request_secret has it; never build a local server or wrapper to carry a key. A server that runs as a command on the computer (like `uv run -m some_mcp`) goes in with add_mcp_server too: install it first, check it starts, then give the command and its args with absolute paths or names on PATH (~/.local/bin is on it) and any environment it needs, never a secret. Every bot gets its tools from its next reply.",
   "request_secret asks the person for a secret by name (like STRIPE_API_KEY or ROOT_PASSWORD) with a reason; the value is stored and you never see it. Use a stored one with run_with_secrets (a command that gets it as $NAME, with the output scrubbed), with a type_login action (typed into a field on the screen, once the person allows it), or as {{secret:NAME}} in an MCP server's headers. list_secrets shows the names that exist. set_composio_key asks for their Composio API key the same way and turns connected apps on; never ask for either as plain text in the conversation.",
   "request_login posts a sign-in card for the site open on your screen when it asks for an email, username, phone, password or code; a type_login action then types each detail into the field you clicked, without you seeing it.",
   "browser and computer are your hands on the screen: a list of JSON actions run in order by Gond, answered with the screen as it is after them. browser is a Chrome window that stays open between replies, for every website; its answer lists what is on screen with refs to act on (click, fill, select, check, read, wait_for and the rest, in its description). computer is the whole desktop, for everything else on it. Connected apps, MCP servers, APIs and the shell come first; never script the screen yourself.",
@@ -327,6 +328,25 @@ export function baseTools(context: Context): Record<string, DriverTool> {
     if (typeof server === "string") return server;
     return `Added ${name}; every bot gets its tools from its next reply. If they don't appear then, run the command yourself to see why.`;
   };
+  const keyNote = (headers: Record<string, string>) => {
+    const parts = Object.entries(headers).map(([header, value]) => (secretNamesIn(value).length ? `${secretNamesIn(value).join(", ")} in ${header}` : header));
+    return parts.length ? `, sending ${parts.join("; ")}` : "";
+  };
+
+  const afterSave = async (server: McpServer, verb: "Added" | "Updated"): Promise<string> => {
+    const probe = await probeMcpServer(server.id).catch(() => ({ status: "error" as const, detail: "no answer" }));
+    const fresh = getMcpServer(server.id) ?? server;
+    if (probe.status === "needed") {
+      postSignInCard(fresh);
+      return `${verb} ${server.name}. It needs the person to sign in: a Sign in card is in the conversation. Tell them so in a line; once they do, you'll hear about it and every bot gets its tools from its next reply.${signInHow(fresh)}`;
+    }
+    if (probe.status === "error") {
+      const keyHint = hasKeyHeader(fresh.headers) ? "" : " If it wants a key or bearer token, ask for it with request_secret and call add_mcp_server again with the same URL and headers.";
+      return `${verb} ${server.name}, but it isn't usable yet: ${fresh.authError ?? probe.detail ?? "the server didn't answer"}.${keyHint} Tell the person in a line.`;
+    }
+    return `${verb} ${server.name}; it answered ${hasKeyHeader(fresh.headers) ? "with its key" : "without a sign-in"}. Every bot gets its tools from its next reply.`;
+  };
+
   return {
     set_profile: {
       description: "Update your own profile: name, job title, how you work (your SOUL), and your mascot's colour, expression and shape.",
@@ -571,7 +591,7 @@ export function baseTools(context: Context): Record<string, DriverTool> {
         if (!/^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(name)) return "NOT asked: name it in UPPER_SNAKE_CASE, like STRIPE_API_KEY.";
         const status = await requestSecret({ bot, threadId: thread.id, name, reason: String(input.reason ?? "").trim().slice(0, 300) });
         if (status === "exists") return `${name} is already stored. Use it with run_with_secrets ($${name} in a command), a type_login action (typed into a field on the screen), or {{secret:${name}}} in an MCP server's headers.`;
-        if (status === "given") return `${name} is stored; you never see the value. Use it with run_with_secrets ($${name} in a command) or a type_login action, and carry on.`;
+        if (status === "given") return `${name} is stored; you never see the value. Use it with run_with_secrets ($${name} in a command), a type_login action, or {{secret:${name}}} in an MCP server's headers (add_mcp_server), and carry on.`;
         if (status === "declined") return `The person declined to give ${name}. Say what you can do without it.`;
         return `Nobody gave ${name} in time. Say so and stop, or ask again later.`;
       },
@@ -659,7 +679,7 @@ export function baseTools(context: Context): Record<string, DriverTool> {
       },
     },
     add_mcp_server: {
-      description: "Attach an MCP server, for an app connect_app can't connect: a remote one by its HTTP URL, or one that runs as a command on the computer (install it first and check it starts). The person approves it first; every one of their bots gets its tools from its next reply. When a remote server wants a sign-in, a Sign in card goes into the conversation.",
+      description: "Attach an MCP server, for an app connect_app can't connect: a remote one by its HTTP URL, or one that runs as a command on the computer (install it first and check it starts). The person approves it first; every one of their bots gets its tools from its next reply. When a remote server wants a sign-in, a Sign in card goes into the conversation. When it wants a key or bearer token instead, get it with request_secret, then give headers like {\"Authorization\": \"Bearer {{secret:CURA_TOKEN}}\"}: the API fills the key in on every request, so it never reaches you or the computer. Calling it again for an attached server with new headers updates them. Never write a local server or proxy to carry a key.",
       inputSchema: schema(
         {
           name: { type: "string", description: "What to call it, like robinhood or aseprite." },
@@ -667,6 +687,7 @@ export function baseTools(context: Context): Record<string, DriverTool> {
           command: { type: "string", description: "A command server's program: an absolute path or a name on PATH, like /home/agent/.local/bin/uv or npx. Leave out for a URL." },
           args: { type: "array", items: { type: "string" }, description: "The command's arguments, one per item, unquoted; use absolute paths, since it starts in your folder." },
           env: { type: "object", additionalProperties: { type: "string" }, description: "Environment the command needs, like ASEPRITE_PATH. It is visible on the computer, so never a secret." },
+          headers: { type: "object", additionalProperties: { type: "string" }, description: "A remote server's headers. A key goes in only by name, {{secret:NAME}}, once request_secret has stored it." },
         },
         ["name"],
       ),
@@ -677,6 +698,7 @@ export function baseTools(context: Context): Record<string, DriverTool> {
         if (url && command) return "NOT added: give a URL or a command, not both.";
         if (!url && !command) return "NOT added: give the server's URL, or the command that starts it.";
         if (!name) return "NOT added: give the server a name, like the app's.";
+        if (command && input.headers !== undefined) return "NOT added: headers are for a remote server. A command server gets no secrets.";
         if (command) return addCommandServer(name, command, input.args, input.env);
         let parsed: URL;
         try {
@@ -685,8 +707,19 @@ export function baseTools(context: Context): Record<string, DriverTool> {
           return "NOT added: that isn't a URL. Ask the person for the server's address.";
         }
         if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return "NOT added: an MCP server's URL starts with https://.";
-        if (parsed.username || parsed.password) return "NOT added: leave credentials out of the URL. When the server needs a key, ask for it with request_secret and tell the person to put it in the server's headers under Settings → Apps → MCP servers.";
+        if (parsed.username || parsed.password) return "NOT added: leave credentials out of the URL. When the server needs a key, ask for it with request_secret and give it in headers as {{secret:NAME}}.";
+        const headers = checkMcpHeaders(input.headers, (secret) => hasSecret(bot.userId, secret), allSecretValues());
+        if (typeof headers === "string") return `NOT added: ${headers}`;
         const existing = listMcpServers(bot.userId).find((m) => m.name === name || m.url === parsed.href || m.url === url);
+        if (existing && existing.transport === "http" && Object.keys(headers).length && JSON.stringify(existing.headers) !== JSON.stringify(headers)) {
+          const decision = await requestApproval({ bot, threadId: thread.id, signal: context.signal, tool: "add_mcp_server", input: { name: existing.name, url: existing.url, headers }, summary: `Change the MCP server ${existing.name}'s headers${keyNote(headers)}` });
+          if (decision === "deny") return "NOT changed: the person said no.";
+          if (decision === "expired") return "NOT changed: nobody approved it in time.";
+          const updated = updateMcpServer(existing.id, { headers });
+          if (!updated) return "NOT changed: the server is gone.";
+          markMcpRefreshed(existing.id);
+          return afterSave(updated, "Updated");
+        }
         if (existing) {
           if (existing.authStatus === "needed" && existing.enabled) {
             postSignInCard(existing);
@@ -694,21 +727,14 @@ export function baseTools(context: Context): Record<string, DriverTool> {
           }
           return alreadyAttached(existing);
         }
-        const checked = mcpServerInputSchema.safeParse({ name, transport: "http", url: parsed.href });
+        const checked = mcpServerInputSchema.safeParse({ name, transport: "http", url: parsed.href, headers });
         if (!checked.success) return `NOT added: ${checked.error.issues[0]?.message ?? "bad server"}.`;
-        const decision = await requestApproval({ bot, threadId: thread.id, signal: context.signal, tool: "add_mcp_server", input: { name, url: parsed.href }, summary: `Add the MCP server ${name} (${parsed.href}) for all your bots` });
+        const decision = await requestApproval({ bot, threadId: thread.id, signal: context.signal, tool: "add_mcp_server", input: { name, url: parsed.href, ...(Object.keys(headers).length ? { headers } : {}) }, summary: `Add the MCP server ${name} (${parsed.href})${keyNote(headers)} for all your bots` });
         if (decision === "deny") return "NOT added: the person said no.";
         if (decision === "expired") return "NOT added: nobody approved it in time.";
         const server = saveMcpServer(checked.data);
         if (typeof server === "string") return server;
-        const probe = await probeMcpServer(server.id).catch(() => ({ status: "error" as const, detail: "no answer" }));
-        const fresh = getMcpServer(server.id) ?? server;
-        if (probe.status === "needed") {
-          postSignInCard(fresh);
-          return `Added ${name}. It needs the person to sign in: a Sign in card is in the conversation. Tell them so in a line; once they do, you'll hear about it and every bot gets its tools from its next reply.${signInHow(fresh)}`;
-        }
-        if (probe.status === "error") return `Added ${name}, but it isn't usable yet: ${fresh.authError ?? probe.detail ?? "the server didn't answer"}. Tell the person; they can fix it under Settings → Apps → MCP servers.`;
-        return `Added ${name}; it answered without a sign-in. Every bot gets its tools from its next reply.`;
+        return afterSave(server, "Added");
       },
     },
     list_routines: {

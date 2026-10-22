@@ -718,6 +718,64 @@ describe("data", () => {
     }
   });
 
+  test("a server that wants a bearer token gets it from a secret in its headers, never on the computer", async () => {
+    const { createBot, updateBot } = await import("../src/data/bots.ts");
+    const { getThread } = await import("../src/data/threads.ts");
+    const { listMcpServers } = await import("../src/data/mcp.ts");
+    const { setSecret, deleteSecret } = await import("../src/data/secrets.ts");
+    const { checkMcpHeaders } = await import("../src/mcp.ts");
+    const { baseTools } = await import("../src/tools.ts");
+    const { botInputSchema } = await import("@gond/shared");
+
+    const stored = (name: string) => name === "CURA_TOKEN";
+    expect(checkMcpHeaders(undefined, stored, [])).toEqual({});
+    expect(checkMcpHeaders({ Authorization: "Bearer {{secret:CURA_TOKEN}}" }, stored, [])).toEqual({ Authorization: "Bearer {{secret:CURA_TOKEN}}" });
+    expect(checkMcpHeaders({ Authorization: "Bearer sk-live-123" }, stored, [])).toContain("{{secret:NAME}}");
+    expect(checkMcpHeaders({ "X-Api-Key": "{{secret:OTHER}}" }, stored, [])).toContain("request_secret");
+    expect(checkMcpHeaders({ "X-Workspace": "s3cret-value-1" }, stored, ["s3cret-value-1"])).toContain("stored secret");
+    expect(checkMcpHeaders({ "X-Gond-Mcp-Token": "x" }, stored, [])).toContain("Gond's own");
+    expect(checkMcpHeaders({ "X-Workspace": "team-a" }, stored, [])).toEqual({ "X-Workspace": "team-a" });
+
+    const fake = Bun.serve({
+      port: 0,
+      fetch(request: Request): Response {
+        if (request.headers.get("authorization") !== "Bearer tok-123") return new Response("", { status: 401 });
+        return Response.json({ jsonrpc: "2.0", id: 1, result: { protocolVersion: "2025-06-18", capabilities: {}, serverInfo: { name: "cura", version: "1" } } });
+      },
+    });
+    try {
+      const bot = updateBot(createBot(botInputSchema.parse({ name: "Curator" }), "u-bearer").id, { approval: "full" })!;
+      const context = { box: { url: "http://box.invalid", token: "t", user: "u-bearer" }, bot, thread: getThread(bot.threadId)!, message: { depth: 0 } as never, askBot: async () => "", syncSoul: async () => undefined, stopWork: async () => false, isWorking: () => false };
+      const tool = baseTools(context).add_mcp_server!;
+      const url = `http://127.0.0.1:${fake.port}/mcp`;
+
+      const bare = String(await tool.execute({ name: "cura", url }, "c"));
+      expect(bare).toContain("isn't usable yet");
+      expect(bare).toContain("request_secret");
+      expect(String(await tool.execute({ name: "cura", url, headers: { Authorization: "Bearer tok-123" } }, "c"))).toContain("NOT added");
+      expect(String(await tool.execute({ name: "cura", url, headers: { Authorization: "Bearer {{secret:CURA_TOKEN}}" } }, "c"))).toContain("isn't stored yet");
+      expect(String(await tool.execute({ name: "cura", command: "node", headers: {} }, "c"))).toContain("NOT added");
+
+      setSecret("u-bearer", "CURA_TOKEN", "tok-123");
+      const keyed = String(await tool.execute({ name: "cura", url, headers: { Authorization: "Bearer {{secret:CURA_TOKEN}}" } }, "c"));
+      expect(keyed).toContain("Updated cura; it answered with its key");
+      const server = listMcpServers("u-bearer").find((m) => m.name === "cura")!;
+      expect(server.authStatus).toBe("none");
+      expect(server.headers).toEqual({ Authorization: "Bearer {{secret:CURA_TOKEN}}" });
+      expect(server.refreshedAt).not.toBeNull();
+      expect(JSON.stringify(server)).not.toContain("tok-123");
+
+      setSecret("u-bearer", "CURA_TOKEN", "tok-wrong");
+      const { probeMcpServer } = await import("../src/mcp-oauth.ts");
+      expect(await probeMcpServer(server.id)).toEqual({ status: "error", detail: "The server turned down the key in its headers." });
+      expect(listMcpServers("u-bearer").find((m) => m.name === "cura")?.authStatus).toBe("error");
+      deleteSecret("u-bearer", "CURA_TOKEN");
+      expect((await probeMcpServer(server.id)).detail).toContain("CURA_TOKEN");
+    } finally {
+      fake.stop(true);
+    }
+  });
+
   test("add_mcp_server attaches a server and posts a sign-in card when it wants one", async () => {
     const { createBot, updateBot } = await import("../src/data/bots.ts");
     const { getThread, listMessages } = await import("../src/data/threads.ts");

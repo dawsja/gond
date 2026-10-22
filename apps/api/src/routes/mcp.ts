@@ -57,7 +57,8 @@ export function mcpRoutes() {
     const result = validate({ ...current, ...body });
     if ("error" in result) return c.json({ error: result.error }, 400);
     const server = updateMcpServer(current.id, result.data!);
-    if (server?.transport === "http" && server.url !== current.url) void probeMcpServer(server.id).catch(() => undefined);
+    const moved = server && (server.url !== current.url || (server.authStatus !== "signed_in" && JSON.stringify(server.headers) !== JSON.stringify(current.headers)));
+    if (server?.transport === "http" && moved) void probeMcpServer(server.id).catch(() => undefined);
     return c.json({ server });
   });
 

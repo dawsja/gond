@@ -964,6 +964,17 @@ export type McpServer = McpServerInput & {
 
 export const SECRET_REF = /\{\{\s*secret:([A-Za-z][A-Za-z0-9_]{0,63})\s*\}\}/g;
 
+const KEY_HEADER = /auth|token|key|secret|password|cookie/i;
+
+/** A header that carries a key, like Authorization: then the server is reached with that key, never an OAuth sign-in, and a 401 means the key was turned down. */
+export function isKeyHeader(name: string): boolean {
+  return KEY_HEADER.test(name);
+}
+
+export function hasKeyHeader(headers: Record<string, string>): boolean {
+  return Object.keys(headers).some(isKeyHeader);
+}
+
 export const SECRET_NAME = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
 
 export type SecretMeta = {

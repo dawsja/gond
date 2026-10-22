@@ -1,4 +1,4 @@
-import type { Bot, McpServer, Thread } from "@gond/shared";
+import { hasKeyHeader, type Bot, type McpServer, type Thread } from "@gond/shared";
 import { requestApproval } from "./approvals.ts";
 import { mcpServerOwner } from "./data/mcp.ts";
 import { injectSecrets } from "./data/secrets.ts";
@@ -48,6 +48,7 @@ export async function forwardMcp(server: McpServer, request: Forward): Promise<R
   if (upstream.status === 401) {
     await upstream.body?.cancel().catch(() => undefined);
     void probeMcpServer(server.id).catch(() => undefined);
+    if (hasKeyHeader(server.headers)) return Response.json({ error: `${server.name} turned down the key in its headers. Tell the person; once they forget the old one under Settings → Secrets, ask for it again with request_secret.` }, { status: 424 });
     return Response.json({ error: `${server.name} needs the person to sign in: Settings → Apps → MCP servers → ${server.name} → Sign in.` }, { status: 424 });
   }
   return upstream;

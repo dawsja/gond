@@ -1,7 +1,8 @@
-import { MCP_LOOPBACK_CALLBACK, type McpServer } from "@gond/shared";
+import { MCP_LOOPBACK_CALLBACK, hasKeyHeader, type McpServer } from "@gond/shared";
 import { createHash, randomBytes } from "node:crypto";
 import { appUrl, env } from "./config.ts";
 import { getMcpOAuth, getMcpServer, mcpServerOwner, setMcpAuthStatus, setMcpOAuth, type McpOAuthState } from "./data/mcp.ts";
+import { injectSecrets } from "./data/secrets.ts";
 import { postMessage } from "./data/threads.ts";
 
 /*
@@ -47,11 +48,19 @@ function resourceMetadataFrom(header: string | null): string | null {
 export async function probeMcpServer(id: string): Promise<{ status: "none" | "needed" | "error"; detail?: string }> {
   const server = getMcpServer(id);
   if (!server || server.transport !== "http" || !server.url) return { status: "none" };
+  const missing: string[] = [];
+  const owner = mcpServerOwner(id) ?? "";
+  const own = Object.fromEntries(Object.entries(server.headers).map(([key, value]) => [key, injectSecrets(value, owner, (name) => missing.push(name))]));
+  if (missing.length) {
+    const detail = `Its headers name a secret that isn't stored: ${missing.join(", ")}.`;
+    setMcpAuthStatus(id, "error", detail);
+    return { status: "error", detail };
+  }
   let res: Response;
   try {
     res = await fetch(server.url, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream" },
+      headers: { ...own, "Content-Type": "application/json", Accept: "application/json, text/event-stream" },
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "Gond", version: "1" } } }),
       signal: AbortSignal.timeout(15_000),
     });
@@ -64,9 +73,14 @@ export async function probeMcpServer(id: string): Promise<{ status: "none" | "ne
     if (server.authStatus !== "signed_in") setMcpAuthStatus(id, "none");
     return { status: "none" };
   }
+  if (hasKeyHeader(server.headers)) {
+    const detail = "The server turned down the key in its headers.";
+    setMcpAuthStatus(id, "error", detail);
+    return { status: "error", detail };
+  }
   const metadata = await discover(server.url, res.headers.get("www-authenticate"));
   if (!metadata) {
-    setMcpAuthStatus(id, "error", "The server asks for a sign-in but doesn't say where (no OAuth metadata). Add its token to the headers as a secret instead.");
+    setMcpAuthStatus(id, "error", "The server wants a key but offers no sign-in. Ask a bot to connect it again with the key; it asks you for it on a card.");
     return { status: "error", detail: "no metadata" };
   }
   const current = getMcpOAuth(id);

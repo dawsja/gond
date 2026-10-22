@@ -922,7 +922,18 @@ what is here. The README says what Gond is; this says how it is made.
   lists its tools to say how many there are, and stamps `refreshed_at`,
   which rides to the box as the server's `rev` and into the args key
   only once set, so the sessions using it start again on their next turn
-  and see its tools as they are now. A server waiting for
+  and see its tools as they are now. A server that wants a key rather
+  than a sign-in (a bearer token, an API key header) carries it as
+  `{{secret:NAME}}` in its headers: a bot gets the key with
+  `request_secret` and passes `headers` to `add_mcp_server`
+  (`checkMcpHeaders` in `src/mcp.ts` refuses a key header without a
+  reference, a stored value written out, a secret not stored yet and
+  `X-Gond-*`; called again with new headers it changes them, on a card).
+  The probe and the proxy fill the references in, so such a server is
+  never sent to an OAuth sign-in, and a 401 with a key header
+  (`hasKeyHeader` in shared) means the key was turned down. Saving new
+  headers in Settings probes again. A bot never builds a local server or
+  wrapper to carry a key. A server waiting for
   its sign-in (`authStatus` `needed`) stays off the session until it is
   signed in, and the proxy never answers the session with a 401 (403 for a
   wrong token, 424 for a sign-in it needs): Claude Code reads a 401 as an
@@ -971,7 +982,7 @@ what is here. The README says what Gond is; this says how it is made.
   is made, hidden or deleted. Who does what is said in a bot's SOUL and the house
   rules, never gated in the responder. `connect_app` looks in Composio first and only
   then points at `add_mcp_server`; keep that order. `add_mcp_server` takes
-  an HTTP URL only (commands stay in Settings), asks the person's approval,
+  an HTTP URL (`headers` carry a key by secret name) or a command, asks the person's approval,
   and posts a `signin` card when the server wants OAuth; the card's sign-in
   comes back to that conversation and a hidden prompt lets the bot carry on.
   A connected app's sign-in is a `signin` card too, with `composio:<toolkit>`

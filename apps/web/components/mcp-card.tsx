@@ -1,6 +1,6 @@
 "use client";
 
-import { joinCommandLine, type McpServer } from "@gond/shared";
+import { hasKeyHeader, joinCommandLine, type McpServer } from "@gond/shared";
 import { LogIn, Plug, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
@@ -105,12 +105,12 @@ export function McpCard() {
                     <span className="font-mono text-[13.5px] font-medium">{server.name}</span>
                     <Badge variant="outline">{server.transport === "http" ? "HTTP" : "command"}</Badge>
                     {Object.values(server.headers).some((v) => /\{\{\s*secret:/.test(v)) ? <Badge variant="secondary">uses a secret</Badge> : null}
-                    {server.authStatus === "signed_in" ? <Badge variant="secondary">signed in</Badge> : server.authStatus === "needed" ? <Badge variant="destructive">needs sign-in</Badge> : server.authStatus === "error" ? <Badge variant="destructive">sign-in problem</Badge> : null}
+                    {server.authStatus === "signed_in" ? <Badge variant="secondary">signed in</Badge> : server.authStatus === "needed" ? <Badge variant="destructive">needs sign-in</Badge> : server.authStatus === "error" ? <Badge variant="destructive">can&apos;t connect</Badge> : null}
                   </span>
                   <span className="mt-0.5 block truncate font-mono text-[12px] text-muted-foreground">{server.transport === "http" ? server.url : joinCommandLine([server.command ?? "", ...server.args])}</span>
                   {server.authStatus === "error" && server.authError ? <span className="mt-0.5 block text-[12px] text-destructive">{server.authError}</span> : null}
                 </button>
-                {server.authStatus === "needed" || server.authStatus === "error" ? (
+                {server.authStatus === "needed" || (server.authStatus === "error" && !hasKeyHeader(server.headers)) ? (
                   <Button size="xs" disabled={signingIn === server.id} onClick={() => void signIn(server)}>
                     {signingIn === server.id ? <Spinner data-icon="inline-start" /> : <LogIn data-icon="inline-start" aria-hidden="true" />}
                     Sign in
