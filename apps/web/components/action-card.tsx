@@ -23,13 +23,12 @@ export function cheerOnFold(id: string) {
  * line on privacy. A card from a bot speaking up on its own (`noticed`) wears the person's color.
  */
 export function ActionCard({ bot, icon, title, by, children, actions, note, noticed = false, className }: { bot?: Bot; icon: ReactNode; title: ReactNode; by?: ReactNode; children?: ReactNode; actions?: ReactNode; note?: ReactNode; noticed?: boolean; className?: string }) {
-  const peek = bot && !bot.avatar;
   return (
-    <div className={cn("relative w-full max-w-[440px]", peek && "mt-7")}>
-      {peek ? <BotAvatar bot={{ ...bot, primary: false }} size={52} className="absolute -top-[27px] right-24 animate-peek motion-reduce:animate-none" /> : null}
+    <div className={cn("relative w-full max-w-[440px]", bot && "mt-7")}>
+      {bot ? <BotAvatar bot={{ ...bot, primary: false }} size={52} className="absolute -top-[27px] right-24 animate-peek motion-reduce:animate-none" /> : null}
       <div data-slot="action-card" className={cn("relative flex flex-col gap-3.5 rounded-3xl border p-4", noticed ? "border-tint-edge bg-tint-wash" : "border-primary-edge bg-bubble-bot", className)}>
         <div className="flex items-start gap-3">
-          {noticed || !peek ? <span className={cn("grid size-10 shrink-0 place-items-center rounded-full [&_svg]:size-[18px]", noticed ? "bg-tint-solid text-tint-foreground" : "border border-primary-edge bg-primary text-foreground")}>{icon}</span> : null}
+          {noticed || !bot ? <span className={cn("grid size-10 shrink-0 place-items-center rounded-full [&_svg]:size-[18px]", noticed ? "bg-tint-solid text-tint-foreground" : "border border-primary-edge bg-primary text-foreground")}>{icon}</span> : null}
           <div className="min-w-0 flex-1 self-center">
             <p className="text-[15px] leading-5 font-semibold break-words">{title}</p>
             {by ? <p className="text-[12.5px] leading-4 break-words text-muted-foreground">{by}</p> : null}
@@ -41,7 +40,11 @@ export function ActionCard({ bot, icon, title, by, children, actions, note, noti
           )}
         </div>
         {children}
-        {actions ? <div className="grid auto-cols-fr grid-flow-col gap-2 max-sm:grid-flow-row">{actions}</div> : null}
+        {actions ? (
+          // Side by side at equal widths while every label fits on one line; a label that doesn't
+          // takes its own row, and one wider than the card wraps inside its button.
+          <div className="flex flex-wrap gap-2 max-sm:flex-col *:h-auto *:min-h-11 *:min-w-fit *:flex-1 *:py-2.5 *:text-center *:leading-5 *:whitespace-normal *:[overflow-wrap:anywhere]">{actions}</div>
+        ) : null}
         {note ? (
           <p className="flex items-start gap-1.5 text-[11.5px] leading-4 text-muted-foreground">
             <Lock className="mt-px size-3 shrink-0" aria-hidden="true" />
@@ -62,18 +65,20 @@ const CONFETTI: { color: string; dx: number; dy: number; delay: number; shape: s
 
 /** Once answered, a card folds to one line with how it ended; one the person just answered hops. */
 export function ActionCardDone({ id, bot, icon, title, by, status, tone }: { id?: string; bot?: Bot; icon: ReactNode; title: ReactNode; by?: ReactNode; status: string; tone: "ok" | "bad" | "neutral" }) {
-  const [celebrate] = useState(() => Boolean(id && tone === "ok" && bot && answeredHere.has(id)));
+  const [celebrate] = useState(() => Boolean(id && tone === "ok" && answeredHere.has(id)));
   useEffect(() => {
     if (id) answeredHere.delete(id);
   }, [id]);
   return (
     <div data-slot="action-card" className={cn("flex w-full max-w-[440px] items-center gap-3 rounded-3xl border py-3 pr-3.5 pl-3", tone === "ok" ? "border-tone-ok-edge bg-tone-ok-wash" : "border-primary-edge bg-bubble-bot")}>
-      {celebrate && bot ? (
+      {bot ? (
         <span className="relative grid size-8 shrink-0 place-items-center">
-          {CONFETTI.map((bit, i) => (
-            <span key={i} aria-hidden="true" className={cn("absolute top-1/2 left-1/2 animate-confetti opacity-0 motion-reduce:hidden", bit.shape)} style={{ background: bit.color, animationDelay: `${bit.delay}s`, "--dx": `${bit.dx}px`, "--dy": `${bit.dy}px` } as CSSProperties} />
-          ))}
-          <BotAvatar bot={{ ...bot, primary: false }} size={32} className="animate-hop motion-reduce:animate-none" />
+          {celebrate
+            ? CONFETTI.map((bit, i) => (
+                <span key={i} aria-hidden="true" className={cn("absolute top-1/2 left-1/2 animate-confetti opacity-0 motion-reduce:hidden", bit.shape)} style={{ background: bit.color, animationDelay: `${bit.delay}s`, "--dx": `${bit.dx}px`, "--dy": `${bit.dy}px` } as CSSProperties} />
+              ))
+            : null}
+          <BotAvatar bot={{ ...bot, primary: false }} size={32} className={cn(celebrate && "animate-hop motion-reduce:animate-none")} />
         </span>
       ) : (
         <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary text-muted-foreground [&_svg]:size-4">{icon}</span>
@@ -82,9 +87,9 @@ export function ActionCardDone({ id, bot, icon, title, by, status, tone }: { id?
         <p className="truncate text-[13.5px] leading-5 font-medium">{title}</p>
         {by ? <p className="truncate text-[12px] leading-4 text-muted-foreground">{by}</p> : null}
       </div>
-      <Badge tone={tone}>
+      <Badge tone={tone} className="max-w-[45%] shrink-0" title={status}>
         {tone === "ok" ? <Check aria-hidden="true" /> : tone === "bad" ? <X aria-hidden="true" /> : null}
-        {status}
+        <span className="truncate">{status}</span>
       </Badge>
     </div>
   );

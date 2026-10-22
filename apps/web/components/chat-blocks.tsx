@@ -79,14 +79,14 @@ export function Choices({ options }: { options: string[] }) {
             variant={on ? "default" : "outline"}
             disabled={!open || Boolean(sending)}
             aria-pressed={on}
-            className={cn("max-w-full", on && "disabled:opacity-100")}
+            className={cn("h-auto min-h-9 max-w-full py-1.5 text-left leading-5 whitespace-normal [overflow-wrap:anywhere]", on && "disabled:opacity-100")}
             onClick={() => {
               if (!pick || sending) return;
               setSending(option);
               void pick(option).finally(() => setSending(null));
             }}
           >
-            <span className="truncate">{option}</span>
+            {option}
           </Button>
         );
       })}

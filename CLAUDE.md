@@ -354,20 +354,21 @@ what is here. The README says what Gond is; this says how it is made.
   from the tree. Anything a person has to act on (a decision, a sign-in,
   a key) is a card, not a link. Every one of them is built on
   `action-card.tsx`: `ActionCard` is the bot's bubble grey with the pill
-  edge, `rounded-3xl`, the bot's mascot peeking over its top edge
+  edge, `rounded-3xl`, the bot (its mascot, or its picture) peeking over its top edge
   (`animate-peek`), the question as the title with a warn `Badge` "Needs
   you" and who and where under it, then what it is about (`ActionRows`
   for figures with a big total, a long value under its label, a row with
   `items` that opens on a tap to the lines behind it, like each grocery
   and its price with a "Swapped" note, `ActionCode` for a command or a
-  path), `xl` buttons side by side (stacked on a phone), the main one
-  `variant="tint"`, and a line on privacy with a lock; a card from a
+  path), `xl` buttons side by side while every label fits on one line,
+  else stacked, and a label longer than the card wraps inside its pill
+  (always stacked on a phone), the main one `variant="tint"`, and a line on privacy with a lock; a card from a
   watch's run (`noticed`) wears the person's color instead, with an icon
   in a tint circle and no badge. Once answered it folds to
-  `ActionCardDone`, one line with a tone `Badge` saying how it ended, on
-  a green wash when it went ahead; a card the person answered on this
-  page (`cheerOnFold`) folds with the mascot hopping in a little
-  confetti, once. The approval is `approval-card.tsx`,
+  `ActionCardDone`, one line with the bot's face and a tone `Badge`
+  saying how it ended (cut short with an ellipsis), on a green wash when
+  it went ahead; a card the person said yes to on this page
+  (`cheerOnFold`) folds with the face hopping in a little confetti, once. The approval is `approval-card.tsx`,
   worded per tool (Run a command?, Change a file?, Use the screen?); an
   `ask_approval` is a decision card with the bot's own question, rows,
   total and button names ("Place order" / "Not yet"), and no Always. It
