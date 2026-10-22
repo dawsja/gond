@@ -1,3 +1,4 @@
+import type { ProviderKind } from "@gond/shared";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -366,10 +367,49 @@ describe("data", () => {
     deleteProvider("u-legacy", "xai");
   });
 
+  test("a ChatGPT plan is signed in to, kept encrypted, and redacted", async () => {
+    const { saveProvider, saveChatGptSession, chatGptSession, endChatGptSession, getProvider, allProviderKeys, providerProxyToken, deleteProvider } = await import("../src/data/providers.ts");
+    const { chatGptClient, setChatGptClient } = await import("../src/data/prefs.ts");
+    const { startChatGptLogin, isChatGptState, completeChatGptLogin } = await import("../src/chatgpt.ts");
+
+    expect(() => saveProvider("u-plan", "chatgpt", { baseUrl: "https://api.openai.com/v1", apiKey: "nope-1234567890" })).toThrow("Continue with ChatGPT");
+
+    const first = new URL(startChatGptLogin("u-plan"));
+    expect(first.searchParams.get("client_id")).toBe("dynamic_agent_client");
+    expect(first.searchParams.get("redirect_uri")).toBe("http://127.0.0.1:47651/callback");
+    expect(first.searchParams.get("scope")).toContain("chatgpt.tokens.use.direct");
+    expect(first.searchParams.get("agent_name_hint")).toBe("Gond");
+    expect(first.searchParams.get("ext_agent_host_id")).toMatch(/^urn:uuid:/);
+    expect(isChatGptState(first.searchParams.get("state"))).toBe(true);
+    expect(await completeChatGptLogin({ state: first.searchParams.get("state"), code: "c" }, "u-someone-else")).toEqual({ ok: false, reason: "That sign-in was started by someone else." });
+
+    saveChatGptSession("u-plan", "access-token-1234567890", { clientId: "oaiapp_1", refreshToken: "refresh-token-1234567890", idToken: null, expiresAt: Date.now() + 3_600_000, scope: "chatgpt.tokens.use.direct", email: "plan@example.com", name: null });
+    setChatGptClient("u-plan", "oaiapp_1");
+    const token = providerProxyToken("u-plan", "chatgpt");
+    expect(getProvider("u-plan", "chatgpt")?.account).toEqual({ email: "plan@example.com", name: null });
+    expect(chatGptSession("u-plan")?.accessToken).toBe("access-token-1234567890");
+    expect(allProviderKeys()).toEqual(expect.arrayContaining(["access-token-1234567890", "refresh-token-1234567890"]));
+
+    const again = new URL(startChatGptLogin("u-plan"));
+    expect(again.searchParams.get("client_id")).toBe("oaiapp_1");
+    expect(again.searchParams.has("agent_name_hint")).toBe(false);
+    expect(again.searchParams.get("ext_agent_host_id")).toBe(first.searchParams.get("ext_agent_host_id"));
+
+    saveChatGptSession("u-plan", "access-token-renewed-12345", { ...chatGptSession("u-plan")!, refreshToken: "refresh-token-renewed-123" });
+    expect(providerProxyToken("u-plan", "chatgpt")).toBe(token);
+
+    endChatGptSession("u-plan", "Your ChatGPT sign-in ended. Sign in again.");
+    expect(chatGptSession("u-plan")).toBeNull();
+    expect(getProvider("u-plan", "chatgpt")?.account).toBeNull();
+    expect(getProvider("u-plan", "chatgpt")?.check?.ok).toBe(false);
+    expect(deleteProvider("u-plan", "chatgpt")).toBe(true);
+    expect(chatGptClient("u-plan")).toBe("oaiapp_1");
+  });
+
   test("an engine runs on a key only while that key is there", async () => {
     const { saveProvider, deleteProvider, getProvider } = await import("../src/data/providers.ts");
     const { getAi, updateAi, releaseEngines } = await import("../src/data/ai.ts");
-    const saved = (kind: "anthropic" | "openai" | "xai") => Boolean(getProvider("u-keys", kind));
+    const saved = (kind: ProviderKind) => Boolean(getProvider("u-keys", kind));
 
     saveProvider("u-keys", "xai", { baseUrl: "https://api.x.ai/v1", apiKey: "xai-1234567890" });
     saveProvider("u-keys", "openai", { baseUrl: "https://api.openai.com/v1", apiKey: "sk-1234567890" });

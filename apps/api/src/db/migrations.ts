@@ -618,6 +618,12 @@ const MIGRATIONS: Array<string | ((db: Database) => void)> = [
   `DROP TABLE IF EXISTS gond_bot_templates;`,
   `ALTER TABLE gond_user_prefs ADD COLUMN accent TEXT;`,
   `ALTER TABLE gond_routines ADD COLUMN watch INTEGER NOT NULL DEFAULT 0;`,
+  // A ChatGPT plan's sign-in (refresh token, client, account), encrypted; and the client a person's
+  // ChatGPT account was registered as, kept past a sign-out so signing in again reuses it.
+  `
+  ALTER TABLE gond_providers ADD COLUMN oauth TEXT;
+  ALTER TABLE gond_user_prefs ADD COLUMN chatgpt_client TEXT;
+  `,
 ];
 
 export const RENAME_VERSION = MIGRATIONS.indexOf(renameLegacyObjects) + 1;

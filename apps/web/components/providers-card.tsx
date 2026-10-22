@@ -1,6 +1,6 @@
 "use client";
 
-import { PROVIDER_KINDS, PROVIDER_LABELS, type AiSettings, type Engine, type ProviderKind, type ProviderMeta } from "@gond/shared";
+import { KEY_PROVIDER_KINDS, PROVIDER_KINDS, PROVIDER_LABELS, type AiSettings, type Engine, type KeyProviderKind, type ProviderKind, type ProviderMeta } from "@gond/shared";
 import { Check, KeyRound, TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useLiveEvents } from "@/components/hq/live-events";
@@ -17,6 +17,16 @@ import { api, del, patch, post } from "@/lib/api";
 
 function runningOn(ai: AiSettings | null | undefined, kind: ProviderKind): boolean {
   return Boolean(ai && ai.enabled.includes("api") && (ai.engines.api.provider ?? null) === kind);
+}
+
+/** Puts the bots on a key or the ChatGPT plan, or takes them off it; the settings as saved, or null. */
+export async function runOnProvider(ai: AiSettings, kind: ProviderKind, on: boolean): Promise<AiSettings | null> {
+  const enabled = on ? [...new Set([...ai.enabled, "api" as Engine])] : ai.enabled.filter((engine) => engine !== "api");
+  const body = on
+    ? { engine: "api" as Engine, enabled, engines: { api: { provider: kind, access: "api" as const, model: ai.engines.api.model } } }
+    : { enabled: enabled.length ? enabled : (["claude"] as Engine[]) };
+  const data = await patch<{ ai: AiSettings }>("/api/ai", body).catch(() => null);
+  return data?.ai ?? null;
 }
 
 export function useProviders() {
@@ -114,12 +124,8 @@ function SavedKey({ kind, provider, ai, onAiChange, onChange }: { kind: Provider
 
   async function use(on: boolean) {
     if (!ai) return;
-    const enabled = on ? [...new Set([...ai.enabled, "api" as Engine])] : ai.enabled.filter((engine) => engine !== "api");
-    const body = on
-      ? { engine: "api" as Engine, enabled, engines: { api: { provider: kind, access: "api" as const, model: ai.engines.api.model } } }
-      : { enabled: enabled.length ? enabled : (["claude"] as Engine[]) };
-    const data = await patch<{ ai: AiSettings }>("/api/ai", body).catch(() => null);
-    if (data) onAiChange?.(data.ai);
+    const saved = await runOnProvider(ai, kind, on);
+    if (saved) onAiChange?.(saved);
   }
 
   return (
@@ -195,8 +201,8 @@ function SavedKey({ kind, provider, ai, onAiChange, onChange }: { kind: Provider
 }
 
 export function AddProviderKey({ providers, onSaved }: { providers: Record<ProviderKind, ProviderMeta | null>; onSaved: (kind: ProviderKind) => void }) {
-  const missing = PROVIDER_KINDS.filter((kind) => !providers[kind]);
-  const [picked, setPicked] = useState<ProviderKind | null>(null);
+  const missing = KEY_PROVIDER_KINDS.filter((kind) => !providers[kind]);
+  const [picked, setPicked] = useState<KeyProviderKind | null>(null);
 
   const kind = picked && !providers[picked] ? picked : null;
   if (!missing.length) return null;
@@ -205,7 +211,7 @@ export function AddProviderKey({ providers, onSaved }: { providers: Record<Provi
     <FieldGroup className="gap-3">
       <Field>
         <FieldTitle>Add an API key</FieldTitle>
-        <Select items={missing.map((k) => ({ value: k, label: PROVIDER_LABELS[k].name }))} value={kind ?? ""} onValueChange={(value) => value && setPicked(value as ProviderKind)}>
+        <Select items={missing.map((k) => ({ value: k, label: PROVIDER_LABELS[k].name }))} value={kind ?? ""} onValueChange={(value) => value && setPicked(value as KeyProviderKind)}>
           <SelectTrigger className="w-full max-w-sm" aria-label="Which API">
             <SelectValue placeholder="Which API?" />
           </SelectTrigger>
@@ -251,9 +257,9 @@ export function ProvidersCard({ ai, onAiChange }: { ai?: AiSettings | null; onAi
           <Spinner />
         ) : (
           <>
-            {PROVIDER_KINDS.some((kind) => providers[kind]) ? (
+            {KEY_PROVIDER_KINDS.some((kind) => providers[kind]) ? (
               <ul className="flex flex-col gap-3">
-                {PROVIDER_KINDS.filter((kind) => providers[kind]).map((kind) => (
+                {KEY_PROVIDER_KINDS.filter((kind) => providers[kind]).map((kind) => (
                   <SavedKey key={kind} kind={kind} provider={providers[kind]!} ai={ai} onAiChange={onAiChange} onChange={() => void reload()} />
                 ))}
               </ul>

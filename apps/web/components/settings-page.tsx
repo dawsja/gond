@@ -16,6 +16,7 @@ import { HomeResetCard } from "@/components/home-reset-card";
 import { McpCard } from "@/components/mcp-card";
 import { NotificationsCard } from "@/components/notifications-card";
 import { OidcCard } from "@/components/oidc-card";
+import { ChatGptPlanCard } from "@/components/chatgpt-plan";
 import { ProvidersCard } from "@/components/providers-card";
 import { VoiceCard } from "@/components/voice-card";
 import { SecretsCard } from "@/components/secrets-card";
@@ -66,9 +67,11 @@ export function SettingsPage({ user, section, index = false }: { user: SessionUs
     const connected = params.get("connected");
     const mcp = params.get("mcp");
     const mcpError = params.get("mcp_error");
+    const chatgptError = params.get("chatgpt_error");
     void Promise.resolve().then(() => {
       if (mcp) toast.add({ type: "success", title: `Signed in to ${mcp}.`, description: "Its tools work for every bot from their next reply." });
       if (mcpError) toast.add({ type: "error", title: "MCP sign-in didn't complete.", description: mcpError });
+      if (chatgptError) toast.add({ type: "error", title: "ChatGPT sign-in didn't complete.", description: chatgptError });
       return load(Boolean(connected));
     });
   }, [load, params]);
@@ -157,6 +160,7 @@ export function SettingsPage({ user, section, index = false }: { user: SessionUs
       body = (
         <>
           {ai ? <EngineCard ai={ai} status={status} onChange={setAi} onRefresh={() => void load(true)} /> : <Skeleton className="h-96 rounded-xl" />}
+          <ChatGptPlanCard ai={ai} onAiChange={setAi} />
           <ProvidersCard ai={ai} onAiChange={setAi} />
         </>
       );

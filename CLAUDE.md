@@ -793,6 +793,31 @@ what is here. The README says what Gond is; this says how it is made.
   `src/routes/llm.ts`) and the provider's proxy token; the token names whose row it is
   (`providerByToken`), only the proxy decrypts the key, and
   `allSecretValues()` includes every key for redaction.
+- **A ChatGPT plan is a provider you sign in to** (`src/chatgpt.ts`,
+  Settings → AI → ChatGPT plan, `chatgpt-plan.tsx`), OpenAI's Sign in
+  with ChatGPT for open-source apps: OAuth with PKCE against
+  auth.openai.com, the client registered on first use
+  (`dynamic_agent_client` comes back as an `oaiapp_` id kept in
+  `gond_user_prefs.chatgpt_client` past a sign-out), one
+  `ext_agent_host_id` per install (`chatgpt-host-id` in the data
+  directory), and the redirect `http://127.0.0.1:47651/callback`, the
+  desktop app's MCP loopback, so the shells hand it back to
+  `/api/mcp-servers/oauth/callback` (which sends a ChatGPT `state` here)
+  and a browser pastes it. The ID token is checked against OpenAI's JWKS.
+  The tokens are the `chatgpt` row of `gond_providers` (access token as
+  `api_key`, the rest encrypted in `oauth`), redacted like a key;
+  `chatGptAccessToken` renews them one at a time per person, since the
+  refresh token rotates, and a refusal ends the sign-in with a line
+  saying so. Only the `api` engine runs on it: `native.ts` speaks the
+  Responses API for it (`store: false`, streamed, the prompt as
+  `instructions`, the tools in one `gond` namespace with `strict: false`,
+  results as `function_call_output`), and the proxy passes only
+  `responses` and `models` through. Its refusals are the plan's
+  (`planError`: "Usage limit reached" with Manage usage). The wording is
+  OpenAI's: "Continue with ChatGPT" with their mark (`ChatGptLogo`, used
+  nowhere else), "You're using your ChatGPT plan" / "Got it" once, and
+  "Using ChatGPT plan" with Manage usage under the model. Voice can't use
+  it.
 - **Speech becomes text in the API** (`src/routes/voice.ts`). The
   person's choice is `voice` and `voice_model` on `gond_user_prefs` (`src/data/voice.ts`,
   `pickVoiceProvider` in shared); `/api/transcribe` sends the recording

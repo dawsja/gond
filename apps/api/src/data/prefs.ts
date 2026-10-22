@@ -60,3 +60,15 @@ export function setUserAccent(userId: string, accent: Accent) {
     .run(userId, accent === DEFAULT_ACCENT ? null : accent, now());
   emit({ topic: "me", userId });
 }
+
+/** The client a person's ChatGPT account registered Gond as; reused on every later sign-in, kept past a sign-out. */
+export function chatGptClient(userId: string): string | null {
+  const row = ensureDatabase().query("SELECT chatgpt_client FROM gond_user_prefs WHERE user_id = ?").get(userId) as { chatgpt_client: string | null } | null;
+  return row?.chatgpt_client ?? null;
+}
+
+export function setChatGptClient(userId: string, clientId: string | null) {
+  ensureDatabase()
+    .query("INSERT INTO gond_user_prefs (user_id, chatgpt_client, updated_at) VALUES (?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET chatgpt_client = excluded.chatgpt_client, updated_at = excluded.updated_at")
+    .run(userId, clientId, now());
+}

@@ -338,8 +338,19 @@ export type AuthConfig = {
   oidc: { enabled: boolean; name: string } | null;
 };
 
-export const PROVIDER_KINDS = ["anthropic", "openai", "xai"] as const;
+export const PROVIDER_KINDS = ["anthropic", "openai", "xai", "chatgpt"] as const;
 export type ProviderKind = (typeof PROVIDER_KINDS)[number];
+
+/** The APIs a person types a key for; a ChatGPT plan is signed in to instead (Sign in with ChatGPT). */
+export const KEY_PROVIDER_KINDS = ["anthropic", "openai", "xai"] as const satisfies readonly ProviderKind[];
+export type KeyProviderKind = (typeof KEY_PROVIDER_KINDS)[number];
+
+export function isKeyProvider(kind: ProviderKind): kind is KeyProviderKind {
+  return (KEY_PROVIDER_KINDS as readonly string[]).includes(kind);
+}
+
+export const CHATGPT_API_URL = "https://api.openai.com/v1";
+export const CHATGPT_USAGE_URL = "https://chatgpt.com/settings/usage";
 
 export const PROVIDER_LABELS: Record<ProviderKind, { name: string; short: string; detail: string; defaultUrl: string; keyHint: string }> = {
   anthropic: {
@@ -363,15 +374,25 @@ export const PROVIDER_LABELS: Record<ProviderKind, { name: string; short: string
     defaultUrl: "https://api.x.ai/v1",
     keyHint: "xai-…",
   },
+  chatgpt: {
+    name: "ChatGPT plan",
+    short: "ChatGPT",
+    detail: "Your ChatGPT Plus or Pro plan, signed in with ChatGPT. No key needed.",
+    defaultUrl: CHATGPT_API_URL,
+    keyHint: "",
+  },
 };
 
+/** Bearer auth and OpenAI's paths; a ChatGPT plan talks the Responses API on them, the rest chat completions. */
 export function isOpenAiShaped(kind: ProviderKind): boolean {
-  return kind === "openai" || kind === "xai";
+  return kind === "openai" || kind === "xai" || kind === "chatgpt";
 }
 
 export type ProviderMeta = {
   kind: ProviderKind;
   baseUrl: string;
+  /** The ChatGPT account a plan is signed in with; null for a key. */
+  account: { email: string | null; name: string | null } | null;
 
   check: { ok: boolean; detail: string; at: string } | null;
   updatedAt: string;
@@ -490,7 +511,7 @@ export const ENGINE_LABELS: Record<Engine, EngineInfo> = {
     signIn: "",
     signInAt: "",
     provider: "anthropic",
-    providers: ["anthropic", "openai", "xai"],
+    providers: ["anthropic", "openai", "xai", "chatgpt"],
     defaultModel: "",
     modelHint: "claude-sonnet-5-5, or any model your key lists",
   },

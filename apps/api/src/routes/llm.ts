@@ -5,6 +5,7 @@ import { userId } from "../access.ts";
 import { getAi, releaseEngines } from "../data/ai.ts";
 import { boxConfig, engineModels } from "../box.ts";
 import { deleteProvider, getProvider, isProviderKind, listProviders, providerBaseUrl, providerByToken, providerKey, recordProviderCheck, saveProvider } from "../data/providers.ts";
+import { chatGptAccessToken, signOutChatGpt, startChatGptLogin } from "../chatgpt.ts";
 
 const HOP = new Set(["host", "connection", "content-length", "transfer-encoding", "keep-alive", "cookie", "authorization", "x-api-key", "x-gond-llm-token", "x-kru-llm-token", "accept-encoding"]);
 
@@ -29,6 +30,14 @@ export function authHeaders(kind: ProviderKind, baseUrl: string, key: string): R
   return isAnthropicHost(baseUrl) ? { "x-api-key": key } : { "x-api-key": key, authorization: `Bearer ${key}` };
 }
 
+/** A key as saved, or for a ChatGPT plan an access token renewed when it's near its end. */
+async function keyFor(userId: string, kind: ProviderKind): Promise<string | null> {
+  return kind === "chatgpt" ? chatGptAccessToken(userId) : providerKey(userId, kind);
+}
+
+// A plan's token is for answering a person, so the proxy passes nothing else through.
+const CHATGPT_PATHS = new Set(["responses", "models"]);
+
 function modelsRequest(kind: ProviderKind, baseUrl: string, key: string): { url: URL; headers: Record<string, string> } {
   return {
     url: upstreamUrl(baseUrl, isOpenAiShaped(kind) ? "models" : "v1/models", ""),
@@ -40,13 +49,20 @@ export function readModels(payload: unknown): ModelChoice[] {
   const rows = (payload as { data?: unknown; models?: unknown })?.data ?? (payload as { models?: unknown })?.models;
   if (!Array.isArray(rows)) return [];
   const out: ModelChoice[] = [];
+  // A ChatGPT plan lists `slug`s, best first, with the ones to offer marked `visibility: "list"`.
+  let ranked = false;
   for (const row of rows) {
-    const id = typeof row === "string" ? row : typeof (row as { id?: unknown })?.id === "string" ? (row as { id: string }).id : null;
+    const entry = row as { id?: unknown; slug?: unknown; display_name?: unknown; visibility?: unknown };
+    if (typeof entry?.slug === "string") {
+      ranked = true;
+      if (entry.visibility !== undefined && entry.visibility !== "list") continue;
+    }
+    const id = typeof row === "string" ? row : typeof entry?.id === "string" ? entry.id : typeof entry?.slug === "string" ? entry.slug : null;
     if (!id) continue;
-    const name = typeof (row as { display_name?: unknown })?.display_name === "string" ? (row as { display_name: string }).display_name : undefined;
+    const name = typeof entry?.display_name === "string" ? entry.display_name : undefined;
     out.push(name ? { id, name } : { id });
   }
-  return out.sort((a, b) => a.id.localeCompare(b.id));
+  return ranked ? out : out.sort((a, b) => a.id.localeCompare(b.id));
 }
 
 export function presentedToken(headers: Headers): string {
@@ -76,14 +92,15 @@ export function proxiedUrl(baseUrl: string, suffix: string, search: string): URL
 
 async function checkProvider(owner: string, kind: ProviderKind): Promise<{ ok: boolean; detail: string }> {
   const baseUrl = providerBaseUrl(owner, kind);
-  const key = providerKey(owner, kind);
+  const key = await keyFor(owner, kind);
+  if (kind === "chatgpt" && !key) return { ok: false, detail: "Your ChatGPT sign-in ended. Sign in again." };
   if (!baseUrl || !key) return { ok: false, detail: "Not set" };
   const { url, headers } = modelsRequest(kind, baseUrl, key);
   try {
     const res = await fetch(url, { headers, redirect: "manual", signal: AbortSignal.timeout(15_000) });
     await res.body?.cancel().catch(() => undefined);
-    if (res.ok) return { ok: true, detail: "The key works." };
-    if (res.status === 401 || res.status === 403) return { ok: false, detail: "The provider refused the key." };
+    if (res.ok) return { ok: true, detail: kind === "chatgpt" ? "Signed in. Your plan works." : "The key works." };
+    if (res.status === 401 || res.status === 403) return { ok: false, detail: kind === "chatgpt" ? "ChatGPT refused the sign-in. Sign in again." : "The provider refused the key." };
 
     if (res.status === 404 || res.status === 405) return { ok: true, detail: "Saved. The server answered but doesn't list models, so the key wasn't checked." };
     return { ok: false, detail: `The provider answered ${res.status}.` };
@@ -97,9 +114,12 @@ export function providerRoutes() {
 
   app.get("/providers", (c) => c.json({ providers: listProviders(userId(c)) }));
 
+  app.post("/providers/chatgpt/sign-in", (c) => c.json({ url: startChatGptLogin(userId(c)) }));
+
   app.put("/providers/:kind", async (c) => {
     const kind = c.req.param("kind");
     if (!isProviderKind(kind)) return c.json({ error: "No such provider" }, 404);
+    if (kind === "chatgpt") return c.json({ error: "A ChatGPT plan is signed in to, not given a key. Use Continue with ChatGPT." }, 400);
     const parsed = providerInputSchema.safeParse(await c.req.json().catch(() => ({})));
     if (!parsed.success) return c.json({ error: parsed.error.issues[0]?.message ?? "Bad provider" }, 400);
     try {
@@ -117,10 +137,10 @@ export function providerRoutes() {
     return c.json({ provider: recordProviderCheck(userId(c), kind, await checkProvider(userId(c), kind)) });
   });
 
-  app.delete("/providers/:kind", (c) => {
+  app.delete("/providers/:kind", async (c) => {
     const kind = c.req.param("kind");
     if (!isProviderKind(kind)) return c.json({ error: "No such provider" }, 404);
-    if (!deleteProvider(userId(c), kind)) return c.json({ error: "No such provider" }, 404);
+    if (!(kind === "chatgpt" ? await signOutChatGpt(userId(c)) : deleteProvider(userId(c), kind))) return c.json({ error: "No such provider" }, 404);
 
     releaseEngines(userId(c), kind, (other) => Boolean(getProvider(userId(c), other)));
     return c.body(null, 204);
@@ -146,8 +166,8 @@ async function modelsFor(userId: string, engine: Engine): Promise<ModelGroup> {
   const info = ENGINE_LABELS[engine];
   const kind = getAi(userId).engines[engine].provider ?? info.providers.find((p) => getProvider(userId, p)) ?? info.provider;
   const baseUrl = providerBaseUrl(userId, kind);
-  const key = providerKey(userId, kind);
-  if (!baseUrl || !key) return { engine, models: [], source: "none", detail: "No API key saved yet." };
+  const key = await keyFor(userId, kind);
+  if (!baseUrl || !key) return { engine, models: [], source: "none", detail: kind === "chatgpt" ? "Sign in with ChatGPT again to see your plan's models." : "No API key saved yet." };
   const { url, headers } = modelsRequest(kind, baseUrl, key);
   try {
     const res = await fetch(url, { headers, redirect: "manual", signal: AbortSignal.timeout(15_000) });
@@ -170,9 +190,12 @@ export function llmProxyRoutes() {
     // Tokens are random and unique; the lookup is by equality in the database, never by prefix.
     const provider = token.length >= 16 && token.length <= 200 ? providerByToken(kind, token) : null;
     if (!provider) return c.json({ error: { type: "authentication_error", message: "Unauthorized" } }, 401);
-    const { baseUrl, key } = provider;
+    const { baseUrl } = provider;
 
     const suffix = c.req.path.replace(/^\/api\/llm\/[^/]+\/?/, "");
+    if (kind === "chatgpt" && !CHATGPT_PATHS.has(suffix.replace(/\/+$/, ""))) return c.json({ error: { type: "invalid_request_error", message: "A ChatGPT plan only answers responses here" } }, 404);
+    const key = kind === "chatgpt" ? await chatGptAccessToken(provider.userId) : provider.key;
+    if (!key) return c.json({ error: { type: "authentication_error", message: "Your ChatGPT sign-in ended. Sign in again in Settings → AI." } }, 403);
     const target = proxiedUrl(baseUrl, suffix, new URL(c.req.url).search);
     if (!target) return c.json({ error: { type: "invalid_request_error", message: "That path isn't under the provider's address" } }, 400);
     const headers = new Headers();

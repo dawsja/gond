@@ -9,6 +9,7 @@ import { injectSecrets } from "../data/secrets.ts";
 import { resolveMcpIcon } from "../mcp-icon.ts";
 import { timingSafeEqualString } from "../ids.ts";
 import { proxiedUrl } from "./llm.ts";
+import { completeChatGptLogin, completeChatGptLoginFrom, isChatGptState } from "../chatgpt.ts";
 
 function validate(input: unknown) {
   const parsed = mcpServerInputSchema.safeParse(input);
@@ -90,7 +91,12 @@ export function mcpRoutes() {
     }
   });
 
+  // A ChatGPT sign-in returns to the same loopback as an MCP one, so the shells hand it back here too.
   app.get("/mcp-servers/oauth/callback", async (c) => {
+    if (isChatGptState(c.req.query("state"))) {
+      const done = await completeChatGptLogin({ code: c.req.query("code"), state: c.req.query("state"), error: c.req.query("error"), errorDescription: c.req.query("error_description"), clientId: c.req.query("client_id") }, userId(c));
+      return c.redirect(`/app/settings/ai?${done.ok ? "chatgpt=1" : `chatgpt_error=${encodeURIComponent(done.reason ?? "")}`}`);
+    }
     const result = await completeMcpLogin({ code: c.req.query("code"), state: c.req.query("state"), error: c.req.query("error"), errorDescription: c.req.query("error_description") }, userId(c));
     if (result.threadId) return c.redirect(`/app/t/${result.threadId}`);
     return c.redirect(`/app/settings/apps?${result.ok ? `mcp=${encodeURIComponent(result.name ?? "")}` : `mcp_error=${encodeURIComponent(result.reason ?? "")}`}`);
@@ -99,6 +105,11 @@ export function mcpRoutes() {
   app.post("/mcp-servers/oauth/complete", async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as { url?: unknown };
     if (typeof body.url !== "string" || !body.url.trim() || body.url.length > 8000) return c.json({ error: "Paste the address the sign-in ended on." }, 400);
+    const state = URL.canParse(body.url.trim()) ? new URL(body.url.trim()).searchParams.get("state") : null;
+    if (isChatGptState(state)) {
+      const done = await completeChatGptLoginFrom(body.url, userId(c));
+      return done.ok ? c.json({ name: "ChatGPT", threadId: null }) : c.json({ error: done.reason }, 400);
+    }
     const result = await completeMcpLoginFrom(body.url, userId(c));
     return result.ok ? c.json({ name: result.name, threadId: result.threadId }) : c.json({ error: result.reason }, 400);
   });

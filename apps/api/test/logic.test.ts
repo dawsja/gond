@@ -359,6 +359,63 @@ describe("calling an API directly", () => {
     expect(providerError(404, {})).toContain("no such endpoint or model");
   });
 
+  test("a ChatGPT plan streams the Responses API and reads back as the same step", async () => {
+    const { sseEvents, readResponses, planError, toolList, stepMessages } = await import("../src/native.ts");
+    const stream = [
+      'event: response.output_item.done\ndata: {"type":"response.output_item.done","item":{"type":"reasoning","id":"rs_1"}}',
+      'data: {"type":"response.completed","response":{"output":[{"type":"reasoning","id":"rs_1"},{"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":"Looking now."}]},{"type":"function_call","id":"fc_1","call_id":"call_1","name":"gond.Bash","arguments":"{\\"command\\":\\"ls\\"}"}]}}',
+      "data: [DONE]",
+      "",
+    ].join("\n\n");
+    const step = readResponses(sseEvents(stream));
+    expect(step.text).toBe("Looking now.");
+    expect(step.calls).toEqual([{ id: "call_1", name: "Bash", input: { command: "ls" } }]);
+    expect(step.raw).toEqual([
+      { type: "message", role: "assistant", content: [{ type: "output_text", text: "Looking now." }] },
+      { type: "function_call", call_id: "call_1", name: "gond.Bash", arguments: '{"command":"ls"}' },
+    ]);
+    expect(step.stopReason).toBe("completed");
+
+    expect(readResponses([{ type: "response.incomplete", response: { output: [], incomplete_details: { reason: "max_output_tokens" } } }]).stopReason).toBe("max_tokens");
+    expect(() => readResponses([{ type: "response.created" }])).toThrow("broke off");
+    expect(() => readResponses([{ type: "response.failed", response: { error: { code: "subscription_sharing_usage_limit_exceeded", message: "x" } } }])).toThrow("Usage limit reached");
+    expect(planError(429, { error: { code: "subscription_sharing_usage_limit_exceeded" } })).toContain("chatgpt.com/settings/usage");
+    expect(planError(403, { detail: "nope" })).toBe("ChatGPT refused the request: nope");
+    expect(planError(401, {})).toContain("Sign in again");
+
+    const access = { kind: "chatgpt" as const, baseUrl: "http://api/api/llm/chatgpt", token: "t" };
+    const tools = { Bash: { description: "Runs a command.", inputSchema: { type: "object", properties: {} }, execute: async () => "" } };
+    expect(toolList(access, tools)).toEqual([{ type: "namespace", name: "gond", description: "Gond's tools for this bot.", tools: [{ type: "function", name: "Bash", description: "Runs a command.", parameters: { type: "object", properties: {} }, strict: false }] }]);
+    expect(stepMessages("chatgpt", [{ call: { id: "call_1" }, parts: [{ type: "text", text: "a.txt" }], isError: false }], ["also b"])).toEqual([
+      { type: "function_call_output", call_id: "call_1", output: "a.txt" },
+      { role: "user", content: "also b" },
+    ]);
+    const shot = stepMessages("chatgpt", [{ call: { id: "c" }, parts: [{ type: "text", text: "ok" }, { type: "image", mimeType: "image/png", data: "AAAA" }], isError: false }]);
+    expect(shot).toEqual([{ type: "function_call_output", call_id: "c", output: [{ type: "input_text", text: "ok" }, { type: "input_image", image_url: "data:image/png;base64,AAAA" }] }]);
+  });
+
+  test("a ChatGPT plan's models keep its order and only the listed ones", async () => {
+    const { readModels } = await import("../src/routes/llm.ts");
+    expect(readModels({ models: [{ slug: "gpt-5.5", display_name: "GPT-5.5", visibility: "list" }, { slug: "gpt-old", visibility: "hide" }, { slug: "gpt-5.5-mini", display_name: "GPT-5.5 mini", visibility: "list" }] })).toEqual([
+      { id: "gpt-5.5", name: "GPT-5.5" },
+      { id: "gpt-5.5-mini", name: "GPT-5.5 mini" },
+    ]);
+    expect(readModels({ data: [{ id: "b" }, { id: "a" }] })).toEqual([{ id: "a" }, { id: "b" }]);
+  });
+
+  test("a ChatGPT ID token must be for this sign-in", async () => {
+    const { checkIdClaims, idTokenClaims } = await import("../src/chatgpt.ts");
+    const now = 1_800_000_000_000;
+    const good = { iss: "https://auth.openai.com", aud: ["oaiapp_1"], nonce: "n", exp: now / 1000 + 600, email: "a@b.c" };
+    expect(checkIdClaims(good, { clientId: "oaiapp_1", nonce: "n", now })).toBeNull();
+    expect(checkIdClaims({ ...good, iss: "https://evil.example" }, { clientId: "oaiapp_1", nonce: "n", now })).toContain("someone else");
+    expect(checkIdClaims(good, { clientId: "oaiapp_2", nonce: "n", now })).toContain("another app");
+    expect(checkIdClaims(good, { clientId: "oaiapp_1", nonce: "other", now })).toContain("this sign-in");
+    expect(checkIdClaims({ ...good, exp: now / 1000 - 3600 }, { clientId: "oaiapp_1", nonce: "n", now })).toContain("expired");
+    const token = `x.${Buffer.from(JSON.stringify(good)).toString("base64url")}.y`;
+    expect(idTokenClaims(token).email).toBe("a@b.c");
+  });
+
   test("a turn runs the tools the API asks for and answers in words", async () => {
     const { nativeTurn } = await import("../src/native.ts");
     const ran: string[] = [];

@@ -1,10 +1,21 @@
-import { PROVIDER_KINDS, type ProviderInput, type ProviderKind, type ProviderMeta } from "@gond/shared";
+import { CHATGPT_API_URL, PROVIDER_KINDS, type ProviderInput, type ProviderKind, type ProviderMeta } from "@gond/shared";
 import { ensureDatabase } from "../db/init.ts";
 import { emit } from "../events.ts";
 import { newId, now, randomString } from "../ids.ts";
 import { decryptSecret, encryptSecret } from "../secrets.ts";
 
-type Row = { id: string; user_id: string | null; kind: string; base_url: string; api_key: string; proxy_token: string; last_check: string | null; created_at: string; updated_at: string };
+type Row = { id: string; user_id: string | null; kind: string; base_url: string; api_key: string; proxy_token: string; last_check: string | null; oauth: string | null; created_at: string; updated_at: string };
+
+/** A ChatGPT plan's sign-in; the access token itself is the row's `api_key`, like a key. */
+export type ChatGptSession = {
+  clientId: string;
+  refreshToken: string;
+  idToken: string | null;
+  expiresAt: number;
+  scope: string;
+  email: string | null;
+  name: string | null;
+};
 
 export function isProviderKind(value: string): value is ProviderKind {
   return (PROVIDER_KINDS as readonly string[]).includes(value);
@@ -26,7 +37,17 @@ function toMeta(row: Row): ProviderMeta {
   } catch {
     /* no check */
   }
-  return { kind: row.kind as ProviderKind, baseUrl: row.base_url, check, updatedAt: row.updated_at };
+  const session = row.kind === "chatgpt" ? sessionOf(row) : null;
+  return { kind: row.kind as ProviderKind, baseUrl: row.base_url, account: session ? { email: session.email, name: session.name } : null, check, updatedAt: row.updated_at };
+}
+
+function sessionOf(row: Row): ChatGptSession | null {
+  if (!row.oauth) return null;
+  try {
+    return JSON.parse(decryptSecret(row.oauth)) as ChatGptSession;
+  } catch {
+    return null;
+  }
 }
 
 function row(userId: string, kind: ProviderKind): Row | null {
@@ -44,6 +65,7 @@ export function getProvider(userId: string, kind: ProviderKind): ProviderMeta | 
 }
 
 export function saveProvider(userId: string, kind: ProviderKind, input: ProviderInput): ProviderMeta {
+  if (kind === "chatgpt") throw new Error("A ChatGPT plan is signed in to, not given a key. Use Continue with ChatGPT.");
   const baseUrl = normalizeBaseUrl(input.baseUrl);
   const current = row(userId, kind);
   if (!current && !input.apiKey) throw new Error("Add the API key");
@@ -59,6 +81,39 @@ export function saveProvider(userId: string, kind: ProviderKind, input: Provider
   }
   emit({ topic: "ai", userId });
   return getProvider(userId, kind)!;
+}
+
+/** Saves a ChatGPT sign-in, or the tokens a refresh replaced, keeping the row's proxy token. */
+export function saveChatGptSession(userId: string, accessToken: string, session: ChatGptSession): void {
+  const current = row(userId, "chatgpt");
+  const at = now();
+  if (current) {
+    ensureDatabase().query("UPDATE gond_providers SET api_key = ?, oauth = ?, updated_at = ? WHERE id = ?").run(encryptSecret(accessToken), encryptSecret(JSON.stringify(session)), at, current.id);
+  } else {
+    ensureDatabase()
+      .query("INSERT INTO gond_providers (id, user_id, kind, base_url, api_key, proxy_token, oauth, created_at, updated_at) VALUES (?, ?, 'chatgpt', ?, ?, ?, ?, ?, ?)")
+      .run(newId("prov_"), userId, CHATGPT_API_URL, encryptSecret(accessToken), randomString(32), encryptSecret(JSON.stringify(session)), at, at);
+  }
+  emit({ topic: "ai", userId });
+}
+
+export function chatGptSession(userId: string): (ChatGptSession & { accessToken: string }) | null {
+  const found = row(userId, "chatgpt");
+  const session = found ? sessionOf(found) : null;
+  if (!found || !session) return null;
+  try {
+    return { ...session, accessToken: decryptSecret(found.api_key) };
+  } catch {
+    return null;
+  }
+}
+
+/** A sign-in ChatGPT won't renew: the tokens go, the row stays to say why, until the person signs in again. */
+export function endChatGptSession(userId: string, detail: string): void {
+  ensureDatabase()
+    .query("UPDATE gond_providers SET api_key = ?, oauth = NULL, last_check = ?, updated_at = ? WHERE user_id = ? AND kind = 'chatgpt'")
+    .run(encryptSecret(""), JSON.stringify({ ok: false, detail, at: now() }), now(), userId);
+  emit({ topic: "ai", userId });
 }
 
 export function recordProviderCheck(userId: string, kind: ProviderKind, check: { ok: boolean; detail: string }): ProviderMeta | null {
@@ -100,7 +155,7 @@ export function providerByToken(kind: ProviderKind, token: string): { userId: st
 }
 
 export function allProviderKeys(): string[] {
-  const rows = ensureDatabase().query("SELECT api_key FROM gond_providers").all() as { api_key: string }[];
+  const rows = ensureDatabase().query("SELECT * FROM gond_providers").all() as Row[];
   const out: string[] = [];
   for (const r of rows) {
     try {
@@ -108,6 +163,8 @@ export function allProviderKeys(): string[] {
     } catch {
       /* unreadable, can't leak */
     }
+    const session = sessionOf(r);
+    if (session) out.push(...[session.refreshToken, session.idToken].filter((value): value is string => Boolean(value)));
   }
   return out;
 }
