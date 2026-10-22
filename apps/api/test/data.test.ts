@@ -196,6 +196,25 @@ describe("data", () => {
     expect(routineName(routinePrompt(plain))).toBe("Calendar clashes");
   });
 
+  test("a thread carries what a watch noticed until it is read", async () => {
+    const { createBot } = await import("../src/data/bots.ts");
+    const { postMessage, getThread, markThreadRead } = await import("../src/data/threads.ts");
+    const { botInputSchema } = await import("@gond/shared");
+    const bot = createBot(botInputSchema.parse({ name: "Lookout" }), "u-admin");
+    postMessage({ threadId: bot.threadId, author: "routine", body: "[Routine: Morning]\nSay hello.", answered: true });
+    await Bun.sleep(2);
+    postMessage({ threadId: bot.threadId, author: bot.id, body: "Good morning.", answered: true });
+    expect(getThread(bot.threadId)?.noticed).toBeNull();
+    await Bun.sleep(2);
+    postMessage({ threadId: bot.threadId, author: "routine", body: "[Watch: Calendar]\nLook for clashes.", answered: true });
+    await Bun.sleep(2);
+    postMessage({ threadId: bot.threadId, author: bot.id, body: "**Dana** moved your 1:1 to 9:00.", answered: true });
+    expect(getThread(bot.threadId)?.noticed).toMatchObject({ watch: "Calendar", body: "**Dana** moved your 1:1 to 9:00." });
+    await Bun.sleep(2);
+    markThreadRead(bot.threadId);
+    expect(getThread(bot.threadId)?.noticed).toBeNull();
+  });
+
   test("each person's color is their own, blue until they pick one", async () => {
     const { setUserAccent, userAccent } = await import("../src/data/prefs.ts");
     expect(userAccent("u-color")).toBe("blue");

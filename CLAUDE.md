@@ -289,6 +289,11 @@ what is here. The README says what Gond is; this says how it is made.
   sandboxed attachment, a picture shows inline only when its bytes are
   one (`pictureType`, so never an SVG), a file holding a stored secret is
   refused, and the text view has every secret hidden.
+- **A message is only its bubble.** No avatar beside it (a room names the
+  bot above its message) and no time under it: a tap or click on the
+  bubble shows when it was sent, and taps again hides it (`showsTime` in
+  `conversation.tsx` leaves links, buttons, pictures and a selection
+  alone). "Sent while working" always shows.
 - **Reactions are a chat's tapbacks** (`REACTIONS` in shared: 👍 ❤️ 😂
   😮 😢 🙏), one per author per message (`gond_message_reactions`,
   `setReaction`). The person reacts to a bot's message from its context
@@ -542,7 +547,13 @@ what is here. The README says what Gond is; this says how it is made.
   tighten the watch). Nobody fills in a form for one: the house rules
   have a bot offer once, with `::choices`, to watch what the person asks
   about twice or what will change later, and make it on a yes. The header
-  pill says how many it is watching.
+  pill says how many it is watching. What a watch said and the person
+  hasn't read is `Thread.noticed` (`noticedIn` in `src/data/threads.ts`);
+  with the pending approvals it makes the "N things worth a look" pill
+  under the pinned bots (`worth-a-look.tsx`, drawn by `BotRows`): a sheet
+  on a phone, a popover in the sidebar, the approvals as their full cards
+  and each noticed thing a row to its conversation, with Mark all seen
+  marking those conversations read.
 - Long work is started by the dispatcher (`src/dispatcher.ts`) and awaited
   in the responder (`src/responder.ts`); a tick stays quick. While the
   computer updates or resets (`src/updater.ts`), nothing new starts and

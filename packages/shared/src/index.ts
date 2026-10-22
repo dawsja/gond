@@ -99,6 +99,8 @@ export type Thread = {
 
   lastMessage: { author: string; body: string; at: string } | null;
   unread: number;
+  /** What a watch's latest run said, while the person hasn't read it yet. */
+  noticed: { watch: string; body: string; at: string } | null;
   createdAt: string;
   updatedAt: string;
 };

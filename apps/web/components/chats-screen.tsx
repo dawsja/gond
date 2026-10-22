@@ -6,7 +6,7 @@ import { useState } from "react";
 import { PersonAvatar } from "@/components/bot-avatar";
 import type { ShellDialog } from "@/components/shell";
 import { openShellDialog } from "@/components/shell";
-import { ApprovalsBadge, BotRows, BotSearchInput, NewMenu, useBotSearch } from "@/components/sidebar";
+import { BotRows, BotSearchInput, NewMenu, useBotSearch } from "@/components/sidebar";
 import { useStore } from "@/components/store";
 import { ThreadConfirms, type Ask } from "@/components/thread-actions";
 import { Button } from "@/components/ui/button";
@@ -48,9 +48,7 @@ export function ChatsScreen({ className }: { className?: string }) {
         )}
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-[calc(16px+var(--safe-bottom))]">
-        <ApprovalsBadge className="mx-1 mb-2 w-[calc(100%-8px)]" />
-
-        <BotRows rows={rows} hits={hits} query={query} setQuery={setQuery} onOpen={onOpen} onAsk={setAsk} />
+        <BotRows rows={rows} hits={hits} query={query} setQuery={setQuery} lookAs="sheet" onOpen={onOpen} onAsk={setAsk} />
       </div>
       <ThreadConfirms ask={ask} onClose={() => setAsk(null)} />
     </div>

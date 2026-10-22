@@ -1,12 +1,12 @@
 "use client";
 
 import { handleOf, type Approval, type Bot, type Message, type ReactionEmoji, type Thread } from "@gond/shared";
-import { ArrowUp, Bot as BotIcon, ChevronLeft, Clock, Copy, Download, ListEnd, EllipsisVertical, FileText, Monitor, PanelRight, Paperclip, Pencil, Plus, TextSelect, Users, X } from "lucide-react";
+import { ArrowUp, ChevronLeft, Copy, Download, ListEnd, EllipsisVertical, FileText, Monitor, PanelRight, Paperclip, Pencil, Plus, TextSelect, Users, X } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type CSSProperties, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type CSSProperties, type DragEvent, type FormEvent, type KeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { ApprovalCard, type Decision } from "@/components/approval-card";
-import { BotAvatar, YouAvatar } from "@/components/bot-avatar";
+import { BotAvatar } from "@/components/bot-avatar";
 import { copyToClipboard } from "@/components/hq/clipboard";
 import { ExchangeDialog } from "@/components/exchange-dialog";
 import { canReact, react, ReactionBadges, ReactionPicker } from "@/components/reactions";
@@ -26,7 +26,6 @@ import { useStore, type ThreadRow } from "@/components/store";
 import { threadActions, ThreadConfirms, type Ask } from "@/components/thread-actions";
 import { Attachment, AttachmentAction, AttachmentActions, AttachmentContent, AttachmentDescription, AttachmentGroup, AttachmentMedia, AttachmentTitle, AttachmentTrigger } from "@/components/ui/attachment";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import { Button } from "@/components/ui/button";
 import { ContextMenu, ContextMenuContent, ContextMenuGroup, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "@/components/ui/context-menu";
@@ -35,7 +34,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem,
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group";
 import { Marker, MarkerContent } from "@/components/ui/marker";
-import { Message as MessageRow, MessageAvatar, MessageContent, MessageFooter, MessageHeader } from "@/components/ui/message";
+import { Message as MessageRow, MessageContent, MessageFooter, MessageHeader } from "@/components/ui/message";
 import { MessageScroller, MessageScrollerButton, MessageScrollerContent, MessageScrollerEdges, MessageScrollerItem, MessageScrollerProvider, MessageScrollerViewport, useMessageScroller } from "@/components/ui/message-scroller";
 import { toast } from "@/components/ui/toast";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -175,11 +174,18 @@ function SelectTextDialog({ text, onClose }: { text: string | null; onClose: () 
   );
 }
 
+// A tap on a link, button or picture inside a bubble, or the end of a selection, isn't asking for the time.
+function showsTime(event: ReactMouseEvent): boolean {
+  if (event.target instanceof Element && event.target.closest("a, button, img, input, textarea")) return false;
+  return !window.getSelection()?.toString();
+}
+
 function Line({ message, threadId, bots, threads, bot, approvals, isRoom, editing, stops, touch, answer, noticed, onPick, onView, onDecide, onOpenExchange, onEdit, onSelectText, onReacted }: { message: Message; threadId: string; bots: Bot[]; threads: ThreadRow[]; bot: Bot | null; approvals: Map<string, Approval>; isRoom: boolean; editing: boolean; stops: boolean; touch: boolean; answer: string | undefined; noticed: Noticed | undefined; onPick: (option: string) => Promise<void>; onView: (attachmentId: string) => void; onDecide: (id: string, decision: Decision) => Promise<void>; onOpenExchange: (withThreadId: string) => void; onEdit: (message: Message | null, text?: string) => Promise<boolean>; onSelectText: (text: string) => void; onReacted: (message: Message) => void }) {
   const mine = message.author === "you";
   const bubble = useRef<HTMLDivElement>(null);
 
   const [selected, setSelected] = useState("");
+  const [timed, setTimed] = useState(false);
 
   const author = mine ? null : bots.find((b) => b.id === message.author) ?? null;
   if (message.kind === "prompt") return null;
@@ -192,19 +198,9 @@ function Line({ message, threadId, bots, threads, bot, approvals, isRoom, editin
       </Marker>
     );
   }
-  const avatar = mine ? (
-    <YouAvatar size={28} />
-  ) : author ? (
-    <BotAvatar bot={author} size={28} />
-  ) : (
-    <Avatar className="size-7 after:hidden">
-      <AvatarFallback className="text-muted-foreground">{message.author === "routine" ? <Clock className="size-3.5" /> : <BotIcon className="size-3.5" />}</AvatarFallback>
-    </Avatar>
-  );
   if (message.kind === "approval" || message.kind === "secret" || message.kind === "signin") {
     return (
       <MessageRow align="start">
-        <MessageAvatar className="bg-transparent">{avatar}</MessageAvatar>
         <MessageContent>
           {message.kind === "signin" ? <SignInCard message={message} bot={author ?? bot ?? undefined} /> : message.kind === "secret" ? <SecretCard message={message} bot={author ?? bot ?? undefined} /> : <ApprovalCard message={message} approval={message.approvalId ? approvals.get(message.approvalId) ?? null : null} bot={author ?? bot ?? undefined} noticed={Boolean(noticed)} onDecide={onDecide} />}
         </MessageContent>
@@ -218,7 +214,6 @@ function Line({ message, threadId, bots, threads, bot, approvals, isRoom, editin
   if (editing) {
     return (
       <MessageRow align="end">
-        <MessageAvatar className="bg-transparent">{avatar}</MessageAvatar>
         <MessageContent className="gap-1">
           <EditBubble
             message={message}
@@ -233,12 +228,11 @@ function Line({ message, threadId, bots, threads, bot, approvals, isRoom, editin
   }
   return (
     <MessageRow align={mine ? "end" : "start"}>
-      <MessageAvatar className="bg-transparent">{avatar}</MessageAvatar>
       <MessageContent className="gap-1">
         {showName ? <MessageHeader>{author?.name ?? (message.author === "routine" ? "Routine" : "Gond")}</MessageHeader> : null}
 
         <ContextMenu onOpenChange={(open) => setSelected(open ? selectionIn(bubble.current) : "")}>
-        <ContextMenuTrigger ref={bubble} className="select-text pointer-coarse:select-none" render={<Bubble variant={mine ? "default" : "outline"} align={mine ? "end" : "start"} className={cn("max-w-[86%] sm:max-w-[78%]", message.reactions.length > 0 && "mb-2.5")} />}>
+        <ContextMenuTrigger ref={bubble} onClick={(event) => showsTime(event) && setTimed((on) => !on)} className="select-text pointer-coarse:select-none" render={<Bubble variant={mine ? "default" : "outline"} align={mine ? "end" : "start"} className={cn("max-w-[86%] sm:max-w-[78%]", message.reactions.length > 0 && "mb-2.5")} />}>
           <BubbleContent className="rounded-2xl px-3.5 py-2">
             {message.body ? (
               <ChoicesContext.Provider value={mine ? {} : { pick: onPick, picked: answer }}>
@@ -319,10 +313,11 @@ function Line({ message, threadId, bots, threads, bot, approvals, isRoom, editin
           ) : null}
         </ContextMenu>
         {noticed?.lead ? <NoticedLinks message={message} watch={noticed.watch} bot={bot} /> : null}
-        <MessageFooter className="text-[10.5px] font-normal text-ash">
-          {shortTime(message.createdAt)}
-          {message.steered ? " · Sent while working" : null}
-        </MessageFooter>
+        {timed || message.steered ? (
+          <MessageFooter className="text-[10.5px] font-normal text-ash">
+            {[timed ? shortTime(message.createdAt) : null, message.steered ? "Sent while working" : null].filter(Boolean).join(" · ")}
+          </MessageFooter>
+        ) : null}
       </MessageContent>
     </MessageRow>
   );

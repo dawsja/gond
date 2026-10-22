@@ -22,6 +22,7 @@ import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupConte
 import { api } from "@/lib/api";
 import { useDrafts } from "@/lib/drafts";
 import { cn } from "@/lib/utils";
+import { WorthALook } from "@/components/worth-a-look";
 
 export function shortTime(iso: string, now = new Date()): string {
   const date = new Date(iso);
@@ -220,18 +221,7 @@ export function NewMenu({ onOpen, size = "icon-lg" }: { onOpen: (dialog: ShellDi
   );
 }
 
-export function ApprovalsBadge({ className }: { className?: string }) {
-  const { approvals } = useStore();
-  if (approvals.length === 0) return null;
-  return (
-    <Badge variant="secondary" render={<Link href={`/app/t/${approvals[0]!.threadId}`} />} className={cn("h-9 w-full justify-start gap-2 rounded-xl bg-amber/15 px-3 text-[13px] text-foreground hover:bg-amber/25 wide:h-8 wide:text-[12.5px]", className)}>
-      <span className="size-2 rounded-full bg-amber" aria-hidden="true" />
-      {approvals.length === 1 ? "1 approval waiting" : `${approvals.length} approvals waiting`}
-    </Badge>
-  );
-}
-
-export function BotRows({ rows, hits, query, setQuery, onOpen, onAsk }: { rows: ThreadRow[]; hits: Message[]; query: string; setQuery: (q: string) => void; onOpen: (dialog: ShellDialog) => void; onAsk: (ask: Ask) => void }): ReactNode {
+export function BotRows({ rows, hits, query, setQuery, lookAs, onOpen, onAsk }: { rows: ThreadRow[]; hits: Message[]; query: string; setQuery: (q: string) => void; lookAs: "sheet" | "popover"; onOpen: (dialog: ShellDialog) => void; onAsk: (ask: Ask) => void }): ReactNode {
   const { bots, threads, activity, loaded } = useStore();
   const pathname = usePathname();
   const drafts = useDrafts();
@@ -274,6 +264,7 @@ export function BotRows({ rows, hits, query, setQuery, onOpen, onAsk }: { rows: 
               ))}
             </ul>
           ) : null}
+          {query.trim() ? null : <WorthALook as={lookAs} className={cn("mx-1 mb-2 w-[calc(100%-8px)]", !pinned.length && "mt-1")} />}
         <SidebarMenu className="gap-0.5" aria-label="Bots">
           {(pinned.length ? rows.filter((t) => !pinned.some((p) => p.thread.id === t.id)) : rows).map((thread) => (
             <Row key={thread.id} thread={thread} bot={thread.botId ? bots.find((b) => b.id === thread.botId) : undefined} active={pathname === `/app/t/${thread.id}`} bots={bots} activity={activity[thread.id] ?? {}} draft={drafts[thread.id]} onOpen={onOpen} onAsk={onAsk} />
@@ -325,12 +316,9 @@ export function AppSidebar({ onOpen }: { onOpen: (dialog: ShellDialog) => void }
       </SidebarHeader>
 
       <SidebarContent>
-        <SidebarGroup className="py-0 empty:hidden">
-          <ApprovalsBadge />
-        </SidebarGroup>
         <SidebarGroup>
           <SidebarGroupContent>
-            <BotRows rows={rows} hits={hits} query={query} setQuery={setQuery} onOpen={onOpen} onAsk={setAsk} />
+            <BotRows rows={rows} hits={hits} query={query} setQuery={setQuery} lookAs="popover" onOpen={onOpen} onAsk={setAsk} />
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>

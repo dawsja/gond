@@ -1,4 +1,4 @@
-import type { ChatAttachment, Message, MessageAuthor, MessageKind, Reaction, ReactionEmoji, Thread } from "@gond/shared";
+import { isWatchRun, routineName, type ChatAttachment, type Message, type MessageAuthor, type MessageKind, type Reaction, type ReactionEmoji, type Thread } from "@gond/shared";
 import { ensureDatabase, transaction } from "../db/init.ts";
 import { botsChanged, emit, threadChanged } from "../events.ts";
 import { newId, now } from "../ids.ts";
@@ -81,6 +81,16 @@ function members(threadId: string): string[] {
   return rows.map((r) => r.bot_id);
 }
 
+function noticedIn(row: ThreadRow): Thread["noticed"] {
+  const db = ensureDatabase();
+  const run = db.query("SELECT body, created_at FROM gond_messages WHERE thread_id = ? AND author = 'routine' ORDER BY created_at DESC LIMIT 1").get(row.id) as { body: string; created_at: string } | null;
+  if (!run || !isWatchRun(run.body)) return null;
+  const said = db
+    .query("SELECT body, created_at FROM gond_messages WHERE thread_id = ? AND kind = 'message' AND author NOT IN ('you', 'system', 'routine') AND created_at > ? AND created_at > ? ORDER BY created_at LIMIT 1")
+    .get(row.id, run.created_at, row.last_read_at ?? "") as { body: string; created_at: string } | null;
+  return said ? { watch: routineName(run.body) ?? "", body: said.body, at: said.created_at } : null;
+}
+
 function toThread(row: ThreadRow): Thread {
   const db = ensureDatabase();
   const last = db
@@ -99,6 +109,7 @@ function toThread(row: ThreadRow): Thread {
     pinned: row.kind === "room" && Boolean(row.pinned),
     lastMessage: last ? { author: last.author, body: last.body, at: last.created_at } : null,
     unread: Number(unread.n),
+    noticed: noticedIn(row),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

@@ -233,7 +233,7 @@ describe("souls", () => {
 
 describe("targetsFor", () => {
   const other: Bot = { ...bot, id: "bot-2", name: "Pip", primary: false, threadId: "t-2" };
-  const room: Thread = { id: "room", kind: "room", name: "Room", botId: null, userId: "u-admin", members: [other.id, bot.id], pinned: false, lastMessage: null, unread: 0, createdAt: "", updatedAt: "" };
+  const room: Thread = { id: "room", kind: "room", name: "Room", botId: null, userId: "u-admin", members: [other.id, bot.id], pinned: false, lastMessage: null, unread: 0, noticed: null, createdAt: "", updatedAt: "" };
 
   test("with nobody named, the primary bot answers", async () => {
     const { targetsFor } = await import("../src/responder.ts");
