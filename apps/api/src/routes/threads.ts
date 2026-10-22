@@ -1,4 +1,4 @@
-import { ATTACHMENT_TYPES, MAX_ATTACHMENTS, MAX_ATTACHMENT_BYTES, isReaction, plainMarkdown, type ChatAttachment, type Thread } from "@gond/shared";
+import { ATTACHMENT_TYPES, MAX_ATTACHMENTS, MAX_ATTACHMENT_BYTES, isReaction, plainMarkdown, roomAnswerer, type Bot, type ChatAttachment, type Thread } from "@gond/shared";
 import { Hono } from "hono";
 import { ownThread, userId } from "../access.ts";
 import type { Env } from "../app.ts";
@@ -11,8 +11,13 @@ const MAX_BODY = 20_000;
 
 const INLINE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp", "application/pdf", "text/plain", "text/csv", "application/json"]);
 
-/** The line a room shows when it is renamed or its bots change, e.g. "Ada joined. Bo left." */
-export function roomChange(before: Pick<Thread, "name" | "members">, after: Pick<Thread, "name" | "members">, nameOf: (botId: string) => string): string | null {
+/** Who answers a room when nobody is named, by name. */
+export function answererOf(members: string[], bots: Bot[]): string | null {
+  return roomAnswerer(members.map((id) => bots.find((b) => b.id === id)).filter((b): b is Bot => Boolean(b) && !b!.hidden))?.name ?? null;
+}
+
+/** The line a room shows when it is renamed or its bots change, e.g. "Ada joined. Bo left.", and who answers now if that changed. */
+export function roomChange(before: Pick<Thread, "name" | "members">, after: Pick<Thread, "name" | "members">, nameOf: (botId: string) => string, answerers: [string | null, string | null] = [null, null]): string | null {
   const lines: string[] = [];
   if (after.name !== before.name) lines.push(`Renamed to ${after.name}.`);
   const list = (names: string[]) => (names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`);
@@ -20,6 +25,7 @@ export function roomChange(before: Pick<Thread, "name" | "members">, after: Pick
   const left = before.members.filter((id) => !after.members.includes(id)).map(nameOf);
   if (joined.length) lines.push(`${list(joined)} joined.`);
   if (left.length) lines.push(`${list(left)} left.`);
+  if (answerers[1] && answerers[0] !== answerers[1]) lines.push(`${answerers[1]} answers now when nobody's named.`);
   return lines.length ? lines.join(" ") : null;
 }
 
@@ -141,7 +147,9 @@ export function threadsRoutes() {
     if (!name) return c.json({ error: "Give the room a name" }, 400);
     if (members.length === 0) return c.json({ error: "Add at least one bot" }, 400);
     const thread = createRoom(name, members, userId(c));
-    postMessage({ threadId: thread.id, author: "system", kind: "event", body: `Room created with ${members.length} bot${members.length === 1 ? "" : "s"}. Mention a bot with @ to address it; with nobody named, your primary bot answers.`, answered: true });
+    const answerer = answererOf(members, listBots({ includeHidden: true, userId: userId(c) }));
+    const who = members.length > 1 && answerer ? ` With nobody named, ${answerer} answers; mention a bot with @, or by name, to address it.` : "";
+    postMessage({ threadId: thread.id, author: "system", kind: "event", body: `Room created with ${members.length} bot${members.length === 1 ? "" : "s"}.${who}`, answered: true });
     return c.json({ thread }, 201);
   });
 
@@ -158,7 +166,7 @@ export function threadsRoutes() {
     if (body.pinned !== undefined && typeof body.pinned !== "boolean") return c.json({ error: "pinned is true or false" }, 400);
     const thread = updateRoom(before.id, { name, members, pinned: body.pinned as boolean | undefined });
     if (!thread) return c.json({ error: "No such room" }, 404);
-    const change = roomChange(before, thread, (id) => bots.find((b) => b.id === id)?.name ?? "A bot");
+    const change = roomChange(before, thread, (id) => bots.find((b) => b.id === id)?.name ?? "A bot", thread.members.length > 1 ? [answererOf(before.members, bots), answererOf(thread.members, bots)] : [null, null]);
     if (change) postMessage({ threadId: thread.id, author: "system", kind: "event", body: change, answered: true });
     return c.json({ thread: getThread(thread.id) ?? thread });
   });

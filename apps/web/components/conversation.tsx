@@ -1,6 +1,6 @@
 "use client";
 
-import { handleOf, type Approval, type Bot, type Message, type ReactionEmoji, type Thread } from "@gond/shared";
+import { handleOf, roomTargets, type Approval, type Bot, type Message, type ReactionEmoji, type Thread } from "@gond/shared";
 import { ArrowUp, ChevronLeft, Copy, Download, ListEnd, EllipsisVertical, FileText, Monitor, PanelRight, Paperclip, Pencil, Plus, TextSelect, Users, X } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -180,7 +180,12 @@ function showsTime(event: ReactMouseEvent): boolean {
   return !window.getSelection()?.toString();
 }
 
-function Line({ message, threadId, bots, threads, bot, approvals, isRoom, editing, stops, touch, answer, noticed, onPick, onView, onDecide, onOpenExchange, onEdit, onSelectText, onReacted }: { message: Message; threadId: string; bots: Bot[]; threads: ThreadRow[]; bot: Bot | null; approvals: Map<string, Approval>; isRoom: boolean; editing: boolean; stops: boolean; touch: boolean; answer: string | undefined; noticed: Noticed | undefined; onPick: (option: string) => Promise<void>; onView: (attachmentId: string) => void; onDecide: (id: string, decision: Decision) => Promise<void>; onOpenExchange: (withThreadId: string) => void; onEdit: (message: Message | null, text?: string) => Promise<boolean>; onSelectText: (text: string) => void; onReacted: (message: Message) => void }) {
+/** "Net", "Net and Patch", "Ada, Bo and Cy". */
+function names(list: string[]): string {
+  return list.length < 2 ? list.join("") : `${list.slice(0, -1).join(", ")} and ${list.at(-1)}`;
+}
+
+function Line({ message, threadId, bots, threads, bot, approvals, isRoom, editing, stops, touch, answer, sentTo, noticed, onPick, onView, onDecide, onOpenExchange, onEdit, onSelectText, onReacted }: { message: Message; threadId: string; bots: Bot[]; threads: ThreadRow[]; bot: Bot | null; approvals: Map<string, Approval>; isRoom: boolean; editing: boolean; stops: boolean; touch: boolean; answer: string | undefined; sentTo: string | undefined; noticed: Noticed | undefined; onPick: (option: string, from: string) => Promise<void>; onView: (attachmentId: string) => void; onDecide: (id: string, decision: Decision) => Promise<void>; onOpenExchange: (withThreadId: string) => void; onEdit: (message: Message | null, text?: string) => Promise<boolean>; onSelectText: (text: string) => void; onReacted: (message: Message) => void }) {
   const mine = message.author === "you";
   const bubble = useRef<HTMLDivElement>(null);
 
@@ -235,7 +240,7 @@ function Line({ message, threadId, bots, threads, bot, approvals, isRoom, editin
         <ContextMenuTrigger ref={bubble} onClick={(event) => showsTime(event) && setTimed((on) => !on)} className="select-text pointer-coarse:select-none" render={<Bubble variant={mine ? "default" : "outline"} align={mine ? "end" : "start"} className={cn("max-w-[86%] sm:max-w-[78%]", message.reactions.length > 0 && "mb-2.5")} />}>
           <BubbleContent className="rounded-2xl px-3.5 py-2">
             {message.body ? (
-              <ChoicesContext.Provider value={mine ? {} : { pick: onPick, picked: answer }}>
+              <ChoicesContext.Provider value={mine ? {} : { pick: (option) => onPick(option, message.author), picked: answer }}>
                 <Markdown text={message.body} className="flex flex-col gap-2 text-[14px] leading-6" />
               </ChoicesContext.Provider>
             ) : null}
@@ -315,7 +320,7 @@ function Line({ message, threadId, bots, threads, bot, approvals, isRoom, editin
         {noticed?.lead ? <NoticedLinks message={message} watch={noticed.watch} bot={bot} /> : null}
         {timed || message.steered ? (
           <MessageFooter className="text-[10.5px] font-normal text-ash">
-            {[timed ? shortTime(message.createdAt) : null, message.steered ? "Sent while working" : null].filter(Boolean).join(" · ")}
+            {[timed ? shortTime(message.createdAt) : null, message.steered ? (sentTo ? `Sent to ${sentTo} while working` : "Sent while working") : null].filter(Boolean).join(" · ")}
           </MessageFooter>
         ) : null}
       </MessageContent>
@@ -441,7 +446,8 @@ export function Conversation({ threadId }: { threadId: string }) {
     let next: string | undefined;
     for (let i = messages.length - 1; i >= 0; i -= 1) {
       const m = messages[i]!;
-      if (m.author === "you" && m.kind === "message") next = m.body;
+      // A pick in a room names the bot it answers ("@patch Run a sweep"); the option is what's left.
+      if (m.author === "you" && m.kind === "message") next = m.body.replace(/^(?:\s*@[\w-]+[\s,]*)+/, "");
       else if (next !== undefined) map.set(m.id, next);
     }
     return map;
@@ -566,6 +572,17 @@ export function Conversation({ threadId }: { threadId: string }) {
   const bot = info?.bot ?? null;
   const watches = useWatches(bot?.id ?? null);
   const runs = useMemo(() => noticedRuns(messages), [messages]);
+  // Who a line in a room goes to, read the way the API reads it (`roomTargets`): the composer says it, and a steered line names it.
+  const roomBots = useMemo(() => (isRoom && info ? info.thread.members.map((id) => bots.find((b) => b.id === id)).filter((b): b is Bot => Boolean(b) && !b!.hidden) : []), [isRoom, info, bots]);
+  const sentTo = useMemo(() => {
+    const map = new Map<string, string>();
+    if (!roomBots.length) return map;
+    messages.forEach((m, index) => {
+      if (m.steered) map.set(m.id, names(roomTargets(m.body, roomBots, messages.slice(0, index)).map((b) => b.name)));
+    });
+    return map;
+  }, [messages, roomBots]);
+  const answersNext = roomBots.length ? roomTargets("", roomBots, messages).map((b) => b.name) : [];
   const waitingOnYou = approvals.some((a) => a.threadId === threadId && a.status === "pending");
 
   async function send(event?: FormEvent, after = false) {
@@ -597,9 +614,12 @@ export function Conversation({ threadId }: { threadId: string }) {
     }
   }
 
-  async function pick(option: string) {
+  async function pick(option: string, from: string) {
+    // In a room the option goes to the bot that offered it, as the person would say it.
+    const offeredBy = isRoom ? bots.find((b) => b.id === from) : undefined;
+    const body = offeredBy ? `@${handleOf(offeredBy.name)} ${option}` : option;
     try {
-      const data = await api<{ message: Message }>(`/api/threads/${threadId}/messages`, { method: "POST", body: JSON.stringify({ body: option }) });
+      const data = await api<{ message: Message }>(`/api/threads/${threadId}/messages`, { method: "POST", body: JSON.stringify({ body }) });
       append([data.message]);
       setSent(data.message.id);
     } catch (failure) {
@@ -868,7 +888,7 @@ export function Conversation({ threadId }: { threadId: string }) {
                 <WatchesContext.Provider value={watches}>
                 {messages.map((m) => (
                   <MessageScrollerItem key={m.id} messageId={m.id} className={cn(m.id === jumpTo && "rounded-2xl ring-2 ring-ring/40")}>
-                    <Line message={m} threadId={threadId} bots={bots} threads={threads} bot={bot} approvals={approvalMap} isRoom={Boolean(isRoom)} editing={editing === m.id} stops={Boolean(info?.answering?.includes(m.id))} touch={touch} answer={answers.get(m.id)} noticed={runs.get(m.id)} onPick={pick} onView={setViewing} onDecide={decide} onOpenExchange={setExchange} onEdit={edit} onSelectText={setSelectText} onReacted={replaceMessage} />
+                    <Line message={m} threadId={threadId} bots={bots} threads={threads} bot={bot} approvals={approvalMap} isRoom={Boolean(isRoom)} editing={editing === m.id} stops={Boolean(info?.answering?.includes(m.id))} touch={touch} answer={answers.get(m.id)} sentTo={sentTo.get(m.id)} noticed={runs.get(m.id)} onPick={pick} onView={setViewing} onDecide={decide} onOpenExchange={setExchange} onEdit={edit} onSelectText={setSelectText} onReacted={replaceMessage} />
                   </MessageScrollerItem>
                 ))}
                 </WatchesContext.Provider>
@@ -951,7 +971,7 @@ export function Conversation({ threadId }: { threadId: string }) {
               onBlur={() => window.setTimeout(() => setSlash(null), 120)}
               onPaste={onPaste}
               rows={1}
-              placeholder={busy && !isRoom ? "Add to it, or say stop" : bot ? `Message ${bot.name}` : "Message the room"}
+              placeholder={busy && !isRoom ? "Add to it, or say stop" : bot ? `Message ${bot.name}` : answersNext.length ? `${names(answersNext)} ${answersNext.length > 1 ? "answer" : "answers"} next` : "Message the room"}
               aria-label={bot ? `Message ${bot.name}` : "Message the room"}
               enterKeyHint={touch ? "enter" : "send"}
               // An empty field is one row whatever its hint, so a long one never makes the pill taller.

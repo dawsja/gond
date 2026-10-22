@@ -1,9 +1,10 @@
-import { BROWSER_ONLY_STEPS, fromNativeAction, LOOK_STEPS, MAX_SCREEN_STEPS, SCREEN_STEP_TYPES, type Bot, type Message, type ScreenStepType, type ScreenTarget, type Thread } from "@gond/shared";
+import { BROWSER_ONLY_STEPS, fromNativeAction, LOOK_STEPS, MAX_SCREEN_STEPS, SCREEN_STEP_TYPES, type Bot, type DesktopDriver, type Message, type ScreenStepType, type ScreenTarget, type Thread } from "@gond/shared";
 import { requestApproval, type Decision } from "./approvals.ts";
 import { BoxError, personHasControl, readBoxFileBytes, screenBatch, type BoxConfig, type ScreenResult, type ScreenStep, type ScreenView } from "./box.ts";
+import { getBot } from "./data/bots.ts";
 import { storeAttachment, postMessage } from "./data/threads.ts";
 import { hideSecrets, readLogin, readSecret } from "./data/secrets.ts";
-import { emitDesktop, markDriving, untilHandedBack } from "./desktop.ts";
+import { emitDesktop, markDriving, untilHandedBack, waitForScreen } from "./desktop.ts";
 import type { DriverTool, ToolPart } from "./driver.ts";
 import { heldLogin, holdLogin } from "./logins.ts";
 import { botHome } from "./memory.ts";
@@ -14,6 +15,19 @@ export const MAX_ACTIONS = 300;
 export const DENIED_TEXT = "The person denied the computer for this turn; say what you would have done.";
 export const EXPIRED_TEXT = "Nobody answered the approval for the computer in time; say what you would have done.";
 export const TOO_MANY_TEXT = "Too many actions in one reply; finish, or tell the person where you got to.";
+// How long a batch waits for another reply to finish with the desktop before the bot is told to end its turn.
+export const SCREEN_WAIT_MS = 90_000;
+
+class ScreenBusy extends Error {
+  constructor(readonly holder: DesktopDriver) {
+    super("The desktop is in use");
+  }
+}
+
+export function screenBusyText(holder: DesktopDriver, bot: Pick<Bot, "id">): string {
+  const who = holder.botId === bot.id ? "You are using the desktop in another conversation" : `${getBot(holder.botId)?.name ?? "Another bot"} is using the desktop`;
+  return `${who}, so nothing in this batch ran: the mouse and keyboard go to one reply at a time, and your browser tab is on that screen too. End your turn: say in a line what you were about to do and that you'll carry on once the desktop is free. You'll be told when it is.`;
+}
 // How long a batch waits for the person to give the screen back before the bot is told to end its turn.
 export const HANDBACK_WAIT_MS = 10 * 60 * 1000;
 export const PERSON_HAS_CONTROL_TEXT = `The person has taken control of the mouse and keyboard and kept it for ${HANDBACK_WAIT_MS / 60_000} minutes, so your input was not sent. End your turn: say in a line what you were doing and that you'll carry on when they give the screen back. You'll be told when they do; never fight for the mouse.`;
@@ -211,6 +225,10 @@ export function computerTool(context: Context): { computer: DriverTool; browser:
   let actions = 0;
 
   const send = async (target: ScreenTarget, steps: ScreenStep[], view?: ScreenView): Promise<ScreenResult> => {
+    if (target === "browser" || usesInput(steps)) {
+      const holder = await waitForScreen(thread.userId, { botId: bot.id, threadId: thread.id }, target, SCREEN_WAIT_MS, context.signal);
+      if (holder) throw new ScreenBusy(holder);
+    }
     const result = await screenBatch(box, { bot: bot.id, target, steps, ...(view ? { view } : {}), ...(pictures || view === "text" ? {} : { saveTo: screenFile }) }, context.signal);
     if (target === "desktop") scale = scaleOf(result) ?? scale;
     return result;
@@ -273,7 +291,13 @@ export function computerTool(context: Context): { computer: DriverTool; browser:
       const caption = typeof raw.caption === "string" ? raw.caption.trim() : "";
       if (!caption) return "NOT sent: give it a caption, a line saying what it shows.";
       const target: ScreenTarget = raw.target === "desktop" ? "desktop" : "browser";
-      const result = await send(target, [{ type: "screenshot" }], target === "browser" ? "image" : undefined);
+      let result: ScreenResult;
+      try {
+        result = await send(target, [{ type: "screenshot" }], target === "browser" ? "image" : undefined);
+      } catch (error) {
+        if (error instanceof ScreenBusy) return screenBusyText(error.holder, bot);
+        throw error;
+      }
       if (target === "browser" && (!result.url || result.url === "about:blank")) return "NOT sent: the browser has no page open. Open the page first, or send the desktop.";
       return share(result, caption);
     },
@@ -282,7 +306,13 @@ export function computerTool(context: Context): { computer: DriverTool; browser:
   const afterHandBack = async (target: ScreenTarget): Promise<ToolPart[] | string> => {
     const back = await untilHandedBack(thread.userId, { botId: bot.id, threadId: thread.id }, HANDBACK_WAIT_MS, context.signal);
     if (!back) return PERSON_HAS_CONTROL_TEXT;
-    const result = await send(target, [{ type: "screenshot" }]);
+    let result: ScreenResult;
+    try {
+      result = await send(target, [{ type: "screenshot" }]);
+    } catch (error) {
+      if (error instanceof ScreenBusy) return screenBusyText(error.holder, bot);
+      throw error;
+    }
     const shown = answer(result, 0);
     return typeof shown === "string" ? `${HANDED_BACK_TEXT}\n${shown}` : [{ type: "text", text: HANDED_BACK_TEXT }, ...shown];
   };
@@ -333,6 +363,7 @@ export function computerTool(context: Context): { computer: DriverTool; browser:
         const note = await share(result, caption);
         return typeof shown === "string" ? `${shown}\n${note}` : [...shown, { type: "text", text: note }];
       } catch (error) {
+        if (error instanceof ScreenBusy) return screenBusyText(error.holder, bot);
         if (personHasControl(error)) return afterHandBack(target);
         if (error instanceof BoxError && error.status === 400) return `NOT done: ${error.message}. Nothing in this batch ran.`;
         throw error;

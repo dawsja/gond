@@ -718,6 +718,29 @@ describe("data", () => {
     }
   });
 
+  test("the desktop goes to one reply at a time, and the ones turned away hear when it is free", async () => {
+    const { releaseComputer, waitForScreen, desktopHolder } = await import("../src/desktop.ts");
+    const ada = { botId: "b-ada", threadId: "t-ada" };
+    const bo = { botId: "b-bo", threadId: "t-bo" };
+    const cy = { botId: "b-cy", threadId: "t-cy" };
+    const user = "u-desk";
+
+    expect(await waitForScreen(user, ada, "desktop", 50)).toBeNull();
+    expect(desktopHolder(user)).toEqual(ada);
+    expect(await waitForScreen(user, ada, "browser", 50)).toBeNull();
+    expect(await waitForScreen(user, bo, "browser", 50)).toEqual(ada);
+    expect(await waitForScreen(user, bo, "desktop", 50)).toEqual(ada);
+
+    const waiting = waitForScreen(user, cy, "desktop", 5_000);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(await releaseComputer(user, ada.threadId, { botId: ada.botId })).toEqual([bo]);
+    expect(await waiting).toBeNull();
+    expect(desktopHolder(user)).toEqual(cy);
+    expect(await releaseComputer(user, cy.threadId, { botId: cy.botId })).toEqual([]);
+    expect(desktopHolder(user)).toBeNull();
+    expect(await waitForScreen(user, bo, "browser", 50)).toBeNull();
+  });
+
   test("a server that wants a bearer token gets it from a secret in its headers, never on the computer", async () => {
     const { createBot, updateBot } = await import("../src/data/bots.ts");
     const { getThread } = await import("../src/data/threads.ts");
@@ -1775,7 +1798,7 @@ describe("steering", () => {
 
     const heard: string[] = [];
     let takes = true;
-    const turn = { botId: bot.id, threadId: thread.id, userId: "u-steer", messageId: idle.id, controller: new AbortController(), startedAt: Date.now(), steer: async (text: string) => (heard.push(text), takes) };
+    const turn = { botId: bot.id, threadId: thread.id, userId: "u-steer", messageId: idle.id, route: "person" as const, controller: new AbortController(), startedAt: Date.now(), steer: async (text: string) => (heard.push(text), takes) };
     activeTurns().set(`${bot.id}--${thread.id}`, turn);
     try {
       const steered = await postFromPerson(thread, { body: "use last week's numbers" });
@@ -1800,6 +1823,13 @@ describe("steering", () => {
       expect((await postFromPerson(room, { body: "@steer-me shorter please" })).steered).toBe(true);
       expect((await postFromPerson(room, { body: "@everyone shorter please" })).steered).toBe(false);
       activeTurns().delete(`${bot.id}--${room.id}`);
+
+      // A turn answering a teammate's request answers them, so the person's line waits for its own turn.
+      activeTurns().set(`${bot.id}--${thread.id}`, { ...turn, route: "teammate" });
+      const queued = await postFromPerson(thread, { body: "what's the status?" });
+      expect(queued.steered).toBe(false);
+      expect(waiting(queued.id)).toBe(true);
+      activeTurns().set(`${bot.id}--${thread.id}`, turn);
     } finally {
       activeTurns().delete(`${bot.id}--${thread.id}`);
     }
@@ -1929,7 +1959,9 @@ describe("stop", () => {
       answer = "NOTHING_NEW";
       const asked = postMessage({ threadId: thread.id, author: "you", body: "Anything?" });
       await botTurn(bot, thread, asked);
-      expect(listMessages(thread.id).at(-1)!.body).toBe("NOTHING_NEW");
+      // The quiet word is never posted, whoever woke the bot.
+      expect(listMessages(thread.id).at(-1)!.id).toBe(asked.id);
+      expect(listMessages(thread.id).some((m) => m.body === "NOTHING_NEW")).toBe(false);
     } finally {
       fake.stop(true);
       process.env.GOND_BOX_URL = boxUrl;
@@ -1984,7 +2016,7 @@ describe("stop", () => {
 
       const unreacted = postMessage({ threadId: thread.id, author: "you", body: "Anything?" });
       await botTurn(bot, thread, unreacted);
-      expect(listMessages(thread.id).at(-1)!.body).toBe("NOTHING_NEW");
+      expect(listMessages(thread.id).at(-1)!.id).toBe(unreacted.id);
     } finally {
       fake.stop(true);
       process.env.GOND_BOX_URL = boxUrl;
@@ -2233,7 +2265,7 @@ describe("handoffs", () => {
     const { botInputSchema } = await import("@gond/shared");
     const { createDelegation, finishDelegation } = await import("../src/data/delegations.ts");
     const { getThread, listMessages, postMessage } = await import("../src/data/threads.ts");
-    const { deliverReply } = await import("../src/responder.ts");
+    const { answerGoesTo, deliverReply, promptFor } = await import("../src/responder.ts");
 
     const clo = createBot(botInputSchema.parse({ name: "Exchange Clo" }), "u-exchange");
     const jeff = createBot(botInputSchema.parse({ name: "Exchange Jeff" }), "u-exchange");
@@ -2241,6 +2273,8 @@ describe("handoffs", () => {
     const cloThread = getThread(clo.threadId)!;
 
     const hello = postMessage({ threadId: jeff.threadId, author: clo.id, body: "Hi Jeff, what's your job?", depth: 1, fromThreadId: clo.threadId });
+    expect(answerGoesTo(hello)).toBe("teammate");
+    expect(promptFor(jeff, jeffThread, hello, [clo, jeff])).toContain("your answer goes back to them, not to the person");
     deliverReply(jeff, jeffThread, hello, "Hi Clo, I'm the generalist.");
     expect(listMessages(jeff.threadId).some((m) => m.author === jeff.id)).toBe(false);
     const back = listMessages(clo.threadId).at(-1)!;
@@ -2251,18 +2285,35 @@ describe("handoffs", () => {
     const brief = postMessage({ threadId: jeff.threadId, author: clo.id, body: "Write the report", depth: 1, fromThreadId: clo.threadId });
     const handoff = createDelegation({ fromBotId: clo.id, fromThreadId: clo.threadId, toBotId: jeff.id, toThreadId: jeff.threadId, messageId: brief.id, brief: "Write the report" });
     const before = listMessages(clo.threadId).length;
+    expect(answerGoesTo(brief)).toBe("chain");
     deliverReply(jeff, jeffThread, brief, "Here's the report.");
     expect(listMessages(jeff.threadId).some((m) => m.body === "Here's the report.")).toBe(false);
     expect(listMessages(clo.threadId).length).toBe(before);
 
     const result = postMessage({ threadId: clo.threadId, author: jeff.id, body: "Result for the task you handed me:\n\nHere's the report.", fromThreadId: jeff.threadId });
     finishDelegation(handoff.id, "done", "Here's the report.", result.id);
+    // The result is for the person, and the prompt says so, so the bot never thanks Jeff in their chat.
+    expect(answerGoesTo(result)).toBe("person");
+    const told = promptFor(clo, cloThread, result, [clo, jeff]);
+    expect(told).toContain("This is the result of the task you handed Exchange Jeff. Your answer goes to the person");
+    expect(told).toContain("Don't thank or address Exchange Jeff");
+    expect(told).not.toContain("goes back to them");
     deliverReply(clo, cloThread, result, "Jeff finished the report: here it is.");
     expect(listMessages(clo.threadId).at(-1)).toMatchObject({ author: clo.id, body: "Jeff finished the report: here it is.", fromThreadId: null });
 
     const asked = postMessage({ threadId: clo.threadId, author: "you", body: "Hi" });
+    expect(answerGoesTo(asked)).toBe("person");
     deliverReply(clo, cloThread, asked, "Hello.");
     expect(listMessages(clo.threadId).at(-1)).toMatchObject({ author: clo.id, body: "Hello.", fromThreadId: null });
+
+    // Gond's own report and a hidden prompt answer the person, and hear that teammates' lines here were answered already.
+    const incident = postMessage({ threadId: clo.threadId, author: "system", body: "Incident: a run stopped.", fromThreadId: jeff.threadId });
+    expect(answerGoesTo(incident)).toBe("person");
+    const report = promptFor(clo, cloThread, incident, [clo, jeff]);
+    expect(report).not.toContain("This message came from");
+    expect(report).toContain("Your answer goes to the person only");
+    const nudge = postMessage({ threadId: clo.threadId, author: "system", kind: "prompt", body: "Carry on." });
+    expect(promptFor(clo, cloThread, nudge, [clo, jeff])).toContain("Exchange Jeff wrote here as a teammate and was answered already");
   });
 
   test("a teammate whose run keeps breaking reports each time as a failed result, and the carry-on briefs never run out of hops", async () => {
@@ -3342,6 +3393,11 @@ describe("rooms and a bot's files", () => {
     expect(getThread(room.id)!.pinned).toBe(false);
     expect(listMessages(room.id).at(-1)!.body).toBe("Renamed to Launch week. Cy joined. Bo left.");
     expect(roomChange({ name: "A", members: [] }, { name: "A", members: ["1", "2", "3"] }, (id) => `Bot ${id}`)).toBe("Bot 1, Bot 2 and Bot 3 joined.");
+    expect(roomChange({ name: "A", members: ["1", "2"] }, { name: "A", members: ["2", "3"] }, (id) => `Bot ${id}`, ["Bot 1", "Bot 2"])).toBe("Bot 3 joined. Bot 1 left. Bot 2 answers now when nobody's named.");
+
+    const { answererOf } = await import("../src/routes/threads.ts");
+    const it = createRoom("IT", [bo.id, cy.id], "u-room");
+    expect(answererOf(it.members, [ada, bo, cy])).toBe("Bo");
   });
 
   test("a bot's files are listed and downloaded, never with a stored secret in them", async () => {

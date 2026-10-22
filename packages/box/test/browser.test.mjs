@@ -116,7 +116,11 @@ function fakeContext() {
       listeners[event] = fn;
     },
     close: async () => calls.push(["close"]),
-    popup: (url, title) => listeners.page(makePage(url, title)),
+    popup: (url, title, opener) => {
+      const page = makePage(url, title);
+      if (opener) page.opener = async () => opener;
+      listeners.page(page);
+    },
   };
   return { context, calls, pages };
 }
@@ -172,6 +176,27 @@ test("a page that opens a tab is followed, and tab switches between them", async
   assert.deepEqual(calls.at(-1), ["front", "https://example.com/"]);
   const missing = await browser.run(steps({ type: "tab", index: 5 }));
   assert.match(missing.error.message, /no tab 5/);
+});
+
+test("each bot works in tabs of its own, and a tab its page opens is its own", async () => {
+  const { context, calls, pages } = fakeContext();
+  const browser = createBrowser({ launch: async () => context });
+  await browser.run(steps({ type: "navigate", url: "example.com" }), { owner: "ada" });
+  const bo = await browser.run(steps({ type: "navigate", url: "other.com" }), { owner: "bo" });
+  assert.equal(bo.url, "https://other.com/");
+  assert.deepEqual(bo.tabs.map((tab) => tab.url), ["https://other.com/"]);
+
+  const ada = await browser.run(steps({ type: "screenshot" }), { owner: "ada" });
+  assert.equal(ada.url, "https://example.com/");
+  assert.deepEqual(ada.tabs.map((tab) => tab.url), ["https://example.com/"]);
+  assert.deepEqual(calls.at(-1), ["front", "https://example.com/"]);
+
+  context.popup("https://checkout.example.com/", "Checkout", pages[0]);
+  assert.equal((await browser.run(steps({ type: "screenshot" }), { owner: "bo" })).url, "https://other.com/");
+  const followed = await browser.run(steps({ type: "screenshot" }), { owner: "ada" });
+  assert.equal(followed.url, "https://checkout.example.com/");
+  assert.equal(followed.tabs.length, 2);
+  assert.match((await browser.run(steps({ type: "tab", index: 1 }), { owner: "bo" })).error.message, /no tab 1; you have 1/);
 });
 
 test("profileHolder names a live Chrome holding the profile, and nothing else", async () => {

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { BOT_TEMPLATES, CURATED_TOOLKITS, emailDraftOf, emailName, emailText, LEGACY_MOBILE_SIGN_IN_CALLBACK, MOBILE_SIGN_IN_CALLBACK, SIGN_IN_APPS, approvalLine, botInputSchema, composioCard, composioCardToolkit, fromNativeAction, gerund, handleOf, isClosing, isQuietReply, isQuietTool, isStopRequest, routineName, joinCommandLine, mentionsIn, pickBotName, pickVoiceProvider, plainMarkdown, ruleLabel, splitCommandLine, toolLabel, toolLine } from "../src/index.ts";
+import { addressedIn, BOT_TEMPLATES, CURATED_TOOLKITS, emailDraftOf, emailName, emailText, LEGACY_MOBILE_SIGN_IN_CALLBACK, MOBILE_SIGN_IN_CALLBACK, SIGN_IN_APPS, approvalLine, botInputSchema, composioCard, composioCardToolkit, fromNativeAction, gerund, handleOf, isClosing, isQuietReply, isQuietTool, isStopRequest, routineName, joinCommandLine, mentionsIn, pickBotName, pickVoiceProvider, plainMarkdown, roomAnswerer, roomTargets, ruleLabel, splitCommandLine, toolLabel, toolLine } from "../src/index.ts";
 
 describe("shared", () => {
   test("pickBotName avoids taken names and numbers when exhausted", () => {
@@ -270,5 +270,42 @@ describe("pickVoiceProvider", () => {
     expect(emailName("Dana Ruiz <dana@ruizdesign.co>")).toBe("Dana Ruiz");
     expect(emailName('"Ruiz, Dana" <dana@ruizdesign.co>')).toBe("Ruiz, Dana");
     expect(emailName("dana@ruizdesign.co")).toBe("dana@ruizdesign.co");
+  });
+});
+
+describe("rooms", () => {
+  const net = { id: "net", name: "Net", primary: false };
+  const patch = { id: "patch", name: "Patch", primary: false };
+  const members = [net, patch];
+  const line = (author: string, body: string, kind = "message") => ({ author, kind, body });
+  const ids = (list: { id: string }[]) => list.map((b) => b.id);
+
+  test("the primary answers a room it is in, else the first bot", () => {
+    expect(roomAnswerer(members)).toBe(net);
+    expect(roomAnswerer([net, { ...patch, primary: true }])?.id).toBe("patch");
+    expect(roomAnswerer([])).toBeNull();
+  });
+
+  test("a person names a bot with @, by its name in any case (voice types no @), or the room as a whole", () => {
+    expect(ids(addressedIn("@patch how's it going", members))).toEqual(["patch"]);
+    expect(ids(addressedIn("Patch, are you still working?", members))).toEqual(["patch"]);
+    expect(ids(addressedIn("Net and Patch, check", members))).toEqual(["net", "patch"]);
+    expect(ids(addressedIn("patch how are the servers", members))).toEqual(["patch"]);
+    expect(ids(addressedIn("hey net, is the wifi ok", members))).toEqual(["net"]);
+    expect(ids(addressedIn("dispatcher is down", members))).toEqual([]);
+    expect(ids(addressedIn("can you both check?", members))).toEqual(["net", "patch"]);
+    expect(ids(addressedIn("everyone, status please", members))).toEqual(["net", "patch"]);
+    expect(ids(addressedIn("check both servers", [net, patch, { id: "doug", name: "Doug", primary: false }]))).toEqual([]);
+  });
+
+  test("an unaddressed line goes to whoever the person was talking with", () => {
+    expect(ids(roomTargets("How are things on the IT side?", members, []))).toEqual(["net"]);
+    const afterPatch = [line("you", "@patch are you still working?"), line("patch", "I'm idle. ::choices[Run a read-only sweep | Nothing now]")];
+    expect(ids(roomTargets("Run a read-only sweep", members, afterPatch))).toEqual(["patch"]);
+    const bothAnswered = [line("you", "status, both of you"), line("net", "Fine."), line("patch", "Fine too.")];
+    expect(ids(roomTargets("ok, thanks", members, bothAnswered))).toEqual(["net", "patch"]);
+    expect(ids(roomTargets("and the backups?", members, [line("you", "@patch check the nodes")]))).toEqual(["patch"]);
+    expect(ids(roomTargets("@net you check too", members, afterPatch))).toEqual(["net"]);
+    expect(ids(roomTargets("thanks", members, [...afterPatch, line("system", "Patch left.", "event")]))).toEqual(["patch"]);
   });
 });

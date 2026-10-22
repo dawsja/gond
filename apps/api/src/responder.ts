@@ -1,4 +1,4 @@
-import { QUIET_REPLY, handleOf, isClosing, isQuietReply, isStopRequest, mentionsIn, plainMarkdown, type Bot, type ChatAttachment, type Message, type Thread, type ToolLabelContext } from "@gond/shared";
+import { QUIET_REPLY, handleOf, isClosing, isQuietReply, isStopRequest, mentionsIn, plainMarkdown, roomTargets, type Bot, type ChatAttachment, type DesktopDriver, type Message, type Thread, type ToolLabelContext } from "@gond/shared";
 import { boxConfig, boxHome, ensureBotHome, interruptAgent, steerAgent, writeBoxFile, type BoxConfig } from "./box.ts";
 import { isUpdating } from "./updater.ts";
 import { getAi } from "./data/ai.ts";
@@ -35,6 +35,7 @@ import { turnTiming } from "./config.ts";
 import { appTools, baseTools, loadMemory, loadTeamMemory, MAX_CHAIN, MAX_ROOM_LINES, permissionTool, resultDepth, teamTools, TOOL_NOTES, transcript } from "./tools.ts";
 
 const CONTEXT_LINES = 30;
+const ROOM_LOOKBACK = 30;
 
 const seenHolder = globalThis as typeof globalThis & { __gondSeen?: Map<string, string> };
 /** Per agent, the last message its CLI session was given: the next turn sends only what is newer. */
@@ -49,6 +50,8 @@ type Active = {
   threadId: string;
   userId: string;
   messageId: string;
+  // Where this turn's answer goes: the person is only ever steered into a turn that answers them.
+  route: AnswerRoute;
   controller: AbortController;
   startedAt: number;
 
@@ -220,15 +223,23 @@ const HANDED_BACK_STEER =
 const HANDED_BACK_PROMPT =
   "The person took control of the screen while you were working on it and has now given it back. Take a screenshot to see what they did, then carry on with the work from there, without redoing their part. If it is already finished, tell them in a line.";
 
+const DESKTOP_FREE_STEER = "The desktop you were waiting for is free now: take a screenshot and carry on with what you were going to do on it.";
+const DESKTOP_FREE_PROMPT =
+  "The desktop was busy with another bot's work when you needed it, and it is free now. Take a screenshot and carry on with what you were going to do on it. If it is already done or no longer needed, tell the person in a line.";
+
 /** The person gave the screen back: each bot it was taken from carries on, in its running turn or a new one. */
 export async function tellHandedBack(userId: string): Promise<void> {
-  for (const driver of handedBack(userId)) {
+  await carryOn(userId, handedBack(userId), HANDED_BACK_STEER, HANDED_BACK_PROMPT);
+}
+
+async function carryOn(userId: string, drivers: DesktopDriver[], steerWith: string, prompt: string): Promise<void> {
+  for (const driver of drivers) {
     const thread = getThread(driver.threadId);
     const bot = getBot(driver.botId);
     if (!thread || !bot || thread.userId !== userId) continue;
     const turn = [...activeTurns().values()].find((t) => t.botId === bot.id && t.threadId === thread.id);
-    if (turn && (await turn.steer(HANDED_BACK_STEER).catch(() => false))) continue;
-    const body = thread.kind === "bot" ? HANDED_BACK_PROMPT : `@${handleOf(bot.name)} ${HANDED_BACK_PROMPT}`;
+    if (turn && (await turn.steer(steerWith).catch(() => false))) continue;
+    const body = thread.kind === "bot" ? prompt : `@${handleOf(bot.name)} ${prompt}`;
     postMessage({ threadId: thread.id, author: "system", kind: "prompt", body });
   }
 }
@@ -238,10 +249,10 @@ export function steerText(body: string): string {
 }
 
 export function steerableTurns(thread: Thread, message: Pick<Message, "author" | "body">): Active[] {
-  const targets = targetsFor(message, thread, listBots({ includeHidden: true, userId: thread.userId }));
+  const targets = targetsFor(message, thread, listBots({ includeHidden: true, userId: thread.userId }), roomBefore(thread));
   const running = [...activeTurns().values()].filter((turn) => turn.threadId === thread.id);
   const turns = targets.map((bot) => running.find((turn) => turn.botId === bot.id));
-  return targets.length && turns.every(Boolean) ? (turns as Active[]) : [];
+  return targets.length && turns.every((turn) => turn?.route === "person") ? (turns as Active[]) : [];
 }
 
 export async function steer(turns: Active[], body: string): Promise<boolean> {
@@ -263,24 +274,33 @@ async function stopFromMessage(thread: Thread, body: string): Promise<Message> {
   const message = postMessage({ threadId: thread.id, author: "you", body, answered: true });
   const working = [...activeTurns().values()].find((turn) => turn.threadId === thread.id)?.botId;
   const bots = listBots({ includeHidden: true, userId: thread.userId });
-  const author = working ?? targetsFor({ author: "you", body }, thread, bots)[0]?.id;
+  const author = working ?? targetsFor({ author: "you", body }, thread, bots, roomBefore(thread))[0]?.id;
   const report = await stopThread(thread.id, { quiet: true });
   if (author) postMessage({ threadId: thread.id, author, body: stoppedReply(report), answered: true });
   else postMessage({ threadId: thread.id, author: "system", kind: "event", body: "Stopped.", answered: true });
   return getMessage(message.id) ?? message;
 }
 
-export function targetsFor(message: Pick<Message, "author" | "body">, thread: Thread, bots: Bot[]): Bot[] {
+/**
+ * Who a message wakes. In a room the person is read like a group chat
+ * (`roomTargets`: whom they name, else whom they were talking with); a bot's
+ * line wakes only the teammates it @mentions, since bots name each other in
+ * passing. `before` is the room's messages ahead of this one (`roomBefore`).
+ */
+export function targetsFor(message: Pick<Message, "author" | "body">, thread: Thread, bots: Bot[], before: Pick<Message, "author" | "kind" | "body">[] = []): Bot[] {
   const members = thread.members.map((id) => bots.find((b) => b.id === id)).filter((b): b is Bot => Boolean(b) && !b!.hidden);
   if (thread.kind === "bot") return members.filter((b) => b.id !== message.author);
+  if (message.author === "you") return roomTargets(message.body, members, before);
   const mentioned = mentionsIn(message.body);
-  const named = members.filter((b) => mentioned.includes(handleOf(b.name)) && b.id !== message.author);
   if (mentioned.includes("everyone") || mentioned.includes("all")) return members.filter((b) => b.id !== message.author);
-  if (named.length) return named;
+  return members.filter((b) => mentioned.includes(handleOf(b.name)) && b.id !== message.author);
+}
 
-  if (message.author !== "you") return [];
-  const primary = members.find((b) => b.primary);
-  return primary ? [primary] : members.slice(0, 1);
+/** A room's recent messages ahead of `message` (all of them for one not posted yet), oldest first; nothing for a 1:1. */
+export function roomBefore(thread: Thread, message?: Pick<Message, "id" | "createdAt">): Message[] {
+  if (thread.kind !== "room") return [];
+  const recent = recentMessages(thread.id, ROOM_LOOKBACK);
+  return message ? recent.filter((m) => m.id !== message.id && m.createdAt <= message.createdAt) : recent;
 }
 
 export async function syncSoul(bot: Bot) {
@@ -313,6 +333,8 @@ export type PromptOptions = {
   summary?: string | null;
 };
 
+const ROOM_TURN = `This is a room. If the last message isn't for you (another member's question, or an option from their message), answer exactly ${QUIET_REPLY}, and nothing is posted. Otherwise also read what the person asked the room since you last spoke here: if an earlier question was meant for everyone or for you and your part isn't answered yet, answer it too. When part of a question is another member's (by their job), @mention them in your answer with what to look at, so they answer too; never tell the person to ask them.`;
+
 export function promptFor(bot: Bot, thread: Thread, message: Message, bots: Bot[], delivered: Delivered[] = [], options: PromptOptions = {}): string {
   const names = new Map(bots.map((b) => [b.id, b.name]));
   const who =
@@ -329,21 +351,32 @@ export function promptFor(bot: Bot, thread: Thread, message: Message, bots: Bot[
   const earlier = !since && options.summary ? `Earlier in this conversation, summarized (it comes before the messages below):\n${options.summary}` : "";
   const files = [attachmentNote(delivered), textAttachments(message)].filter(Boolean).join("\n\n");
 
-  if (message.kind === "prompt") {
-    return [earlier, `${heading}\n${history || (since ? "(nothing new)" : "(nothing yet)")}`, `Gond, not the person, asks you this; nobody else sees it. Do it, and address your answer to the person:\n${message.body}`].filter(Boolean).join("\n\n");
-  }
-  const from = message.fromThreadId && message.author !== "you" ? `\n\nThis message came from ${names.get(message.author) ?? "a teammate"}. Do the work it asks for and answer with the result; your answer goes back to them, not to the person. If it brings something the person should hear (a result, a change, a question for them), tell them with post_message, which posts in your chat with them, then answer ${names.get(message.author) ?? "the teammate"} in a line.` : "";
-  // A session a teammate woke was told to answer it in its final line; the person's turn in the
-  // same session must hear that its answer only ever reaches the person.
-  const teammates = message.author === "you" ? [...new Set(recentMessages(thread.id, CONTEXT_LINES).filter((m) => m.fromThreadId && !PEOPLE_AND_GOND.has(m.author) && m.author !== bot.id).map((m) => names.get(m.author) ?? "a teammate"))] : [];
+  const route = answerGoesTo(message);
+  // A session a teammate woke was told to answer it in its final line; every turn in the same
+  // session whose answer reaches the person must hear that it only ever reaches the person.
+  const teammates = route === "person" ? [...new Set(recentMessages(thread.id, CONTEXT_LINES).filter((m) => m.id !== message.id && m.fromThreadId && !PEOPLE_AND_GOND.has(m.author) && m.author !== bot.id).map((m) => names.get(m.author) ?? "a teammate"))] : [];
   const toPerson = teammates.length
     ? `\n\nYour answer goes to the person only, in this chat, like anything you post with post_message. ${teammates.join(" and ")} wrote here as a teammate and was answered already; to tell a teammate something now (a result, a reply), call message_bot, or delegate_bot for new work, then answer the person.`
     : "";
+  const room = thread.kind === "room" ? `\n\n${ROOM_TURN}` : "";
+
+  if (message.kind === "prompt") {
+    return [earlier, `${heading}\n${history || (since ? "(nothing new)" : "(nothing yet)")}`, `Gond, not the person, asks you this; nobody else sees it. Do it, and address your answer to the person:\n${message.body}${toPerson}`].filter(Boolean).join("\n\n");
+  }
+  const sender = names.get(message.author) ?? "a teammate";
+  const result = message.fromThreadId && !PEOPLE_AND_GOND.has(message.author) && isDelegationResult(message.id);
+  const from = !message.fromThreadId || PEOPLE_AND_GOND.has(message.author)
+    ? ""
+    : result && route === "chain"
+      ? `\n\nThis is ${sender}'s result for part of the task you were handed. Once every part is in, your answer is the result of your whole task: it goes back to whoever handed it to you, not to ${sender} and not to the person.`
+      : result
+        ? `\n\nThis is the result of the task you handed ${sender}. Your answer goes to the person, in this chat: tell them what came of it. Don't thank or address ${sender}; to tell ${sender} anything, use message_bot.`
+        : `\n\nThis message came from ${sender}. Do the work it asks for and answer with the result; your answer goes back to them, not to the person. If it brings something the person should hear (a result, a change, a question for them), tell them with post_message, which posts in your chat with them, then answer ${sender} in a line.`;
   return [
     earlier,
     `${heading}\n${history}`,
     files,
-    `Now answer the last message, which is from ${who}.${from}${toPerson}\n${message.author === "routine" ? "This is a scheduled routine: do the job and report, addressing the person." : ""}`,
+    `Now answer the last message, which is from ${who}.${from}${toPerson}${room}\n${message.author === "routine" ? "This is a scheduled routine: do the job and report, addressing the person." : ""}`,
     message.author === "you" && isClosing(message.body) ? `It reads as the person closing the exchange (a thanks, an "I will", a goodbye). Unless it answers a question you asked, react to it with the react tool (👍 or ❤️) and answer with exactly ${QUIET_REPLY}, so nothing more is posted.` : "",
   ]
     .filter(Boolean)
@@ -365,7 +398,7 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
   const follow = () => controller.abort(parent?.reason);
   if (parent?.aborted) follow();
   else parent?.addEventListener("abort", follow, { once: true });
-  const active: Active = { botId: bot.id, threadId: thread.id, userId: thread.userId, messageId: message.id, controller, startedAt: Date.now(), steer: async () => false };
+  const active: Active = { botId: bot.id, threadId: thread.id, userId: thread.userId, messageId: message.id, route: answerGoesTo(message), controller, startedAt: Date.now(), steer: async () => false };
   activeTurns().set(agentId, active);
   const steers = new SteerQueue();
   clearWork(thread.id, bot.id);
@@ -500,6 +533,8 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
       quiet = true;
     } else if (result.ok && reactedOnly(bot, message, result.text)) {
       // The reaction was the whole answer, as a thumbs up is between people.
+    } else if (result.ok && isQuietReply(result.text) && active.route === "person") {
+      // Nothing for the person (in a room, often a line meant for another bot): nothing is posted.
     } else if (result.ok && result.text.trim()) {
       reply = scrub(result.text.trim());
       deliverReply(bot, thread, message, reply);
@@ -518,7 +553,8 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
   } finally {
     parent?.removeEventListener("abort", follow);
     steers.shut();
-    await releaseComputer(thread.userId, thread.id, { botId: bot.id });
+    const free = await releaseComputer(thread.userId, thread.id, { botId: bot.id });
+    if (free.length) void carryOn(thread.userId, free, DESKTOP_FREE_STEER, DESKTOP_FREE_PROMPT);
     activeTurns().delete(agentId);
     clearWork(thread.id, bot.id);
     activity(thread.id, bot.id, null);
@@ -538,6 +574,20 @@ function reactedOnly(bot: Bot, message: Message, text: string): boolean {
 
 const PEOPLE_AND_GOND = new Set(["you", "system", "routine"]);
 
+export type AnswerRoute = "person" | "teammate" | "chain";
+
+/**
+ * Where a turn's answer goes, the one decision both the prompt and the
+ * delivery read: up a chain of handoffs (a brief, or a result inside one),
+ * back to the teammate who wrote, or to the person, in this conversation. A
+ * result coming back to the bot that handed the task out is the person's.
+ */
+export function answerGoesTo(message: Pick<Message, "id" | "author" | "fromThreadId">): AnswerRoute {
+  if (handoffWorkedOn(message.id)) return "chain";
+  if (message.fromThreadId && !PEOPLE_AND_GOND.has(message.author) && !isDelegationResult(message.id)) return "teammate";
+  return "person";
+}
+
 /*
  * A reply to a teammate belongs to the exchange between the two bots, never
  * the person's chat with the one answering: it lands in the sender's
@@ -547,12 +597,13 @@ const PEOPLE_AND_GOND = new Set(["you", "system", "routine"]);
  * bot that handed the task out is for the person.
  */
 export function deliverReply(bot: Bot, thread: Thread, message: Message, reply: string) {
-  const handoff = handoffWorkedOn(message.id);
+  const route = answerGoesTo(message);
+  const handoff = route === "chain" ? handoffWorkedOn(message.id) : null;
   if (handoff) {
     if (openChildren(handoff.id) > 0) postMessage({ threadId: handoff.fromThreadId, author: bot.id, body: reply, depth: message.depth + 1, fromThreadId: thread.id, answered: true });
     return;
   }
-  const sender = message.fromThreadId && !PEOPLE_AND_GOND.has(message.author) && !isDelegationResult(message.id) ? getThread(message.fromThreadId) : null;
+  const sender = route === "teammate" && message.fromThreadId ? getThread(message.fromThreadId) : null;
   if (sender) {
     postMessage({ threadId: sender.id, author: bot.id, body: reply, depth: message.depth + 1, fromThreadId: thread.id, answered: true });
     return;
@@ -602,7 +653,7 @@ export async function reportBack(bot: Bot, message: Message, reply: string, stop
 
 export function failedResult(name: string, broke: string | null): string {
   if (!broke) return "Result for the task you handed me:\n\n(I couldn't finish it; see my conversation for what went wrong.)";
-  return `I couldn't finish the task you handed me: my run stopped with: ${broke.slice(0, 600)}\n\nWhat I did so far is in my conversation and my files. Decide: send ${name} a brief to carry on from there, or a corrected one, with delegate_bot; or tell the person plainly what only they can fix. This report is from Gond, not the person.`;
+  return `I couldn't finish the task you handed me: my run stopped with: ${broke.slice(0, 600)}\n\nWhat I did so far is in my conversation and my files. Decide: send ${name} a brief to carry on from there, or a corrected one, with delegate_bot; or tell the person plainly what only they can fix.`;
 }
 
 function closeStopped(delegation: Delegation, name: string) {
@@ -634,9 +685,10 @@ export async function answerMessage(message: Message): Promise<void> {
     return;
   }
   const bots = listBots({ includeHidden: true, userId: thread.userId });
-  const targets = targetsFor(message, thread, bots).filter((b) => !isBusy(b.id, thread.id));
+  const before = roomBefore(thread, message);
+  const targets = targetsFor(message, thread, bots, before).filter((b) => !isBusy(b.id, thread.id));
   if (targets.length === 0) {
-    const anyTarget = targetsFor(message, thread, bots);
+    const anyTarget = targetsFor(message, thread, bots, before);
     if (anyTarget.length === 0) {
       markAnswered(message.id);
       return;

@@ -1237,7 +1237,7 @@ async function computerRoute(request, response, account) {
   if (target === "browser") {
     let result;
     try {
-      result = await browsers.run(account, steps, abort.signal, { view, format: saveTo ? "png" : "jpeg" });
+      result = await browsers.run(account, steps, abort.signal, { view, format: saveTo ? "png" : "jpeg", bot: body.bot });
     } catch (error) {
       if (error instanceof BrowserError) throw new HttpError(error.status, error.message);
       throw error;

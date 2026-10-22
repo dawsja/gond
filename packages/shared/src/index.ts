@@ -1163,6 +1163,57 @@ export function handleOf(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9_-]+/g, "");
 }
 
+type RoomMember = { id: string; name: string; primary: boolean };
+type RoomLine = { author: string; kind: string; body: string };
+
+/** Who answers a room when nothing says otherwise: the primary bot if it's there, else the first bot. */
+export function roomAnswerer<B extends RoomMember>(members: B[]): B | null {
+  return members.find((b) => b.primary) ?? members[0] ?? null;
+}
+
+const EVERYONE = /\b(?:everyone|everybody|all of you|y'?all|you all|you guys)\b/i;
+const BOTH = /\b(?:both|you two)\b/i;
+
+/**
+ * The members a person's message in a room speaks to: an @handle, a member's
+ * name as a word in any case ("Patch, are you…", or "patch" as voice types
+ * it, with no @), or the room as a whole ("everyone", or "both" in a room of
+ * two).
+ */
+export function addressedIn<B extends RoomMember>(text: string, members: B[]): B[] {
+  const handles = mentionsIn(text);
+  if (handles.includes("everyone") || handles.includes("all") || EVERYONE.test(text) || (members.length === 2 && BOTH.test(text))) return members;
+  return members.filter((b) => handles.includes(handleOf(b.name)) || new RegExp(`(?<![\\w@])${b.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?!\\w)`, "i").test(text));
+}
+
+/**
+ * Who a person's message in a room is for, the way a group chat goes: whoever
+ * it names; else the bots that answered the person since they last wrote; else
+ * whoever their last message went to; else `roomAnswerer`. `before` is the
+ * room's messages before this one, oldest first.
+ */
+export function roomTargets<B extends RoomMember>(body: string, members: B[], before: RoomLine[]): B[] {
+  const named = addressedIn(body, members);
+  if (named.length) return named;
+  const answered: B[] = [];
+  for (let i = before.length - 1; i >= 0; i -= 1) {
+    const line = before[i]!;
+    if (line.kind !== "message") continue;
+    const member = members.find((b) => b.id === line.author);
+    if (member) {
+      if (!answered.includes(member)) answered.unshift(member);
+      continue;
+    }
+    if (line.author !== "you") continue;
+    if (answered.length) return answered;
+    const earlier = addressedIn(line.body, members);
+    if (earlier.length) return earlier;
+  }
+  if (answered.length) return answered;
+  const answerer = roomAnswerer(members);
+  return answerer ? [answerer] : [];
+}
+
 // "stop", "cancel that", "ok quit", "never mind": a short message that is
 // only a stop. Anything with more to it ("cancel the order") is an
 // instruction for the bot instead.

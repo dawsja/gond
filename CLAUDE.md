@@ -274,7 +274,21 @@ what is here. The README says what Gond is; this says how it is made.
   details sheet on a phone) and the panel; the room says what changed in
   one line (`roomChange`: "Renamed to …", "Ada joined.", "Bo left."). A
   room pins like a bot (`pinned` on the thread, only ever a room's) and
-  sits with the pinned bots as a tile.
+  sits with the pinned bots as a tile. A room is read like a group chat
+  (`roomTargets` in shared, used by `targetsFor` and by the composer, so
+  they never disagree): the person's line goes to whom it names (an
+  @handle, a bot's name as a word in any case since voice types no @, "everyone", or "both" in a room of
+  two, `addressedIn`), else to the bots that answered them since they last
+  wrote, else to whoever their last line went to, else to `roomAnswerer`
+  (the primary if it is there, else the first bot). The opening line and
+  any change to the group name that bot; the placeholder says who answers
+  next ("Patch answers next"); a steered line says whom it
+  went to; and a `::choices` tap in a room is sent as `@handle option` to the
+  bot that offered it. A bot's own line still wakes only those it
+  @mentions. A room turn's prompt says to answer exactly `NOTHING_NEW` when
+  the line isn't for it, to cover an earlier question of the person's that
+  was for it, and to @mention a member whose part a question is rather than
+  telling the person to ask them.
 - **A draft stays where it was typed.** What the person types in a
   conversation is kept per conversation in `localStorage` on that device
   (`lib/drafts.ts`), put back when they return, and shown in the list as
@@ -588,7 +602,17 @@ what is here. The README says what Gond is; this says how it is made.
   so when a teammate wrote in that chat its prompt says so and points to
   `message_bot` (the session may still hold "answer the teammate in your
   last line" from the turn the teammate woke), and the transcript marks
-  such lines "(teammate, by message)".
+  such lines "(teammate, by message)". Where an answer goes is one
+  decision, `answerGoesTo` (up the chain, back to a teammate, or to the
+  person), read by both `deliverReply` and `promptFor`, so a turn is never
+  told one thing and delivered another: a handoff's result coming back to
+  the bot that handed it out is the person's, and its prompt says so and
+  not to thank or address the teammate; Gond's own reports and hidden
+  prompts answer the person and hear that teammates' lines were answered
+  already. The person is never steered into a turn whose answer goes to a
+  teammate or up a chain (`route` on the running turn): their line waits for
+  its own. A turn bound for the person that answers `NOTHING_NEW` posts
+  nothing, whoever woke it.
 - **Stop means stop, and everything it started.** `stopThread`
   (`src/responder.ts`) is what Stop runs: the turns in the conversation
   are aborted with the reason `"stopped"` and given a moment to wind down,
@@ -770,7 +794,16 @@ what is here. The README says what Gond is; this says how it is made.
   box's lock arrives. A lock the box holds for bots the API no longer
   runs (it restarted mid-turn) is freed by `desktopState`, and the box
   lets the bots' hold lapse after ten minutes without a batch, so a free
-  screen is always the person's. The lock binds the tools the prompt
+  screen is always the person's. Between the bots, the desktop's mouse and
+  keyboard go to one reply at a time (`waitForScreen` in `src/desktop.ts`,
+  in memory): a desktop batch with input takes it, first come first served,
+  until that reply ends or leaves it alone for `DESKTOP_LAPSE_MS` while
+  another waits; a browser batch waits for a desktop another reply holds
+  without taking it, since bringing its tab forward would cover that
+  screen. A batch waits up to `SCREEN_WAIT_MS`, then the bot hears who has
+  it (`screenBusyText`) and ends its turn, and when the holder's reply ends
+  (`releaseComputer`) each bot turned away is told it is free, steering its
+  running turn or with a hidden prompt, as after a hand back. The lock binds the tools the prompt
   names and nothing more: a bot's Bash runs as the same uid and could set
   DISPLAY itself, so it is a courtesy between the person and a bot that
   follows its house rules, not a security boundary.
@@ -1143,8 +1176,13 @@ what is here. The README says what Gond is; this says how it is made.
   (`browser-host.mjs`, started as them by `browser.mjs`): it holds a
   Playwright persistent context, Chrome headed on their display with its
   profile in `~/.config/gond-browser` (which the files API never opens),
-  maximized (its page the window's size; 1280×800 only headless), and
-  follows a tab a page opens. It talks JSON
+  maximized (its page the window's size; 1280×800 only headless). Every
+  bot of the person's shares it, sign-ins and all, but works in tabs of its
+  own (`bot` on the batch): a batch runs on its bot's tab and brings it to
+  the front, the answer lists only that bot's tabs, `tab` and `close_tab`
+  count only them, and a tab a page opens belongs to whoever owns the page
+  that opened it (one with no opener, to the bot that ran last). Dialogs,
+  downloads and the pointer are kept per bot the same way. It talks JSON
   lines on stdio, so no port is open to anyone else; it stays up between
   batches and closes after 30 idle minutes, when the desktop stops, or
   on a reset, and the next batch starts a new one on the same profile. A

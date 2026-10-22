@@ -135,33 +135,56 @@ function uniqueName(dir, wanted, exists) {
   }
 }
 
+/*
+ * Every bot of the person's shares this one Chrome, its profile and sign-ins,
+ * but each works in tabs of its own: a batch runs on its bot's tab, lists only
+ * its bot's tabs, and a tab a page opens belongs to whoever owns the page that
+ * opened it. Batches still run one at a time (the host's queue), so the bot
+ * whose batch runs has its tab in front.
+ */
 export function createBrowser({ launch, clipboard = xclipClipboard, downloadsDir = path.join(os.homedir(), "Downloads") }) {
   let context = null;
+  let bot = "";
   let active = null;
+  let front = null;
   let mouse = { x: 0, y: 0 };
-  let dialog = null;
+  const owners = new Map();
+  const tabsOf = new Map();
+  const mice = new Map();
+  const dialogs = new Map();
   const dialogWaiters = [];
-  const downloads = [];
+  const downloads = new Map();
   const saving = [];
+  const adopting = [];
+
+  const ownerOf = (page) => owners.get(page) ?? bot;
+  const downloaded = (owner, line) => downloads.set(owner, [...(downloads.get(owner) ?? []), line]);
 
   const watch = (page) => {
     page.on?.("dialog", (opened) => {
       // Leaving a page with unsaved changes is the step's own intent.
       if (opened.type() === "beforeunload") return void opened.accept().catch(() => undefined);
-      dialog = { page, opened, type: opened.type(), message: opened.message() };
-      for (const waiter of dialogWaiters.splice(0)) waiter();
+      dialogs.set(page, { page, opened, type: opened.type(), message: opened.message() });
+      if (ownerOf(page) === bot) for (const waiter of dialogWaiters.splice(0)) waiter();
     });
     page.on?.("download", (download) => {
+      const owner = ownerOf(page);
       saving.push(
         (async () => {
           await fs.mkdir(downloadsDir, { recursive: true });
           const taken = new Set((await fs.readdir(downloadsDir).catch(() => [])).map((name) => path.join(downloadsDir, name)));
           const name = uniqueName(downloadsDir, download.suggestedFilename(), (file) => taken.has(file));
           await download.saveAs(path.join(downloadsDir, name));
-          downloads.push(`~/Downloads/${name}`);
-        })().catch((error) => downloads.push(`a download failed: ${errorLine(error)}`)),
+          downloaded(owner, `~/Downloads/${name}`);
+        })().catch((error) => downloaded(owner, `a download failed: ${errorLine(error)}`)),
       );
     });
+  };
+
+  const claim = (page, owner) => {
+    owners.set(page, owner);
+    tabsOf.set(owner, page);
+    if (owner === bot) active = page;
   };
 
   const open = async () => {
@@ -169,19 +192,50 @@ export function createBrowser({ launch, clipboard = xclipClipboard, downloadsDir
     context = await launch();
     context.on("page", (page) => {
       watch(page);
-      active = page;
+      front = page;
+      // A tab a page opens is its owner's; one with no opener (the person's Ctrl+T) goes to the bot that ran last.
+      adopting.push(
+        Promise.resolve(page.opener?.())
+          .catch(() => null)
+          .then((opener) => claim(page, opener && owners.has(opener) ? owners.get(opener) : bot)),
+      );
     });
     for (const page of context.pages()) watch(page);
-    active = context.pages().at(-1) ?? (await context.newPage());
+    front = context.pages().at(-1) ?? null;
     return context;
   };
 
   const livePages = () => context.pages().filter((p) => !p.isClosed());
+  const ownPages = () => livePages().filter((p) => owners.get(p) === bot);
+  const blank = (p) => !owners.has(p) && /^(about:blank|chrome:\/\/new-?tab(-page)?\/?)$/.test(p.url());
 
   const page = async () => {
     await open();
-    if (!active || active.isClosed()) active = livePages().at(-1) ?? (await context.newPage());
+    await Promise.all(adopting.splice(0));
+    if (!active || active.isClosed()) {
+      active = ownPages().at(-1) ?? livePages().find(blank) ?? null;
+      if (!active) {
+        // A new tab opens in front.
+        active = await context.newPage();
+        front = active;
+      }
+      claim(active, bot);
+    }
     return active;
+  };
+
+  const toFront = async (current) => {
+    if (current === front) return;
+    await current.bringToFront();
+    front = current;
+  };
+
+  const dialogHere = () => {
+    for (const [shown, open] of dialogs) {
+      if (shown.isClosed()) dialogs.delete(shown);
+      else if (owners.get(shown) === bot) return open;
+    }
+    return null;
   };
 
   const element = (current, ref) => current.locator(`aria-ref=${ref}`);
@@ -255,7 +309,8 @@ export function createBrowser({ launch, clipboard = xclipClipboard, downloadsDir
   // Each step answers with text for the model when it read something.
   const runStep = async (step) => {
     const current = await page();
-    if (dialog && step.type !== "dialog" && !dialog.page.isClosed()) {
+    const dialog = dialogHere();
+    if (dialog && step.type !== "dialog") {
       throw new Error(`A ${dialog.type} dialog is open ("${dialog.message.slice(0, 200)}"); answer it with dialog {accept: true or false} first`);
     }
     const options = { timeout: ACTION_TIMEOUT_MS };
@@ -348,7 +403,7 @@ export function createBrowser({ launch, clipboard = xclipClipboard, downloadsDir
       case "dialog": {
         if (!dialog) throw new Error("No dialog is open");
         const { opened } = dialog;
-        dialog = null;
+        dialogs.delete(dialog.page);
         if (step.accept) await opened.accept(step.text ?? undefined);
         else await opened.dismiss();
         return null;
@@ -356,7 +411,7 @@ export function createBrowser({ launch, clipboard = xclipClipboard, downloadsDir
       case "key":
         for (const chord of step.keys) {
           await untilDialog(current.keyboard.press(chord));
-          if (dialog) break;
+          if (dialogHere()) break;
         }
         return null;
       case "scroll": {
@@ -389,28 +444,31 @@ export function createBrowser({ launch, clipboard = xclipClipboard, downloadsDir
         await current.reload({ waitUntil: "domcontentloaded", timeout: NAVIGATE_TIMEOUT_MS });
         return null;
       case "tab": {
-        const pages = livePages();
-        if (step.index >= pages.length) throw new Error(`There is no tab ${step.index}; there are ${pages.length}`);
-        active = pages[step.index];
-        await active.bringToFront();
+        const pages = ownPages();
+        if (step.index >= pages.length) throw new Error(`There is no tab ${step.index}; you have ${pages.length}`);
+        claim(pages[step.index], bot);
+        front = null;
+        await toFront(active);
         return null;
       }
       case "new_tab": {
         const opened = await context.newPage();
-        active = opened;
-        await opened.bringToFront();
+        claim(opened, bot);
+        front = null;
+        await toFront(opened);
         if (step.url) await opened.goto(step.url, { waitUntil: "domcontentloaded", timeout: NAVIGATE_TIMEOUT_MS });
         return null;
       }
       case "close_tab": {
-        const pages = livePages();
+        const pages = ownPages();
         const target = step.index === null ? current : pages[step.index];
-        if (!target) throw new Error(`There is no tab ${step.index}; there are ${pages.length}`);
+        if (!target) throw new Error(`There is no tab ${step.index}; you have ${pages.length}`);
         // Closing the last tab would close the window, and the person's browser with it.
-        if (pages.length === 1) throw new Error("That is the only tab; navigate it somewhere else instead");
+        if (livePages().length === 1) throw new Error("That is the only tab; navigate it somewhere else instead");
         await target.close();
-        active = livePages().at(-1);
-        await active.bringToFront();
+        active = ownPages().at(-1) ?? null;
+        if (active) await toFront(active);
+        else tabsOf.delete(bot);
         return null;
       }
       default:
@@ -441,12 +499,18 @@ export function createBrowser({ launch, clipboard = xclipClipboard, downloadsDir
     }
   };
 
-  /** `view`: "both" (screenshot and element list), "image" or "text". */
-  const run = async (steps, { view = "both", format = "jpeg" } = {}) => {
+  /** `view`: "both" (screenshot and element list), "image" or "text"; `owner`: the bot whose tabs the batch runs in. */
+  const run = async (steps, { view = "both", format = "jpeg", owner = "" } = {}) => {
     const done = [];
     const outputs = [];
     let error = null;
-    downloads.length = 0;
+    await open();
+    await Promise.all(adopting.splice(0));
+    bot = owner;
+    active = tabsOf.get(bot) ?? null;
+    mouse = mice.get(bot) ?? { x: 0, y: 0 };
+    downloads.delete(bot);
+    await toFront(await page()).catch(() => undefined);
     for (const [index, step] of steps.entries()) {
       try {
         const text = await runStep(step);
@@ -458,7 +522,7 @@ export function createBrowser({ launch, clipboard = xclipClipboard, downloadsDir
       }
     }
     // An open dialog pauses the page's scripts, and a screenshot or snapshot with it would wait forever.
-    const blocked = () => dialog !== null && !dialog.page.isClosed();
+    const blocked = () => dialogHere() !== null;
     if (steps.some((step) => !LOOK_STEPS.has(step.type)) && !blocked()) await settle(await page());
     if (saving.length) await Promise.race([Promise.all(saving.splice(0)), new Promise((resolve) => setTimeout(resolve, DOWNLOAD_WAIT_MS))]);
     const shown = await page();
@@ -470,7 +534,11 @@ export function createBrowser({ launch, clipboard = xclipClipboard, downloadsDir
       const measured = pngSize(image) ?? size;
       shot = { image: image.toString("base64"), mime: format === "png" ? "image/png" : "image/jpeg", width: measured.width, height: measured.height };
     }
-    const tabs = await Promise.all(livePages().map(async (p, index) => ({ index, title: await p.title().catch(() => ""), url: p.url(), active: p === shown })));
+    const tabs = await Promise.all(ownPages().map(async (p, index) => ({ index, title: await p.title().catch(() => ""), url: p.url(), active: p === shown })));
+    mice.set(bot, mouse);
+    const dialog = dialogHere();
+    const fetched = downloads.get(bot) ?? [];
+    downloads.delete(bot);
     return {
       ...shot,
       ...(shot ? {} : { width: size.width, height: size.height }),
@@ -482,7 +550,7 @@ export function createBrowser({ launch, clipboard = xclipClipboard, downloadsDir
       outputs,
       elements: elements ? { text: elements.text, note: elements.note } : null,
       dialog: dialog ? { type: dialog.type, message: dialog.message.slice(0, 500) } : null,
-      downloads: [...downloads],
+      downloads: fetched,
     };
   };
 
@@ -490,7 +558,8 @@ export function createBrowser({ launch, clipboard = xclipClipboard, downloadsDir
     const current = context;
     context = null;
     active = null;
-    dialog = null;
+    front = null;
+    for (const map of [owners, tabsOf, mice, dialogs, downloads]) map.clear();
     await current?.close().catch(() => undefined);
   };
 
@@ -593,7 +662,7 @@ function main() {
       // One batch at a time: two bots of the person's share this browser, as they share the desktop.
       queue = queue.then(async () => {
         try {
-          if (message.op === "run") send({ id: message.id, result: await browser.run(message.steps, { view: message.view, format: message.format }) });
+          if (message.op === "run") send({ id: message.id, result: await browser.run(message.steps, { view: message.view, format: message.format, owner: typeof message.bot === "string" ? message.bot : "" }) });
           else if (message.op === "close") {
             await browser.close();
             send({ id: message.id, result: { ok: true } });
