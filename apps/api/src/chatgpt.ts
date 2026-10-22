@@ -3,7 +3,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { ensureDataDir } from "./config.ts";
-import { chatGptSession, deleteProvider, endChatGptSession, saveChatGptSession, type ChatGptSession } from "./data/providers.ts";
+import { deleteProvider, endPlanSession, planSession, savePlanSession, type PlanSession } from "./data/providers.ts";
 import { chatGptClient, setChatGptClient } from "./data/prefs.ts";
 
 /*
@@ -74,7 +74,7 @@ export function startChatGptLogin(userId: string): string {
   url.searchParams.set("code_challenge_method", "S256");
   url.searchParams.set("ext_agent_host_id", hostId());
   if (!saved) url.searchParams.set("agent_name_hint", "Gond");
-  const email = chatGptSession(userId)?.email;
+  const email = planSession(userId, "chatgpt")?.email;
   if (email) url.searchParams.set("login_hint", email);
   return url.toString();
 }
@@ -182,7 +182,7 @@ export async function completeChatGptLogin(query: { code?: string | null; state?
     }
   }
   setChatGptClient(userId, clientId);
-  saveChatGptSession(userId, tokens.access_token!, { clientId, refreshToken: tokens.refresh_token, idToken: tokens.id_token ?? null, expiresAt: Date.now() + (tokens.expires_in ?? 3600) * 1000, scope, email, name });
+  savePlanSession(userId, "chatgpt", tokens.access_token!, { clientId, refreshToken: tokens.refresh_token, idToken: tokens.id_token ?? null, expiresAt: Date.now() + (tokens.expires_in ?? 3600) * 1000, scope, email, name });
   return { ok: true };
 }
 
@@ -199,7 +199,7 @@ export function completeChatGptLoginFrom(pasted: string, userId: string): Promis
 
 /** A live access token for the person's plan, renewed when it's close to running out; null when they must sign in again. */
 export async function chatGptAccessToken(userId: string): Promise<string | null> {
-  const session = chatGptSession(userId);
+  const session = planSession(userId, "chatgpt");
   if (!session) return null;
   if (session.expiresAt - Date.now() > RENEW_BEFORE_MS) return session.accessToken;
   // Refresh tokens rotate: two renewals at once would spend one twice, and ChatGPT ends the sign-in for a reused one.
@@ -211,11 +211,11 @@ export async function chatGptAccessToken(userId: string): Promise<string | null>
   return pending;
 }
 
-async function renew(userId: string, session: ChatGptSession & { accessToken: string }): Promise<string | null> {
+async function renew(userId: string, session: PlanSession & { accessToken: string }): Promise<string | null> {
   const answer = await tokenRequest({ grant_type: "refresh_token", client_id: session.clientId, refresh_token: session.refreshToken });
   if (answer.ok) {
     const { tokens } = answer;
-    saveChatGptSession(userId, tokens.access_token!, {
+    savePlanSession(userId, "chatgpt", tokens.access_token!, {
       ...session,
       refreshToken: tokens.refresh_token ?? session.refreshToken,
       idToken: tokens.id_token ?? session.idToken,
@@ -226,7 +226,7 @@ async function renew(userId: string, session: ChatGptSession & { accessToken: st
   }
   if (ENDED.has(answer.code) || answer.code === "invalid_client") {
     if (answer.code === "invalid_client") setChatGptClient(userId, null);
-    endChatGptSession(userId, "Your ChatGPT sign-in ended. Sign in again.");
+    endPlanSession(userId, "chatgpt", "Your ChatGPT sign-in ended. Sign in again.");
     return null;
   }
   return session.expiresAt > Date.now() ? session.accessToken : null;
@@ -234,7 +234,7 @@ async function renew(userId: string, session: ChatGptSession & { accessToken: st
 
 /** Revokes the refresh token and forgets the sign-in; the registered client and this install's id stay. */
 export async function signOutChatGpt(userId: string): Promise<boolean> {
-  const session = chatGptSession(userId);
+  const session = planSession(userId, "chatgpt");
   if (session?.refreshToken) {
     try {
       const { revocation_endpoint } = await openIdConfig();

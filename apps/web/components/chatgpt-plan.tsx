@@ -1,19 +1,17 @@
 "use client";
 
-import { CHATGPT_USAGE_URL, type AiSettings, type ProviderMeta } from "@gond/shared";
-import { ExternalLink } from "lucide-react";
+import { CHATGPT_USAGE_URL, type AiSettings } from "@gond/shared";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { McpPasteSignIn } from "@/components/mcp-signin";
-import { ProviderCheck, runOnProvider, useProviders } from "@/components/providers-card";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { PlanSignedIn } from "@/components/plan-engine";
+import { ProviderCheck, useProviders } from "@/components/providers-card";
+import { AlertDialog, AlertDialogAction, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Spinner } from "@/components/ui/spinner";
-import { Switch } from "@/components/ui/switch";
 import { toast } from "@/components/ui/toast";
-import { del, post } from "@/lib/api";
+import { post } from "@/lib/api";
 import { mobileShell } from "@/lib/shell";
 import { cn } from "@/lib/utils";
 
@@ -29,7 +27,45 @@ export function ChatGptLogo({ className, size = 16 }: { className?: string; size
 }
 
 export function usingChatGptPlan(ai: AiSettings | null | undefined): boolean {
-  return Boolean(ai && ai.engine === "api" && ai.engines.api.provider === "chatgpt");
+  return ai?.engine === "chatgpt";
+}
+
+/** "Continue with ChatGPT", and the field for the address it lands on where nothing hands it back. */
+export function ContinueWithChatGpt({ onDone }: { onDone: () => void }) {
+  const [starting, setStarting] = useState(false);
+  const [started, setStarted] = useState(false);
+
+  async function begin() {
+    setStarting(true);
+    try {
+      await startSignIn();
+      setStarted(true);
+    } catch (failure) {
+      toast.add({ type: "error", title: failure instanceof Error ? failure.message : "Couldn't start the sign-in." });
+    } finally {
+      setStarting(false);
+    }
+  }
+
+  return (
+    <div className="flex w-full flex-col items-start gap-3">
+      <Button size="lg" disabled={starting} onClick={() => void begin()}>
+        {starting ? <Spinner data-icon="inline-start" /> : <ChatGptLogo size={18} />}
+        Continue with ChatGPT
+      </Button>
+      {started ? (
+        <div className="w-full rounded-xl border p-4">
+          <McpPasteSignIn
+            name="ChatGPT"
+            onDone={() => {
+              setStarted(false);
+              onDone();
+            }}
+          />
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 /** "Using ChatGPT plan" with Manage usage, the line OpenAI asks for beside the model picker. */
@@ -70,82 +106,14 @@ function markSeen(): boolean {
   return true;
 }
 
-function SignedIn({ provider, ai, onAiChange, onChange }: { provider: ProviderMeta; ai?: AiSettings | null; onAiChange?: (next: AiSettings) => void; onChange: () => void }) {
-  const [checking, setChecking] = useState(false);
-  const [leaving, setLeaving] = useState(false);
-  const on = Boolean(ai && ai.enabled.includes("api") && ai.engines.api.provider === "chatgpt");
-
-  async function check() {
-    setChecking(true);
-    await post("/api/providers/chatgpt/check").catch(() => undefined);
-    setChecking(false);
-    onChange();
-  }
-
-  return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-start gap-3">
-        <span className="flex size-9 shrink-0 items-center justify-center rounded-full border border-primary-edge bg-primary">
-          <ChatGptLogo size={18} />
-        </span>
-        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="truncate text-[14px] font-medium">{provider.account?.email ?? provider.account?.name ?? "Signed in"}</span>
-          <ProviderCheck provider={provider} />
-        </span>
-      </div>
-      {ai ? (
-        <FieldGroup className="gap-2 rounded-lg border bg-muted/40 p-3">
-          <Field orientation="horizontal" className="min-h-11">
-            <FieldLabel htmlFor="chatgpt-run" className="flex-1 font-normal">
-              Run your bots on your ChatGPT plan
-            </FieldLabel>
-            <Switch id="chatgpt-run" checked={on} onCheckedChange={(next) => void runOnProvider(ai, "chatgpt", next).then((saved) => saved && onAiChange?.(saved))} />
-          </Field>
-          <FieldDescription>Off, they run on the CLIs you turned on.</FieldDescription>
-        </FieldGroup>
-      ) : null}
-      <div className="flex flex-wrap gap-1.5">
-        <Button variant="outline" size="sm" className="pointer-coarse:min-h-11" nativeButton={false} render={<a href={CHATGPT_USAGE_URL} target="_blank" rel="noreferrer" />}>
-          Manage usage
-          <ExternalLink data-icon="inline-end" />
-        </Button>
-        <Button variant="ghost" size="sm" className="pointer-coarse:min-h-11" disabled={checking} onClick={() => void check()}>
-          {checking ? <Spinner data-icon="inline-start" /> : null}
-          Check
-        </Button>
-        <Button variant="ghost" size="sm" className="pointer-coarse:min-h-11 text-destructive" onClick={() => setLeaving(true)}>
-          Sign out
-        </Button>
-      </div>
-      <AlertDialog open={leaving} onOpenChange={setLeaving}>
-        <AlertDialogContent size="sm">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Sign out of ChatGPT?</AlertDialogTitle>
-            <AlertDialogDescription>Bots running on your ChatGPT plan stop working until you sign in again or switch them to another engine.</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" onClick={() => void del("/api/providers/chatgpt").then(onChange)}>
-              Sign out
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
-  );
-}
-
 export function ChatGptPlanCard({ ai, onAiChange }: { ai?: AiSettings | null; onAiChange?: (next: AiSettings) => void }) {
   const { providers, reload } = useProviders();
   const params = useSearchParams();
-  const [starting, setStarting] = useState(false);
-  const [started, setStarted] = useState(false);
   const [welcome, setWelcome] = useState(false);
   const provider = providers?.chatgpt ?? null;
   const signedIn = Boolean(provider?.account);
 
   function welcomed() {
-    setStarted(false);
     void reload();
     if (markSeen()) setWelcome(true);
   }
@@ -164,18 +132,6 @@ export function ChatGptPlanCard({ ai, onAiChange }: { ai?: AiSettings | null; on
     });
   }, [params]);
 
-  async function begin() {
-    setStarting(true);
-    try {
-      await startSignIn();
-      setStarted(true);
-    } catch (failure) {
-      toast.add({ type: "error", title: failure instanceof Error ? failure.message : "Couldn't start the sign-in." });
-    } finally {
-      setStarting(false);
-    }
-  }
-
   return (
     <Card>
       <CardHeader>
@@ -186,19 +142,11 @@ export function ChatGptPlanCard({ ai, onAiChange }: { ai?: AiSettings | null; on
         {!providers ? (
           <Spinner />
         ) : signedIn && provider ? (
-          <SignedIn provider={provider} ai={ai} onAiChange={onAiChange} onChange={() => void reload()} />
+          <PlanSignedIn kind="chatgpt" logo={<ChatGptLogo size={18} />} usageUrl={CHATGPT_USAGE_URL} provider={provider} ai={ai} onAiChange={onAiChange} onChange={() => void reload()} />
         ) : (
           <div className="flex flex-col items-start gap-3">
             {provider?.check && !provider.check.ok ? <ProviderCheck provider={provider} /> : null}
-            <Button size="lg" disabled={starting} onClick={() => void begin()}>
-              {starting ? <Spinner data-icon="inline-start" /> : <ChatGptLogo size={18} />}
-              Continue with ChatGPT
-            </Button>
-            {started ? (
-              <div className="w-full rounded-xl border p-4">
-                <McpPasteSignIn name="ChatGPT" onDone={welcomed} />
-              </div>
-            ) : null}
+            <ContinueWithChatGpt onDone={welcomed} />
           </div>
         )}
         <p className="text-[12.5px] text-muted-foreground">What your bots do counts toward your ChatGPT plan&apos;s usage limits, separately from anything you pay to run Gond.</p>

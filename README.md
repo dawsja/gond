@@ -5,7 +5,7 @@ source, and it runs on the AI plans you already pay for.
 
 Each bot has a name, a job, a personality (`SOUL.md`), a memory, and a home
 folder on a shared Linux box. Under the hood it's a long-running Claude
-Code, Codex or Grok session, so it keeps working after you close your
+Code session, or a model Gond drives itself, so it keeps working after you close your
 laptop. You message it like a coworker and it checks in when it needs you.
 
 Gond is an independent remake of the idea behind Grok Bot. It isn't
@@ -30,10 +30,11 @@ affiliated with xAI, Meta or Anthropic.
   own folder and app actions wait for you as a card in the chat), *Auto*
   (the default: it asks before what it can't undo or that leaves the
   computer, and a short hard list always asks) or *Always allow*.
-- **Your AI, your plan.** Claude Code, Codex or Grok on your own
-  subscription, signed in from Settings without a terminal. Or skip the CLI
-  and use an API key (Anthropic, OpenAI, xAI or anything compatible), and
-  Gond drives the model itself.
+- **Your AI, your plan.** Claude Code on your own subscription,
+  signed in from Settings without a terminal, your ChatGPT plan with
+  Continue with ChatGPT, or your SuperGrok or X Premium+ plan with Sign
+  in with Grok. Or bring an API key (Anthropic, OpenAI, xAI or
+  anything compatible). Without a CLI, Gond drives the model itself.
 - **Connected apps.** Anything Composio supports: Gmail, Slack, GitHub,
   Notion, Linear and hundreds more. You choose which bots can use each one.
 - **MCP servers.** Add your own, OAuth sign-in included.
@@ -88,10 +89,11 @@ flowchart LR
     B[Browser] -- "/api/*" --> W[web :3000]
     W -- rewrite --> A[api :8790]
     A -- "HTTP + SSE, bearer token" --> X[box :8787]
-    X -- "claude · codex app-server · grok agent" --> C[CLI session per bot]
+    X -- "claude" --> C[CLI session per bot]
     C -- "gond MCP bridge" --> X
     X -- "tool calls, permission prompts" --> A
     C -. "API key access: LLM proxy" .-> A
+    A -- "ChatGPT · Grok plan · API key" --> M[(model APIs)]
     A -- "Composio SDK" --> S[(Gmail · Slack · GitHub · …)]
 ```
 

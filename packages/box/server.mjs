@@ -12,8 +12,6 @@ import { toolResultContent } from "./bridge.mjs";
 import { BrowserError, createBrowsers } from "./browser.mjs";
 import { clipText, readXclip, VIEWPORT, writeXclip } from "./browser-host.mjs";
 import { PERSON_HAS_CONTROL, ComputerActionError, controlTransition, describeStep, parseSteps, pngSize, settleMs, STEP_TIMEOUT_MS, stepTimeoutMs, thumbSize, usesInput, xdotoolArgv, xdotoolStdin } from "./computer.mjs";
-import { CODEX_BIN, CodexSession } from "./codex.mjs";
-import { GROK_BIN, GrokSession } from "./grok.mjs";
 import { runFileJob } from "./file-job.mjs";
 import { MAX_UPLOAD_BYTES, previewArgv } from "./preview.mjs";
 import { createSessionStore, turnPrompt } from "./sessions.mjs";
@@ -103,8 +101,6 @@ export const accounts = new Accounts({
       bots: process.env.BOTS_DIR || undefined,
       cache: process.env.CACHE_DIR || undefined,
       claude: process.env.CLAUDE_CONFIG_DIR || undefined,
-      codex: process.env.CODEX_HOME || undefined,
-      grok: process.env.GROK_HOME || undefined,
       run: process.env.XDG_RUNTIME_DIR_AGENT || undefined,
     },
   },
@@ -234,7 +230,7 @@ export function inside(root, relative) {
   return full;
 }
 
-const AGENT_LOGIN_DIRS = [process.env.CLAUDE_CONFIG_DIR || path.join(AGENT_HOME, ".claude"), process.env.CODEX_HOME || path.join(AGENT_HOME, ".codex"), process.env.GROK_HOME || path.join(AGENT_HOME, ".grok")];
+const AGENT_LOGIN_DIRS = [process.env.CLAUDE_CONFIG_DIR || path.join(AGENT_HOME, ".claude")];
 
 /**
  * Resolves a path inside a person's home, for the bots' own use of the
@@ -405,8 +401,6 @@ function agentEnv(account, extra = {}) {
     DO_NOT_TRACK: "1",
 
     CLAUDE_CONFIG_DIR: account.claude,
-    CODEX_HOME: account.codex,
-    GROK_HOME: account.grok,
     ...extra,
   };
 }
@@ -732,19 +726,12 @@ function cancelSignIns(account = null) {
 }
 
 function signedIn(account, engine) {
-  if (engine === "claude") return Promise.resolve(authStatus({ env: agentEnv(account), ...asUser(account) }).loggedIn === true);
-  return enginesAuth(account).then((auth) => auth[engine]?.loggedIn === true);
+  return Promise.resolve(engine === "claude" && authStatus({ env: agentEnv(account), ...asUser(account) }).loggedIn === true);
 }
 
 async function startSignIn(account, engine) {
   dropSignIn(account, engine);
   const argv = signInArgv(engine, ENGINE_BINS);
-
-  const dir = engine === "codex" ? account.codex : engine === "grok" ? account.grok : null;
-  if (dir && !fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-    own(dir, account);
-  }
 
   const { default: pty } = await import("node-pty");
   const env = agentEnv(account, { TERM: "xterm-256color", COLORTERM: "truecolor", BROWSER: "/bin/true" });
@@ -1431,32 +1418,6 @@ async function resetHome() {
   return { ok: true, removed, accounts: people };
 }
 
-async function enginesAuth(account) {
-  const codex = await new Promise((resolve) => {
-    if (!fs.existsSync(account.codex)) {
-      commandVersion(CODEX_BIN, ["--version"]).then((version) => resolve({ installed: version !== null, loggedIn: false, detail: "Not logged in" }));
-      return;
-    }
-    const child = spawn(CODEX_BIN, ["login", "status"], { env: agentEnv(account), ...asUser(account), stdio: ["ignore", "pipe", "pipe"] });
-    const chunks = [];
-    child.stdout.on("data", (chunk) => chunks.push(chunk));
-    child.stderr.on("data", (chunk) => chunks.push(chunk));
-    const timer = setTimeout(() => child.kill("SIGKILL"), 15_000);
-    child.on("error", () => {
-      clearTimeout(timer);
-      resolve({ installed: false, loggedIn: false, detail: "Not installed" });
-    });
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      const lines = Buffer.concat(chunks).toString("utf8").split("\n").map((line) => line.trim()).filter((line) => line && !/^WARNING/.test(line));
-      resolve({ installed: true, loggedIn: code === 0, detail: (lines.at(-1) ?? "").slice(0, 200) });
-    });
-  });
-  const grokVersion = await commandVersion(GROK_BIN, ["--version"]);
-  const grokSignedIn = fs.existsSync(path.join(account.grok, "auth.json"));
-  return { codex, grok: { installed: grokVersion !== null, loggedIn: grokSignedIn, detail: grokSignedIn ? "Signed in" : "Not signed in" } };
-}
-
 const MODELS_CACHE_MS = 5 * 60 * 1000;
 const modelsCache = new Map();
 
@@ -1485,8 +1446,8 @@ function commandVersion(command, args) {
 
 async function versions() {
   if (versionsCache && Date.now() - versionsCache.at < VERSIONS_CACHE_MS) return versionsCache.value;
-  const [bun, claude, codex, grok] = await Promise.all([commandVersion("bun", ["--version"]), commandVersion("claude", ["--version"]), commandVersion(CODEX_BIN, ["--version"]), commandVersion(GROK_BIN, ["--version"])]);
-  const value = { node: process.versions.node, bun, claude, codex, grok };
+  const [bun, claude] = await Promise.all([commandVersion("bun", ["--version"]), commandVersion("claude", ["--version"])]);
+  const value = { node: process.versions.node, bun, claude };
   versionsCache = { at: Date.now(), value };
   return value;
 }
@@ -1545,8 +1506,8 @@ function send(response, status, body) {
 
 const STREAMED = Symbol("streamed");
 
-export const ENGINES = { claude: AgentSession, codex: CodexSession, grok: GrokSession };
-const ENGINE_BINS = { claude: CLAUDE_BIN, codex: CODEX_BIN, grok: GROK_BIN };
+export const ENGINES = { claude: AgentSession };
+const ENGINE_BINS = { claude: CLAUDE_BIN };
 
 export const MODEL_ID = /^[A-Za-z0-9._:/-]{0,120}$/;
 
@@ -1790,7 +1751,6 @@ async function route(request, response, url) {
   if (request.method === "POST" && parts.length === 2 && parts[0] === "claude" && parts[1] === "check") {
     return checkClaude({ cwd: account.home, env: agentEnv(account), ...asUser(account) });
   }
-  if (request.method === "GET" && parts.length === 2 && parts[0] === "engines" && parts[1] === "auth") return enginesAuth(account);
   if (parts[0] === "engines" && parts.length >= 3 && parts[2] === "sign-in") return signInRoute(request, parts, account);
   if (request.method === "GET" && parts.length === 3 && parts[0] === "engines" && parts[2] === "models") {
     if (!Object.hasOwn(ENGINES, parts[1])) throw new HttpError(404, "No such engine");

@@ -15,9 +15,8 @@ what is here. The README says what Gond is; this says how it is made.
   messages and fires routines.
 - `packages/box`: the bots' computer. Plain Node ESM (`.mjs`), no build
   step, runs as root only to drop to the `agent` user. Persistent CLI
-  sessions: Claude Code in `agents.mjs`, Codex (`codex app-server`) in
-  `codex.mjs`, Grok (`grok agent stdio`, ACP) in `grok.mjs`, all on the
-  shared base in `bridge.mjs`; the `gond` MCP bridge in `gond-mcp.mjs`.
+  sessions: Claude Code in `agents.mjs`, on the shared base in
+  `bridge.mjs`; the `gond` MCP bridge in `gond-mcp.mjs`.
 - `apps/desktop`: Rust and Tauri v2, a Windows installer (NSIS) and a
   Linux AppImage. It ships one page of its own (Connect, `src/connect.*`,
   drawn with the web's tokens); after that the window loads the Gond you
@@ -383,7 +382,9 @@ what is here. The README says what Gond is; this says how it is made.
   `email-card.tsx` draws it as a letter, To, Cc and Bcc by name (a tap shows
   the addresses), the subject, the body with Show all and the files, with
   Send and Don't send and no Always. A reply or a forward asks on Auto like
-  a send (`OUTWARD_ACTION`).
+  a send (`OUTWARD_ACTION`), and so does saving a draft, which goes nowhere
+  but would otherwise reach the person only as the bot's retelling; the
+  prompt tells a bot the card shows the letter, so its reply doesn't.
   Then `secret-card.tsx`, `login-card.tsx`, `signin-card.tsx` and
   `connect-card.tsx`. A new kind of card goes there too, so they never
   drift. What is waiting is said by the "Needs you" badge and the buttons
@@ -498,13 +499,13 @@ what is here. The README says what Gond is; this says how it is made.
   becomes an activity line.
 - **Every bot is an assistant first.** The CLIs' own system prompts make
   the model a coding agent and ours is only appended to them (Claude Code's
-  `--append-system-prompt-file`, Codex's `developerInstructions`), so
+  `--append-system-prompt-file`), so
   `systemPromptFor` opens with `assistantFirst()` on every engine: answer
   as an assistant, in plain words, and work as an engineer only when the
   person asks for software or the bot's role is technical. Connected apps
   are listed with their tool prefix (`NOTION_…`) so a bot calls them
-  instead of searching its files. The CLIs' own folders (`~/.claude`, `~/.codex`,
-  `~/.grok`, `~/.claude.json`) are theirs: `touchesEngine` in
+  instead of searching its files. The CLI's own folders (`~/.claude`,
+  `~/.claude.json`) are its own: `touchesEngine` in
   `src/approvals.ts` refuses a shell command or a file change that
   reaches into them, before any approval, wherever the broker sees it,
   and the house rules say bots, skills and routines from another app are
@@ -622,9 +623,9 @@ what is here. The README says what Gond is; this says how it is made.
   waits as before. Only a person steers; routines, teammates and hidden
   prompts always queue. Each driver steers its own way (`steer` on the
   session, `POST /agents/:id/steer`): Claude Code reads another stdin
-  message, known to be read by `--replay-user-messages`; Codex takes
-  `turn/steer`; Grok's prompt is cancelled and the words sent next; the
-  `api` engine's loop reads a `SteerQueue` between steps. A driver that
+  message, known to be read by `--replay-user-messages`; the
+  engines Gond runs itself (`api`, `chatgpt`, `grok`) read a
+  `SteerQueue` between steps. A driver that
   can't take it answers false, never guesses.
 - **The AI is each person's own** (`src/data/ai.ts`, Settings → AI for
   everyone). `enabled` is the engines they turned on, `engine` the one in
@@ -638,15 +639,17 @@ what is here. The README says what Gond is; this says how it is made.
   engines back on the plan (`releaseEngines`). So nothing but that card
   writes `access`;
   `src/engines.ts` turns that and the owner's providers into what the box
-  gets. A plan is the CLI signed in inside the person's own account on the
+  gets. A CLI's plan is the CLI signed in inside the person's own account on the
   box, which Settings → AI can do for them without a terminal
   (`/api/box/engines/:engine/sign-in`, `components/engine-signin.tsx`); an
   API key is one of their own providers. Models come from the engines
   themselves (`/api/models` in `routes/llm.ts`, one group per enabled
-  engine): `codex model/list` over its app-server, `grok models`, Claude
-  Code's aliases, and a key's own `/models`. Nothing here keeps a list of
+  engine): Claude Code's aliases, a plan's own list in its order,
+  and a key's own `/models`. Nothing here keeps a list of
   model names; picking one says which engine runs it, and any id can still
-  be typed.
+  be typed. A plan's engine (ChatGPT, Grok) is never left without one:
+  `ModelPicker` picks the list's default, else its first, as soon as the
+  list arrives, so its model is always a choice in the dropdown.
   Nobody's bots run on anyone else's plan or key, and there is no fallback
   to the admin's. Team settings (`gond_settings`) keep only onboarding.
   Three of each person's bots answer at once
@@ -731,8 +734,8 @@ what is here. The README says what Gond is; this says how it is made.
   (`ToolPart` in `driver.ts`: text then an image), which the box relays
   to a CLI as content blocks, `native.ts` sends to Anthropic inside the
   `tool_result` and to a chat API as one `user` message of `image_url`s
-  after the step's `tool` messages (`stepMessages`); Grok takes no
-  pictures, so it gets the PNG saved in the bot's home and its path. A
+  after the step's `tool` messages (`stepMessages`), and to a plan's
+  Responses API as `input_image` parts of the `function_call_output`. A
   batch with any step but a screenshot or a wait goes through
   `requestApproval` once per reply for both tools together: on Always ask
   that is one card per reply, Always allow on it saves the rule
@@ -793,7 +796,7 @@ what is here. The README says what Gond is; this says how it is made.
   `src/routes/llm.ts`) and the provider's proxy token; the token names whose row it is
   (`providerByToken`), only the proxy decrypts the key, and
   `allSecretValues()` includes every key for redaction.
-- **A ChatGPT plan is a provider you sign in to** (`src/chatgpt.ts`,
+- **A ChatGPT plan is an engine you sign in to** (`src/chatgpt.ts`,
   Settings → AI → ChatGPT plan, `chatgpt-plan.tsx`), OpenAI's Sign in
   with ChatGPT for open-source apps: OAuth with PKCE against
   auth.openai.com, the client registered on first use
@@ -808,8 +811,12 @@ what is here. The README says what Gond is; this says how it is made.
   `api_key`, the rest encrypted in `oauth`), redacted like a key;
   `chatGptAccessToken` renews them one at a time per person, since the
   refresh token rotates, and a refusal ends the sign-in with a line
-  saying so. Only the `api` engine runs on it: `native.ts` speaks the
-  Responses API for it (`store: false`, streamed, the prompt as
+  saying so. It is the `chatgpt` engine, beside Claude Code, Grok and
+  API in the Engine card and with the plan as its only provider, so the
+  API engine stays about keys; like `api` it has no CLI (`native` in
+  `engineRun`), and the card's switch turns it on. Settings from when it
+  was the `api` engine on a `chatgpt` provider read back as this engine
+  (`toAi`). `native.ts` speaks the Responses API for it (`store: false`, streamed, the prompt as
   `instructions`, the tools in one `gond` namespace with `strict: false`,
   results as `function_call_output`), and the proxy passes only
   `responses` and `models` through. Its refusals are the plan's
@@ -817,7 +824,30 @@ what is here. The README says what Gond is; this says how it is made.
   OpenAI's: "Continue with ChatGPT" with their mark (`ChatGptLogo`, used
   nowhere else), "You're using your ChatGPT plan" / "Got it" once, and
   "Using ChatGPT plan" with Manage usage under the model. Voice can't use
-  it.
+  it. It is why there is no Codex engine: a ChatGPT plan runs without a
+  CLI, so Codex's CLI, sign-in and session were taken out, and
+  settings that still name it read back without it (`readEnabled`).
+- **A Grok plan is an engine you sign in to too** (`src/grok.ts`,
+  Settings → AI → Grok plan, `grok-plan.tsx`), and it is why there is no
+  Grok CLI on the computer. It reuses what the open-source Grok CLI
+  (xai-org/grok-build, Apache-2.0) does, its public client included: the
+  device flow (RFC 8628) against auth.x.ai with `referrer=grok-build`,
+  so "Sign in with Grok" (xAI's mark, `GrokLogo`) shows a code and
+  opens xAI's page, and a poll here (`startGrokLogin`, the interval and
+  `slow_down` as the spec says) picks up the tokens. They are the `grok`
+  row of `gond_providers` like ChatGPT's, renewed one at a time per
+  person (`grokAccessToken`; refresh tokens rotate), revoked on Sign
+  out. The account is read from the ID token's claims, which came
+  straight from the token endpoint over TLS. Inference is the CLI's
+  proxy, `cli-chat-proxy.grok.com/v1` (`GROK_API_URL`), with the CLI's
+  headers (`GROK_PLAN_HEADERS`: `X-XAI-Token-Auth`, a CLI version the
+  proxy's version gate accepts), on the Responses API: plain function
+  tools with `strict: false`, `store: false`, and the reasoning carried
+  between steps as its `encrypted_content`. Its refusals are its own
+  (`grokError`: free usage used up, a plan that can't be used here).
+  xAI decides which accounts get a plan token, so the card says so.
+  Settings from the CLI days read back as this engine, and a Grok
+  engine on an xAI key moves to the `api` engine (`toAi`).
 - **Speech becomes text in the API** (`src/routes/voice.ts`). The
   person's choice is `voice` and `voice_model` on `gond_user_prefs` (`src/data/voice.ts`,
   `pickVoiceProvider` in shared); `/api/transcribe` sends the recording
@@ -1052,12 +1082,11 @@ what is here. The README says what Gond is; this says how it is made.
   process's user and only the homes differ.
 - Everything a bot runs happens as its owner's user with
   `agentEnv(account)`. Credentials are stripped from the environment
-  before a session starts. The CLIs' sign-ins (`.claude`, `.codex`,
-  `.grok`, each person's own) are never readable through the files API
+  before a session starts. Claude Code's sign-in (`.claude`,
+  each person's own) is never readable through the files API
   and survive Reset.
 - **A model list comes from the CLI** (`models.mjs`,
-  `/engines/:engine/models`). Codex answers `model/list` on its
-  app-server, Grok prints `grok models`, and Claude Code has neither, so
+  `/engines/:engine/models`). Claude Code has no list, so
   it offers its aliases (`fable`, `opus`, `sonnet`, `haiku`, best first,
   `opus` the default), which follow the newest model of each name and
   never go stale. Only their labels carry a version number, so those are

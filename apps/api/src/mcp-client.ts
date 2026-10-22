@@ -183,7 +183,7 @@ export async function nativeMcpTools(context: { bot: Bot; thread: Thread; signal
   const tools: Record<string, DriverTool> = {};
   const servers = await Promise.all(
     mcpServersFor(context.bot).map(async (server): Promise<McpServerNote> => {
-      if (server.transport !== "http") return { name: server.name, note: "runs as a command on the computer, so only Claude Code, Codex or Grok can use it, not an API key" };
+      if (server.transport !== "http") return { name: server.name, note: "runs as a command on the computer, so only Claude Code can use it, not a plan or an API key Gond calls itself" };
       if (server.authStatus === "needed") return { name: server.name, note: `not attached yet: it waits for the person to sign in, from its card or Settings → Apps → MCP servers → ${server.name} → Sign in` };
       const session = new McpSession(server);
       let listed: McpToolInfo[];

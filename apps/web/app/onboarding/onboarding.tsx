@@ -6,6 +6,8 @@ import { Check, LogIn } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AppIcon } from "@/components/app-icons";
+import { ContinueWithChatGpt } from "@/components/chatgpt-plan";
+import { SignInWithGrok } from "@/components/grok-plan";
 import { readiness } from "@/components/engine-card";
 import { EngineSignInDialog } from "@/components/engine-signin";
 import { ModelPicker } from "@/components/model-picker";
@@ -246,6 +248,8 @@ function AiStep({
             <AlertTitle>{ready.state === "ready" ? `${info.name} is ready.` : ready.signIn ? `Sign in to ${info.name}` : `${info.name} isn't ready yet`}</AlertTitle>
             <AlertDescription className="flex flex-col items-start gap-2">
               {ready.text}
+              {engine === "chatgpt" && ready.state !== "ready" ? <ContinueWithChatGpt onDone={onProviderSaved} /> : null}
+              {engine === "grok" && ready.state !== "ready" ? <SignInWithGrok onDone={onProviderSaved} /> : null}
               {ready.signIn ? (
                 <Button size="sm" variant="outline" className="pointer-coarse:min-h-11" onClick={() => setSigningIn(engine)}>
                   <LogIn data-icon="inline-start" />

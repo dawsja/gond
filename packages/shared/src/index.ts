@@ -338,10 +338,10 @@ export type AuthConfig = {
   oidc: { enabled: boolean; name: string } | null;
 };
 
-export const PROVIDER_KINDS = ["anthropic", "openai", "xai", "chatgpt"] as const;
+export const PROVIDER_KINDS = ["anthropic", "openai", "xai", "chatgpt", "grok"] as const;
 export type ProviderKind = (typeof PROVIDER_KINDS)[number];
 
-/** The APIs a person types a key for; a ChatGPT plan is signed in to instead (Sign in with ChatGPT). */
+/** The APIs a person types a key for; a ChatGPT or Grok plan is signed in to instead. */
 export const KEY_PROVIDER_KINDS = ["anthropic", "openai", "xai"] as const satisfies readonly ProviderKind[];
 export type KeyProviderKind = (typeof KEY_PROVIDER_KINDS)[number];
 
@@ -349,7 +349,17 @@ export function isKeyProvider(kind: ProviderKind): kind is KeyProviderKind {
   return (KEY_PROVIDER_KINDS as readonly string[]).includes(kind);
 }
 
+/** A plan a person signs in to, whose tokens Gond keeps and renews; each is an engine of its own. */
+export const PLAN_PROVIDER_KINDS = ["chatgpt", "grok"] as const satisfies readonly ProviderKind[];
+export type PlanProviderKind = (typeof PLAN_PROVIDER_KINDS)[number];
+
+export function isPlanProvider(kind: ProviderKind): kind is PlanProviderKind {
+  return (PLAN_PROVIDER_KINDS as readonly string[]).includes(kind);
+}
+
 export const CHATGPT_API_URL = "https://api.openai.com/v1";
+// A plan's token answers on the Grok CLI's proxy, not the developer API, which bills a key.
+export const GROK_API_URL = "https://cli-chat-proxy.grok.com/v1";
 export const CHATGPT_USAGE_URL = "https://chatgpt.com/settings/usage";
 
 export const PROVIDER_LABELS: Record<ProviderKind, { name: string; short: string; detail: string; defaultUrl: string; keyHint: string }> = {
@@ -381,17 +391,24 @@ export const PROVIDER_LABELS: Record<ProviderKind, { name: string; short: string
     defaultUrl: CHATGPT_API_URL,
     keyHint: "",
   },
+  grok: {
+    name: "Grok plan",
+    short: "Grok",
+    detail: "Your SuperGrok or X Premium+ plan, signed in with Grok. No key needed.",
+    defaultUrl: GROK_API_URL,
+    keyHint: "",
+  },
 };
 
-/** Bearer auth and OpenAI's paths; a ChatGPT plan talks the Responses API on them, the rest chat completions. */
+/** Bearer auth and OpenAI's paths; a plan talks the Responses API on them, a key chat completions. */
 export function isOpenAiShaped(kind: ProviderKind): boolean {
-  return kind === "openai" || kind === "xai" || kind === "chatgpt";
+  return kind === "openai" || kind === "xai" || kind === "chatgpt" || kind === "grok";
 }
 
 export type ProviderMeta = {
   kind: ProviderKind;
   baseUrl: string;
-  /** The ChatGPT account a plan is signed in with; null for a key. */
+  /** The account a plan is signed in with; null for a key. */
   account: { email: string | null; name: string | null } | null;
 
   check: { ok: boolean; detail: string; at: string } | null;
@@ -434,10 +451,10 @@ export function pickVoiceProvider(preference: VoicePreference, has: (kind: Voice
   return VOICE_PROVIDERS.find(has) ?? null;
 }
 
-export const CLI_ENGINES = ["claude", "codex", "grok"] as const;
+export const CLI_ENGINES = ["claude"] as const;
 export type CliEngine = (typeof CLI_ENGINES)[number];
 
-export const ENGINES = [...CLI_ENGINES, "api"] as const;
+export const ENGINES = [...CLI_ENGINES, "chatgpt", "grok", "api"] as const;
 export type Engine = (typeof ENGINES)[number];
 
 export function isCliEngine(engine: Engine): engine is CliEngine {
@@ -479,29 +496,29 @@ export const ENGINE_LABELS: Record<Engine, EngineInfo> = {
     defaultModel: DEFAULT_MODEL,
     modelHint: "fable, opus, sonnet, haiku, or a full model id",
   },
-  codex: {
-    name: "Codex",
-    vendor: "OpenAI",
-    detail: "OpenAI's coding agent, on a ChatGPT plan.",
-    plan: "Your ChatGPT plan",
-    signIn: "codex login --device-auth",
-    signInAt: "auth.openai.com",
-    provider: "openai",
-    providers: ["openai", "xai"],
-    defaultModel: "",
-    modelHint: "Leave empty for Codex's default",
-  },
   grok: {
     name: "Grok",
     vendor: "xAI",
-    detail: "xAI's coding agent, on a Grok plan.",
+    detail: "Your Grok plan, signed in with Grok. Gond runs the model itself; your bots still have the computer.",
     plan: "Your Grok plan",
-    signIn: "grok login --device-auth",
+    signIn: "",
     signInAt: "accounts.x.ai",
-    provider: "xai",
-    providers: ["xai", "openai"],
+    provider: "grok",
+    providers: ["grok"],
     defaultModel: "",
-    modelHint: "Leave empty for Grok's default (grok-build)",
+    modelHint: "Any model your plan lists",
+  },
+  chatgpt: {
+    name: "ChatGPT",
+    vendor: "OpenAI",
+    detail: "Your ChatGPT plan, signed in with ChatGPT. Gond runs the model itself; your bots still have the computer.",
+    plan: "Your ChatGPT plan",
+    signIn: "",
+    signInAt: "chatgpt.com",
+    provider: "chatgpt",
+    providers: ["chatgpt"],
+    defaultModel: "",
+    modelHint: "Any model your plan lists",
   },
   api: {
     name: "API",
@@ -511,7 +528,7 @@ export const ENGINE_LABELS: Record<Engine, EngineInfo> = {
     signIn: "",
     signInAt: "",
     provider: "anthropic",
-    providers: ["anthropic", "openai", "xai", "chatgpt"],
+    providers: ["anthropic", "openai", "xai"],
     defaultModel: "",
     modelHint: "claude-sonnet-5-5, or any model your key lists",
   },
@@ -534,9 +551,8 @@ export const MODEL_ID_PATTERN = /^[A-Za-z0-9._:/-]{0,120}$/;
 
 export const DEFAULT_ENGINES: Record<Engine, EngineSettings> = {
   claude: { access: "plan", model: DEFAULT_MODEL },
-  codex: { access: "plan", model: "" },
-  grok: { access: "plan", model: "" },
-
+  grok: { access: "api", model: "", provider: "grok" },
+  chatgpt: { access: "api", model: "", provider: "chatgpt" },
   api: { access: "api", model: "", provider: null },
 };
 
@@ -595,12 +611,11 @@ export type BoxStatus = {
 
   claude: ClaudeStatus;
 
-  engines: { codex: EngineStatus; grok: EngineStatus } | null;
   composio: { configured: boolean; connected: number };
 
   agents: { id: string; running: boolean; busy: boolean }[];
 
-  versions: { node: string | null; bun: string | null; claude: string | null; codex?: string | null; grok?: string | null } | null;
+  versions: { node: string | null; bun: string | null; claude: string | null } | null;
 };
 
 export type BoxUpdatePhase = "idle" | "pausing" | "pulling" | "restarting" | "resetting" | "patching" | "resuming" | "done" | "failed";
@@ -611,7 +626,7 @@ export const BOX_UPDATE_PHASE_LABELS: Record<BoxUpdatePhase, string> = {
   pulling: "Pulling the newest image",
   restarting: "Restarting on the new image",
   resetting: "Wiping the computer and rebuilding it",
-  patching: "Patching Debian, Bun, Claude Code, Codex and Grok",
+  patching: "Patching Debian, Bun and Claude Code",
   resuming: "Bringing the computer back",
   done: "Updated",
   failed: "Update failed",

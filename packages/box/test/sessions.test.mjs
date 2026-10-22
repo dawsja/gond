@@ -11,12 +11,12 @@ test("a saved session comes back after a restart, only for its person and engine
   const file = tempFile();
   const first = createSessionStore(file);
   first.remember("b-1--t-1", { user: "u-1", engine: "claude", sessionId: "s-abc" });
-  first.remember("b-2--t-2", { user: "u-2", engine: "codex", sessionId: "s-def" });
+  first.remember("b-2--t-2", { user: "u-2", engine: "other", sessionId: "s-def" });
 
   const again = createSessionStore(file);
   assert.equal(again.get("b-1--t-1", "u-1", "claude"), "s-abc");
   assert.equal(again.get("b-1--t-1", "u-2", "claude"), null);
-  assert.equal(again.get("b-1--t-1", "u-1", "codex"), null);
+  assert.equal(again.get("b-1--t-1", "u-1", "other"), null);
   assert.equal((fs.statSync(file).mode & 0o777).toString(8), "600");
 });
 
@@ -25,19 +25,19 @@ test("sessions are forgotten with the agent, the person, or a reset", () => {
   const store = createSessionStore(file);
   store.remember("a", { user: "u-1", engine: "claude", sessionId: "s-a" });
   store.remember("b", { user: "u-1", engine: "claude", sessionId: "s-b" });
-  store.remember("c", { user: "u-2", engine: "grok", sessionId: "s-c" });
+  store.remember("c", { user: "u-2", engine: "other", sessionId: "s-c" });
 
   store.forget("c", "u-1");
-  assert.equal(store.get("c", "u-2", "grok"), "s-c");
+  assert.equal(store.get("c", "u-2", "other"), "s-c");
   store.forget("c", "u-2");
-  assert.equal(store.get("c", "u-2", "grok"), null);
+  assert.equal(store.get("c", "u-2", "other"), null);
 
   store.remember("a", null);
   assert.equal(store.get("a", "u-1", "claude"), null);
   store.forgetUser("u-1");
   assert.equal(store.size(), 0);
 
-  store.remember("d", { user: "u-3", engine: "codex", sessionId: "s-d" });
+  store.remember("d", { user: "u-3", engine: "other", sessionId: "s-d" });
   store.clear();
   assert.equal(createSessionStore(file).size(), 0);
 });

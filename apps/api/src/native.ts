@@ -1,4 +1,4 @@
-import { CHATGPT_USAGE_URL, isOpenAiShaped, toolLabel, toolLine, type ProviderKind } from "@gond/shared";
+import { CHATGPT_USAGE_URL, PROVIDER_LABELS, isOpenAiShaped, isPlanProvider, toolLabel, toolLine, type ProviderKind } from "@gond/shared";
 import { clipParts, isToolParts, resultAsText, type DriverTool, type ToolPart } from "./driver.ts";
 import { labelStep, type StepUpdate } from "./work.ts";
 import { authHeaders, isAnthropicHost, isMiniMaxHost, upstreamUrl } from "./routes/llm.ts";
@@ -98,7 +98,7 @@ function mediaBlocks(kind: ProviderKind, attachments: NativeTurn["attachments"])
   const out: unknown[] = [];
   for (const file of attachments ?? []) {
     const image = file.mediaType.startsWith("image/");
-    if (kind === "chatgpt") {
+    if (isPlanProvider(kind)) {
       if (image) out.push({ type: "input_image", image_url: `data:${file.mediaType};base64,${file.data}` });
     } else if (isOpenAiShaped(kind)) {
       if (image) out.push({ type: "image_url", image_url: { url: `data:${file.mediaType};base64,${file.data}` } });
@@ -131,7 +131,7 @@ export function toolList(access: NativeAccess, tools: Record<string, DriverTool>
     if (native && tool.native?.anthropic) return tool.native.anthropic;
     const parameters = (tool.inputSchema as object | undefined) ?? { type: "object", properties: {} };
     // Strict is the Responses API's default, and it wants every property required; the tools' schemas aren't written that way.
-    if (access.kind === "chatgpt") return { type: "function", name, description: tool.description, parameters, strict: false };
+    if (isPlanProvider(access.kind)) return { type: "function", name, description: tool.description, parameters, strict: false };
     return isOpenAiShaped(access.kind) ? { type: "function", function: { name, description: tool.description, parameters } } : { name, description: tool.description, input_schema: parameters };
   });
   // A ChatGPT plan takes function tools only inside a namespace.
@@ -163,6 +163,21 @@ const PLAN_ERRORS: Record<string, string> = {
   subscription_sharing_usage_unavailable: "ChatGPT couldn't check your plan's usage just now. Try again in a moment.",
   subscription_sharing_user_unavailable: "ChatGPT couldn't check your plan just now. Try again in a moment.",
 };
+
+/** What a Grok plan's refusal means to the person; its errors are `{ code, error }`. */
+export function grokError(status: number, body: unknown): string {
+  const data = (body ?? {}) as { code?: unknown; error?: unknown; message?: unknown };
+  const nested = data.error && typeof data.error === "object" ? (data.error as { code?: unknown; message?: unknown }) : null;
+  const code = String(nested?.code ?? data.code ?? "");
+  const said = nested?.message ?? (typeof data.error === "string" ? data.error : data.message);
+  const detail = typeof said === "string" && said.trim() ? said.trim() : "";
+  if (code === "subscription:free-usage-exhausted") return "Your free Grok usage is used up for now. A SuperGrok plan raises the limit.";
+  if (status === 429) return `Usage limit reached on your Grok plan${detail ? `: ${detail}` : "."}`;
+  if (status === 401) return "Your Grok sign-in ended. Sign in again in Settings → AI.";
+  if (status === 403) return /subscription/i.test(detail) ? "This Grok account's plan can't be used here. It needs SuperGrok or X Premium+." : `Grok refused the request${detail ? `: ${detail}` : "."}`;
+  if (!status) return detail ? `Grok stopped: ${detail}` : "Grok stopped without saying why.";
+  return providerError(status, body);
+}
 
 /** What a ChatGPT plan's refusal means to the person, from its code, before or inside the stream. */
 export function planError(status: number, body: unknown): string {
@@ -198,24 +213,26 @@ export function sseEvents(text: string): unknown[] {
   return out;
 }
 
-type ResponseItem = { type?: string; id?: string; role?: string; content?: unknown; call_id?: string; name?: string; arguments?: string; namespace?: string };
+type ResponseItem = { type?: string; id?: string; role?: string; content?: unknown; call_id?: string; name?: string; arguments?: string; namespace?: string; encrypted_content?: unknown };
 
 /** One Responses API stream into a step. Items go back without their ids, since nothing is stored to point at. */
-export function readResponses(events: unknown[]): Step {
+export function readResponses(events: unknown[], kind: ProviderKind = "chatgpt"): Step {
+  const failed = (body: unknown) => (kind === "grok" ? grokError(0, body) : planError(0, body));
   let output: ResponseItem[] | null = null;
   const done: ResponseItem[] = [];
   let stopReason: string | null = null;
   for (const event of events as { type?: string; item?: ResponseItem; response?: { output?: unknown; incomplete_details?: { reason?: unknown } } }[]) {
     if (event.type === "response.output_item.done" && event.item) done.push(event.item);
-    if (event.type === "response.failed" || event.type === "error") throw new Error(planError(0, event));
+    if (event.type === "response.failed" || event.type === "error") throw new Error(failed(event));
     if (event.type === "response.completed" || event.type === "response.incomplete") {
       if (Array.isArray(event.response?.output) && event.response.output.length) output = event.response.output as ResponseItem[];
       const reason = event.response?.incomplete_details?.reason;
       stopReason = event.type === "response.completed" ? "completed" : reason === "max_output_tokens" ? "max_tokens" : typeof reason === "string" ? reason : "incomplete";
     }
   }
-  if (!stopReason) throw new Error("ChatGPT's answer broke off before it finished.");
-  const items = (output ?? done).filter((item) => item.type === "message" || item.type === "function_call");
+  if (!stopReason) throw new Error(`${isPlanProvider(kind) ? PROVIDER_LABELS[kind].short : "The model"}'s answer broke off before it finished.`);
+  // Nothing is stored, so a model that thinks gets its reasoning back only as the encrypted copy it handed over.
+  const items = (output ?? done).filter((item) => item.type === "message" || item.type === "function_call" || (item.type === "reasoning" && typeof item.encrypted_content === "string"));
   const text = items
     .filter((item) => item.type === "message" && Array.isArray(item.content))
     .flatMap((item) => (item.content as { type?: string; text?: string }[]).filter((part) => part.type === "output_text").map((part) => part.text ?? ""))
@@ -240,11 +257,12 @@ export function readResponses(events: unknown[]): Step {
 
 async function sendResponses(turn: NativeTurn, input: unknown[]): Promise<Step> {
   const { baseUrl, token } = turn.access;
+  const grok = turn.access.kind === "grok";
   const tools = toolList(turn.access, turn.tools, turn.model);
   const res = await fetch(upstreamUrl(baseUrl, "responses", ""), {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "text/event-stream", authorization: `Bearer ${token}` },
-    body: JSON.stringify({ model: turn.model, instructions: turn.instructions, input, ...(tools.length ? { tools } : {}), store: false, stream: true }),
+    body: JSON.stringify({ model: turn.model, instructions: turn.instructions, input, ...(tools.length ? { tools } : {}), store: false, stream: true, ...(grok ? { include: ["reasoning.encrypted_content"] } : {}) }),
     redirect: "manual",
     signal: turn.signal,
   });
@@ -256,13 +274,13 @@ async function sendResponses(turn: NativeTurn, input: unknown[]): Promise<Step> 
     } catch {
       /* plain text */
     }
-    throw new Error(planError(res.status, payload));
+    throw new Error(grok ? grokError(res.status, payload) : planError(res.status, payload));
   }
-  return readResponses(sseEvents(await res.text()));
+  return readResponses(sseEvents(await res.text()), turn.access.kind);
 }
 
 async function send(turn: NativeTurn, messages: unknown[]): Promise<Step> {
-  if (turn.access.kind === "chatgpt") return sendResponses(turn, messages);
+  if (isPlanProvider(turn.access.kind)) return sendResponses(turn, messages);
   const { kind, baseUrl, token } = turn.access;
   const openai = isOpenAiShaped(kind);
   const url = upstreamUrl(baseUrl, openai ? "chat/completions" : "v1/messages", "");
@@ -346,7 +364,7 @@ function toolAnswer(kind: ProviderKind, answer: ToolAnswer): unknown {
 }
 
 export function stepMessages(kind: ProviderKind, answers: ToolAnswer[], steers: string[] = []): unknown[] {
-  if (kind === "chatgpt") {
+  if (isPlanProvider(kind)) {
     const outputs = answers.map((answer) => ({
       type: "function_call_output",
       call_id: answer.call.id,
@@ -370,7 +388,7 @@ export function stepMessages(kind: ProviderKind, answers: ToolAnswer[], steers: 
 export async function nativeTurn(turn: NativeTurn): Promise<NativeResult> {
   const { kind } = turn.access;
   const media = mediaBlocks(kind, turn.attachments);
-  const first = media.length ? [...media, kind === "chatgpt" ? { type: "input_text", text: turn.prompt } : { type: "text", text: turn.prompt }] : turn.prompt;
+  const first = media.length ? [...media, isPlanProvider(kind) ? { type: "input_text", text: turn.prompt } : { type: "text", text: turn.prompt }] : turn.prompt;
   const messages: unknown[] = [{ role: "user", content: first }];
   const maxSteps = turn.maxSteps ?? MAX_STEPS;
 

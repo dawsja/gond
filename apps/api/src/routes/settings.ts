@@ -25,13 +25,13 @@ export function settingsRoutes() {
     const body = (await c.req.json().catch(() => ({}))) as { engine?: string; enabled?: unknown; engines?: Record<string, unknown> };
     const patch: Parameters<typeof updateAi>[1] = {};
     if (body.engine !== undefined) {
-      if (!(ENGINES as readonly string[]).includes(String(body.engine))) return c.json({ error: "The engine is claude, codex or grok" }, 400);
+      if (!(ENGINES as readonly string[]).includes(String(body.engine))) return c.json({ error: "The engine is claude, chatgpt, grok or api" }, 400);
       patch.engine = body.engine as Engine;
     }
     if (body.enabled !== undefined) {
       if (!Array.isArray(body.enabled) || !body.enabled.length) return c.json({ error: "Turn on at least one engine" }, 400);
       const enabled = body.enabled.map(String);
-      if (enabled.some((engine) => !(ENGINES as readonly string[]).includes(engine))) return c.json({ error: "The engines are claude, codex, grok and api" }, 400);
+      if (enabled.some((engine) => !(ENGINES as readonly string[]).includes(engine))) return c.json({ error: "The engines are claude, chatgpt, grok and api" }, 400);
       patch.enabled = enabled as Engine[];
     }
     if (body.engines !== undefined) {

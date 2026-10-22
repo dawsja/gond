@@ -9,8 +9,6 @@ const TRANSCRIPT_BYTES = 16 * 1024;
 
 export function signInArgv(engine, bins) {
   if (engine === "claude") return [bins.claude, "auth", "login", "--claudeai"];
-  if (engine === "codex") return [bins.codex, "login", "--device-auth"];
-  if (engine === "grok") return [bins.grok, "login", "--device-auth"];
   throw new Error(`Unknown engine ${engine}`);
 }
 
@@ -28,8 +26,6 @@ export function stripAnsi(text) {
 
 const URL_AT = {
   claude: /https:\/\/claude\.com\/\S*oauth\S*/i,
-  codex: /https:\/\/auth\.openai\.com\/\S+/i,
-  grok: /https:\/\/accounts\.x\.ai\/\S+/i,
 };
 
 const CODE = /\b[A-Z0-9]{3,8}-[A-Z0-9]{3,8}\b/;

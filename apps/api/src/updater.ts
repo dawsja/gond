@@ -135,7 +135,7 @@ async function run(options: { pull: boolean }): Promise<void> {
       }
     }
 
-    phase("patching", "Patching the box in place: Debian, Bun, Claude Code, Codex, Grok…");
+    phase("patching", "Patching the box in place: Debian, Bun, Claude Code…");
     const patched = await patchInPlace(box);
     set({ patched });
 
@@ -174,7 +174,7 @@ async function runReset(): Promise<void> {
   try {
     phase("pausing", "Pausing the computer…");
     const stopped = await pause();
-    phase("resetting", "Wiping the computer (only the sign-ins for Claude Code, Codex and Grok stay)…");
+    phase("resetting", "Wiping the computer (only the Claude Code sign-ins stay)…");
     const result = await resetBox(box);
 
     forgetBoxAccounts();

@@ -1,5 +1,5 @@
 import type { BoxStatus, ClaudeStatus, Engine } from "@gond/shared";
-import { boxConfig, boxVersions, checkClaude, claudeAuth, engineSignIn, enginesAuth, health, listAgents, type BoxConfig, type BoxVersions, type ClaudeCheck, type EnginesAuth } from "./box.ts";
+import { boxConfig, boxVersions, checkClaude, claudeAuth, engineSignIn, health, listAgents, type BoxConfig, type BoxVersions, type ClaudeCheck } from "./box.ts";
 import { emit } from "./events.ts";
 import { composioConfigured } from "./composio.ts";
 import { listConnections } from "./data/settings.ts";
@@ -20,25 +20,10 @@ export async function checkClaudeCached(box: BoxConfig, { fresh = false } = {}):
 export function forgetClaudeCheck(userId?: string) {
   if (userId) {
     cachedChecks.delete(userId);
-    cachedEngines.delete(userId);
   } else {
     cachedChecks.clear();
-    cachedEngines.clear();
   }
   cachedVersions = null;
-}
-
-const cachedEngines = new Map<string, { at: number; engines: EnginesAuth }>();
-
-const ENGINES_CACHE_MS = 30_000;
-
-async function enginesCached(box: BoxConfig, fresh = false): Promise<EnginesAuth | null> {
-  const key = box.user ?? "";
-  const cached = cachedEngines.get(key);
-  if (!fresh && cached && Date.now() - cached.at < ENGINES_CACHE_MS) return cached.engines;
-  const engines = await enginesAuth(box).catch(() => null);
-  if (engines) cachedEngines.set(key, { at: Date.now(), engines });
-  return engines;
 }
 
 const watched = new Map<string, ReturnType<typeof setInterval>>();
@@ -105,7 +90,6 @@ export async function boxStatus(userId: string, { fresh = false, admin = false }
       claude: { status: "no-box", detail: configError ?? "No box is configured. Set GOND_BOX_URL." },
       composio: { configured: composioConfigured(userId), connected: connections.filter((c) => c.status === "active").length },
       agents: [],
-      engines: null,
       versions: null,
     };
   }
@@ -113,7 +97,6 @@ export async function boxStatus(userId: string, { fresh = false, admin = false }
   let updating = isUpdating();
   let agents: BoxStatus["agents"] = [];
   let versions: BoxVersions | null = null;
-  let engines: EnginesAuth | null = null;
   try {
     const h = await health(box);
     reachable = true;
@@ -121,7 +104,7 @@ export async function boxStatus(userId: string, { fresh = false, admin = false }
     if (!updating) {
       const all = (await listAgents(box).catch(() => ({ agents: [] }))).agents;
       agents = all.filter((a) => admin || a.user === userId).map(({ id, running, busy }) => ({ id, running, busy }));
-      [versions, engines] = await Promise.all([versionsCached(box, fresh), enginesCached(box, fresh)]);
+      versions = await versionsCached(box, fresh);
     }
   } catch {
     reachable = false;
@@ -133,7 +116,6 @@ export async function boxStatus(userId: string, { fresh = false, admin = false }
     claude: updating ? { status: "error", detail: "The computer is updating." } : reachable ? await claudeStatus(box, fresh) : { status: "error", detail: "The box isn't reachable. Is the box container running?" },
     composio: { configured: composioConfigured(userId), connected: connections.filter((c) => c.status === "active").length },
     agents,
-    engines,
     versions,
   };
 }

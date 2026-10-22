@@ -1,6 +1,6 @@
-import { DEFAULT_MODEL, ENGINE_LABELS, PROVIDER_LABELS, isCliEngine, type AiSettings, type Engine, type ProviderKind } from "@gond/shared";
+import { DEFAULT_MODEL, ENGINE_LABELS, PROVIDER_LABELS, isCliEngine, isPlanProvider, type AiSettings, type Engine, type ProviderKind } from "@gond/shared";
 import type { BoxAccess } from "./box.ts";
-import { chatGptSession, getProvider, providerBaseUrl, providerProxyToken } from "./data/providers.ts";
+import { getProvider, planSession, providerBaseUrl, providerProxyToken } from "./data/providers.ts";
 import { apiInternalUrl } from "./mcp.ts";
 import type { NativeAccess } from "./native.ts";
 import { isAnthropicHost } from "./routes/llm.ts";
@@ -27,13 +27,15 @@ export function engineRun(ai: AiSettings, userId: string): EngineRun {
   const model = config.model || info.defaultModel || (engine === "claude" ? DEFAULT_MODEL : "");
 
   if (!isCliEngine(engine)) {
-    const kind = config.provider ?? providerFor(engine, userId);
+    const kind = config.provider && info.providers.includes(config.provider) ? config.provider : providerFor(engine, userId);
     const token = providerProxyToken(userId, kind);
     if (!getProvider(userId, kind) || !token) {
+      if (kind === "chatgpt") throw new EngineSetupError("Your bots are set to run on your ChatGPT plan, but you haven't signed in. Use Continue with ChatGPT under Settings → AI.");
+      if (kind === "grok") throw new EngineSetupError("Your bots are set to run on your Grok plan, but you haven't signed in. Use Sign in with Grok under Settings → AI.");
       throw new EngineSetupError("Your bots are set to call an API directly, but no key is saved. Add one under Settings → AI → API keys and switch your bots onto it.");
     }
-    if (kind === "chatgpt" && !chatGptSession(userId)) throw new EngineSetupError("Your ChatGPT sign-in ended. Sign in again under Settings → AI → ChatGPT plan.");
-    if (!model) throw new EngineSetupError(kind === "chatgpt" ? "Pick a model for your ChatGPT plan under Settings → AI." : `Pick a model for the ${PROVIDER_LABELS[kind].short} API under Settings → AI. Calling an API directly needs one; there is no default.`);
+    if (isPlanProvider(kind) && !planSession(userId, kind)) throw new EngineSetupError(`Your ${PROVIDER_LABELS[kind].short} sign-in ended. Sign in again under Settings → AI → ${PROVIDER_LABELS[kind].name}.`);
+    if (!model) throw new EngineSetupError(isPlanProvider(kind) ? `Pick a model for your ${PROVIDER_LABELS[kind].name} under Settings → AI.` : `Pick a model for the ${PROVIDER_LABELS[kind].short} API under Settings → AI. Calling an API directly needs one; there is no default.`);
 
     return { engine, model, access: { kind: "plan" }, native: { kind, baseUrl: `${apiInternalUrl()}/api/llm/${kind}`, token, upstream: providerBaseUrl(userId, kind) ?? undefined } };
   }

@@ -1,11 +1,12 @@
 "use client";
 
-import { ENGINE_LABELS, ENGINES, PROVIDER_LABELS, isCliEngine, type AiSettings, type BoxStatus, type Engine, type EngineSettings, type ProviderKind, type ProviderMeta } from "@gond/shared";
+import { ENGINE_LABELS, ENGINES, PROVIDER_LABELS, isCliEngine, isPlanProvider, type AiSettings, type BoxStatus, type Engine, type EngineSettings, type ProviderKind, type ProviderMeta } from "@gond/shared";
 import { Check, CircleDashed, LogIn, TriangleAlert } from "lucide-react";
 import { useState } from "react";
 import { EngineSignInDialog } from "@/components/engine-signin";
 import { ModelPicker } from "@/components/model-picker";
 import { ChatGptPlanLine, usingChatGptPlan } from "@/components/chatgpt-plan";
+import { GrokPlanLine } from "@/components/grok-plan";
 import { useProviders } from "@/components/providers-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -31,24 +32,17 @@ export function readiness(engine: Engine, status: BoxStatus | null, providers: R
     const kind = providerFor(engine, providers, chosen);
     const provider = providers?.[kind];
     if (!providers) return { state: "waiting", text: "Checking…" };
-    if (kind === "chatgpt" && !provider?.account) return { state: "problem", text: provider?.check?.detail ?? "Sign in with ChatGPT below." };
+    if (isPlanProvider(kind) && !provider?.account) return { state: "problem", text: provider?.check?.detail ?? `Not signed in yet. Sign in under ${PROVIDER_LABELS[kind].name}.` };
     if (!provider) return { state: "problem", text: "No API key saved yet. Add one below." };
     if (provider.check && !provider.check.ok) return { state: "problem", text: provider.check.detail };
-    if (kind === "chatgpt") return { state: "ready", text: `Runs on your ChatGPT plan${provider.account?.email ? `, signed in as ${provider.account.email}` : ""}.` };
+    if (isPlanProvider(kind)) return { state: "ready", text: `Runs on your ${PROVIDER_LABELS[kind].name}${provider.account?.email ? `, signed in as ${provider.account.email}` : ""}.` };
     return { state: "ready", text: `Runs on your ${PROVIDER_LABELS[kind].short} key at ${provider.baseUrl}.` };
   }
   if (!status) return { state: "waiting", text: "Checking the computer…" };
   if (!status.configured || !status.reachable) return { state: "problem", text: "The computer isn't reachable, so the sign-in can't be checked." };
   const notYet: Readiness = { state: "waiting", text: "Not signed in yet.", signIn: engine };
-  if (engine === "claude") {
-    if (status.claude.status === "ok") return { state: "ready", text: `Signed in${status.claude.email ? ` as ${status.claude.email}` : ""} on the computer.` };
-    if (status.claude.status === "missing") return { state: "problem", text: "The computer has no claude CLI. The admin can update it." };
-    return notYet;
-  }
-  const state = status.engines?.[engine as "codex" | "grok"];
-  if (!state) return { state: "waiting", text: "Checking the computer…" };
-  if (!state.installed) return { state: "problem", text: `The computer has no ${engine} CLI. The admin can update it.` };
-  if (state.loggedIn) return { state: "ready", text: "Signed in on the computer." };
+  if (status.claude.status === "ok") return { state: "ready", text: `Signed in${status.claude.email ? ` as ${status.claude.email}` : ""} on the computer.` };
+  if (status.claude.status === "missing") return { state: "problem", text: "The computer has no claude CLI. The admin can update it." };
   return notYet;
 }
 
@@ -133,7 +127,7 @@ export function EngineCard({ ai, status, onChange, onRefresh }: { ai: AiSettings
           <Field data-disabled={saving || undefined}>
             <FieldLabel htmlFor="model">Model</FieldLabel>
             <ModelPicker engine={ai.engine} model={ai.engines[ai.engine].model} disabled={saving} onChange={(next) => void save({ engine: next.engine, engines: { [next.engine]: { model: next.model } } })} />
-            <FieldDescription>{usingChatGptPlan(ai) ? <ChatGptPlanLine /> : "From the engines above. Picking one puts your bots on that engine."}</FieldDescription>
+            <FieldDescription>{usingChatGptPlan(ai) ? <ChatGptPlanLine /> : ai.engine === "grok" ? <GrokPlanLine /> : "From the engines above. Picking one puts your bots on that engine."}</FieldDescription>
             {error ? <FieldError>{error}</FieldError> : null}
           </Field>
         </FieldGroup>

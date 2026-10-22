@@ -1,4 +1,4 @@
-import { DEFAULT_AI, ENGINE_LABELS, ENGINES, type AiSettings, type Engine, type EngineSettings, type ProviderKind } from "@gond/shared";
+import { DEFAULT_AI, DEFAULT_ENGINES, ENGINE_LABELS, ENGINES, isCliEngine, type AiSettings, type Engine, type EngineSettings, type ProviderKind } from "@gond/shared";
 import { ensureDatabase } from "../db/init.ts";
 import { emit } from "../events.ts";
 import { now } from "../ids.ts";
@@ -24,8 +24,27 @@ export function readEnabled(json: string | null, engine: Engine): Engine[] {
 
 function toAi(row: Row | null): AiSettings {
   if (!row) return { ...DEFAULT_AI, engines: { ...DEFAULT_AI.engines } };
-  const engine = isEngine(row.engine) ? row.engine : DEFAULT_AI.engine;
-  return { engine, enabled: readEnabled(row.enabled, engine), engines: readEngines(row.engines, null) };
+  const engines = readEngines(row.engines, null);
+  let engine = isEngine(row.engine) ? row.engine : DEFAULT_AI.engine;
+  let enabled = readEnabled(row.enabled, engine);
+  // A ChatGPT plan was first run as the api engine on the chatgpt provider; it is an engine of its own now.
+  if (engines.api.provider === "chatgpt") {
+    engines.chatgpt = { ...engines.chatgpt, model: engines.chatgpt.model || engines.api.model };
+    engines.api = { ...DEFAULT_ENGINES.api };
+    if (engine === "api") engine = "chatgpt";
+    enabled = readEnabled(JSON.stringify(enabled.map((name) => (name === "api" ? "chatgpt" : name))), engine);
+  }
+  // Grok was its CLI on the computer, or an xAI key; it is the plan signed in to here now, and a key is the api engine's.
+  if (engines.grok.provider !== "grok" || engines.grok.access !== "api") {
+    const key = engines.grok.access === "api" ? engines.grok.provider : null;
+    if (key && !engines.api.provider) {
+      engines.api = { access: "api", model: engines.api.model || engines.grok.model, provider: key };
+      if (engine === "grok") engine = "api";
+      enabled = readEnabled(JSON.stringify(enabled.map((name) => (name === "grok" ? "api" : name))), engine);
+    }
+    engines.grok = { ...DEFAULT_ENGINES.grok };
+  }
+  return { engine, enabled, engines };
 }
 
 export function getAi(userId: string): AiSettings {
@@ -56,7 +75,7 @@ export function releaseEngines(userId: string, kind: ProviderKind, saved: (kind:
   for (const engine of ENGINES) {
     const config = current.engines[engine];
     const providers = ENGINE_LABELS[engine].providers;
-    if (config.access !== "api" || !providers.includes(kind)) continue;
+    if (!isCliEngine(engine) || config.access !== "api" || !providers.includes(kind)) continue;
     if (providers.some((other) => other !== kind && saved(other))) continue;
     engines[engine] = { ...config, access: "plan" };
   }

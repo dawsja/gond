@@ -1,7 +1,7 @@
 "use client";
 
-import { ENGINE_LABELS, type Engine, type ModelChoice, type ModelList } from "@gond/shared";
-import { useCallback, useEffect, useState } from "react";
+import { ENGINE_LABELS, isPlanProvider, type Engine, type ModelChoice, type ModelList } from "@gond/shared";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLiveEvents } from "@/components/hq/live-events";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -67,6 +67,19 @@ export function ModelPicker({
     if (event.topic === "ai") void load();
   });
 
+  // A plan only runs the models it lists, so an engine with none picked yet, or one left over from another
+  // engine, takes the plan's own default rather than asking for an id.
+  const picked = useRef<string | null>(null);
+  useEffect(() => {
+    const group = list?.groups.find((candidate) => candidate.engine === engine);
+    if (!group?.models.length || typing || group.models.some((choice) => choice.id === model)) return;
+    if (model !== "" && !isPlanProvider(ENGINE_LABELS[engine].provider)) return;
+    const choice = group.models.find((candidate) => candidate.default) ?? group.models[0]!;
+    if (picked.current === `${engine}:${choice.id}`) return;
+    picked.current = `${engine}:${choice.id}`;
+    void Promise.resolve().then(() => onChange({ engine, model: choice.id }));
+  }, [list, engine, model, typing, onChange]);
+
   if (!list) {
     return (
       <span className="flex h-10 items-center gap-2 text-[13px] text-muted-foreground">
@@ -79,7 +92,8 @@ export function ModelPicker({
   const groups = list.groups.filter((group) => group.models.length);
   const known = groups.some((group) => group.engine === engine && group.models.some((choice) => choice.id === model));
 
-  const useInput = typing || (model !== "" && !known);
+  const plan = isPlanProvider(ENGINE_LABELS[engine].provider);
+  const useInput = typing || (model !== "" && !known && !plan);
   const save = (next: { engine: Engine; model: string }) => {
     if (next.engine === engine && next.model.trim() === model) return;
     onChange({ engine: next.engine, model: next.model.trim() });

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { SignInJob, lastLine, needsCode, parseSignIn, signInArgv, signInReady, stripAnsi } from "../sign-in.mjs";
 
-const BINS = { claude: "claude", codex: "codex", grok: "grok" };
+const BINS = { claude: "claude" };
 
 const CLAUDE_OUT =
   "\x1b[2mOpening browser to sign in…\x1b[0m\r\n" +
@@ -10,16 +10,6 @@ const CLAUDE_OUT =
   "https://claude.com/cai/oauth/authorize?code=true&client_id=9d1c250a&response_type=code&code_challenge=9a25aUc&state=CLd5Br\x1b]8;;\x07\r\n" +
   "Paste code here if prompted > ";
 const CLAUDE_URL = "https://claude.com/cai/oauth/authorize?code=true&client_id=9d1c250a&response_type=code&code_challenge=9a25aUc&state=CLd5Br";
-
-const CODEX_OUT =
-  "Follow these steps to sign in with ChatGPT using device code authorization:\r\n\r\n" +
-  "1. Open this link in your browser and sign in to your account\r\n   \x1b[94mhttps://auth.openai.com/codex/device\x1b[0m\r\n\r\n" +
-  "2. Enter this one-time code \x1b[90m(expires in 15 minutes)\x1b[0m\r\n   \x1b[94mN7AW-A7QR5\x1b[0m\r\n";
-
-const GROK_OUT =
-  "To sign in, open this URL in your browser:\r\n\r\n  https://accounts.x.ai/oauth2/device?user_code=BDFY-PFMT\r\n\r\n" +
-  "  (Could not open browser automatically — open the URL above manually.)\r\n\r\n" +
-  "Confirm this code in your browser:\r\n\r\n  BDFY-PFMT\r\n";
 
 test("the escapes a terminal acts on are taken out, hyperlinks and all", () => {
   assert.equal(stripAnsi("\x1b[94mhi\x1b[0m\r\n"), "hi\n");
@@ -34,29 +24,12 @@ test("Claude Code's login gives its link and asks for a code", () => {
   assert.ok(needsCode("claude"));
 });
 
-test("Codex and Grok give a link and the code to enter on it", () => {
-  const codex = parseSignIn("codex", CODEX_OUT);
-  assert.equal(codex.url, "https://auth.openai.com/codex/device");
-  assert.equal(codex.code, "N7AW-A7QR5");
-  assert.ok(signInReady("codex", codex));
-
-  const grok = parseSignIn("grok", GROK_OUT);
-  assert.equal(grok.url, "https://accounts.x.ai/oauth2/device?user_code=BDFY-PFMT");
-  assert.equal(grok.code, "BDFY-PFMT");
-  assert.ok(signInReady("grok", grok));
-  assert.equal(needsCode("grok"), false);
-});
-
 test("half a line isn't a sign-in yet", () => {
-  const half = parseSignIn("codex", "1. Open this link in your browser\r\n   https://auth.openai.com/codex/dev");
-  assert.equal(half.code, null);
-  assert.equal(signInReady("codex", half), false);
+  assert.equal(signInReady("claude", parseSignIn("claude", "Opening browser to sign in…\r\n")), false);
 });
 
 test("each CLI's own login command, with the binaries the box runs", () => {
   assert.deepEqual(signInArgv("claude", BINS), ["claude", "auth", "login", "--claudeai"]);
-  assert.deepEqual(signInArgv("codex", BINS), ["codex", "login", "--device-auth"]);
-  assert.deepEqual(signInArgv("grok", BINS), ["grok", "login", "--device-auth"]);
   assert.throws(() => signInArgv("nothing", BINS));
 });
 
@@ -100,14 +73,14 @@ test("a refused code fails with what the CLI said, never with the code itself", 
 });
 
 test("a CLI that ends happily without being signed in is still a failure", async () => {
-  const { running } = job("grok", GROK_OUT, { confirm: async () => false });
+  const { running } = job("claude", CLAUDE_OUT, { confirm: async () => false });
   await running.finish(0);
   assert.equal(running.view().state, "failed");
   assert.match(running.view().error, /still isn't signed in/);
 });
 
 test("a sign-in nobody finishes is killed and says so", async () => {
-  const { running, pty } = job("codex", CODEX_OUT, { timeoutMs: 1 });
+  const { running, pty } = job("claude", CLAUDE_OUT, { timeoutMs: 1 });
   await new Promise((resolve) => setTimeout(resolve, 10));
   assert.equal(running.view().state, "failed");
   assert.match(running.view().error, /took too long/);
@@ -115,7 +88,7 @@ test("a sign-in nobody finishes is killed and says so", async () => {
 });
 
 test("what a sign-in tells the app is the link, the code and nothing else", () => {
-  const { running } = job("codex", CODEX_OUT);
+  const { running } = job("claude", CLAUDE_OUT);
   assert.deepEqual(Object.keys(running.view()).sort(), ["code", "engine", "error", "needsCode", "startedAt", "state", "url"]);
 });
 

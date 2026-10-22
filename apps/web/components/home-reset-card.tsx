@@ -9,7 +9,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
 import { post } from "@/lib/api";
 
-const KEPT = ["What every bot remembers, and the team's memory", "Your bots, their instructions and your conversations", "Your Claude, Codex and Grok sign-ins", "Websites you and your bots are signed in to"];
+const KEPT = ["What every bot remembers, and the team's memory", "Your bots, their instructions and your conversations", "Your Claude Code sign-in", "Websites you and your bots are signed in to"];
 const GONE = ["Everything installed: apps, packages, tools and caches", "Settings and changes to the desktop", "Files your bots made, and your own files on the computer"];
 
 export function HomeResetCard() {

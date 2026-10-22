@@ -95,7 +95,9 @@ describe("approvals", () => {
       expect(bash(command)).toBe(true);
     }
     for (const slug of ["GMAIL_SEND_EMAIL", "GMAIL_REPLY_TO_THREAD", "GMAIL_FORWARD_MESSAGE", "OUTLOOK_REPLY_EMAIL", "SLACK_SENDS_A_MESSAGE_TO_A_SLACK_CHANNEL", "SLACK_DELETE_MESSAGE", "STRIPE_CREATE_PAYMENT", "TWITTER_PUBLISH_POST", "BANK_TRANSFER_FUNDS"]) expect(mustAsk(slug, {}, bot)).toBe(true);
-    for (const slug of ["GITHUB_CREATE_ISSUE", "GMAIL_FETCH_EMAILS", "NOTION_UPDATE_PAGE"]) expect(mustAsk(slug, {}, bot)).toBe(false);
+    for (const slug of ["GITHUB_CREATE_ISSUE", "GMAIL_FETCH_EMAILS", "NOTION_UPDATE_PAGE", "GMAIL_CREATE_EMAIL_DRAFT"]) expect(mustAsk(slug, {}, bot)).toBe(false);
+    expect(mustAsk("GMAIL_CREATE_EMAIL_DRAFT", { recipient_email: "john@example.com", subject: "Hello", body: "Hi John" }, bot)).toBe(true);
+    expect(mustAsk("OUTLOOK_CREATE_DRAFT", { to_email: "ann@x.com", subject: "s", body: "b" }, bot)).toBe(true);
     expect(mustAsk("add_mcp_server", { name: "x" }, bot)).toBe(true);
     expect(mustAsk("ask_approval", { summary: "Send the invoice" }, bot)).toBe(true);
     expect(mustAsk("Write", { file_path: "/home/agent/notes.md" }, bot)).toBe(false);
@@ -401,6 +403,43 @@ describe("calling an API directly", () => {
       { id: "gpt-5.5-mini", name: "GPT-5.5 mini" },
     ]);
     expect(readModels({ data: [{ id: "b" }, { id: "a" }] })).toEqual([{ id: "a" }, { id: "b" }]);
+  });
+
+  test("a Grok plan is the Responses API with plain tools, its reasoning carried and its own refusals", async () => {
+    const { readResponses, grokError, toolList } = await import("../src/native.ts");
+    const { readModels, authHeaders } = await import("../src/routes/llm.ts");
+    const { grokAccount } = await import("../src/grok.ts");
+    const step = readResponses(
+      [
+        {
+          type: "response.completed",
+          response: {
+            output: [
+              { type: "reasoning", id: "rs_1", encrypted_content: "sealed" },
+              { type: "function_call", id: "fc_1", call_id: "call_1", name: "Bash", arguments: '{"command":"ls"}' },
+            ],
+          },
+        },
+      ],
+      "grok",
+    );
+    expect(step.raw).toEqual([{ type: "reasoning", encrypted_content: "sealed" }, { type: "function_call", call_id: "call_1", name: "Bash", arguments: '{"command":"ls"}' }]);
+    expect(step.calls).toEqual([{ id: "call_1", name: "Bash", input: { command: "ls" } }]);
+    expect(() => readResponses([], "grok")).toThrow("Grok's answer broke off");
+
+    expect(grokError(429, { code: "subscription:free-usage-exhausted", error: "used up" })).toContain("free Grok usage is used up");
+    expect(grokError(403, { code: "forbidden", error: "This requires a Grok subscription" })).toContain("SuperGrok or X Premium+");
+    expect(grokError(401, {})).toContain("Sign in again");
+
+    const tools = { Bash: { description: "Runs a command.", inputSchema: { type: "object", properties: {} }, execute: async () => "" } };
+    expect(toolList({ kind: "grok", baseUrl: "http://api/api/llm/grok", token: "t" }, tools)).toEqual([{ type: "function", name: "Bash", description: "Runs a command.", parameters: { type: "object", properties: {} }, strict: false }]);
+    expect(authHeaders("grok", "https://cli-chat-proxy.grok.com/v1", "at")).toMatchObject({ authorization: "Bearer at", "X-XAI-Token-Auth": "xai-grok-cli" });
+    expect(readModels({ data: [{ id: "grok-4.7" }, { id: "grok-4.5" }] }, true)).toEqual([{ id: "grok-4.7" }, { id: "grok-4.5" }]);
+
+    const token = (claims: object) => `h.${Buffer.from(JSON.stringify(claims)).toString("base64url")}.s`;
+    expect(grokAccount(token({ iss: "https://auth.x.ai", email: "g@x.ai", name: "G" }))).toEqual({ email: "g@x.ai", name: "G" });
+    expect(grokAccount(token({ iss: "https://elsewhere", email: "g@x.ai" }))).toEqual({ email: null, name: null });
+    expect(grokAccount("garbage")).toEqual({ email: null, name: null });
   });
 
   test("a ChatGPT ID token must be for this sign-in", async () => {
@@ -1046,16 +1085,15 @@ describe("the computer tool", () => {
 
   test("the CLI's own settings and sign-ins are refused, and a project's .claude folder is not", async () => {
     const { touchesEngine } = await import("../src/approvals.ts");
-    expect(touchesEngine("Edit", { file_path: "/home/gond-dawson/.grok/agents/clo.md" })).toBe(true);
+    expect(touchesEngine("Edit", { file_path: "/home/gond-dawson/.claude/agents/clo.md" })).toBe(true);
     expect(touchesEngine("Write", { file_path: "~/.claude/settings.json" })).toBe(true);
     expect(touchesEngine("Write", { file_path: "/home/agent/.claude.json" })).toBe(true);
-    expect(touchesEngine("Edit", { file_path: "/home/agent/.codex" })).toBe(true);
-    expect(touchesEngine("Bash", { command: "ls -la ~/.grok" })).toBe(true);
+    expect(touchesEngine("Bash", { command: "ls -la ~/.claude" })).toBe(true);
     expect(touchesEngine("Bash", { command: "cat $HOME/.claude/.credentials.json | head" })).toBe(true);
-    expect(touchesEngine("Bash", { command: "cp agents.md /home/agent/.grok/agents/" })).toBe(true);
+    expect(touchesEngine("Bash", { command: "cp agents.md /home/agent/.claude/agents/" })).toBe(true);
     expect(touchesEngine("Write", { file_path: "/home/agent/.bots/b1/site/.claude/settings.json" })).toBe(false);
     expect(touchesEngine("Bash", { command: "cd ~/.bots/b1/app && cat .claude/settings.json" })).toBe(false);
-    expect(touchesEngine("Bash", { command: "echo ~/.grokking" })).toBe(false);
+    expect(touchesEngine("Bash", { command: "echo ~/.claudette" })).toBe(false);
     expect(touchesEngine("Read", { file_path: "~/.claude/settings.json" })).toBe(false);
   });
 

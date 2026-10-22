@@ -353,26 +353,40 @@ describe("data", () => {
     expect(odd.enabled).toContain("grok");
   });
 
-  test("a CLI runs on the plan, whatever an older row says", async () => {
-    const { updateAi } = await import("../src/data/ai.ts");
-    const { engineRun } = await import("../src/engines.ts");
+  test("Grok from before its CLI went: a key moves to the api engine, the CLI to the plan", async () => {
+    const { getAi } = await import("../src/data/ai.ts");
+    const { engineRun, EngineSetupError } = await import("../src/engines.ts");
     const { saveProvider, deleteProvider } = await import("../src/data/providers.ts");
+    const { ensureDatabase } = await import("../src/db/init.ts");
+    const write = (userId: string, grok: object) =>
+      ensureDatabase()
+        .query("INSERT INTO gond_user_ai (user_id, engine, enabled, engines, updated_at) VALUES (?, 'grok', '[\"claude\",\"grok\"]', ?, '')")
+        .run(userId, JSON.stringify({ grok }));
     saveProvider("u-legacy", "xai", { baseUrl: "https://api.x.ai/v1", apiKey: "xai-1234567890" });
 
-    const ai = updateAi("u-legacy", { engine: "grok", engines: { grok: { access: "api", model: "grok-4.6", provider: "xai" } } });
-    const run = engineRun(ai, "u-legacy");
-    expect(run.access).toEqual({ kind: "plan" });
-    expect(run.native).toBeUndefined();
-    expect(run.model).toBe("grok-4.6");
+    write("u-legacy", { access: "api", model: "grok-4.6", provider: "xai" });
+    const keyed = getAi("u-legacy");
+    expect(keyed.engine).toBe("api");
+    expect(keyed.enabled).toEqual(["claude", "api"]);
+    expect(keyed.engines.api).toEqual({ access: "api", model: "grok-4.6", provider: "xai" });
+    expect(keyed.engines.grok).toEqual({ access: "api", model: "", provider: "grok" });
+    expect(engineRun(keyed, "u-legacy").native?.kind).toBe("xai");
     deleteProvider("u-legacy", "xai");
+
+    write("u-legacy-cli", { access: "plan", model: "grok-build" });
+    const cli = getAi("u-legacy-cli");
+    expect(cli.engine).toBe("grok");
+    expect(cli.engines.grok).toEqual({ access: "api", model: "", provider: "grok" });
+    expect(() => engineRun(cli, "u-legacy-cli")).toThrow(EngineSetupError);
+    expect(() => engineRun(cli, "u-legacy-cli")).toThrow("Sign in with Grok");
   });
 
   test("a ChatGPT plan is signed in to, kept encrypted, and redacted", async () => {
-    const { saveProvider, saveChatGptSession, chatGptSession, endChatGptSession, getProvider, allProviderKeys, providerProxyToken, deleteProvider } = await import("../src/data/providers.ts");
+    const { saveProvider, savePlanSession, planSession, endPlanSession, getProvider, allProviderKeys, providerProxyToken, deleteProvider } = await import("../src/data/providers.ts");
     const { chatGptClient, setChatGptClient } = await import("../src/data/prefs.ts");
     const { startChatGptLogin, isChatGptState, completeChatGptLogin } = await import("../src/chatgpt.ts");
 
-    expect(() => saveProvider("u-plan", "chatgpt", { baseUrl: "https://api.openai.com/v1", apiKey: "nope-1234567890" })).toThrow("Continue with ChatGPT");
+    expect(() => saveProvider("u-plan", "chatgpt", { baseUrl: "https://api.openai.com/v1", apiKey: "nope-1234567890" })).toThrow("signed in to, not given a key");
 
     const first = new URL(startChatGptLogin("u-plan"));
     expect(first.searchParams.get("client_id")).toBe("dynamic_agent_client");
@@ -383,11 +397,11 @@ describe("data", () => {
     expect(isChatGptState(first.searchParams.get("state"))).toBe(true);
     expect(await completeChatGptLogin({ state: first.searchParams.get("state"), code: "c" }, "u-someone-else")).toEqual({ ok: false, reason: "That sign-in was started by someone else." });
 
-    saveChatGptSession("u-plan", "access-token-1234567890", { clientId: "oaiapp_1", refreshToken: "refresh-token-1234567890", idToken: null, expiresAt: Date.now() + 3_600_000, scope: "chatgpt.tokens.use.direct", email: "plan@example.com", name: null });
+    savePlanSession("u-plan", "chatgpt", "access-token-1234567890", { clientId: "oaiapp_1", refreshToken: "refresh-token-1234567890", idToken: null, expiresAt: Date.now() + 3_600_000, scope: "chatgpt.tokens.use.direct", email: "plan@example.com", name: null });
     setChatGptClient("u-plan", "oaiapp_1");
     const token = providerProxyToken("u-plan", "chatgpt");
     expect(getProvider("u-plan", "chatgpt")?.account).toEqual({ email: "plan@example.com", name: null });
-    expect(chatGptSession("u-plan")?.accessToken).toBe("access-token-1234567890");
+    expect(planSession("u-plan", "chatgpt")?.accessToken).toBe("access-token-1234567890");
     expect(allProviderKeys()).toEqual(expect.arrayContaining(["access-token-1234567890", "refresh-token-1234567890"]));
 
     const again = new URL(startChatGptLogin("u-plan"));
@@ -395,15 +409,64 @@ describe("data", () => {
     expect(again.searchParams.has("agent_name_hint")).toBe(false);
     expect(again.searchParams.get("ext_agent_host_id")).toBe(first.searchParams.get("ext_agent_host_id"));
 
-    saveChatGptSession("u-plan", "access-token-renewed-12345", { ...chatGptSession("u-plan")!, refreshToken: "refresh-token-renewed-123" });
+    savePlanSession("u-plan", "chatgpt", "access-token-renewed-12345", { ...planSession("u-plan", "chatgpt")!, refreshToken: "refresh-token-renewed-123" });
     expect(providerProxyToken("u-plan", "chatgpt")).toBe(token);
 
-    endChatGptSession("u-plan", "Your ChatGPT sign-in ended. Sign in again.");
-    expect(chatGptSession("u-plan")).toBeNull();
+    endPlanSession("u-plan", "chatgpt", "Your ChatGPT sign-in ended. Sign in again.");
+    expect(planSession("u-plan", "chatgpt")).toBeNull();
     expect(getProvider("u-plan", "chatgpt")?.account).toBeNull();
     expect(getProvider("u-plan", "chatgpt")?.check?.ok).toBe(false);
     expect(deleteProvider("u-plan", "chatgpt")).toBe(true);
     expect(chatGptClient("u-plan")).toBe("oaiapp_1");
+  });
+
+  test("a Grok plan signs in with a code, keeps its tokens encrypted, and signs out", async () => {
+    const { startGrokLogin, checkGrokLogin, grokSignIn, grokAccessToken, signOutGrok, GROK_CLIENT_ID } = await import("../src/grok.ts");
+    const { getProvider, planSession, allProviderKeys } = await import("../src/data/providers.ts");
+    const seen: { url: string; body: URLSearchParams; headers: Headers }[] = [];
+    let approved = false;
+    const real = globalThis.fetch;
+    const answer = (body: object, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/.well-known/openid-configuration")) return answer({ device_authorization_endpoint: "https://auth.x.ai/oauth2/device/code", token_endpoint: "https://auth.x.ai/oauth2/token", revocation_endpoint: "https://auth.x.ai/oauth2/revoke" });
+      const body = new URLSearchParams(String(init?.body ?? ""));
+      seen.push({ url, body, headers: new Headers(init?.headers) });
+      if (url.endsWith("/device/code")) return answer({ device_code: "dev-1", user_code: "ABCD-1234", verification_uri: "https://accounts.x.ai/device", verification_uri_complete: "https://accounts.x.ai/device?code=ABCD-1234", expires_in: 600, interval: 5 });
+      if (url.endsWith("/token") && body.get("grant_type")?.endsWith("device_code")) {
+        if (!approved) return answer({ error: "authorization_pending" }, 400);
+        const id = `h.${Buffer.from(JSON.stringify({ iss: "https://auth.x.ai", email: "grok@example.com" })).toString("base64url")}.s`;
+        return answer({ access_token: "grok-access-1234567890", refresh_token: "grok-refresh-1234567890", id_token: id, expires_in: 60 });
+      }
+      if (url.endsWith("/token")) return answer({ access_token: "grok-access-renewed-12345", refresh_token: "grok-refresh-renewed-123", expires_in: 21600 });
+      if (url.endsWith("/revoke")) return new Response(null, { status: 200 });
+      return new Response("no", { status: 404 });
+    }) as typeof fetch;
+    try {
+      const started = await startGrokLogin("u-grok");
+      expect(started).toMatchObject({ state: "waiting", code: "ABCD-1234", url: "https://accounts.x.ai/device?code=ABCD-1234" });
+      expect(seen[0]!.body.get("client_id")).toBe(GROK_CLIENT_ID);
+      expect(seen[0]!.body.get("scope")).toContain("grok-cli:access");
+      expect(seen[0]!.headers.get("x-grok-client-surface")).toBe("headless");
+
+      expect((await checkGrokLogin("u-grok"))?.state).toBe("waiting");
+      approved = true;
+      expect((await checkGrokLogin("u-grok"))?.state).toBe("done");
+      expect(getProvider("u-grok", "grok")?.account).toEqual({ email: "grok@example.com", name: null });
+      expect(allProviderKeys()).toEqual(expect.arrayContaining(["grok-access-1234567890", "grok-refresh-1234567890"]));
+
+      // Under five minutes left, so the next use renews it, once, with the rotated refresh token kept.
+      expect(await Promise.all([grokAccessToken("u-grok"), grokAccessToken("u-grok")])).toEqual(["grok-access-renewed-12345", "grok-access-renewed-12345"]);
+      expect(seen.filter((call) => call.body.get("grant_type") === "refresh_token")).toHaveLength(1);
+      expect(planSession("u-grok", "grok")?.refreshToken).toBe("grok-refresh-renewed-123");
+
+      expect(await signOutGrok("u-grok")).toBe(true);
+      expect(seen.at(-1)?.body.get("token")).toBe("grok-refresh-renewed-123");
+      expect(getProvider("u-grok", "grok")).toBeNull();
+      expect(grokSignIn("u-grok")).toBeNull();
+    } finally {
+      globalThis.fetch = real;
+    }
   });
 
   test("an engine runs on a key only while that key is there", async () => {
@@ -411,20 +474,18 @@ describe("data", () => {
     const { getAi, updateAi, releaseEngines } = await import("../src/data/ai.ts");
     const saved = (kind: ProviderKind) => Boolean(getProvider("u-keys", kind));
 
-    saveProvider("u-keys", "xai", { baseUrl: "https://api.x.ai/v1", apiKey: "xai-1234567890" });
+    saveProvider("u-keys", "anthropic", { baseUrl: "https://api.anthropic.com", apiKey: "sk-ant-1234567890" });
     saveProvider("u-keys", "openai", { baseUrl: "https://api.openai.com/v1", apiKey: "sk-1234567890" });
 
-    updateAi("u-keys", { engines: { grok: { access: "api", model: "" }, codex: { access: "api", model: "" } } });
-
-    deleteProvider("u-keys", "xai");
-    releaseEngines("u-keys", "xai", saved);
-    expect(getAi("u-keys").engines.grok.access).toBe("api");
-    expect(getAi("u-keys").engines.codex.access).toBe("api");
+    updateAi("u-keys", { engines: { claude: { access: "api", model: "opus" }, api: { access: "api", model: "", provider: "openai" } } });
 
     deleteProvider("u-keys", "openai");
     releaseEngines("u-keys", "openai", saved);
-    expect(getAi("u-keys").engines.grok.access).toBe("plan");
-    expect(getAi("u-keys").engines.codex.access).toBe("plan");
+    expect(getAi("u-keys").engines.claude.access).toBe("api");
+    expect(getAi("u-keys").engines.api.access).toBe("api");
+
+    deleteProvider("u-keys", "anthropic");
+    releaseEngines("u-keys", "anthropic", saved);
     expect(getAi("u-keys").engines.claude.access).toBe("plan");
   });
 
@@ -433,33 +494,65 @@ describe("data", () => {
     const { readEngines, getSettings } = await import("../src/data/settings.ts");
     const { ensureDatabase } = await import("../src/db/init.ts");
     expect(getAi("u-admin").engine).toBe("claude");
-    const next = updateAi("u-admin", { engine: "codex", engines: { codex: { access: "api", model: "gpt-test" } } });
-    expect(next.engine).toBe("codex");
-    expect(next.engines.codex).toEqual({ access: "api", model: "gpt-test", provider: null });
+    const next = updateAi("u-admin", { engine: "grok", engines: { grok: { access: "api", model: "grok-test" } } });
+    expect(next.engine).toBe("grok");
+    expect(next.engines.grok).toEqual({ access: "api", model: "grok-test", provider: "grok" });
 
     const direct = updateAi("u-admin", { engine: "api", engines: { api: { access: "api", model: "MiniMax-M2", provider: "anthropic" } } });
     expect(direct.engine).toBe("api");
     expect(direct.engines.api).toEqual({ access: "api", model: "MiniMax-M2", provider: "anthropic" });
     expect(getAi("u-admin").engines.api.provider).toBe("anthropic");
-    updateAi("u-admin", { engine: "codex" });
+    updateAi("u-admin", { engine: "grok" });
     expect(next.engines.claude.access).toBe("plan");
 
     expect(getAi("u-other").engine).toBe("claude");
-    expect(getAi("u-other").engines.codex.access).toBe("plan");
+    expect(getAi("u-other").engines.grok.access).toBe("api");
 
     expect(readEngines(null, "claude-opus-5").claude.model).toBe("claude-opus-5");
-    expect(readEngines('{"grok":{"access":"nope","model":"bad model!","provider":"nope"}}', null).grok).toEqual({ access: "plan", model: "", provider: null });
+    expect(readEngines('{"grok":{"access":"nope","model":"bad model!","provider":"nope"}}', null).grok).toEqual({ access: "api", model: "", provider: "grok" });
 
     ensureDatabase().query("UPDATE gond_settings SET engine = 'grok', engines = ? WHERE id = 1").run(JSON.stringify({ grok: { access: "api", model: "grok-build" } }));
     adoptLegacyAi("u-admin");
-    expect(getAi("u-admin").engine).toBe("codex");
+    expect(getAi("u-admin").engines.grok.model).toBe("grok-test");
     ensureDatabase().query("DELETE FROM gond_user_ai WHERE user_id = ?").run("u-admin");
     adoptLegacyAi("u-admin");
     expect(getAi("u-admin")).toMatchObject({ engine: "grok" });
-    expect(getAi("u-admin").engines.grok).toEqual({ access: "api", model: "grok-build", provider: null });
+    expect(getAi("u-admin").engines.grok).toEqual({ access: "api", model: "grok-build", provider: "grok" });
 
     expect(Object.keys(getSettings()).sort()).toEqual(["onboarding", "timezone"]);
-    updateAi("u-admin", { engine: "claude", engines: { grok: { access: "plan", model: "" }, codex: { access: "plan", model: "" } } });
+    updateAi("u-admin", { engine: "claude", engines: { grok: { access: "plan", model: "" } } });
+  });
+
+  test("settings saved while Codex was an engine read back without it", async () => {
+    const { getAi } = await import("../src/data/ai.ts");
+    const { ensureDatabase } = await import("../src/db/init.ts");
+    ensureDatabase()
+      .query("INSERT INTO gond_user_ai (user_id, engine, enabled, engines, updated_at) VALUES (?, 'codex', ?, ?, ?)")
+      .run("u-codex", JSON.stringify(["codex", "api"]), JSON.stringify({ codex: { access: "plan", model: "gpt-5.1-codex" } }), new Date().toISOString());
+    const ai = getAi("u-codex");
+    expect(ai.engine).toBe("claude");
+    expect(ai.enabled).toEqual(["claude", "api"]);
+    expect(Object.keys(ai.engines).sort()).toEqual(["api", "chatgpt", "claude", "grok"]);
+  });
+
+  test("a ChatGPT plan run as the api engine reads back as the ChatGPT engine", async () => {
+    const { getAi, updateAi } = await import("../src/data/ai.ts");
+    const { ensureDatabase } = await import("../src/db/init.ts");
+    ensureDatabase()
+      .query("INSERT INTO gond_user_ai (user_id, engine, enabled, engines, updated_at) VALUES (?, 'api', ?, ?, ?)")
+      .run("u-plan-old", JSON.stringify(["claude", "api"]), JSON.stringify({ api: { access: "api", model: "gpt-6.1", provider: "chatgpt" } }), new Date().toISOString());
+    const ai = getAi("u-plan-old");
+    expect(ai.engine).toBe("chatgpt");
+    expect(ai.enabled).toEqual(["claude", "chatgpt"]);
+    expect(ai.engines.chatgpt).toEqual({ access: "api", model: "gpt-6.1", provider: "chatgpt" });
+    expect(ai.engines.api.provider).toBeNull();
+    updateAi("u-plan-old", { engine: "claude" });
+    expect(getAi("u-plan-old")).toMatchObject({ engine: "claude", enabled: ["claude", "chatgpt"] });
+
+    const { engineRun, EngineSetupError } = await import("../src/engines.ts");
+    const onPlan = updateAi("u-plan-old", { engine: "chatgpt" });
+    expect(() => engineRun(onPlan, "u-plan-old")).toThrow(EngineSetupError);
+    expect(() => engineRun(onPlan, "u-plan-old")).toThrow("Continue with ChatGPT");
   });
 
   test("a turn on an API key gets the proxy and the person's own token, never the key", async () => {
@@ -775,7 +868,7 @@ describe("data", () => {
       expect(sessions.slice(1)).toEqual(["s-1", "s-1", "s-1"]);
       expect(servers.find((m) => m.name === "toad")).toEqual({ name: "toad" });
       expect(servers.find((m) => m.name === "notion")?.note).toContain("sign in");
-      expect(servers.find((m) => m.name === "local")?.note).toContain("not an API key");
+      expect(servers.find((m) => m.name === "local")?.note).toContain("not a plan or an API key");
 
       const system = systemPromptFor(bot, { bots: [], thread, memory: null, memoryTruncated: false, teamMemory: null, connections: [], toolNotes: "", timezone: "UTC", skillsIndex: "", skills: [], mcpServers: servers });
       expect(system).toContain("- toad: tools named mcp__toad__…");

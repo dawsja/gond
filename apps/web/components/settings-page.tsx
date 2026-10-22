@@ -17,6 +17,7 @@ import { McpCard } from "@/components/mcp-card";
 import { NotificationsCard } from "@/components/notifications-card";
 import { OidcCard } from "@/components/oidc-card";
 import { ChatGptPlanCard } from "@/components/chatgpt-plan";
+import { GrokPlanCard } from "@/components/grok-plan";
 import { ProvidersCard } from "@/components/providers-card";
 import { VoiceCard } from "@/components/voice-card";
 import { SecretsCard } from "@/components/secrets-card";
@@ -117,7 +118,7 @@ export function SettingsPage({ user, section, index = false }: { user: SessionUs
   );
 
   const nav = (
-    <nav aria-label="Settings sections" className="hidden gap-1 overflow-x-auto wide:sticky wide:top-8 wide:flex wide:w-44 wide:shrink-0 wide:flex-col wide:overflow-visible">
+    <nav aria-label="Settings sections" className="flex flex-col gap-1">
       {sectionsFor(me.role).map((s) => {
         const active = s.id === current.id;
         const Icon = s.icon;
@@ -161,6 +162,7 @@ export function SettingsPage({ user, section, index = false }: { user: SessionUs
         <>
           {ai ? <EngineCard ai={ai} status={status} onChange={setAi} onRefresh={() => void load(true)} /> : <Skeleton className="h-96 rounded-xl" />}
           <ChatGptPlanCard ai={ai} onAiChange={setAi} />
+          <GrokPlanCard ai={ai} onAiChange={setAi} />
           <ProvidersCard ai={ai} onAiChange={setAi} />
         </>
       );
@@ -214,11 +216,14 @@ export function SettingsPage({ user, section, index = false }: { user: SessionUs
           </Button>
           <h1 className="text-[22px] font-semibold tracking-[-0.4px]">{index ? "Settings" : current.label}</h1>
         </div>
-        <h1 className="hidden text-[22px] font-semibold tracking-[-0.4px] wide:block">Settings</h1>
         {index ? <div className="wide:hidden">{list}</div> : null}
         <div className={cn("flex flex-col gap-5 wide:flex-row wide:items-start wide:gap-8", index && "hidden wide:flex")}>
-          {nav}
-          <div className="flex min-w-0 flex-1 flex-col gap-5">
+          {/* The title and the sections stay put while a section scrolls; the section starts level with the first of them. */}
+          <div className="hidden wide:sticky wide:top-8 wide:flex wide:w-44 wide:shrink-0 wide:flex-col wide:gap-5">
+            <h1 className="text-[22px] leading-8 font-semibold tracking-[-0.4px]">Settings</h1>
+            {nav}
+          </div>
+          <div className="flex min-w-0 flex-1 flex-col gap-5 wide:pt-[52px]">
             <div className={cn(!index && "hidden wide:block")}>
               <h2 className="text-[17px] font-semibold">{current.label}</h2>
               <p className="text-[13.5px] text-muted-foreground">{current.blurb}</p>

@@ -1,4 +1,4 @@
-import type { BotFileEntry, DesktopControl, Engine, EngineSignIn, EngineStatus, ModelChoice, ScreenStepType, ScreenTarget } from "@gond/shared";
+import type { BotFileEntry, DesktopControl, Engine, EngineSignIn, ModelChoice, ScreenStepType, ScreenTarget } from "@gond/shared";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { env } from "./config.ts";
@@ -162,7 +162,7 @@ export function boxUpdateStatus(config: BoxConfig): Promise<BoxUpdateStatus> {
   return call(config, "GET", "/update", undefined, 10_000);
 }
 
-export type BoxVersions = { node: string | null; bun: string | null; claude: string | null; codex?: string | null; grok?: string | null };
+export type BoxVersions = { node: string | null; bun: string | null; claude: string | null };
 
 export function boxVersions(config: BoxConfig): Promise<BoxVersions> {
   return call(config, "GET", "/versions", undefined, 30_000);
@@ -258,12 +258,6 @@ export function claudeAuth(config: BoxConfig): Promise<ClaudeAuth> {
   return call(config, "GET", "/claude/auth", undefined, 20_000);
 }
 
-export type EnginesAuth = { codex: EngineStatus; grok: EngineStatus };
-
-export function enginesAuth(config: BoxConfig): Promise<EnginesAuth> {
-  return call(config, "GET", "/engines/auth", undefined, 30_000);
-}
-
 export function engineModels(config: BoxConfig, engine: Engine): Promise<{ models: ModelChoice[] }> {
   return call(config, "GET", `/engines/${engine}/models`, undefined, 45_000);
 }
@@ -329,9 +323,7 @@ export type AgentTurnInput = {
 export type AgentEvent =
   | { type: "init"; sessionId: string; permissionMode: string | null }
   | { type: "line"; line: string }
-  /** Codex and Grok: an activity line the box already put in words. */
   | { type: "activity"; line: string }
-  /** Codex and Grok: a step of the work log, begun (raw: the tool's name and input, no title) or finished (see work.ts). */
   | { type: "step"; step: StepUpdate }
   | { type: "tool_call"; callId: string; name: string; input: Record<string, unknown> }
   | AgentTurnResult

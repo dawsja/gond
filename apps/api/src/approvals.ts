@@ -1,5 +1,5 @@
 import { posix } from "node:path";
-import { approvalLine, type Approval, type ApprovalLevel, type Bot } from "@gond/shared";
+import { approvalLine, emailDraftOf, type Approval, type ApprovalLevel, type Bot } from "@gond/shared";
 import { boxHome } from "./box.ts";
 import { approvalTimeoutMs } from "./config.ts";
 import { addRule, createApproval, getApproval, listApprovals, listRules, resolveApproval } from "./data/approvals.ts";
@@ -120,7 +120,8 @@ const SEGMENTS = /\s*(?:\|\||&&|[;|\n\r`()]|\$\()\s*/;
 export function mustAsk(tool: string, input: Record<string, unknown>, bot: Pick<Bot, "id" | "userId">): boolean {
   if (tool === "ask_approval" || tool === "add_mcp_server" || tool === "request_login" || tool === "type_secret") return true;
   if (tool === "Bash") return typeof input.command === "string" && riskyCommand(input.command, bot);
-  return OUTWARD_ACTION.test(tool);
+  // A draft goes nowhere, but the letter card is how the person sees what was written, so it asks too.
+  return OUTWARD_ACTION.test(tool) || emailDraftOf(tool, input)?.mode === "draft";
 }
 
 function riskyCommand(command: string, bot: Pick<Bot, "id" | "userId">): boolean {
@@ -145,9 +146,9 @@ function riskyCommand(command: string, bot: Pick<Bot, "id" | "userId">): boolean
 }
 
 export const ENGINE_FILES_TEXT =
-  "Not run: ~/.claude, ~/.codex and ~/.grok hold the settings and sign-ins of the tool you run in, and they are not yours to read or change. Make bots, skills and routines with Gond's tools (create_bot, update_bot, set_profile, save_skill, create_routine) instead.";
+  "Not run: ~/.claude holds the settings and sign-in of the tool you run in, and it is not yours to read or change. Make bots, skills and routines with Gond's tools (create_bot, update_bot, set_profile, save_skill, create_routine) instead.";
 
-const ENGINE_DIR = String.raw`(?:~|\$HOME|\$\{HOME\}|/home/[^/\s"']+|/root)/\.(?:claude|codex|grok)(?:\.json)?`;
+const ENGINE_DIR = String.raw`(?:~|\$HOME|\$\{HOME\}|/home/[^/\s"']+|/root)/\.claude(?:\.json)?`;
 const ENGINE_PATH = new RegExp(`^${ENGINE_DIR}(?:/|$)`);
 const ENGINE_IN_COMMAND = new RegExp(`(?:^|[\\s"'=:(<>])${ENGINE_DIR}(?=$|[/\\s"';|&)<>])`);
 

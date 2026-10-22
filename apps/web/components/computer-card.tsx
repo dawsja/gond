@@ -63,8 +63,6 @@ export function ComputerCard({ status, admin, onCheck }: { status: BoxStatus | n
         { name: "Node", version: versionOf(versions.node) },
         { name: "Bun", version: versionOf(versions.bun) },
         { name: "Claude Code", version: versionOf(versions.claude) },
-        { name: "Codex", version: versionOf(versions.codex) },
-        { name: "Grok", version: versionOf(versions.grok) },
       ].filter((tool) => tool.version)
     : [];
   const liveSessions = status?.agents.filter((a) => a.running).length ?? 0;
@@ -174,7 +172,7 @@ export function ComputerCard({ status, admin, onCheck }: { status: BoxStatus | n
             <AlertDialogTitle>Update the computer?</AlertDialogTitle>
             <AlertDialogDescription>
               The computer pauses for everyone: running work stops, desktops close, and new messages wait. {docker?.available ? "The newest box image is pulled from GHCR and the box restarts on it, keeping everyone's files." : "Then it's patched in place (Debian and Bun)."}
-              {docker && !docker.available ? ` Image pulls are off: ${docker.reason}` : docker?.available ? " Then Debian, Bun, Claude Code, Codex and Grok are patched." : ""} A few minutes, usually.
+              {docker && !docker.available ? ` Image pulls are off: ${docker.reason}` : docker?.available ? " Then Debian, Bun and Claude Code are patched." : ""} A few minutes, usually.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

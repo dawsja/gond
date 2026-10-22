@@ -88,7 +88,7 @@ test("the admin is the agent; everyone else gets a home of their own, kept acros
     assert.ok(fs.statSync(path.join(ada.home, ".team")).isDirectory());
     assert.equal(fs.readlinkSync(path.join(ada.home, ".skills")), path.join(f.skills, "gond-ada"));
     assert.ok(fs.statSync(path.join(f.skills, "gond-ada")).isDirectory());
-    assert.deepEqual(ada.logins, [path.join(ada.home, ".claude"), path.join(ada.home, ".codex"), path.join(ada.home, ".grok")]);
+    assert.deepEqual(ada.logins, [path.join(ada.home, ".claude")]);
 
     assert.equal(accounts.ensure({ id: "u-ada", name: "Ada", admin: false }).name, "gond-ada");
     assert.equal(accounts.ensure({ id: "u-ada2", name: "Ada", admin: false }).name, "gond-ada-2");
@@ -149,16 +149,14 @@ test("a reset empties the admin's home, takes every other account, and keeps the
     fs.writeFileSync(path.join(admin.bots, "bot-1", "MEMORY.md"), "what it learned");
     fs.writeFileSync(path.join(admin.team, "MEMORY.md"), "the team's");
     fs.mkdirSync(path.join(admin.home, ".npm-global"), { recursive: true });
-    fs.mkdirSync(admin.codex, { recursive: true });
-    fs.writeFileSync(path.join(admin.codex, "auth.json"), "admin codex");
     fs.mkdirSync(admin.claude, { recursive: true });
     fs.writeFileSync(path.join(admin.claude, "creds.json"), "admin claude");
     fs.mkdirSync(path.join(f.skills, "hello"), { recursive: true });
     fs.writeFileSync(path.join(f.skills, "hello", "SKILL.md"), "hi");
 
     fs.writeFileSync(path.join(ada.home, "notes.md"), "mine");
-    fs.mkdirSync(ada.grok, { recursive: true });
-    fs.writeFileSync(path.join(ada.grok, "auth.json"), "ada grok");
+    fs.mkdirSync(ada.claude, { recursive: true });
+    fs.writeFileSync(path.join(ada.claude, "creds.json"), "ada claude");
 
     const result = accounts.reset();
     assert.deepEqual(result.accounts, ["gond-ada"]);
@@ -176,10 +174,9 @@ test("a reset empties the admin's home, takes every other account, and keeps the
     assert.deepEqual(fs.readdirSync(f.skills), ["agent"]);
     assert.deepEqual(fs.readdirSync(path.join(f.skills, "agent")), []);
 
-    assert.equal(fs.readFileSync(path.join(admin.codex, "auth.json"), "utf8"), "admin codex");
     assert.equal(fs.readFileSync(path.join(admin.claude, "creds.json"), "utf8"), "admin claude");
     const again = accounts.ensure({ id: "u-ada", name: "Ada", admin: false });
-    assert.equal(fs.readFileSync(path.join(again.grok, "auth.json"), "utf8"), "ada grok");
+    assert.equal(fs.readFileSync(path.join(again.claude, "creds.json"), "utf8"), "ada claude");
     assert.equal(fs.existsSync(path.join(again.home, "notes.md")), false);
 
     assert.equal(fs.existsSync(accounts.stashDir("u-ada")), false);
@@ -261,8 +258,6 @@ test("resetting a home keeps memories and sign-ins, and takes everything install
       ".team/u-ada/memory/people.md",
       ".team/MEMORY.md",
       ".claude/.credentials.json",
-      ".codex/auth.json",
-      ".grok/token",
       ".config/gond-browser/Default/Cookies",
     ];
     const gone = [

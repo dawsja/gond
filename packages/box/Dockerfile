@@ -9,8 +9,8 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends tini ripgrep jq \
  && rm -rf /var/lib/apt/lists/* \
  && useradd --create-home --uid 1001 --user-group agent \
- && mkdir -p /home/agent/.bots /home/agent/.cache /home/agent/.claude /home/agent/.codex /home/agent/.grok /state \
- && chown agent:agent /home/agent/.bots /home/agent/.cache /home/agent/.claude /home/agent/.codex /home/agent/.grok
+ && mkdir -p /home/agent/.bots /home/agent/.cache /home/agent/.claude /state \
+ && chown agent:agent /home/agent/.bots /home/agent/.cache /home/agent/.claude
 
 # A light Xfce desktop (its window manager, desktop, Thunar and terminal)
 # with a Plank dock; no 3D acceleration needed. The desktop needs no ports:
@@ -77,9 +77,6 @@ ENV PORT=8787 \
     BOTS_DIR=/home/agent/.bots \
     CACHE_DIR=/home/agent/.cache \
     CLAUDE_CONFIG_DIR=/home/agent/.claude \
-    CODEX_HOME=/home/agent/.codex \
-    GROK_HOME=/home/agent/.grok \
-    GROK_DISABLE_AUTOUPDATER=1 \
     STATE_DIR=/state \
     DESKTOP_DISPLAY=1 \
     CHROME_BIN=/usr/local/bin/google-chrome \

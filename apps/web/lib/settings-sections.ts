@@ -5,7 +5,7 @@ export const SETTINGS_SECTIONS = [
   { id: "account", label: "Account", blurb: "Your picture, password and notifications.", icon: UserRound, admin: false },
   { id: "appearance", label: "Appearance", blurb: "Light or dark, and the color of your chats.", icon: Palette, admin: false },
   { id: "team", label: "Team", blurb: "The people on it and the computer they all share.", icon: Users, admin: true },
-  { id: "ai", label: "AI", blurb: "What your bots run on: a coding CLI on your plan, or your API key called directly.", icon: BrainCircuit, admin: false },
+  { id: "ai", label: "AI", blurb: "What your bots run on: Claude Code on your plan, your ChatGPT or Grok plan, or an API key.", icon: BrainCircuit, admin: false },
   { id: "voice", label: "Voice", blurb: "Talk to your bots instead of typing: the model that turns speech into text.", icon: Mic, admin: false },
   { id: "computer", label: "Computer", blurb: "Your account on the computer your bots use, and starting it fresh.", icon: Monitor, admin: false },
   { id: "skills", label: "Skills", blurb: "How to do a job, written once and shared by all of your bots.", icon: Sparkles, admin: false },

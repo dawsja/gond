@@ -1,4 +1,4 @@
-import { CHATGPT_API_URL, PROVIDER_KINDS, type ProviderInput, type ProviderKind, type ProviderMeta } from "@gond/shared";
+import { PROVIDER_KINDS, PROVIDER_LABELS, isPlanProvider, type PlanProviderKind, type ProviderInput, type ProviderKind, type ProviderMeta } from "@gond/shared";
 import { ensureDatabase } from "../db/init.ts";
 import { emit } from "../events.ts";
 import { newId, now, randomString } from "../ids.ts";
@@ -6,8 +6,8 @@ import { decryptSecret, encryptSecret } from "../secrets.ts";
 
 type Row = { id: string; user_id: string | null; kind: string; base_url: string; api_key: string; proxy_token: string; last_check: string | null; oauth: string | null; created_at: string; updated_at: string };
 
-/** A ChatGPT plan's sign-in; the access token itself is the row's `api_key`, like a key. */
-export type ChatGptSession = {
+/** A plan's sign-in; the access token itself is the row's `api_key`, like a key. */
+export type PlanSession = {
   clientId: string;
   refreshToken: string;
   idToken: string | null;
@@ -37,14 +37,14 @@ function toMeta(row: Row): ProviderMeta {
   } catch {
     /* no check */
   }
-  const session = row.kind === "chatgpt" ? sessionOf(row) : null;
+  const session = isPlanProvider(row.kind as ProviderKind) ? sessionOf(row) : null;
   return { kind: row.kind as ProviderKind, baseUrl: row.base_url, account: session ? { email: session.email, name: session.name } : null, check, updatedAt: row.updated_at };
 }
 
-function sessionOf(row: Row): ChatGptSession | null {
+function sessionOf(row: Row): PlanSession | null {
   if (!row.oauth) return null;
   try {
-    return JSON.parse(decryptSecret(row.oauth)) as ChatGptSession;
+    return JSON.parse(decryptSecret(row.oauth)) as PlanSession;
   } catch {
     return null;
   }
@@ -65,7 +65,7 @@ export function getProvider(userId: string, kind: ProviderKind): ProviderMeta | 
 }
 
 export function saveProvider(userId: string, kind: ProviderKind, input: ProviderInput): ProviderMeta {
-  if (kind === "chatgpt") throw new Error("A ChatGPT plan is signed in to, not given a key. Use Continue with ChatGPT.");
+  if (isPlanProvider(kind)) throw new Error(`A ${PROVIDER_LABELS[kind].name} is signed in to, not given a key.`);
   const baseUrl = normalizeBaseUrl(input.baseUrl);
   const current = row(userId, kind);
   if (!current && !input.apiKey) throw new Error("Add the API key");
@@ -83,22 +83,22 @@ export function saveProvider(userId: string, kind: ProviderKind, input: Provider
   return getProvider(userId, kind)!;
 }
 
-/** Saves a ChatGPT sign-in, or the tokens a refresh replaced, keeping the row's proxy token. */
-export function saveChatGptSession(userId: string, accessToken: string, session: ChatGptSession): void {
-  const current = row(userId, "chatgpt");
+/** Saves a plan's sign-in, or the tokens a refresh replaced, keeping the row's proxy token. */
+export function savePlanSession(userId: string, kind: PlanProviderKind, accessToken: string, session: PlanSession): void {
+  const current = row(userId, kind);
   const at = now();
   if (current) {
     ensureDatabase().query("UPDATE gond_providers SET api_key = ?, oauth = ?, updated_at = ? WHERE id = ?").run(encryptSecret(accessToken), encryptSecret(JSON.stringify(session)), at, current.id);
   } else {
     ensureDatabase()
-      .query("INSERT INTO gond_providers (id, user_id, kind, base_url, api_key, proxy_token, oauth, created_at, updated_at) VALUES (?, ?, 'chatgpt', ?, ?, ?, ?, ?, ?)")
-      .run(newId("prov_"), userId, CHATGPT_API_URL, encryptSecret(accessToken), randomString(32), encryptSecret(JSON.stringify(session)), at, at);
+      .query("INSERT INTO gond_providers (id, user_id, kind, base_url, api_key, proxy_token, oauth, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(newId("prov_"), userId, kind, PROVIDER_LABELS[kind].defaultUrl, encryptSecret(accessToken), randomString(32), encryptSecret(JSON.stringify(session)), at, at);
   }
   emit({ topic: "ai", userId });
 }
 
-export function chatGptSession(userId: string): (ChatGptSession & { accessToken: string }) | null {
-  const found = row(userId, "chatgpt");
+export function planSession(userId: string, kind: PlanProviderKind): (PlanSession & { accessToken: string }) | null {
+  const found = row(userId, kind);
   const session = found ? sessionOf(found) : null;
   if (!found || !session) return null;
   try {
@@ -108,11 +108,11 @@ export function chatGptSession(userId: string): (ChatGptSession & { accessToken:
   }
 }
 
-/** A sign-in ChatGPT won't renew: the tokens go, the row stays to say why, until the person signs in again. */
-export function endChatGptSession(userId: string, detail: string): void {
+/** A sign-in the plan won't renew: the tokens go, the row stays to say why, until the person signs in again. */
+export function endPlanSession(userId: string, kind: PlanProviderKind, detail: string): void {
   ensureDatabase()
-    .query("UPDATE gond_providers SET api_key = ?, oauth = NULL, last_check = ?, updated_at = ? WHERE user_id = ? AND kind = 'chatgpt'")
-    .run(encryptSecret(""), JSON.stringify({ ok: false, detail, at: now() }), now(), userId);
+    .query("UPDATE gond_providers SET api_key = ?, oauth = NULL, last_check = ?, updated_at = ? WHERE user_id = ? AND kind = ?")
+    .run(encryptSecret(""), JSON.stringify({ ok: false, detail, at: now() }), now(), userId, kind);
   emit({ topic: "ai", userId });
 }
 

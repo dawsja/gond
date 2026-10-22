@@ -1,4 +1,4 @@
-import { ENGINE_LABELS, isCliEngine, isOpenAiShaped, providerInputSchema, type Engine, type ModelChoice, type ModelGroup, type ModelList, type ProviderKind } from "@gond/shared";
+import { ENGINE_LABELS, PROVIDER_LABELS, isCliEngine, isOpenAiShaped, isPlanProvider, providerInputSchema, type Engine, type ModelChoice, type ModelGroup, type ModelList, type ProviderKind } from "@gond/shared";
 import { Hono } from "hono";
 import type { Env } from "../app.ts";
 import { userId } from "../access.ts";
@@ -6,6 +6,7 @@ import { getAi, releaseEngines } from "../data/ai.ts";
 import { boxConfig, engineModels } from "../box.ts";
 import { deleteProvider, getProvider, isProviderKind, listProviders, providerBaseUrl, providerByToken, providerKey, recordProviderCheck, saveProvider } from "../data/providers.ts";
 import { chatGptAccessToken, signOutChatGpt, startChatGptLogin } from "../chatgpt.ts";
+import { GROK_PLAN_HEADERS, grokAccessToken, grokSignIn, signOutGrok, startGrokLogin } from "../grok.ts";
 
 const HOP = new Set(["host", "connection", "content-length", "transfer-encoding", "keep-alive", "cookie", "authorization", "x-api-key", "x-gond-llm-token", "x-kru-llm-token", "accept-encoding"]);
 
@@ -26,17 +27,20 @@ export function isMiniMaxHost(baseUrl: string): boolean {
 }
 
 export function authHeaders(kind: ProviderKind, baseUrl: string, key: string): Record<string, string> {
+  if (kind === "grok") return { authorization: `Bearer ${key}`, ...GROK_PLAN_HEADERS };
   if (isOpenAiShaped(kind)) return { authorization: `Bearer ${key}` };
   return isAnthropicHost(baseUrl) ? { "x-api-key": key } : { "x-api-key": key, authorization: `Bearer ${key}` };
 }
 
-/** A key as saved, or for a ChatGPT plan an access token renewed when it's near its end. */
+/** A key as saved, or for a plan an access token renewed when it's near its end. */
 async function keyFor(userId: string, kind: ProviderKind): Promise<string | null> {
-  return kind === "chatgpt" ? chatGptAccessToken(userId) : providerKey(userId, kind);
+  if (kind === "chatgpt") return chatGptAccessToken(userId);
+  if (kind === "grok") return grokAccessToken(userId);
+  return providerKey(userId, kind);
 }
 
 // A plan's token is for answering a person, so the proxy passes nothing else through.
-const CHATGPT_PATHS = new Set(["responses", "models"]);
+const PLAN_PATHS = new Set(["responses", "models"]);
 
 function modelsRequest(kind: ProviderKind, baseUrl: string, key: string): { url: URL; headers: Record<string, string> } {
   return {
@@ -45,12 +49,12 @@ function modelsRequest(kind: ProviderKind, baseUrl: string, key: string): { url:
   };
 }
 
-export function readModels(payload: unknown): ModelChoice[] {
+/** A plan's list comes best first, so it keeps its order; a key's is sorted. */
+export function readModels(payload: unknown, ranked = false): ModelChoice[] {
   const rows = (payload as { data?: unknown; models?: unknown })?.data ?? (payload as { models?: unknown })?.models;
   if (!Array.isArray(rows)) return [];
   const out: ModelChoice[] = [];
   // A ChatGPT plan lists `slug`s, best first, with the ones to offer marked `visibility: "list"`.
-  let ranked = false;
   for (const row of rows) {
     const entry = row as { id?: unknown; slug?: unknown; display_name?: unknown; visibility?: unknown };
     if (typeof entry?.slug === "string") {
@@ -93,14 +97,15 @@ export function proxiedUrl(baseUrl: string, suffix: string, search: string): URL
 async function checkProvider(owner: string, kind: ProviderKind): Promise<{ ok: boolean; detail: string }> {
   const baseUrl = providerBaseUrl(owner, kind);
   const key = await keyFor(owner, kind);
-  if (kind === "chatgpt" && !key) return { ok: false, detail: "Your ChatGPT sign-in ended. Sign in again." };
+  if (isPlanProvider(kind) && !key) return { ok: false, detail: `Your ${PROVIDER_LABELS[kind].short} sign-in ended. Sign in again.` };
   if (!baseUrl || !key) return { ok: false, detail: "Not set" };
   const { url, headers } = modelsRequest(kind, baseUrl, key);
   try {
     const res = await fetch(url, { headers, redirect: "manual", signal: AbortSignal.timeout(15_000) });
     await res.body?.cancel().catch(() => undefined);
-    if (res.ok) return { ok: true, detail: kind === "chatgpt" ? "Signed in. Your plan works." : "The key works." };
-    if (res.status === 401 || res.status === 403) return { ok: false, detail: kind === "chatgpt" ? "ChatGPT refused the sign-in. Sign in again." : "The provider refused the key." };
+    if (res.ok) return { ok: true, detail: isPlanProvider(kind) ? "Signed in. Your plan works." : "The key works." };
+    if (res.status === 403 && kind === "grok") return { ok: false, detail: "Signed in, but Grok says this account's plan can't be used here. It needs SuperGrok or X Premium+." };
+    if (res.status === 401 || res.status === 403) return { ok: false, detail: isPlanProvider(kind) ? `${PROVIDER_LABELS[kind].short} refused the sign-in. Sign in again.` : "The provider refused the key." };
 
     if (res.status === 404 || res.status === 405) return { ok: true, detail: "Saved. The server answered but doesn't list models, so the key wasn't checked." };
     return { ok: false, detail: `The provider answered ${res.status}.` };
@@ -116,10 +121,20 @@ export function providerRoutes() {
 
   app.post("/providers/chatgpt/sign-in", (c) => c.json({ url: startChatGptLogin(userId(c)) }));
 
+  app.post("/providers/grok/sign-in", async (c) => {
+    try {
+      return c.json({ signIn: await startGrokLogin(userId(c)) });
+    } catch (error) {
+      return c.json({ error: error instanceof Error ? error.message : "Grok didn't start the sign-in" }, 502);
+    }
+  });
+
+  app.get("/providers/grok/sign-in", (c) => c.json({ signIn: grokSignIn(userId(c)) }));
+
   app.put("/providers/:kind", async (c) => {
     const kind = c.req.param("kind");
     if (!isProviderKind(kind)) return c.json({ error: "No such provider" }, 404);
-    if (kind === "chatgpt") return c.json({ error: "A ChatGPT plan is signed in to, not given a key. Use Continue with ChatGPT." }, 400);
+    if (isPlanProvider(kind)) return c.json({ error: `A ${PROVIDER_LABELS[kind].name} is signed in to, not given a key.` }, 400);
     const parsed = providerInputSchema.safeParse(await c.req.json().catch(() => ({})));
     if (!parsed.success) return c.json({ error: parsed.error.issues[0]?.message ?? "Bad provider" }, 400);
     try {
@@ -140,7 +155,8 @@ export function providerRoutes() {
   app.delete("/providers/:kind", async (c) => {
     const kind = c.req.param("kind");
     if (!isProviderKind(kind)) return c.json({ error: "No such provider" }, 404);
-    if (!(kind === "chatgpt" ? await signOutChatGpt(userId(c)) : deleteProvider(userId(c), kind))) return c.json({ error: "No such provider" }, 404);
+    const gone = kind === "chatgpt" ? await signOutChatGpt(userId(c)) : kind === "grok" ? await signOutGrok(userId(c)) : deleteProvider(userId(c), kind);
+    if (!gone) return c.json({ error: "No such provider" }, 404);
 
     releaseEngines(userId(c), kind, (other) => Boolean(getProvider(userId(c), other)));
     return c.body(null, 204);
@@ -167,11 +183,11 @@ async function modelsFor(userId: string, engine: Engine): Promise<ModelGroup> {
   const kind = getAi(userId).engines[engine].provider ?? info.providers.find((p) => getProvider(userId, p)) ?? info.provider;
   const baseUrl = providerBaseUrl(userId, kind);
   const key = await keyFor(userId, kind);
-  if (!baseUrl || !key) return { engine, models: [], source: "none", detail: kind === "chatgpt" ? "Sign in with ChatGPT again to see your plan's models." : "No API key saved yet." };
+  if (!baseUrl || !key) return { engine, models: [], source: "none", detail: isPlanProvider(kind) ? `Sign in with ${PROVIDER_LABELS[kind].short} again to see your plan's models.` : "No API key saved yet." };
   const { url, headers } = modelsRequest(kind, baseUrl, key);
   try {
     const res = await fetch(url, { headers, redirect: "manual", signal: AbortSignal.timeout(15_000) });
-    const models = res.ok ? readModels(await res.json().catch(() => null)) : [];
+    const models = res.ok ? readModels(await res.json().catch(() => null), isPlanProvider(kind)) : [];
     if (models.length) return { engine, models, source: "provider", detail: null };
     return { engine, models: [], source: "none", detail: res.ok ? "The API listed no models. Type the model id you want." : "The API wouldn't list its models. Type the model id you want." };
   } catch {
@@ -193,9 +209,9 @@ export function llmProxyRoutes() {
     const { baseUrl } = provider;
 
     const suffix = c.req.path.replace(/^\/api\/llm\/[^/]+\/?/, "");
-    if (kind === "chatgpt" && !CHATGPT_PATHS.has(suffix.replace(/\/+$/, ""))) return c.json({ error: { type: "invalid_request_error", message: "A ChatGPT plan only answers responses here" } }, 404);
-    const key = kind === "chatgpt" ? await chatGptAccessToken(provider.userId) : provider.key;
-    if (!key) return c.json({ error: { type: "authentication_error", message: "Your ChatGPT sign-in ended. Sign in again in Settings → AI." } }, 403);
+    if (isPlanProvider(kind) && !PLAN_PATHS.has(suffix.replace(/\/+$/, ""))) return c.json({ error: { type: "invalid_request_error", message: "A plan only answers responses here" } }, 404);
+    const key = isPlanProvider(kind) ? await keyFor(provider.userId, kind) : provider.key;
+    if (!key) return c.json({ error: { type: "authentication_error", message: `Your ${PROVIDER_LABELS[kind].short} sign-in ended. Sign in again in Settings → AI.` } }, 403);
     const target = proxiedUrl(baseUrl, suffix, new URL(c.req.url).search);
     if (!target) return c.json({ error: { type: "invalid_request_error", message: "That path isn't under the provider's address" } }, 400);
     const headers = new Headers();

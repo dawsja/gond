@@ -104,12 +104,10 @@ export class Accounts {
     account.library = this.skillsRoot ? path.join(this.skillsRoot, account.name) : null;
     account.cache = dirs.cache ?? path.join(home, ".cache");
     account.claude = dirs.claude ?? path.join(home, ".claude");
-    account.codex = dirs.codex ?? path.join(home, ".codex");
-    account.grok = dirs.grok ?? path.join(home, ".grok");
     account.run = dirs.run ?? path.join(home, ".run");
     account.browser = dirs.browser ?? path.join(home, ".config", "gond-browser");
 
-    account.logins = [account.claude, account.codex, account.grok];
+    account.logins = [account.claude];
     return account;
   }
 
@@ -171,7 +169,7 @@ export class Accounts {
       }
     }
     this.own(account.home, account, 0o700);
-    for (const dir of [account.bots, account.team, account.cache, account.codex, account.grok, account.run]) this.own(dir, account);
+    for (const dir of [account.bots, account.team, account.cache, account.run]) this.own(dir, account);
     this.linkSkills(account);
   }
 
@@ -386,7 +384,7 @@ export class Accounts {
   }
 
   loginDirs(account) {
-    return { claude: account.claude, codex: account.codex, grok: account.grok };
+    return { claude: account.claude };
   }
 
   chownTree(dir, account) {
@@ -424,7 +422,7 @@ const BOT_KEEPS = new Set(["MEMORY.md", "SOUL.md", "memory"]);
 
 /** What `refreshHome` does with each path in a home: keep it, look inside it, or remove it. */
 export function homeKeeps(account) {
-  const exact = [account.claude, account.codex, account.grok, account.browser, account.skills].map((dir) => path.resolve(dir));
+  const exact = [account.claude, account.browser, account.skills].map((dir) => path.resolve(dir));
   const bots = path.resolve(account.bots);
   const team = path.resolve(account.team);
   return (full, isDir) => {

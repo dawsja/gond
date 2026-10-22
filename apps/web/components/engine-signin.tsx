@@ -200,7 +200,6 @@ export function EngineSignInDialog({ engine, onOpenChange, onDone }: { engine: E
             <AlertTitle>That didn&apos;t finish</AlertTitle>
             <AlertDescription>
               {signIn.error ?? "The sign-in ended early."}
-              {engine === "codex" ? " If OpenAI refused it, turn on device code sign-in under your ChatGPT security settings." : ""}
             </AlertDescription>
           </Alert>
         ) : null}

@@ -437,7 +437,7 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
       ...teamTools(context),
       ...(await appTools(context)),
       ...(run.native ? computerTools(context) : { permission: permissionTool(context) }),
-      ...computerTool({ ...context, imageResults: run.engine !== "grok" }),
+      ...computerTool(context),
       ...secretCommandTool(context),
     };
     const instructions = systemPromptFor(usable, {
