@@ -917,7 +917,12 @@ what is here. The README says what Gond is; this says how it is made.
   attached to every one of their bots' sessions (`mcpServersFor`); nothing
   is toggled per bot, and `add_mcp_server` adds it for all of them. The
   box writes them into the session's MCP config next to `gond`; a changed config
-  relaunches the session (the args key covers it). A server waiting for
+  relaunches the session (the args key covers it). The refresh circle on a
+  server's row (`POST /api/mcp-servers/:id/refresh`) checks its sign-in,
+  lists its tools to say how many there are, and stamps `refreshed_at`,
+  which rides to the box as the server's `rev` and into the args key
+  only once set, so the sessions using it start again on their next turn
+  and see its tools as they are now. A server waiting for
   its sign-in (`authStatus` `needed`) stays off the session until it is
   signed in, and the proxy never answers the session with a 401 (403 for a
   wrong token, 424 for a sign-in it needs): Claude Code reads a 401 as an

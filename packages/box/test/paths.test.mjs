@@ -66,6 +66,14 @@ test("argsKey changes with the permission mode", () => {
   assert.notEqual(a, b);
 });
 
+test("argsKey changes when a server is refreshed, and stays put for servers never refreshed", () => {
+  const plain = argsKeyFor({ model: "m", toolNames: ["x"], permission: "ask" });
+  assert.equal(argsKeyFor({ model: "m", toolNames: ["x"], permission: "ask", mcpRevs: [null] }), plain);
+  const once = argsKeyFor({ model: "m", toolNames: ["x"], permission: "ask", mcpRevs: ["2026-10-22T10:00:00Z"] });
+  assert.notEqual(once, plain);
+  assert.notEqual(argsKeyFor({ model: "m", toolNames: ["x"], permission: "ask", mcpRevs: ["2026-10-22T11:00:00Z"] }), once);
+});
+
 test("settle reads a result line and ignores task notifications", () => {
   assert.equal(settle({ type: "assistant" }), null);
   assert.equal(settle({ type: "result", origin: { kind: "task-notification" } }), null);

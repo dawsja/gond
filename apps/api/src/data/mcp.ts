@@ -4,7 +4,7 @@ import { botsChanged, settingsChanged } from "../events.ts";
 import { newId, now, randomString } from "../ids.ts";
 import { decryptSecret, encryptSecret } from "../secrets.ts";
 
-type Row = { id: string; user_id: string; name: string; transport: McpServer["transport"]; url: string | null; headers: string; command: string | null; args: string; env: string; enabled: number; proxy_token: string; oauth: string | null; auth_status: McpAuthStatus; auth_error: string | null; oauth_redirect: McpOAuthRedirect; created_at: string; updated_at: string };
+type Row = { id: string; user_id: string; name: string; transport: McpServer["transport"]; url: string | null; headers: string; command: string | null; args: string; env: string; enabled: number; proxy_token: string; oauth: string | null; auth_status: McpAuthStatus; auth_error: string | null; oauth_redirect: McpOAuthRedirect; created_at: string; updated_at: string; refreshed_at: string | null };
 
 function json<T>(text: string, fallback: T): T {
   try {
@@ -30,6 +30,7 @@ function toServer(row: Row): McpServer {
     authError: row.auth_error,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    refreshedAt: row.refreshed_at ?? null,
   };
 }
 
@@ -67,6 +68,10 @@ export function setMcpOAuth(id: string, state: McpOAuthState | null): void {
 export function setMcpAuthStatus(id: string, status: McpAuthStatus, error: string | null = null): void {
   ensureDatabase().query("UPDATE gond_mcp_servers SET auth_status = ?, auth_error = ?, updated_at = ? WHERE id = ?").run(status, error, now(), id);
   settingsChanged();
+}
+
+export function markMcpRefreshed(id: string): void {
+  ensureDatabase().query("UPDATE gond_mcp_servers SET refreshed_at = ? WHERE id = ?").run(now(), id);
 }
 
 export function listMcpServers(userId: string): McpServer[] {

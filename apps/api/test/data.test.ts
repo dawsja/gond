@@ -469,6 +469,24 @@ describe("data", () => {
     }
   });
 
+  test("refreshing an MCP server marks it, so the sessions that use it start again", async () => {
+    const { createMcpServer } = await import("../src/data/mcp.ts");
+    const { boxMcpServers } = await import("../src/mcp.ts");
+    const { mcpRoutes } = await import("../src/routes/mcp.ts");
+    const { Hono } = await import("hono");
+    const server = createMcpServer({ name: "local-notes", transport: "stdio", command: "notes-mcp", args: [], env: {}, headers: {}, enabled: true }, "u-refresh");
+    expect(boxMcpServers({ userId: "u-refresh" })[0]).not.toHaveProperty("rev");
+
+    const app = asPerson(new Hono(), "u-refresh");
+    app.route("/api", mcpRoutes());
+    const res = await app.request(`/api/mcp-servers/${server.id}/refresh`, { method: "POST" });
+    const body = (await res.json()) as { server: { refreshedAt: string | null }; tools: number | null };
+    expect(body.tools).toBeNull();
+    expect(body.server.refreshedAt).toBeTruthy();
+    expect(boxMcpServers({ userId: "u-refresh" })[0]?.rev).toBe(body.server.refreshedAt!);
+    expect((await asPerson(new Hono(), "u-someone").route("/api", mcpRoutes()).request(`/api/mcp-servers/${server.id}/refresh`, { method: "POST" })).status).toBe(404);
+  });
+
   test("an engine runs on a key only while that key is there", async () => {
     const { saveProvider, deleteProvider, getProvider } = await import("../src/data/providers.ts");
     const { getAi, updateAi, releaseEngines } = await import("../src/data/ai.ts");

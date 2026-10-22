@@ -1,7 +1,7 @@
 "use client";
 
 import { joinCommandLine, type McpServer } from "@gond/shared";
-import { LogIn, Plug, Plus, Trash2 } from "lucide-react";
+import { LogIn, Plug, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import { useLiveEvents } from "@/components/hq/live-events";
@@ -17,7 +17,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { api, del, patch } from "@/lib/api";
+import { api, del, patch, post } from "@/lib/api";
 import { toast } from "@/components/ui/toast";
 
 export function McpCard() {
@@ -27,6 +27,23 @@ export function McpCard() {
   const [signingIn, setSigningIn] = useState<string | null>(null);
 
   const [finishing, setFinishing] = useState<McpServer | null>(null);
+  const [refreshing, setRefreshing] = useState<string | null>(null);
+
+  async function refresh(server: McpServer) {
+    setRefreshing(server.id);
+    try {
+      const result = await post<{ server: McpServer | null; tools: number | null; error?: string }>(`/api/mcp-servers/${server.id}/refresh`);
+      if (result.error) toast.add({ type: "error", title: `Couldn't refresh ${server.name}.`, description: result.error });
+      else if (result.server?.authStatus === "needed") toast.add({ type: "info", title: `${server.name} needs you to sign in again.` });
+      else if (result.tools === null) toast.add({ type: "success", title: `Your bots restart ${server.name} on their next reply.` });
+      else toast.add({ type: "success", title: `${server.name} has ${result.tools} tool${result.tools === 1 ? "" : "s"}.`, description: "Your bots get them on their next reply." });
+    } catch (failure) {
+      toast.add({ type: "error", title: failure instanceof Error ? failure.message : `Couldn't refresh ${server.name}.` });
+    } finally {
+      setRefreshing(null);
+      void load();
+    }
+  }
 
   async function signIn(server: McpServer) {
     setSigningIn(server.id);
@@ -103,6 +120,12 @@ export function McpCard() {
                     Sign out
                   </Button>
                 ) : null}
+                <Tooltip>
+                  <TooltipTrigger render={<Button variant="ghost" size="icon-xs" aria-label={`Refresh ${server.name}`} disabled={refreshing === server.id} onClick={() => void refresh(server)} />}>
+                    {refreshing === server.id ? <Spinner /> : <RefreshCw aria-hidden="true" />}
+                  </TooltipTrigger>
+                  <TooltipContent>Refresh tools and connection</TooltipContent>
+                </Tooltip>
                 <Tooltip>
                   <TooltipTrigger render={<Button variant="ghost" size="icon-xs" aria-label={`Delete ${server.name}`} onClick={() => setRemoving(server)} className="text-destructive opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 focus-visible:opacity-100" />}>
                     <Trash2 aria-hidden="true" />

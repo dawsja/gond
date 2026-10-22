@@ -2,9 +2,9 @@ import { mcpServerInputSchema } from "@gond/shared";
 import { Hono, type Context, type MiddlewareHandler } from "hono";
 import { ownThread, userId } from "../access.ts";
 import type { Env } from "../app.ts";
-import { createMcpServer, deleteMcpServer, getMcpServer, listMcpServers, mcpProxyToken, mcpServerOwner, setMcpAuthStatus, updateMcpServer } from "../data/mcp.ts";
+import { createMcpServer, deleteMcpServer, getMcpServer, listMcpServers, markMcpRefreshed, mcpProxyToken, mcpServerOwner, setMcpAuthStatus, updateMcpServer } from "../data/mcp.ts";
 import { completeMcpLogin, completeMcpLoginFrom, mcpLoginHandBack, probeMcpServer, signOutMcp, startMcpLogin } from "../mcp-oauth.ts";
-import { forwardMcp } from "../mcp-client.ts";
+import { McpSession, forwardMcp } from "../mcp-client.ts";
 import { injectSecrets } from "../data/secrets.ts";
 import { resolveMcpIcon } from "../mcp-icon.ts";
 import { timingSafeEqualString } from "../ids.ts";
@@ -74,6 +74,27 @@ export function mcpRoutes() {
     const server = ownServer(c, c.req.param("id"));
     if (!server) return c.json({ error: "No such server" }, 404);
     return c.json({ result: await probeMcpServer(server.id), server: getMcpServer(server.id) });
+  });
+
+  app.post("/mcp-servers/:id/refresh", async (c) => {
+    const server = ownServer(c, c.req.param("id"));
+    if (!server) return c.json({ error: "No such server" }, 404);
+    markMcpRefreshed(server.id);
+    if (server.transport !== "http") return c.json({ server: getMcpServer(server.id), tools: null });
+    // A probe goes without the sign-in's token, so a signed-in server would read as signed out.
+    if (server.authStatus !== "signed_in") {
+      const probe = await probeMcpServer(server.id);
+      if (probe.status !== "none") return c.json({ server: getMcpServer(server.id), tools: null, ...(probe.status === "error" ? { error: getMcpServer(server.id)?.authError ?? "The server didn't answer." } : {}) });
+    }
+    const session = new McpSession(getMcpServer(server.id)!);
+    try {
+      const signal = AbortSignal.timeout(15_000);
+      await session.open(signal);
+      const tools = await session.listTools(signal);
+      return c.json({ server: getMcpServer(server.id), tools: tools.length });
+    } catch (error) {
+      return c.json({ server: getMcpServer(server.id), tools: null, error: error instanceof Error ? error.message : "The server didn't answer." });
+    }
   });
 
   app.post("/mcp-servers/:id/login", async (c) => {

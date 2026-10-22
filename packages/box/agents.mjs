@@ -125,8 +125,10 @@ export function sessionArgs({ model, maxTurns, systemPromptFile, mcpConfigFile, 
   return args;
 }
 
-export function argsKeyFor({ model, maxTurns, toolNames, permission, mcpServers = [], access = { kind: "plan" } }) {
-  return createHash("sha256").update(JSON.stringify({ model, maxTurns: maxTurns ?? null, toolNames, permission: permission ?? "ask", mcpServers, access })).digest("hex").slice(0, 16);
+export function argsKeyFor({ model, maxTurns, toolNames, permission, mcpServers = [], mcpRevs = [], access = { kind: "plan" } }) {
+  // Only a refreshed server adds its revision, so sessions with none keep the key they had.
+  const revs = mcpRevs.some(Boolean) ? { mcpRevs } : {};
+  return createHash("sha256").update(JSON.stringify({ model, maxTurns: maxTurns ?? null, toolNames, permission: permission ?? "ask", mcpServers, access, ...revs })).digest("hex").slice(0, 16);
 }
 
 export function mcpServersConfig(servers) {
@@ -229,7 +231,8 @@ export class AgentSession extends BridgedSession {
 
   async ensure({ model, maxTurns, systemPrompt, tools, permission = "ask", mcpServers = [], access = { kind: "plan" } }) {
     const toolNames = tools.map((tool) => tool.name).sort();
-    const argsKey = argsKeyFor({ model, maxTurns, toolNames, permission, mcpServers: mcpServersConfig(mcpServers), access });
+    const mcpRevs = (Array.isArray(mcpServers) ? mcpServers : []).map((server) => (typeof server?.rev === "string" ? server.rev : null));
+    const argsKey = argsKeyFor({ model, maxTurns, toolNames, permission, mcpServers: mcpServersConfig(mcpServers), mcpRevs, access });
     this.tools = tools;
     if (this.running && this.argsKey === argsKey) return { launched: false };
     if (this.running) await this.close({ keepSession: true });

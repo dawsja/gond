@@ -959,6 +959,7 @@ export type McpServer = McpServerInput & {
   authError: string | null;
   createdAt: string;
   updatedAt: string;
+  refreshedAt: string | null;
 };
 
 export const SECRET_REF = /\{\{\s*secret:([A-Za-z][A-Za-z0-9_]{0,63})\s*\}\}/g;

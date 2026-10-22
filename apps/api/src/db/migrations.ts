@@ -624,6 +624,8 @@ const MIGRATIONS: Array<string | ((db: Database) => void)> = [
   ALTER TABLE gond_providers ADD COLUMN oauth TEXT;
   ALTER TABLE gond_user_prefs ADD COLUMN chatgpt_client TEXT;
   `,
+  // When the person last refreshed an MCP server; a new value relaunches the sessions that use it.
+  `ALTER TABLE gond_mcp_servers ADD COLUMN refreshed_at TEXT;`,
 ];
 
 export const RENAME_VERSION = MIGRATIONS.indexOf(renameLegacyObjects) + 1;
