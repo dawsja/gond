@@ -1,16 +1,17 @@
 "use client";
 
 import type { Bot } from "@gond/shared";
+import { Users } from "lucide-react";
 import { GondBot } from "@/components/hq/gond-bot";
 import { useStore } from "@/components/store";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 
-export function BotAvatar({ bot, size = 24, greet = false, className }: { bot: Pick<Bot, "name" | "title" | "color" | "expression" | "primary"> & Partial<Pick<Bot, "shape" | "avatar">>; size?: number; greet?: boolean; className?: string }) {
+export function BotAvatar({ bot, size = 24, greet = false, className, style }: { bot: Pick<Bot, "name" | "title" | "color" | "expression" | "primary"> & Partial<Pick<Bot, "shape" | "avatar">>; size?: number; greet?: boolean; className?: string; style?: React.CSSProperties }) {
   const disc = Math.max(12, Math.round(size * 0.3));
   const label = `${bot.name}${bot.title ? `, ${bot.title}` : ""}${bot.primary ? ", primary bot" : ""}`;
   return (
-    <span data-slot="bot-avatar" className={cn("relative inline-flex shrink-0 items-center justify-center", className)} style={{ width: size, height: size }}>
+    <span data-slot="bot-avatar" className={cn("relative inline-flex shrink-0 items-center justify-center", className)} style={{ width: size, height: size, ...style }}>
       {bot.avatar ? (
         <Avatar className="size-full border border-primary-edge after:hidden" role="img" aria-label={label}>
           <AvatarImage src={bot.avatar} alt="" />
@@ -59,5 +60,48 @@ export function PersonAvatar({ name, avatar, size = 24, className }: { name: str
         {name.charAt(0).toUpperCase() || "Y"}
       </AvatarFallback>
     </Avatar>
+  );
+}
+
+type Face = Parameters<typeof BotAvatar>[0]["bot"];
+
+/** A room's bots as they show: in the room's order, without the hidden ones. */
+export function roomMembers(thread: { members: string[] }, bots: Bot[]): Bot[] {
+  return thread.members.flatMap((id) => bots.find((bot) => bot.id === id && !bot.hidden) ?? []);
+}
+
+/**
+ * A room as its bots: two faces on the diagonal, the one that answers when nobody's named in
+ * front, cut out of the back one by a ring of whatever it sits on (`--surface`), and a pill with
+ * how many more there are. Too small for two to read, it shows the front one alone.
+ */
+export function RoomAvatar({ bots, size = 40, className }: { bots: Face[]; size?: number; className?: string }) {
+  const [front, back] = [...bots].sort((a, b) => Number(b.primary) - Number(a.primary)).map((bot) => ({ ...bot, primary: false }));
+  if (!front) return <RoomIcon size={size} className={className} />;
+  if (!back || size < 28) return <BotAvatar bot={front} size={size} className={className} />;
+  const face = Math.round(size * 0.68);
+  const cut = Math.max(2, Math.round(size / 24));
+  const more = bots.length - 2;
+  const chip = Math.round(size * 0.36);
+  return (
+    <span data-slot="room-avatar" role="img" aria-label={bots.map((bot) => bot.name).join(", ")} className={cn("relative inline-block shrink-0", className)} style={{ width: size, height: size }}>
+      <BotAvatar bot={back} size={face} className="absolute top-0 left-0" />
+      <span className="absolute rounded-full bg-(--surface)" style={{ padding: cut, right: -cut, bottom: -cut }}>
+        <BotAvatar bot={front} size={face} className="block" />
+      </span>
+      {more > 0 ? (
+        <span aria-hidden="true" className="absolute -bottom-0.5 -left-0.5 flex items-center justify-center rounded-full border border-primary-edge bg-primary font-semibold text-primary-foreground tabular-nums ring-2 ring-(--surface)" style={{ height: chip, minWidth: chip, paddingInline: Math.round(size * 0.06), fontSize: Math.max(9, Math.round(size * 0.2)) }}>
+          +{more}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+function RoomIcon({ size, className }: { size: number; className?: string }) {
+  return (
+    <span className={cn("inline-flex shrink-0 items-center justify-center rounded-full border border-primary-edge bg-primary text-muted-foreground", className)} style={{ width: size, height: size }}>
+      <Users style={{ width: size * 0.4, height: size * 0.4 }} aria-hidden="true" />
+    </span>
   );
 }

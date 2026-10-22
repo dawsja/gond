@@ -1,12 +1,12 @@
 "use client";
 
 import { handleOf, roomTargets, type Approval, type Bot, type Message, type ReactionEmoji, type Thread } from "@gond/shared";
-import { ArrowUp, ChevronLeft, Copy, Download, ListEnd, EllipsisVertical, FileText, Monitor, PanelRight, Paperclip, Pencil, Plus, TextSelect, Users, X } from "lucide-react";
+import { ArrowUp, ChevronLeft, Copy, Download, ListEnd, EllipsisVertical, FileText, Monitor, PanelRight, Paperclip, Pencil, Plus, TextSelect, X } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type CSSProperties, type DragEvent, type FormEvent, type KeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { ApprovalCard, type Decision } from "@/components/approval-card";
-import { BotAvatar } from "@/components/bot-avatar";
+import { BotAvatar, RoomAvatar, roomMembers } from "@/components/bot-avatar";
 import { copyToClipboard } from "@/components/hq/clipboard";
 import { ExchangeDialog } from "@/components/exchange-dialog";
 import { canReact, react, ReactionBadges, ReactionPicker } from "@/components/reactions";
@@ -39,7 +39,7 @@ import { MessageScroller, MessageScrollerButton, MessageScrollerContent, Message
 import { toast } from "@/components/ui/toast";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { VoiceButton } from "@/components/voice-button";
-import { WorkLine } from "@/components/work-log";
+import { WorkLine, WorkLines } from "@/components/work-log";
 import { useCoarsePointer } from "@/hooks/use-mobile";
 import { useSwipeBack } from "@/hooks/use-swipe-back";
 import { api, post } from "@/lib/api";
@@ -72,7 +72,7 @@ function Handoff({ message, threadId, bots, threads, onOpen }: { message: Messag
         className="flex max-w-full items-center gap-1.5 rounded-full px-2 py-1 text-[12px] text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
       >
         <span>{incoming ? "Message from" : "Messaged"}</span>
-        {party ? <BotAvatar bot={party} size={16} /> : <Users className="size-3.5" aria-hidden="true" />}
+        {party ? <BotAvatar bot={party} size={16} /> : <RoomAvatar bots={other ? roomMembers(other, bots) : []} size={16} />}
         <span className="truncate font-medium">{party?.name ?? other?.name ?? "a teammate"}</span>
       </button>
     </Marker>
@@ -568,12 +568,18 @@ export function Conversation({ threadId }: { threadId: string }) {
   }, [live]);
 
   const working = activity[threadId] ?? {};
+  const workingBots = Object.entries(working)
+    .flatMap(([botId, line]) => {
+      const found = bots.find((b) => b.id === botId);
+      return found ? [{ bot: found, line }] : [];
+    })
+    .sort((a, b) => Number(b.bot.primary) - Number(a.bot.primary));
   const isRoom = info?.thread.kind === "room";
   const bot = info?.bot ?? null;
   const watches = useWatches(bot?.id ?? null);
   const runs = useMemo(() => noticedRuns(messages), [messages]);
   // Who a line in a room goes to, read the way the API reads it (`roomTargets`): the composer says it, and a steered line names it.
-  const roomBots = useMemo(() => (isRoom && info ? info.thread.members.map((id) => bots.find((b) => b.id === id)).filter((b): b is Bot => Boolean(b) && !b!.hidden) : []), [isRoom, info, bots]);
+  const roomBots = useMemo(() => (isRoom && info ? roomMembers(info.thread, bots) : []), [isRoom, info, bots]);
   const sentTo = useMemo(() => {
     const map = new Map<string, string>();
     if (!roomBots.length) return map;
@@ -801,7 +807,7 @@ export function Conversation({ threadId }: { threadId: string }) {
           </Button>
           <h1 className="sr-only">{info?.thread.name ?? "Conversation"}</h1>
           <Button size="xl" onClick={openPill} aria-label={bot ? `Edit ${bot.name}'s profile` : "Edit group"} className="pointer-events-auto min-w-0 shrink gap-2 pl-1.5 text-left">
-            {bot ? <BotAvatar bot={bot} size={32} /> : <Users className="ml-2 size-5" aria-hidden="true" />}
+            {bot ? <BotAvatar bot={bot} size={32} /> : <RoomAvatar bots={roomBots} size={32} />}
             <span className="flex min-w-0 flex-col">
               <span className="truncate text-[15px] leading-5 font-semibold">{info?.thread.name ?? "…"}</span>
               <span className={cn("truncate text-[11px] leading-3.5 font-normal opacity-70", (busy || boxUpdating) && "shimmer")}>
@@ -878,7 +884,7 @@ export function Conversation({ threadId }: { threadId: string }) {
                   <MessageScrollerItem className="m-auto">
                     <Empty>
                       <EmptyHeader>
-                        <EmptyMedia>{bot ? <BotAvatar bot={bot} size={56} greet /> : <div className="flex -space-x-2">{members.slice(0, 4).map((b) => <BotAvatar key={b.id} bot={b} size={36} />)}</div>}</EmptyMedia>
+                        <EmptyMedia>{bot ? <BotAvatar bot={bot} size={56} greet /> : <RoomAvatar bots={members} size={64} />}</EmptyMedia>
                         <EmptyTitle>{bot ? `${bot.name} is ready.` : "Say what needs doing."}</EmptyTitle>
                         <EmptyDescription>{bot ? "Give it a task with the outcome, the sources, what it must avoid, and what to return." : "Mention a bot with @ to address it. With nobody named, your primary bot answers."}</EmptyDescription>
                       </EmptyHeader>
@@ -893,11 +899,17 @@ export function Conversation({ threadId }: { threadId: string }) {
                 ))}
                 </WatchesContext.Provider>
 
-                {Object.entries(working).map(([botId, line]) => (
-                  <MessageScrollerItem key={`working-${botId}`}>
-                    <WorkLine bot={bots.find((x) => x.id === botId)} line={line} />
+                {workingBots.length > 1 ? (
+                  <MessageScrollerItem key="working">
+                    <WorkLines working={workingBots} label={names(workingBots.map((w) => w.bot.name))} />
                   </MessageScrollerItem>
-                ))}
+                ) : (
+                  Object.entries(working).map(([botId, line]) => (
+                    <MessageScrollerItem key={`working-${botId}`}>
+                      <WorkLine bot={bots.find((x) => x.id === botId)} line={line} />
+                    </MessageScrollerItem>
+                  ))
+                )}
               </MessageScrollerContent>
             </MessageScrollerViewport>
             <MessageScrollerEdges top="calc(64px + var(--safe-top) + 24px)" bottom="calc(var(--composer-h) + 24px)" />

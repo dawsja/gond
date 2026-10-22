@@ -274,7 +274,12 @@ what is here. The README says what Gond is; this says how it is made.
   details sheet on a phone) and the panel; the room says what changed in
   one line (`roomChange`: "Renamed to …", "Ada joined.", "Bo left."). A
   room pins like a bot (`pinned` on the thread, only ever a room's) and
-  sits with the pinned bots as a tile. A room is read like a group chat
+  sits with the pinned bots as a tile. A room's picture is its bots
+  (`RoomAvatar` in `bot-avatar.tsx`, over `roomMembers`): two of them
+  on the diagonal, the one that answers when nobody is named in front,
+  cut out of the back one by a ring of
+  `--surface`, and a `+N` pill for the rest; under 28 px only the front
+  one shows, and a room with no bots left keeps the people icon. A room is read like a group chat
   (`roomTargets` in shared, used by `targetsFor` and by the composer, so
   they never disagree): the person's line goes to whom it names (an
   @handle, a bot's name as a word in any case since voice types no @, "everyone", or "both" in a room of
@@ -330,7 +335,11 @@ what is here. The README says what Gond is; this says how it is made.
   the microphone for the app's own origin and nothing else.
 - **Steps are recorded, never shown.** While a bot works the conversation
   shows one line of what it is doing (`WorkLine`); the work log behind it
-  is kept by the API but the web never lists it.
+  is kept by the API but the web never lists it. When several work at once
+  (a room) they merge into one line (`WorkLines`): their `RoomAvatar` and
+  a row of squares lighting up in each one's colour in turn
+  (`animate-light-up`, lit and still under reduced motion), no words; a tap
+  opens each bot's own line under it and taps again to close.
 - **Mascots come from the gond-bot skill** (`components/hq/gond-bot.tsx`),
   copied 1:1. Don't redraw the cog. A bot's `shape` (`BOT_SHAPES`) picks
   its body: the cog, always the default, or a gumdrop, cloud, circle or

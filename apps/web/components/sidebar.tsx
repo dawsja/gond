@@ -1,17 +1,16 @@
 "use client";
 
 import { handleOf, isWatchRun, plainMarkdown, routineName, type Bot, type Message } from "@gond/shared";
-import { MessageSquareText, Pin, Plus, Search, Users } from "lucide-react";
+import { MessageSquareText, Pin, Plus, Search } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState, type ReactElement, type ReactNode } from "react";
-import { BotAvatar, PersonAvatar } from "@/components/bot-avatar";
+import { BotAvatar, PersonAvatar, RoomAvatar, roomMembers } from "@/components/bot-avatar";
 import { GondBot } from "@/components/hq/gond-bot";
 import { ProfileMenu } from "@/components/profile-menu";
 import type { ShellDialog } from "@/components/shell";
 import { useStore, type ThreadRow } from "@/components/store";
 import { threadActions, ThreadConfirms, type Ask } from "@/components/thread-actions";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ContextMenu, ContextMenuContent, ContextMenuGroup, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
@@ -69,16 +68,9 @@ function ThreadMenu({ thread, bot, onOpen, onAsk, trigger, children }: { thread:
   );
 }
 
-function RoomFace({ size, className }: { size: number; className?: string }) {
-  return (
-    <span className={cn("inline-flex shrink-0 items-center justify-center rounded-full border border-primary-edge bg-primary text-muted-foreground", className)} style={{ width: size, height: size }}>
-      <Users style={{ width: size * 0.4, height: size * 0.4 }} aria-hidden="true" />
-    </span>
-  );
-}
-
 function PinnedTile({ thread, bot, active, onOpen, onAsk }: { thread: ThreadRow; bot: Bot | undefined; active: boolean; onOpen: (dialog: ShellDialog) => void; onAsk: (ask: Ask) => void }) {
   const { setOpenMobile } = useSidebar();
+  const { bots } = useStore();
   return (
     <ThreadMenu thread={thread} bot={bot} onOpen={onOpen} onAsk={onAsk} trigger={<li className="list-none" />}>
       <Link href={`/app/t/${thread.id}`} aria-current={active ? "page" : undefined} onClick={() => setOpenMobile(false)} className="relative flex w-28 flex-col items-center gap-3 rounded-2xl py-3 outline-none focus-visible:ring-3 focus-visible:ring-ring/50 wide:w-22 wide:gap-1.5 wide:py-2">
@@ -89,8 +81,8 @@ function PinnedTile({ thread, bot, active, onOpen, onAsk }: { thread: ThreadRow;
           </>
         ) : (
           <>
-            <RoomFace size={96} className="wide:hidden" />
-            <RoomFace size={64} className="hidden wide:inline-flex" />
+            <RoomAvatar bots={roomMembers(thread, bots)} size={96} className="wide:hidden" />
+            <RoomAvatar bots={roomMembers(thread, bots)} size={64} className="hidden wide:inline-block" />
           </>
         )}
         <span className={cn("max-w-full truncate text-[16px] wide:text-[13px]", active ? "font-medium text-foreground" : "text-muted-foreground")}>{bot?.name ?? thread.name}</span>
@@ -113,11 +105,10 @@ function Row({ thread, bot, active, bots, activity, draft, onOpen, onAsk }: { th
               <BotAvatar bot={bot} size={40} className="hidden wide:inline-flex" />
             </>
           ) : (
-            <Avatar size="lg">
-              <AvatarFallback>
-                <Users className="size-5" aria-hidden="true" />
-              </AvatarFallback>
-            </Avatar>
+            <>
+              <RoomAvatar bots={roomMembers(thread, bots)} size={48} className="wide:hidden" />
+              <RoomAvatar bots={roomMembers(thread, bots)} size={40} className="hidden wide:inline-block" />
+            </>
           )}
           <span className="flex min-w-0 flex-1 flex-col">
             <span className="flex items-baseline justify-between gap-2">

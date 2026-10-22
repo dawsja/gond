@@ -2891,6 +2891,26 @@ describe("the computer", () => {
     return { server, state };
   }
 
+  async function until(check: () => unknown, ms = 3000): Promise<void> {
+    const end = Date.now() + ms;
+    while (!check()) {
+      if (Date.now() > end) throw new Error("timed out waiting");
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+  }
+
+  async function openCard(threadId: string): Promise<void> {
+    const { listMessages } = await import("../src/data/threads.ts");
+    const { getApproval } = await import("../src/data/approvals.ts");
+    await until(() => {
+      const id = listMessages(threadId).at(-1)?.approvalId;
+      return id && getApproval(id)?.status === "pending";
+    });
+  }
+
+  const desktopMemory = globalThis as { __gondDesktopWaiters?: Map<string, Set<unknown>> } & Record<string, unknown>;
+  const untilWaiting = () => until(() => desktopMemory.__gondDesktopWaiters?.get("u-admin")?.size);
+
   async function withBox<T>(run: (box: ReturnType<typeof fakeBox>) => Promise<T>): Promise<T> {
     const box = fakeBox();
     const boxUrl = process.env.GOND_BOX_URL;
@@ -2901,6 +2921,7 @@ describe("the computer", () => {
       return await run(box);
     } finally {
       box.server.stop(true);
+      for (const key of Object.keys(desktopMemory)) if (key.startsWith("__gondDesktop")) delete desktopMemory[key];
       if (boxUrl === undefined) delete process.env.GOND_BOX_URL;
       else process.env.GOND_BOX_URL = boxUrl;
       if (boxToken === undefined) delete process.env.GOND_BOX_TOKEN;
@@ -2930,7 +2951,7 @@ describe("the computer", () => {
       const raw = () => JSON.stringify(ensureDatabase().query("SELECT * FROM gond_secrets").all()) + JSON.stringify(ensureDatabase().query("SELECT * FROM gond_secret_requests").all());
 
       const asking = baseTools(context).request_login!.execute({ site: "Uber Eats", fields: [{ kind: "email" }, { kind: "password" }, { kind: "code", label: "The 4-digit code" }], reason: "to order your Dr Pepper" }, "c1");
-      await new Promise((resolve) => setTimeout(resolve, 20));
+      await until(() => listMessages(thread.id).at(-1)?.kind === "secret");
       const card = listMessages(thread.id).at(-1)!;
       expect(card.kind).toBe("secret");
       expect(card.body).toBe("Sign in to Uber Eats: to order your Dr Pepper");
@@ -2962,7 +2983,7 @@ describe("the computer", () => {
       const otherThread = getThread(other.threadId)!;
       expect(String(await computerTool({ box, bot: other, thread: otherThread }).browser.execute({ actions: [{ type: "type_login", name: "UBER_EATS_PASSWORD" }] }, "t2"))).toContain("NOT typed");
       const again = baseTools({ ...context, bot: other, thread: otherThread }).request_login!.execute({ site: "Uber Eats", fields: ["email", "password"] }, "c2");
-      await new Promise((resolve) => setTimeout(resolve, 20));
+      await openCard(otherThread.id);
       const approval = listMessages(otherThread.id).at(-1)!;
       expect(approval.kind).toBe("approval");
       expect(approval.body).toBe("Sign in to Uber Eats with your saved details");
@@ -2995,7 +3016,7 @@ describe("the computer", () => {
       const tools = computerTool({ box: boxConfig("u-admin")!, bot, thread });
 
       const denied = tools.computer.execute({ actions: [{ type: "type_login", name: "PVE_ROOT_PASSWORD" }] }, "t1");
-      await new Promise((resolve) => setTimeout(resolve, 20));
+      await openCard(thread.id);
       const card = listMessages(thread.id).at(-1)!;
       expect(card.kind).toBe("approval");
       expect(card.body).toBe("Type PVE_ROOT_PASSWORD into the screen");
@@ -3005,7 +3026,7 @@ describe("the computer", () => {
       expect(state.batches.length).toBe(before);
 
       const typing = tools.computer.execute({ actions: [{ type: "type_login", name: "PVE_ROOT_PASSWORD", submit: true }] }, "t2");
-      await new Promise((resolve) => setTimeout(resolve, 20));
+      await openCard(thread.id);
       decide(listMessages(thread.id).at(-1)!.approvalId!, "allow");
       expect(JSON.stringify(await typing)).not.toContain("root-pw-5678");
       expect(state.batches.at(-1)!.steps).toEqual([{ type: "type", text: "root-pw-5678", secret: true }, { type: "key", key: "Enter" }]);
@@ -3038,7 +3059,7 @@ describe("the computer", () => {
       expect(driversOf("u-admin")).toEqual([]);
 
       let pending = tool.execute({ actions: [{ type: "click", x: 100, y: 50 }] }, "c2");
-      await new Promise((resolve) => setTimeout(resolve, 20));
+      await openCard(bot.threadId);
       let card = listMessages(bot.threadId).at(-1)!;
       expect(card.kind).toBe("approval");
       expect(card.body).toBe("Use the computer (the mouse and keyboard on your desktop)");
@@ -3058,7 +3079,7 @@ describe("the computer", () => {
 
       tool = make();
       pending = tool.execute({ action: "left_click", coordinate: [1, 1] }, "c6");
-      await new Promise((resolve) => setTimeout(resolve, 20));
+      await openCard(bot.threadId);
       card = listMessages(bot.threadId).at(-1)!;
       expect(card.kind).toBe("approval");
       decide(card.approvalId!, "deny");
@@ -3072,7 +3093,7 @@ describe("the computer", () => {
 
       tool = make();
       pending = tool.execute({ action: "left_click", coordinate: [1, 1] }, "c9");
-      await new Promise((resolve) => setTimeout(resolve, 20));
+      await openCard(bot.threadId);
       card = listMessages(bot.threadId).at(-1)!;
       expect(decide(card.approvalId!, "always")?.rule).toBe("computer");
       await pending;
@@ -3115,7 +3136,7 @@ describe("the computer", () => {
       state.control = "person";
       let settled = false;
       const pending = tool.execute({ action: "left_click", coordinate: [5, 5] }, "c1").finally(() => (settled = true));
-      await new Promise((resolve) => setTimeout(resolve, 20));
+      await untilWaiting();
       const looked = (await tool.execute({ action: "screenshot" }, "c2")) as unknown[];
       expect(looked).toHaveLength(2);
       expect(settled).toBe(false);
@@ -3129,7 +3150,7 @@ describe("the computer", () => {
       const gaveUp = computerTool({ box: boxConfig("u-admin")!, bot, thread, signal: aborted.signal }).computer;
       state.control = "person";
       const waiting = gaveUp.execute({ action: "left_click", coordinate: [5, 5] }, "c3");
-      await new Promise((resolve) => setTimeout(resolve, 20));
+      await untilWaiting();
       aborted.abort();
       expect(await waiting).toBe(PERSON_HAS_CONTROL_TEXT);
       const before = listMessages(thread.id).length;
@@ -3247,7 +3268,7 @@ describe("the computer", () => {
       const thread = getThread(bot.threadId)!;
       const tools = computerTool({ box: boxConfig("u-admin")!, bot, thread });
       const pending = tools.browser.execute({ actions: [{ type: "navigate", url: "example.com" }, { type: "click", x: 640, y: 400 }] }, "b1");
-      await new Promise((resolve) => setTimeout(resolve, 20));
+      await openCard(bot.threadId);
       const card = listMessages(bot.threadId).at(-1)!;
       expect(card.body).toBe("Use the computer (the browser on your desktop)");
       decide(card.approvalId!, "allow");

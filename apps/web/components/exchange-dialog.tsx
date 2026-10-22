@@ -1,14 +1,13 @@
 "use client";
 
 import type { Bot, Message, Thread } from "@gond/shared";
-import { ArrowLeftRight, Lock, Users } from "lucide-react";
+import { ArrowLeftRight, Lock } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { BotAvatar } from "@/components/bot-avatar";
+import { BotAvatar, RoomAvatar, roomMembers } from "@/components/bot-avatar";
 import { useLiveEvents } from "@/components/hq/live-events";
 import { Markdown } from "@/components/markdown";
 import { shortTime } from "@/components/sidebar";
 import { useStore } from "@/components/store";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -21,17 +20,10 @@ import { api } from "@/lib/api";
 type Exchange = { thread: Thread; other: Thread; messages: Message[] };
 
 function Party({ thread, bot, size = 22 }: { thread: Thread; bot: Bot | undefined; size?: number }) {
+  const { bots } = useStore();
   return (
     <span className="flex min-w-0 items-center gap-1.5">
-      {bot ? (
-        <BotAvatar bot={bot} size={size} />
-      ) : (
-        <Avatar className="after:hidden" style={{ width: size, height: size }}>
-          <AvatarFallback>
-            <Users className="size-3" aria-hidden="true" />
-          </AvatarFallback>
-        </Avatar>
-      )}
+      {bot ? <BotAvatar bot={bot} size={size} /> : <RoomAvatar bots={roomMembers(thread, bots)} size={size} />}
       <span className="truncate">{bot?.name ?? thread.name}</span>
     </span>
   );
