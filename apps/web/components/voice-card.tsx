@@ -62,7 +62,7 @@ export function VoiceCard() {
             <FieldTitle id="voice-label">Turns speech into text</FieldTitle>
             <ToggleGroup aria-labelledby="voice-label" variant="pill" value={[voice.preference]} onValueChange={(next) => next[0] && void save({ preference: next[0] as VoicePreference })} disabled={saving} className="flex-wrap">
               {VOICE_PREFERENCES.map((preference) => (
-                <ToggleGroupItem key={preference} value={preference} disabled={preference !== "auto" && !voice.available.includes(preference)} className="pointer-coarse:min-h-11">
+                <ToggleGroupItem key={preference} value={preference} disabled={preference !== "auto" && !voice.available.includes(preference)}>
                   {optionLabel(preference)}
                 </ToggleGroupItem>
               ))}

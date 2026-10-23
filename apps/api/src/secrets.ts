@@ -1,7 +1,7 @@
 import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { ensureDataDir, env } from "./config.ts";
+import { dataDir, ensureDataDir, env } from "./config.ts";
 
 export class SecretKeyError extends Error {
   constructor(message: string) {
@@ -27,10 +27,11 @@ function parseKey(raw: string, source: string) {
  */
 export function masterKey(): Buffer {
   const envKey = env("SECRET_KEY");
-  const file = path.join(ensureDataDir(), "secret.key");
+  const file = path.join(dataDir(), "secret.key");
   const source = envKey ? "env" : file;
   const cached = holder.__gondSecretKey;
   if (cached?.source === source) return cached.key;
+  if (!envKey) ensureDataDir();
 
   let key: Buffer;
   if (envKey) {
@@ -49,12 +50,15 @@ export function masterKey(): Buffer {
   return key;
 }
 
-export function resetSecretKeyCache() {
-  holder.__gondSecretKey = undefined;
-}
+const derived = new WeakMap<Buffer, Map<string, Buffer>>();
 
 function derive(info: string) {
-  return Buffer.from(hkdfSync("sha256", masterKey(), Buffer.alloc(0), info, 32));
+  const master = masterKey();
+  let keys = derived.get(master);
+  if (!keys) derived.set(master, (keys = new Map()));
+  let key = keys.get(info);
+  if (!key) keys.set(info, (key = Buffer.from(hkdfSync("sha256", master, Buffer.alloc(0), info, 32))));
+  return key;
 }
 
 function subkey(purpose: string) {

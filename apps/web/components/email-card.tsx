@@ -219,7 +219,6 @@ export function EmailApprovalCard({ message, approval, email, bot, noticed, onDe
 
   return (
     <ActionCard
-      bot={bot}
       noticed={noticed}
       icon={icon}
       title={sendsDraft ? "Send this email?" : words.title}

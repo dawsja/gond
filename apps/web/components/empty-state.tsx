@@ -3,6 +3,7 @@
 import { BOT_TEMPLATES } from "@gond/shared";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { failed } from "@/components/failed";
 import { GondBot } from "@/components/hq/gond-bot";
 import { openShellDialog } from "@/components/shell";
 import { useStore } from "@/components/store";
@@ -24,6 +25,8 @@ export function EmptyState({ className }: { className?: string }) {
       const { bot } = await post<{ bot: { threadId: string } }>("/api/bots/from-template", { templateId });
       await refresh();
       router.push(`/app/t/${bot.threadId}`);
+    } catch (failure) {
+      failed("Couldn't add that bot.")(failure);
     } finally {
       setAdding(null);
     }

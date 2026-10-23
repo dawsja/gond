@@ -1,5 +1,8 @@
 "use client";
 
+import { Confirm } from "@/components/confirm-dialog";
+import { failed } from "@/components/failed";
+import { LoadFailed } from "@/components/load-failed";
 import { CATALOG_PAGE_SIZE, type CatalogPage, type Connection } from "@gond/shared";
 import { Search, X } from "lucide-react";
 import { useSearchParams } from "next/navigation";
@@ -21,12 +24,16 @@ export function AppsCard({ refresh = 0 }: { refresh?: number }) {
   const params = useSearchParams();
   const connected = params.get("connected");
   const [connections, setConnections] = useState<Connection[] | null>(null);
-  const [configured, setConfigured] = useState(false);
+  // Unknown until the first answer, so "add your key" never flashes for someone who has one.
+  const [configured, setConfigured] = useState<boolean | null>(null);
   const [query, setQuery] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [result, setResult] = useState<CatalogPage | null>(null);
   const [connecting, setConnecting] = useState<string | null>(null);
+  const [disconnecting, setDisconnecting] = useState<{ toolkit: string; name: string } | null>(null);
+  const [catalogFailed, setCatalogFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const told = useRef(false);
 
   const loadConnections = useCallback(async () => {
@@ -60,12 +67,14 @@ export function AppsCard({ refresh = 0 }: { refresh?: number }) {
     let alive = true;
     void Promise.resolve().then(async () => {
       const data = await api<CatalogPage>(`/api/catalog?q=${encodeURIComponent(search)}&page=${page}&per=${CATALOG_PAGE_SIZE}`).catch(() => null);
-      if (alive && data) setResult(data);
+      if (!alive) return;
+      setCatalogFailed(!data);
+      if (data) setResult(data);
     });
     return () => {
       alive = false;
     };
-  }, [search, page, refresh, taken]);
+  }, [search, page, refresh, taken, attempt]);
 
   function typed(value: string) {
     setQuery(value);
@@ -104,16 +113,16 @@ export function AppsCard({ refresh = 0 }: { refresh?: number }) {
         {c ? (
           <span className="flex items-center gap-1.5">
             {c.status !== "active" ? (
-              <Button variant="outline" size="xs" onClick={() => void post(`/api/connections/${toolkit}/refresh`).then(() => loadConnections())}>
+              <Button variant="outline" size="xs" onClick={() => void post(`/api/connections/${toolkit}/refresh`).then(() => loadConnections()).catch(failed(`Couldn't check ${name}.`))}>
                 Check
               </Button>
             ) : null}
-            <Button variant="destructive" size="xs" onClick={() => void del(`/api/connections/${toolkit}`).then(() => loadConnections())}>
+            <Button variant="destructive" size="xs" onClick={() => setDisconnecting({ toolkit, name })}>
               Disconnect
             </Button>
           </span>
         ) : (
-          <Button size="xs" disabled={!configured || connecting === toolkit} onClick={() => void connect(toolkit, name)}>
+          <Button size="xs" disabled={configured !== true || connecting === toolkit} onClick={() => void connect(toolkit, name)}>
             {connecting === toolkit ? <Spinner data-icon="inline-start" /> : null}
             Connect
           </Button>
@@ -130,10 +139,10 @@ export function AppsCard({ refresh = 0 }: { refresh?: number }) {
         <CardDescription>Connect an app once and every one of your bots can use it.</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        {!configured ? (
+        {configured === false ? (
           <Alert>
             <AlertTitle>Add your Composio key to connect apps.</AlertTitle>
-            <AlertDescription>Your bots can still use the browser, the shell and your MCP servers without it.</AlertDescription>
+            <AlertDescription>It goes in the Composio card above. Your bots can still use the browser and your MCP servers without it.</AlertDescription>
           </Alert>
         ) : null}
 
@@ -164,7 +173,9 @@ export function AppsCard({ refresh = 0 }: { refresh?: number }) {
             ) : null}
           </div>
 
-          {!result ? (
+          {catalogFailed && !result ? (
+            <LoadFailed what="the apps" onRetry={() => setAttempt((n) => n + 1)} />
+          ) : !result ? (
             <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               {Array.from({ length: CATALOG_PAGE_SIZE }, (_, i) => (
                 <li key={i}>
@@ -179,7 +190,7 @@ export function AppsCard({ refresh = 0 }: { refresh?: number }) {
                   <Search />
                 </EmptyMedia>
                 <EmptyTitle>No app called that</EmptyTitle>
-                <EmptyDescription>Try fewer letters, or attach the app&apos;s own MCP server below.</EmptyDescription>
+                <EmptyDescription>Try fewer letters, or add the app&apos;s own MCP server below.</EmptyDescription>
               </EmptyHeader>
             </Empty>
           ) : (
@@ -213,6 +224,18 @@ export function AppsCard({ refresh = 0 }: { refresh?: number }) {
           </Pagination>
         ) : null}
       </CardContent>
+      <Confirm
+        open={Boolean(disconnecting)}
+        onOpenChange={(open) => !open && setDisconnecting(null)}
+        title={`Disconnect ${disconnecting?.name ?? "this app"}?`}
+        description="Your bots lose its tools on their next reply. You can connect it again any time."
+        action="Disconnect"
+        onConfirm={async () => {
+          if (!disconnecting) return;
+          await del(`/api/connections/${disconnecting.toolkit}`);
+          await loadConnections();
+        }}
+      />
     </Card>
   );
 }

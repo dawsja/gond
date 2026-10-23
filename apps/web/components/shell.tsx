@@ -1,13 +1,10 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { Suspense, useEffect, useState, type ReactNode } from "react";
-import { BotDialog } from "@/components/bot-dialog";
-import { CallPill } from "@/components/call/call-controls";
-import { CallProvider } from "@/components/call/call-provider";
 import { ShareBotDialog, SharedTemplate } from "@/components/bot-template";
 import { ComputerPanel } from "@/components/computer-panel";
 import { ShellNotifications } from "@/components/shell-notifications";
-import { RoomDialog } from "@/components/room-dialog";
 import { AppSidebar } from "@/components/sidebar";
 import { ViewingReport } from "@/components/viewing-report";
 import { VersionWatch } from "@/components/version-watch";
@@ -15,13 +12,16 @@ import { StoreProvider } from "@/components/store";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import type { SessionUser } from "@/lib/session";
 
+// Opened now and then, so they load when first opened rather than with every page.
+const BotDialog = dynamic(() => import("@/components/bot-dialog").then((m) => m.BotDialog));
+const RoomDialog = dynamic(() => import("@/components/room-dialog").then((m) => m.RoomDialog));
+
 export type ShellDialog = { kind: "new-bot" } | { kind: "edit-bot"; botId: string } | { kind: "new-room" } | { kind: "edit-room"; threadId: string } | { kind: "computer"; botId?: string | null } | { kind: "share-bot"; botId: string } | null;
 
 export function Shell({ user, children }: { user: SessionUser; children: ReactNode }) {
   const [dialog, setDialog] = useState<ShellDialog>(null);
   return (
     <StoreProvider user={user}>
-      <CallProvider>
       <SidebarProvider style={{ "--sidebar-width": "300px" } as React.CSSProperties} className="h-dvh min-h-0 overflow-hidden">
         <AppSidebar onOpen={setDialog} />
         <SidebarInset className="min-h-0 min-w-0">
@@ -45,8 +45,6 @@ export function Shell({ user, children }: { user: SessionUser; children: ReactNo
       <ViewingReport />
       <VersionWatch />
       <StrayDrops />
-      <CallPill />
-      </CallProvider>
     </StoreProvider>
   );
 }

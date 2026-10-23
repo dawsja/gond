@@ -142,7 +142,7 @@ function FileViewer({ bot, opened, onClose }: { bot: Bot; opened: Opened; onClos
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle className="truncate pr-10">{entry.name}</DialogTitle>
+          <DialogTitle>{entry.name}</DialogTitle>
           <DialogDescription>
             {size(entry.size)}
             {entry.modified ? ` · changed ${new Date(entry.modified).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}` : ""}

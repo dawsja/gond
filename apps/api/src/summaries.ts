@@ -6,7 +6,7 @@ import { cliTurn } from "./driver.ts";
 import type { EngineRun } from "./engines.ts";
 import { nativeTurn } from "./native.ts";
 import { createRedactor } from "./redact.ts";
-import { clippedLines } from "./tools.ts";
+import { clippedLines } from "./transcript.ts";
 
 // Folded in batches, not every turn: a summary costs a model call.
 export const SUMMARY_BATCH = 20;

@@ -3,6 +3,7 @@
 import { SKILL_LIMITS, type Skill, type SkillFile } from "@gond/shared";
 import { ChevronLeft, Download, FileCode, FilePlus, FileText, Trash2, Upload } from "lucide-react";
 import { useRef, useState, type FormEvent } from "react";
+import { useDiscardChanges } from "@/components/discard-changes";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toast";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useHeld } from "@/hooks/use-held";
 import { api, del, patch } from "@/lib/api";
 
 function sizeOf(n: number) {
@@ -34,8 +36,16 @@ export function SkillDialog({ skill: initial, onClose, onSaved }: { skill: Skill
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [removing, setRemoving] = useState<SkillFile | null>(null);
+  const shownRemoving = useHeld(removing, Boolean(removing));
   const [uploading, setUploading] = useState(false);
   const picker = useRef<HTMLInputElement>(null);
+  // The file as it was opened, so leaving it asks only when it changed.
+  const [draftStart, setDraftStart] = useState<Draft | null>(null);
+  if ((draft === null) !== (draftStart === null)) setDraftStart(draft);
+  const fileDirty = draft !== null && JSON.stringify(draft) !== JSON.stringify(draftStart);
+  const skillDirty = name !== (skill?.name ?? "") || description !== (skill?.description ?? "") || instructions !== (skill?.instructions ?? "");
+  const discard = useDiscardChanges(!busy && (fileDirty || (!draft && skillDirty)), onClose);
+  const leaveFile = useDiscardChanges(!busy && fileDirty, () => (setDraft(null), setError(null)));
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -127,7 +137,7 @@ export function SkillDialog({ skill: initial, onClose, onSaved }: { skill: Skill
   const title = draft ? (draft.from ? `Edit ${draft.from}` : "New file") : skill ? `Edit /${skill.slug}` : "New skill";
 
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
+    <Dialog open onOpenChange={(open) => !open && discard.requestClose()}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
@@ -156,7 +166,7 @@ export function SkillDialog({ skill: initial, onClose, onSaved }: { skill: Skill
               </Field>
               {error ? <FieldError>{error}</FieldError> : null}
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => (setDraft(null), setError(null))}>
+                <Button type="button" variant="outline" onClick={leaveFile.requestClose}>
                   <ChevronLeft data-icon="inline-start" aria-hidden="true" />
                   Back
                 </Button>
@@ -246,11 +256,11 @@ export function SkillDialog({ skill: initial, onClose, onSaved }: { skill: Skill
                 {skill ? (
                   <Button variant="ghost" className="sm:mr-auto" nativeButton={false} render={<a href={`/api/skills/${skill.id}/download`} download />}>
                     <Download data-icon="inline-start" aria-hidden="true" />
-                    Download .skill
+                    Download
                   </Button>
                 ) : null}
-                <Button type="button" variant="outline" onClick={onClose}>
-                  {skill && !initial ? "Done" : "Cancel"}
+                <Button type="button" variant="outline" onClick={discard.requestClose}>
+                  {skill && !initial ? "Close" : "Cancel"}
                 </Button>
                 <Button type="submit" disabled={busy}>
                   {busy ? <Spinner data-icon="inline-start" /> : null}
@@ -265,17 +275,19 @@ export function SkillDialog({ skill: initial, onClose, onSaved }: { skill: Skill
           <AlertDialogContent size="sm">
             <AlertDialogHeader>
               <AlertDialogTitle>Delete this file?</AlertDialogTitle>
-              <AlertDialogDescription>{removing?.path} leaves the skill for every one of your bots.</AlertDialogDescription>
+              <AlertDialogDescription>{shownRemoving?.path} leaves the skill for every one of your bots.</AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>Keep it</AlertDialogCancel>
-              <AlertDialogAction variant="destructive" onClick={() => removing && void removeFile(removing)}>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction variant="destructive" onAction={async () => removing && (await removeFile(removing))}>
                 Delete
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
       </DialogContent>
+      {discard.prompt}
+      {leaveFile.prompt}
     </Dialog>
   );
 }

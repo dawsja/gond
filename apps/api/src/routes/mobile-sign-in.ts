@@ -30,7 +30,7 @@ function packChallenge(app: SignInApp, challenge: string) {
 
 function unpackChallenge(value: string | null): { app: SignInApp; challenge: string | null } {
   const at = value?.indexOf(".") ?? -1;
-  if (!value || at < 0) return { app: "app", challenge: value };
+  if (!value || at < 0) return { app: "android", challenge: value };
   return { app: signInApp(value.slice(0, at)), challenge: value.slice(at + 1) };
 }
 

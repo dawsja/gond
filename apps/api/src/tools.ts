@@ -1,30 +1,28 @@
-import { APP_CATALOG, replyLine, draftIdOf, emailDraftOf, emailName, sendDraftAction, QUIET_REPLY, REACTIONS, isReaction, BOT_COLORS, BOT_EXPRESSIONS, BOT_SHAPES, LOGIN_FIELD_KINDS, MAX_SENT_FILE_BYTES, SKILL_LIMITS, botInputSchema, composioCard, handleOf, joinCommandLine, mentionsIn, mediaTypeFor, mcpServerInputSchema, hasKeyHeader, pickBotName, plainMarkdown, skillFilePath, type Bot, type BotExpression, type BotShape, type McpServer, type McpServerInput, type Message, type SkillInput, type Thread } from "@gond/shared";
+import { draftIdOf, emailDraftOf, emailName, sendDraftAction, QUIET_REPLY, REACTIONS, isReaction, BOT_COLORS, BOT_EXPRESSIONS, BOT_SHAPES, LOGIN_FIELD_KINDS, MAX_SENT_FILE_BYTES, SKILL_LIMITS, botInputSchema, composioCard, handleOf, joinCommandLine, mentionsIn, mediaTypeFor, mcpServerInputSchema, hasKeyHeader, pickBotName, plainMarkdown, skillFilePath, type Bot, type BotExpression, type BotShape, type McpServer, type McpServerInput, type Message, type SkillInput, type Thread } from "@gond/shared";
 import { askApproval, ENGINE_FILES_TEXT, expiredText, requestApproval, SCRIPTED_SCREEN_TEXT, scriptsTheScreen, summarize, touchesEngine } from "./approvals.ts";
-import { boxHome, readBoxFile, readBoxFileBytes, writeBoxFile, type BoxConfig } from "./box.ts";
+import { boxHome, readBoxFileBytes, writeBoxFile, type BoxConfig } from "./box.ts";
 import { exactApp, searchIndex } from "./catalog.ts";
-import { catalogIndex, composioConfigured, executeAction, isReadOnlyAction, startConnection, toolsFor, type ComposioTool } from "./composio.ts";
+import { catalogIndex, composioConfigured, executeAction, isReadOnlyAction, toolsFor, type ComposioTool } from "./composio.ts";
 import { createBot, findBot, getBot, listBots, updateBot } from "./data/bots.ts";
 import { sendPush } from "./push.ts";
 import { createDelegation, finishDelegation, getDelegation, handoffWorkedOn, listDelegationsForBot, openChildren, type Delegation } from "./data/delegations.ts";
 import { cancelFollowUp, createFollowUp, listFollowUps } from "./data/follow-ups.ts";
 import { createMcpServer, getMcpServer, listMcpServers, markMcpRefreshed, updateMcpServer } from "./data/mcp.ts";
-import { allSecretValues, containsSecret, hasSecret, hideSecrets, listSecrets, readLogin } from "./data/secrets.ts";
+import { allSecretValues, containsSecret, hasSecret, hideSecrets, listSecrets, readLogin, secretHider } from "./data/secrets.ts";
 import { userTimezone } from "./data/prefs.ts";
 import { listConnections } from "./data/settings.ts";
 import { createSkill, getSkill, getSkillBySlug, listSkills, skillFiles, updateSkill } from "./data/skills.ts";
 import { createRoutine, deleteRoutine, listRoutines, previewRuns, recordRoutineRun, routinePrompt, updateRoutine } from "./data/routines.ts";
-import { botLinesSincePerson, createRoom, getThread, listMessages, listThreads, markAnswered, postMessage, recentMessages, searchMessages, setReaction, storeAttachment } from "./data/threads.ts";
-import type { DriverTool } from "./driver.ts";
+import { botLinesSincePerson, createRoom, listMessages, markAnswered, postMessage, recentMessages, searchMessages, setReaction, storeAttachment, threadRefs } from "./data/threads.ts";
+import { clipToolResult as clip, type DriverTool } from "./driver.ts";
 import { holdLogin, loginFields, loginPrefix, rememberable } from "./logins.ts";
 import { checkMcpHeaders, secretNamesIn } from "./mcp.ts";
 import { probeMcpServer } from "./mcp-oauth.ts";
-import { botHome, LEGACY_TEAM_MEMORY_PATH, memoryPath, MAX_MEMORY_BYTES, teamDir, teamMemoryPath } from "./memory.ts";
+import { botHome, memoryPath, MAX_MEMORY_BYTES, teamDir, teamMemoryPath } from "./memory.ts";
 import { requestSecret } from "./secret-requests.ts";
 import { looksExecutable, nameFromFolder, parseSkillMd, type BundleFile } from "./skill-bundle.ts";
 import { readSkillFromBox, skillBrief, skillsReady, syncSkills } from "./skills.ts";
-import { ownerIsAdmin, usableBot } from "./toolkits.ts";
 
-const MAX_TOOL_RESULT = 24_000;
 
 export const MAX_CHAIN = 4;
 
@@ -77,10 +75,6 @@ export function plainText(value: string): string {
 }
 
 const SIGNIN_CARD_FRESH_MS = 30 * 60_000;
-
-function clip(text: string, limit = MAX_TOOL_RESULT) {
-  return text.length > limit ? `${text.slice(0, limit)}\n[… ${text.length - limit} more characters]` : text;
-}
 
 export const TOOL_NOTES = [
   "set_profile changes your own name, job title, how you work (your SOUL), mascot colour, expression or shape. When the person tells you who you are or what you do from now on, update your instructions (the description field; the app calls it Instructions) so your SOUL.md carries it. Use it too when the person gives you a lasting new job. Which bot is their primary one is set in the app, not here.",
@@ -150,7 +144,8 @@ const DECISION_VALUE_CHARS = 240;
 const DECISION_WHY_CHARS = 400;
 
 export function decisionCard(input: Record<string, unknown>) {
-  const text = (value: unknown, max: number) => (typeof value === "string" && value.trim() ? hideSecrets(value.trim().slice(0, max)) : undefined);
+  let hide: ((text: string) => string) | undefined;
+  const text = (value: unknown, max: number) => (typeof value === "string" && value.trim() ? (hide ??= secretHider())(value.trim().slice(0, max)) : undefined);
   const row = (value: unknown) => {
     if (!value || typeof value !== "object") return null;
     const label = text((value as { label?: unknown }).label, 80);
@@ -662,7 +657,7 @@ export function baseTools(context: Context): Record<string, DriverTool> {
         if (!wanted) return "Which app?";
         const squash = (t: string) => t.toLowerCase().replace(/[^a-z0-9]/g, "");
         const already = listConnections(bot.userId).find((c) => squash(c.toolkit) === squash(wanted) || squash(c.name) === squash(wanted));
-        if (already?.status === "active") return `${already.name} is already connected. Ask the person to add it to your profile (Settings → the bot → Connected apps) if you don't have its tools yet.`;
+        if (already?.status === "active") return `${already.name} is already connected, and every bot of the person's gets its tools. If you don't see them yet, they arrive on your next reply.`;
         const mcp = listMcpServers(bot.userId).find((m) => squash(m.name) === squash(wanted));
         if (mcp) {
           if (mcp.authStatus === "needed" && mcp.enabled) {
@@ -680,7 +675,7 @@ export function baseTools(context: Context): Record<string, DriverTool> {
             if (key) return key;
           }
           postConnectCard(entry);
-          return `A Connect card for ${entry.name} is in the conversation; the person taps it to sign in to ${entry.name}. Once they do, ask them to add ${entry.name} to your profile (Settings → the bot → Connected apps) so you get its tools.`;
+          return `A Connect card for ${entry.name} is in the conversation; the person taps it to sign in to ${entry.name}. Once they do, every bot of theirs gets ${entry.name}'s tools from its next reply.`;
         }
         return `${wanted} isn't among the apps Gond can connect through Composio. If it offers an MCP server, add it with add_mcp_server and its URL (the one the person gave you, or from the app's official docs; don't guess). A server that runs as a command on the computer goes in with add_mcp_server too, once it is installed. If it has neither, use the browser on the computer.`;
       },
@@ -873,7 +868,7 @@ export function baseTools(context: Context): Record<string, DriverTool> {
       execute: async (input) => {
         const ref = String(input.conversation ?? "").trim();
         const bots = listBots({ includeHidden: true, userId: bot.userId });
-        const threads = listThreads({ userId: bot.userId });
+        const threads = threadRefs(bot.userId);
         const teammate = findBot(ref, bots);
         const target =
           (teammate ? threads.find((t) => t.id === teammate.threadId) : undefined) ??
@@ -901,7 +896,7 @@ export function baseTools(context: Context): Record<string, DriverTool> {
         if (query.length < 2) return "NOT searched: give at least two characters.";
         const limit = Math.min(Math.max(Math.round(Number(input.limit) || 10), 1), 30);
         const names = new Map(listBots({ includeHidden: true, userId: bot.userId }).map((b) => [b.id, b.name]));
-        const threads = new Map(listThreads({ userId: bot.userId }).map((t) => [t.id, t]));
+        const threads = new Map(threadRefs(bot.userId).map((t) => [t.id, t]));
         const found = searchMessages(query, bot.userId, limit);
         if (found.length === 0) return `Nothing said matches "${query}".`;
         return clip(
@@ -1207,68 +1202,4 @@ export async function appTools(context: Context): Promise<Record<string, DriverT
     };
   }
   return out;
-}
-
-export async function loadMemory(box: BoxConfig, botId: string): Promise<{ text: string | null; truncated: boolean }> {
-  try {
-    const file = await readBoxFile(box, memoryPath(botId));
-    const text = file.content ?? "";
-    const lines = text.split("\n");
-    let out = lines.slice(0, 200).join("\n");
-    let truncated = lines.length > 200;
-    if (Buffer.byteLength(out, "utf8") > MAX_MEMORY_BYTES) {
-      out = Buffer.from(out, "utf8").subarray(0, MAX_MEMORY_BYTES).toString("utf8");
-      truncated = true;
-    }
-    return { text: out, truncated };
-  } catch {
-    return { text: null, truncated: false };
-  }
-}
-
-export async function loadTeamMemory(box: BoxConfig, userId: string): Promise<string | null> {
-  const read = (path: string) =>
-    readBoxFile(box, path)
-      .then((file) => file.content ?? null)
-      .catch(() => null);
-  const own = await read(teamMemoryPath(userId));
-  if (own !== null || !ownerIsAdmin(userId)) return own;
-  return read(LEGACY_TEAM_MEMORY_PATH);
-}
-
-/**
- * The last `count` lines of a conversation up to `upTo`. With `after`, only
- * those newer than it and none of `self`'s own (what a resumed session
- * hasn't seen), and none a running turn already took as a steer.
- */
-export function transcript(thread: Thread, bots: Bot[], self: Bot, upTo: Message, count = 30, options: { after?: string | null } = {}): string {
-  const after = options.after ?? null;
-  const lines = recentMessages(thread.id, count).filter((m) => m.createdAt <= upTo.createdAt && (!after || (m.createdAt > after && (m.author !== self.id || m.spoken) && (!m.steered || m.id === upTo.id))));
-  return transcriptLines(lines, bots, self);
-}
-
-const LINE_CHARS = 1500;
-
-export function transcriptLines(lines: Message[], bots: Bot[], self: Bot, clipAt = Infinity): string {
-  const names = new Map(bots.map((b) => [b.id, b.name]));
-  return lines
-    .map((m) => {
-      const nameOf = (author: string) => (author === "you" ? "Person" : author === "routine" ? "Routine" : author === "system" ? "Gond" : (names.get(author) ?? author) + (author === self.id ? " (you)" : ""));
-      const via = m.fromThreadId && names.has(m.author) && m.author !== self.id ? " (teammate, by message)" : "";
-      const said = m.spoken ? (m.author === self.id ? " (your voice, on a call)" : " (on a call)") : "";
-      const files = m.attachments.length ? ` [attached: ${m.attachments.map((a) => a.name).join(", ")}]` : "";
-      const reactions = m.reactions.length ? ` [reactions: ${m.reactions.map((r) => `${nameOf(r.author)} ${r.emoji}`).join(", ")}]` : "";
-      const body = m.body.length > clipAt ? `${m.body.slice(0, clipAt)}…` : m.body;
-      return `${nameOf(m.author)}${via}${said}: ${replyLine(m.replyTo, nameOf)}${m.kind === "approval" ? `(asked for approval: ${body})` : m.kind === "signin" ? `(posted a sign-in card: ${body})` : body}${files}${reactions}`;
-    })
-    .join("\n");
-}
-
-/** For a summary, where a long table or log needs only its gist. */
-export function clippedLines(lines: Message[], bots: Bot[], self: Bot): string {
-  return transcriptLines(lines, bots, self, LINE_CHARS);
-}
-
-export function threadFor(id: string): Thread | null {
-  return getThread(id);
 }

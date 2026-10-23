@@ -3,8 +3,10 @@
 import type { Skill } from "@gond/shared";
 import { BookOpen, Download, FileArchive, Plus, Trash2, Upload } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { failed } from "@/components/failed";
 import { useLiveEvents } from "@/components/hq/live-events";
 import { SkillDialog } from "@/components/skill-dialog";
+import { LoadFailed } from "@/components/load-failed";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,6 +16,7 @@ import { Kbd } from "@/components/ui/kbd";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useHeld } from "@/hooks/use-held";
 import { api, del, post } from "@/lib/api";
 
 type Packaged = { id: string; name: string; description: string; installed: boolean };
@@ -25,12 +28,15 @@ export function SkillsCard() {
   const [packaged, setPackaged] = useState<Packaged[]>([]);
   const [editing, setEditing] = useState<Skill | "new" | null>(null);
   const [removing, setRemoving] = useState<Skill | null>(null);
+  const shownRemoving = useHeld(removing, Boolean(removing));
   const [installing, setInstalling] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const picker = useRef<HTMLInputElement>(null);
 
+  const [loadFailed, setLoadFailed] = useState(false);
   const load = useCallback(async () => {
     const data = await api<{ skills: Skill[]; packaged: Packaged[] }>("/api/skills").catch(() => null);
+    setLoadFailed(!data);
     if (!data) return;
     setSkills(data.skills);
     setPackaged(data.packaged);
@@ -64,6 +70,8 @@ export function SkillsCard() {
     try {
       await post("/api/skills/install", { id });
       await load();
+    } catch (failure) {
+      failed("Couldn't add the skill.")(failure);
     } finally {
       setInstalling(null);
     }
@@ -92,7 +100,7 @@ export function SkillsCard() {
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {!skills ? (
-          <Spinner />
+          loadFailed ? <LoadFailed what="your skills" onRetry={() => void load()} /> : <Spinner />
         ) : skills.length === 0 ? (
           <Empty className="border py-6">
             <EmptyHeader>
@@ -127,7 +135,7 @@ export function SkillsCard() {
                   <TooltipTrigger render={<Button variant="ghost" size="icon-xs" aria-label={`Download ${skill.name} as a .skill`} nativeButton={false} render={<a href={`/api/skills/${skill.id}/download`} download />} className="opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 focus-visible:opacity-100" />}>
                     <Download aria-hidden="true" />
                   </TooltipTrigger>
-                  <TooltipContent>Download .skill</TooltipContent>
+                  <TooltipContent>Download</TooltipContent>
                 </Tooltip>
                 <Tooltip>
                   <TooltipTrigger render={<Button variant="ghost" size="icon-xs" aria-label={`Delete ${skill.name}`} onClick={() => setRemoving(skill)} className="text-destructive opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 focus-visible:opacity-100" />}>
@@ -165,11 +173,18 @@ export function SkillsCard() {
         <AlertDialogContent size="sm">
           <AlertDialogHeader>
             <AlertDialogTitle>Delete this skill?</AlertDialogTitle>
-            <AlertDialogDescription>&ldquo;{removing?.name}&rdquo; and its files leave your library, for all of your bots. Routines that run it keep their prompt.</AlertDialogDescription>
+            <AlertDialogDescription>&ldquo;{shownRemoving?.name}&rdquo; and its files leave your library, for all of your bots. Routines that run it keep their prompt.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Keep it</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" onClick={() => removing && void del(`/api/skills/${removing.id}`).then(load).finally(() => setRemoving(null))}>
+            <AlertDialogAction
+              variant="destructive"
+              onAction={async () => {
+                if (!removing) return;
+                await del(`/api/skills/${removing.id}`);
+                await load();
+              }}
+            >
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>

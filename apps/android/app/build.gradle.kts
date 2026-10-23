@@ -21,10 +21,9 @@ val appVersionCode = (versionParts.getOrElse(0) { 0 } * 1_000_000) + (versionPar
  * GOND_ANDROID_KEY_PASSWORD) or, without one, the debug key, so the APK
  * from CI still installs on a phone. Android only updates an app over a
  * build signed with the same key, so a fork that ships releases should
- * make a keystore once and keep it in CI's secrets. KRU_ANDROID_* is the
- * legacy spelling, still read this release.
+ * make a keystore once and keep it in CI's secrets.
  */
-fun signingEnv(name: String): String? = System.getenv("GOND_ANDROID_$name") ?: System.getenv("KRU_ANDROID_$name")
+fun signingEnv(name: String): String? = System.getenv("GOND_ANDROID_$name")
 
 val keystorePath = signingEnv("KEYSTORE")
 

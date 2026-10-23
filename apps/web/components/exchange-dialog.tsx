@@ -6,11 +6,10 @@ import { useCallback, useEffect, useState } from "react";
 import { BotAvatar, RoomAvatar, roomMembers } from "@/components/bot-avatar";
 import { useLiveEvents } from "@/components/hq/live-events";
 import { Markdown } from "@/components/markdown";
-import { shortTime } from "@/components/sidebar";
+import { shortTime } from "@/lib/time";
 import { useStore } from "@/components/store";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Message as MessageRow, MessageAvatar, MessageContent, MessageFooter, MessageHeader } from "@/components/ui/message";
 import { MessageScroller, MessageScrollerContent, MessageScrollerItem, MessageScrollerProvider, MessageScrollerViewport } from "@/components/ui/message-scroller";
@@ -55,9 +54,9 @@ export function ExchangeDialog({ threadId, withThreadId, onClose }: { threadId: 
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent showCloseButton={false} className="h-[min(85dvh,720px)] max-w-[calc(100%-2rem)] sm:max-w-2xl" bodyClassName="grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 max-sm:pb-0">
-        <DialogHeader className="m-0 gap-0 border-b border-border px-4 py-3">
-          <DialogTitle className="flex items-center gap-2 text-[14px] font-semibold">
+      <DialogContent className="h-[min(85dvh,720px)] sm:max-w-2xl" bodyClassName="grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 max-sm:pb-[var(--safe-bottom)]">
+        <DialogHeader className="mx-0 mb-0">
+          <DialogTitle className="flex min-w-0 items-center gap-2">
             {data ? (
               <>
                 <Party thread={data.other} bot={theirs} />
@@ -68,12 +67,15 @@ export function ExchangeDialog({ threadId, withThreadId, onClose }: { threadId: 
               "Between two bots"
             )}
           </DialogTitle>
-          <DialogDescription className="sr-only">What these two bots said to each other. You can read it, not write in it.</DialogDescription>
+          <DialogDescription className="flex items-center gap-1.5">
+            <Lock className="size-3.5 shrink-0" aria-hidden="true" />
+            What these two bots said to each other. You can read it, not reply.
+          </DialogDescription>
         </DialogHeader>
 
         <MessageScrollerProvider autoScroll>
           <MessageScroller className="h-full min-h-0">
-            <MessageScrollerViewport className="px-4">
+            <MessageScrollerViewport className="px-6">
               <MessageScrollerContent className="gap-3 py-4">
                 {!data && !failed ? (
                   <MessageScrollerItem className="m-auto">
@@ -85,7 +87,7 @@ export function ExchangeDialog({ threadId, withThreadId, onClose }: { threadId: 
                     <Empty>
                       <EmptyHeader>
                         <EmptyTitle>{failed ? "Couldn't load this." : "Nothing said yet."}</EmptyTitle>
-                        <EmptyDescription>{failed ? "One of the conversations is gone." : "What the two bots send each other shows up here."}</EmptyDescription>
+                        <EmptyDescription>{failed ? "One of the conversations may be gone. Close this and try again." : "What the two bots send each other shows up here."}</EmptyDescription>
                       </EmptyHeader>
                     </Empty>
                   </MessageScrollerItem>
@@ -99,11 +101,11 @@ export function ExchangeDialog({ threadId, withThreadId, onClose }: { threadId: 
                         <MessageContent className="gap-1">
                           <MessageHeader style={{ color: author?.color }}>{author?.name ?? "Gond"}</MessageHeader>
                           <Bubble variant="outline" align="start" className="max-w-[92%]">
-                            <BubbleContent className="rounded-2xl border-transparent bg-card px-3.5 py-2 shadow-subtle">
+                            <BubbleContent className="rounded-2xl border-transparent bg-bubble-bot px-3.5 py-2">
                               <Markdown text={m.body} className="flex flex-col gap-2 text-[14px] leading-6" />
                             </BubbleContent>
                           </Bubble>
-                          <MessageFooter className="text-[10.5px] font-normal text-ash">{shortTime(m.createdAt)}</MessageFooter>
+                          <MessageFooter className="text-[10.5px] font-normal text-muted-foreground">{shortTime(m.createdAt)}</MessageFooter>
                         </MessageContent>
                       </MessageRow>
                     </MessageScrollerItem>
@@ -114,15 +116,6 @@ export function ExchangeDialog({ threadId, withThreadId, onClose }: { threadId: 
           </MessageScroller>
         </MessageScrollerProvider>
 
-        <DialogFooter className="m-0 flex-row items-center border-border justify-center gap-3 border-t px-4 py-3 sm:justify-center">
-          <span className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
-            <Lock className="size-3.5" aria-hidden="true" />
-            This chat is view-only
-          </span>
-          <Button size="sm" onClick={onClose}>
-            Close chat
-          </Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

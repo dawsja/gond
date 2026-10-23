@@ -3,42 +3,11 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Field, FieldContent, FieldDescription, FieldLabel, FieldTitle } from "@/components/ui/field";
-import { Switch } from "@/components/ui/switch";
+import { Field, FieldContent, FieldDescription, FieldTitle } from "@/components/ui/field";
 import { toast } from "@/components/ui/toast";
 import { changeServer, desktopShell, useNativeShell, type DesktopUpdate, type GondDesktop } from "@/lib/shell";
 
 const never = () => () => {};
-
-export function MenuBarField() {
-  const [shown, setShown] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    const desktop = desktopShell();
-    if (typeof desktop?.menuBar !== "function") return;
-    desktop.menuBar().then(setShown, () => undefined);
-  }, []);
-
-  const change = (on: boolean) => {
-    const desktop = desktopShell();
-    if (typeof desktop?.setMenuBar !== "function") return;
-    setShown(on);
-    desktop.setMenuBar(on).catch(() => setShown(!on));
-  };
-
-  if (shown === null) return null;
-  return (
-    <FieldLabel htmlFor="menu-bar">
-      <Field orientation="horizontal">
-        <FieldContent>
-          <FieldTitle>Show the menu bar</FieldTitle>
-          <FieldDescription>File, Edit, View and Help along the top of the window.</FieldDescription>
-        </FieldContent>
-        <Switch id="menu-bar" checked={shown} onCheckedChange={change} aria-label="Show the menu bar" />
-      </Field>
-    </FieldLabel>
-  );
-}
 
 type Updater = Required<Pick<GondDesktop, "updateState" | "checkForUpdates" | "installUpdate">>;
 
@@ -84,9 +53,9 @@ function UpdateField() {
     const app = updater();
     if (!app) return;
     setRestarting(true);
-    app.installUpdate().catch((failure: unknown) => {
+    app.installUpdate().catch(() => {
       setRestarting(false);
-      toast.add({ type: "error", title: "Couldn't install the update.", description: String(failure) });
+      toast.add({ type: "error", title: "Couldn't install the update.", description: "Close Gond and open it again to finish, or try Restart to update once more." });
     });
   };
 

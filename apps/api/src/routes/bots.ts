@@ -8,7 +8,6 @@ import { listRules, removeRule } from "../data/approvals.ts";
 import { postMessage } from "../data/threads.ts";
 import { stopBot, syncSoul } from "../responder.ts";
 import { addFromTemplate, greet, templateById } from "../templates.ts";
-import { allowedToolkits } from "../toolkits.ts";
 import { MAX_BOT_BUNDLE_BYTES, unpackBot } from "../bot-bundle.ts";
 import { addFromBundle, botFile, bundleOf, sharedBot, shareToken, summaryOf } from "../bot-templates.ts";
 import { appUrl } from "../config.ts";
@@ -79,7 +78,7 @@ export function botsRoutes() {
   app.post("/bots", async (c) => {
     const parsed = botInputSchema.safeParse(await c.req.json().catch(() => ({})));
     if (!parsed.success) return c.json({ error: parsed.error.issues[0]?.message ?? "Bad bot" }, 400);
-    const bot = createBot({ ...parsed.data, toolkits: allowedToolkits(parsed.data.toolkits) }, userId(c));
+    const bot = createBot(parsed.data, userId(c));
     postMessage({ threadId: bot.threadId, author: "system", kind: "event", body: `${bot.name} joined${bot.title ? ` as ${bot.title}` : ""}.`, answered: true });
     await syncSoul(bot);
     greet(bot);
@@ -87,10 +86,10 @@ export function botsRoutes() {
   });
 
   app.post("/bots/from-template", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { templateId?: string; toolkits?: string[]; enableRoutine?: boolean };
+    const body = (await c.req.json().catch(() => ({}))) as { templateId?: string; enableRoutine?: boolean };
     const template = templateById(String(body.templateId ?? ""));
     if (!template) return c.json({ error: "Couldn't find that template" }, 404);
-    const bot = await addFromTemplate(template, userId(c), { toolkits: allowedToolkits(Array.isArray(body.toolkits) ? body.toolkits.map(String) : template.toolkits), enableRoutine: body.enableRoutine === true });
+    const bot = await addFromTemplate(template, userId(c), { enableRoutine: body.enableRoutine === true });
     return c.json({ bot }, 201);
   });
 
@@ -108,8 +107,7 @@ export function botsRoutes() {
     if (typeof body.pinned === "boolean") extra.pinned = body.pinned;
     if (typeof body.position === "number") extra.position = body.position;
     if (!ownBot(c, c.req.param("id"))) return c.json({ error: "Couldn't find that bot" }, 404);
-    const toolkits = parsed.data.toolkits !== undefined ? { toolkits: allowedToolkits(parsed.data.toolkits) } : {};
-    const bot = updateBot(c.req.param("id"), { ...parsed.data, ...toolkits, ...extra });
+    const bot = updateBot(c.req.param("id"), { ...parsed.data, ...extra });
     if (!bot) return c.json({ error: "Couldn't find that bot" }, 404);
     await syncSoul(bot);
     return c.json({ bot });

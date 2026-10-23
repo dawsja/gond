@@ -1,9 +1,9 @@
 import { Hono } from "hono";
-import { ownThread, userId } from "../access.ts";
+import { ownsThread, userId } from "../access.ts";
 import { applyComposioKey } from "../composio.ts";
 import type { Env } from "../app.ts";
 import { changeSecret, deleteSecret, getSecretRequest, listSecrets, resolveSecretRequest, setSecret } from "../data/secrets.ts";
-import { listThreads } from "../data/threads.ts";
+import { threadRefs } from "../data/threads.ts";
 import { forgetHeldLogin, holdLogin, rememberable } from "../logins.ts";
 import { answerSecretRequest } from "../secret-requests.ts";
 
@@ -12,12 +12,12 @@ export function secretsRoutes() {
 
   app.get("/secret-requests/:id", (c) => {
     const request = getSecretRequest(c.req.param("id"));
-    return request && ownThread(c, request.threadId) ? c.json({ request }) : c.json({ error: "Couldn't find that request" }, 404);
+    return request && ownsThread(c, request.threadId) ? c.json({ request }) : c.json({ error: "Couldn't find that request" }, 404);
   });
 
   app.post("/secret-requests/:id", async (c) => {
     const request = getSecretRequest(c.req.param("id"));
-    if (!request || !ownThread(c, request.threadId)) return c.json({ error: "Couldn't find that request" }, 404);
+    if (!request || !ownsThread(c, request.threadId)) return c.json({ error: "Couldn't find that request" }, 404);
     if (request.status !== "pending") return c.json({ request });
     const body = (await c.req.json().catch(() => ({}))) as { value?: string; values?: Record<string, unknown>; remember?: boolean; decline?: boolean };
     if (body.decline) return c.json({ request: answerSecretRequest(request.id, "declined") });
@@ -48,7 +48,7 @@ export function secretsRoutes() {
     if (body.value.length > 8_000) return c.json({ error: "That's too long" }, 400);
     const name = c.req.param("name");
     if (!changeSecret(userId(c), name, body.value)) return c.json({ error: "Couldn't find that secret" }, 404);
-    forgetHeldLogin(name, listThreads({ userId: userId(c) }).map((t) => t.id));
+    forgetHeldLogin(name, threadRefs(userId(c)).map((t) => t.id));
     return c.json({ ok: true });
   });
 

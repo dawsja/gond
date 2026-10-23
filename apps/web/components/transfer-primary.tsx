@@ -5,7 +5,6 @@ import { useState } from "react";
 import { useStore } from "@/components/store";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
 import { post } from "@/lib/api";
 
@@ -54,8 +53,7 @@ export function TransferPrimaryDialog({ bot, open, onOpenChange }: { bot: Bot | 
         </Select>
         <AlertDialogFooter>
           <AlertDialogCancel>Keep it</AlertDialogCancel>
-          <AlertDialogAction disabled={!to || busy} onClick={() => void transfer()}>
-            {busy ? <Spinner data-icon="inline-start" /> : null}
+          <AlertDialogAction disabled={!to} onAction={transfer}>
             Make it primary
           </AlertDialogAction>
         </AlertDialogFooter>

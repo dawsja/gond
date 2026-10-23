@@ -14,43 +14,6 @@ const MAX_STDERR = 4_000;
 
 const MAX_LINE = 256 * 1024;
 
-export const READ_ONLY_DENIED = [
-  "Edit",
-  "Write",
-  "MultiEdit",
-  "NotebookEdit",
-  "Bash(git checkout:*)",
-  "Bash(git reset:*)",
-  "Bash(git clean:*)",
-  "Bash(git stash:*)",
-  "Bash(rm:*)",
-];
-
-export const MAX_TURNS_CAP = 200;
-
-export function claudeArgs({ model, systemPromptFile, readOnly = false, maxTurns = null }) {
-  const turns = Number(maxTurns);
-  return [
-    "-p",
-    "--output-format",
-    "stream-json",
-    "--verbose",
-    "--model",
-    model,
-    ...(Number.isInteger(turns) && turns > 0 ? ["--max-turns", String(Math.min(turns, MAX_TURNS_CAP))] : []),
-    "--dangerously-skip-permissions",
-    "--no-session-persistence",
-    "--disallowedTools",
-    "Bash(git commit:*)",
-    "Bash(git push:*)",
-    ...(readOnly ? READ_ONLY_DENIED : []),
-    "--append-system-prompt-file",
-    systemPromptFile,
-  ];
-}
-
-export const MODEL_ID = /^[A-Za-z0-9._-]{1,80}$/;
-
 function killTree(child, signal) {
   try {
     process.kill(-child.pid, signal);
@@ -154,10 +117,6 @@ export function classifyCheck({ spawnError, exitCode, output }) {
   if (exitCode === 0 && !NOT_SIGNED_IN.test(output ?? "")) return "ok";
   if (NOT_SIGNED_IN.test(output ?? "")) return "unauthenticated";
   return "error";
-}
-
-export function isSignInError(text) {
-  return NOT_SIGNED_IN.test(text ?? "");
 }
 
 export async function checkClaude({ bin = CLAUDE_BIN, cwd, env, uid, gid }) {

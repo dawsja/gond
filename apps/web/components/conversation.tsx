@@ -2,16 +2,14 @@
 
 import { handleOf, plainMarkdown, roomTargets, type Approval, type ApprovalAnswer, type Bot, type Message, type ReactionEmoji, type Thread } from "@gond/shared";
 import { ArrowUp, ChevronLeft, Copy, CornerUpLeft, Download, ListEnd, EllipsisVertical, FileText, Monitor, PanelRight, Paperclip, Pencil, Plus, TextSelect, X } from "lucide-react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type CSSProperties, type DragEvent, type FormEvent, type KeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
+import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type CSSProperties, type DragEvent, type FormEvent, type KeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { ApprovalCard } from "@/components/approval-card";
-import { CallButton, CallComposer } from "@/components/call/call-controls";
-import { useCall } from "@/components/call/call-provider";
 import { QuoteInBubble, ReplyingTo } from "@/components/reply-quote";
 import { BotAvatar, RoomAvatar, roomMembers } from "@/components/bot-avatar";
 import { copyToClipboard } from "@/components/hq/clipboard";
-import { ExchangeDialog } from "@/components/exchange-dialog";
 import { canReact, react, ReactionBadges, ReactionPicker } from "@/components/reactions";
 import { pollInterval, useLiveEvents } from "@/components/hq/live-events";
 import { ChoicesContext } from "@/components/chat-blocks";
@@ -24,8 +22,8 @@ import { SecretCard } from "@/components/secret-card";
 import { openShellDialog } from "@/components/shell";
 import { SignInCard } from "@/components/signin-card";
 import { matchBots, matchSkills, SlashMenu, slashQuery, useSkillsLibrary } from "@/components/slash-menu";
-import { shortTime } from "@/components/sidebar";
-import { useStore, type ThreadRow } from "@/components/store";
+import { shortTime } from "@/lib/time";
+import { useActivity, useSingleFlight, useStore, type ThreadRow } from "@/components/store";
 import { threadActions, ThreadConfirms, type Ask } from "@/components/thread-actions";
 import { Attachment, AttachmentAction, AttachmentActions, AttachmentContent, AttachmentDescription, AttachmentGroup, AttachmentMedia, AttachmentTitle, AttachmentTrigger } from "@/components/ui/attachment";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -40,15 +38,19 @@ import { Marker, MarkerContent } from "@/components/ui/marker";
 import { Message as MessageRow, MessageContent, MessageFooter, MessageHeader } from "@/components/ui/message";
 import { MessageScroller, MessageScrollerButton, MessageScrollerContent, MessageScrollerEdges, MessageScrollerItem, MessageScrollerProvider, MessageScrollerViewport, useMessageScroller } from "@/components/ui/message-scroller";
 import { toast } from "@/components/ui/toast";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { VoiceButton } from "@/components/voice-button";
 import { WorkLine, WorkLines } from "@/components/work-log";
 import { useCoarsePointer } from "@/hooks/use-mobile";
 import { useSwipeBack } from "@/hooks/use-swipe-back";
 import { REPLY_DISTANCE, useSwipeToReply } from "@/hooks/use-swipe-to-reply";
-import { api, post } from "@/lib/api";
+import { useStableCallback } from "@/hooks/use-stable-callback";
+import { api, ApiError, post } from "@/lib/api";
 import { readDraft, saveDraft } from "@/lib/drafts";
 import { cn } from "@/lib/utils";
+
+const ExchangeDialog = dynamic(() => import("@/components/exchange-dialog").then((m) => m.ExchangeDialog));
 
 const POLL_MS = 4_000;
 
@@ -149,6 +151,22 @@ function EditBubble({ message, touch, stops, onCancel, onSend }: { message: Mess
   );
 }
 
+/** A bot's reply as it is written, drawn like the message it becomes; its choices only work once it is posted. */
+function Writing({ name, text }: { name: string | null; text: string }) {
+  return (
+    <MessageRow align="start">
+      <MessageContent className="gap-1">
+        {name ? <MessageHeader>{name}</MessageHeader> : null}
+        <Bubble variant="outline" align="start" className="max-w-[86%] sm:max-w-[78%]">
+          <BubbleContent className="rounded-2xl px-3.5 py-2">
+            <Markdown text={text} className="flex flex-col gap-2 text-[14px] leading-6" />
+          </BubbleContent>
+        </Bubble>
+      </MessageContent>
+    </MessageRow>
+  );
+}
+
 function SelectTextDialog({ text, onClose }: { text: string | null; onClose: () => void }) {
   return (
     <Dialog open={text !== null} onOpenChange={(open) => (open ? undefined : onClose())}>
@@ -202,7 +220,7 @@ function quoteText(message: Message): string {
   return plainMarkdown(message.body).slice(0, 280) || message.attachments[0]?.name || "";
 }
 
-function Line({ message, threadId, bots, threads, bot, approvals, isRoom, editing, stops, touch, answer, sentTo, noticed, onPick, onView, onDecide, onOpenExchange, onEdit, onSelectText, onReacted, onReply, onJump }: { message: Message; threadId: string; bots: Bot[]; threads: ThreadRow[]; bot: Bot | null; approvals: Map<string, Approval>; isRoom: boolean; editing: boolean; stops: boolean; touch: boolean; answer: string | undefined; sentTo: string | undefined; noticed: Noticed | undefined; onPick: (option: string, from: string) => Promise<void>; onView: (attachmentId: string) => void; onDecide: (id: string, answer: ApprovalAnswer) => Promise<void>; onOpenExchange: (withThreadId: string) => void; onEdit: (message: Message | null, text?: string) => Promise<boolean>; onSelectText: (text: string) => void; onReacted: (message: Message) => void; onReply: (message: Message) => void; onJump: (id: string) => void }) {
+const Line = memo(function Line({ message, threadId, bots, threads, bot, approvals, isRoom, editing, stops, touch, answer, sentTo, noticed, onPick, onView, onDecide, onOpenExchange, onEdit, onSelectText, onReacted, onReply, onJump }: { message: Message; threadId: string; bots: Bot[]; threads: ThreadRow[]; bot: Bot | null; approvals: Map<string, Approval>; isRoom: boolean; editing: boolean; stops: boolean; touch: boolean; answer: string | undefined; sentTo: string | undefined; noticed: Noticed | undefined; onPick: (option: string, from: string) => Promise<void>; onView: (attachmentId: string) => void; onDecide: (id: string, answer: ApprovalAnswer) => Promise<void>; onOpenExchange: (withThreadId: string) => void; onEdit: (message: Message | null, text?: string) => Promise<boolean>; onSelectText: (text: string) => void; onReacted: (message: Message) => void; onReply: (message: Message) => void; onJump: (id: string) => void }) {
   const mine = message.author === "you";
   const bubble = useRef<HTMLDivElement>(null);
 
@@ -211,6 +229,7 @@ function Line({ message, threadId, bots, threads, bot, approvals, isRoom, editin
   const [swipe, setSwipe] = useState(0);
   const replyable = message.kind === "message" && !message.fromThreadId && message.author !== "routine" && message.author !== "system";
   useSwipeToReply(bubble, touch && replyable, setSwipe, () => onReply(message));
+  const choices = useMemo(() => (mine ? {} : { pick: (option: string) => onPick(option, message.author), picked: answer }), [mine, onPick, message.author, answer]);
 
   const author = mine ? null : bots.find((b) => b.id === message.author) ?? null;
   if (message.kind === "prompt") return null;
@@ -260,6 +279,10 @@ function Line({ message, threadId, bots, threads, bot, approvals, isRoom, editin
         <ContextMenuTrigger
           ref={bubble}
           onClick={(event) => showsTime(event) && setTimed((on) => !on)}
+          onContextMenu={(event) => {
+            // A right click on a link gets the browser's own menu (open in a new tab, copy the address).
+            if (!touch && event.target instanceof Element && event.target.closest("a[href]")) event.preventBaseUIHandler();
+          }}
           className={cn("touch-pan-y select-text pointer-coarse:select-none", !swipe && "transition-transform duration-200")}
           style={swipe ? { transform: `translateX(${swipe}px)` } : undefined}
           render={<Bubble variant={mine ? "default" : "outline"} align={mine ? "end" : "start"} className={cn("max-w-[86%] sm:max-w-[78%]", message.reactions.length > 0 && "mb-2.5")} />}
@@ -272,7 +295,7 @@ function Line({ message, threadId, bots, threads, bot, approvals, isRoom, editin
           <BubbleContent className="rounded-2xl px-3.5 py-2">
             {message.replyTo ? <QuoteInBubble quote={message.replyTo} name={nameOf(message.replyTo.author, bots)} color={colorOf(message.replyTo.author, bots)} onJump={onJump} /> : null}
             {message.body ? (
-              <ChoicesContext.Provider value={mine ? {} : { pick: (option) => onPick(option, message.author), picked: answer }}>
+              <ChoicesContext.Provider value={choices}>
                 <Markdown text={message.body} className="flex flex-col gap-2 text-[14px] leading-6" />
               </ChoicesContext.Provider>
             ) : null}
@@ -313,7 +336,7 @@ function Line({ message, threadId, bots, threads, bot, approvals, isRoom, editin
           <ReactionBadges message={message} bots={bots} mine={mine} onReact={reactWith} />
         </ContextMenuTrigger>
           {message.body || editable || reactable || replyable ? (
-            <ContextMenuContent className="w-60">
+            <ContextMenuContent className="w-60 pointer-coarse:w-76">
               {reactable ? <ReactionPicker message={message} onReact={reactWith} /> : null}
               {reactable ? <ContextMenuSeparator /> : null}
               <ContextMenuGroup>
@@ -364,7 +387,7 @@ function Line({ message, threadId, bots, threads, bot, approvals, isRoom, editin
       </MessageContent>
     </MessageRow>
   );
-}
+});
 
 function JumpToMessage({ id, ready, loaded, earlier }: { id: string | null; ready: boolean; loaded: boolean; earlier: () => Promise<boolean> }) {
   const { scrollToMessage } = useMessageScroller();
@@ -420,11 +443,11 @@ function LoadEarlier({ onLoad }: { onLoad: () => Promise<boolean> }) {
 }
 
 export function Conversation({ threadId }: { threadId: string }) {
-  const { bots, threads, approvals, activity, refresh, boxUpdating, desktop } = useStore();
-  const { call } = useCall();
-  const onCall = call?.info.threadId === threadId ? call : null;
+  const { bots, threads, approvals, refresh, boxUpdating, desktop } = useStore();
+  const activity = useActivity();
   const [info, setInfo] = useState<ThreadInfo | null>(null);
   const [missing, setMissing] = useState(false);
+  const [infoFailed, setInfoFailed] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
 
   const [earlier, setEarlier] = useState<boolean | null>(null);
@@ -523,8 +546,11 @@ export function Conversation({ threadId }: { threadId: string }) {
   const loadInfo = useCallback(async () => {
     try {
       setInfo(await api<ThreadInfo>(`/api/threads/${threadId}`));
-    } catch {
-      setMissing(true);
+      setInfoFailed(false);
+    } catch (failure) {
+      // Only a 404 means it's gone; a dropped connection is worth another try.
+      if (failure instanceof ApiError && failure.status === 404) setMissing(true);
+      else setInfoFailed(true);
     }
   }, [threadId]);
 
@@ -555,6 +581,25 @@ export function Conversation({ threadId }: { threadId: string }) {
     [threadId, append],
   );
 
+  // A reply sends several events at once; each of these runs once for all of them.
+  const refreshInfo = useSingleFlight(loadInfo);
+  const catchUp = useSingleFlight(() => loadMessages(cursor.current));
+  const readTimer = useRef<number | null>(null);
+  const markRead = useCallback(() => {
+    if (readTimer.current !== null) return;
+    readTimer.current = window.setTimeout(() => {
+      readTimer.current = null;
+      void post(`/api/threads/${threadId}/read`).catch(() => undefined);
+    }, 250);
+  }, [threadId]);
+  useEffect(
+    () => () => {
+      if (readTimer.current !== null) window.clearTimeout(readTimer.current);
+      readTimer.current = null;
+    },
+    [threadId],
+  );
+
   const first = messages[0]?.createdAt ?? null;
 
   const loadEarlier = useCallback(async () => {
@@ -581,31 +626,53 @@ export function Conversation({ threadId }: { threadId: string }) {
     });
   }, [threadId, loadInfo, loadMessages]);
 
+  // What each bot is writing right now. One that stopped stays until the messages it ended in are loaded, so the bubble never blinks.
+  const [writing, setWriting] = useState<Record<string, string>>({});
+  const writingRound = useRef(new Map<string, number>());
+  const onWriting = (botId: string, text: string | null) => {
+    const round = (writingRound.current.get(botId) ?? 0) + 1;
+    writingRound.current.set(botId, round);
+    if (text !== null) {
+      setWriting((current) => ({ ...current, [botId]: text }));
+      return;
+    }
+    void catchUp().finally(() => {
+      if (writingRound.current.get(botId) !== round) return;
+      setWriting((current) => Object.fromEntries(Object.entries(current).filter(([id]) => id !== botId)));
+    });
+  };
+
   const live = useLiveEvents((event) => {
     if (event.topic === "open") {
-      void loadMessages(cursor.current);
-      void loadInfo();
+      setWriting({});
+      void catchUp();
+      void refreshInfo();
+    } else if (event.topic === "writing" && event.threadId === threadId) {
+      onWriting(event.botId, event.text);
     } else if (event.topic === "thread" && event.threadId === threadId) {
-      void loadMessages(event.cleared ? null : cursor.current);
-
-      void loadInfo();
-      void post(`/api/threads/${threadId}/read`).catch(() => undefined);
+      void (event.cleared ? loadMessages(null) : catchUp());
+      void refreshInfo();
+      markRead();
     } else if (event.topic === "reactions" && event.threadId === threadId) {
       replaceMessage({ id: event.messageId, reactions: event.reactions });
     } else if (event.topic === "approvals") {
-      void loadMessages(cursor.current);
-      for (const [id] of approvalMap) {
+      void catchUp();
+      // A decided approval never changes again; only the ones still waiting can have moved.
+      for (const [id, approval] of approvalMap) {
+        if (approval.status !== "pending") continue;
         void api<{ approval: Approval }>(`/api/approvals/${id}`)
           .then((d) => setResolved((current) => new Map(current).set(id, d.approval)))
           .catch(() => undefined);
       }
-    } else if (event.topic === "bots") void loadInfo();
+    } else if (event.topic === "bots") void refreshInfo();
   });
 
   useEffect(() => {
-    const timer = window.setInterval(() => void loadMessages(cursor.current), pollInterval(live, POLL_MS));
+    const timer = window.setInterval(() => {
+      if (!document.hidden) void catchUp();
+    }, pollInterval(live, POLL_MS));
     return () => window.clearInterval(timer);
-  }, [live, loadMessages]);
+  }, [live, catchUp]);
 
   const [paused, setPaused] = useState(false);
   useEffect(() => {
@@ -619,6 +686,7 @@ export function Conversation({ threadId }: { threadId: string }) {
 
   const working = activity[threadId] ?? {};
   const workingBots = Object.entries(working)
+    .filter(([botId]) => !(botId in writing))
     .flatMap(([botId, line]) => {
       const found = bots.find((b) => b.id === botId);
       return found ? [{ bot: found, line }] : [];
@@ -827,13 +895,26 @@ export function Conversation({ threadId }: { threadId: string }) {
     textarea.current?.focus();
   };
 
-  if (missing) {
+  const onPick = useStableCallback(pick);
+  const onDecide = useStableCallback(decide);
+  const onEdit = useStableCallback(edit);
+  const onReply = useStableCallback(replyTo);
+  const onJump = useCallback((id: string) => setJump((j) => ({ id, n: (j?.n ?? 0) + 1 })), []);
+
+  if (missing || (infoFailed && !info)) {
     return (
-      <Empty className="flex-1">
+      <Empty className="flex-1 pt-[var(--safe-top)] pb-[var(--safe-bottom)]">
         <EmptyHeader>
-          <EmptyTitle>That conversation is gone.</EmptyTitle>
-          <EmptyDescription>Pick another bot from the list.</EmptyDescription>
+          <EmptyTitle>{missing ? "That conversation is gone." : "Couldn't load this conversation."}</EmptyTitle>
+          <EmptyDescription>{missing ? "It may have been deleted. Pick another one from your chats." : "Check your connection, then try again."}</EmptyDescription>
         </EmptyHeader>
+        <EmptyContent className="flex-row justify-center">
+          <Button variant="outline" render={<Link href="/app" />} nativeButton={false}>
+            <ChevronLeft data-icon="inline-start" aria-hidden="true" />
+            Back to chats
+          </Button>
+          {missing ? null : <Button onClick={() => void loadInfo()}>Try again</Button>}
+        </EmptyContent>
       </Empty>
     );
   }
@@ -849,7 +930,9 @@ export function Conversation({ threadId }: { threadId: string }) {
     else if (bot) openShellDialog({ kind: "edit-bot", botId: bot.id });
     else openShellDialog({ kind: "edit-room", threadId });
   };
-  const actions = row ? threadActions({ thread: row, bot: bot ?? undefined, bots, onOpen: openShellDialog, onAsk: setAsk, refresh }) : [];
+  // A bot's chat names its bot before the conversation's details load, so the menu is never a room's.
+  const rowBot = bot ?? (row?.botId ? bots.find((b) => b.id === row.botId) : undefined);
+  const actions = row && (row.kind === "room" || rowBot) ? threadActions({ thread: row, bot: rowBot, bots, onOpen: openShellDialog, onAsk: setAsk, refresh }) : [];
 
   return (
     <div className="flex min-h-0 flex-1">
@@ -871,19 +954,18 @@ export function Conversation({ threadId }: { threadId: string }) {
             <ChevronLeft aria-hidden="true" />
           </Button>
           <h1 className="sr-only">{info?.thread.name ?? "Conversation"}</h1>
-          <Button size="xl" onClick={openPill} aria-label={bot ? `Edit ${bot.name}'s profile` : "Edit group"} className="pointer-events-auto min-w-0 shrink gap-2 pl-1.5 text-left">
+          <Button size="xl" onClick={openPill} aria-label={bot ? `${bot.name}'s details` : "Room details"} className="pointer-events-auto min-w-0 shrink gap-2 pl-1.5 text-left">
             {bot ? <BotAvatar bot={bot} size={32} /> : <RoomAvatar bots={roomBots} size={32} />}
             <span className="flex min-w-0 flex-col">
               <span className="truncate text-[15px] leading-5 font-semibold">{info?.thread.name ?? "…"}</span>
               <span className={cn("truncate text-[11px] leading-3.5 font-normal opacity-70", (busy || boxUpdating) && "shimmer")}>
                 {bot ? bot.title || "Teammate" : info ? `${info.thread.members.length} bots` : ""}
-                {boxUpdating ? " · the computer is updating, replies wait" : onCall ? " · on a call" : busy ? " · working" : waitingOnYou ? " · waiting on you" : watches.length ? ` · watching ${watches.length === 1 ? "1 thing" : `${watches.length} things`}` : ""}
+                {boxUpdating ? " · the computer is updating, replies wait" : busy ? " · working" : waitingOnYou ? " · waiting on you" : watches.length ? ` · watching ${watches.length === 1 ? "1 thing" : `${watches.length} things`}` : ""}
               </span>
             </span>
           </Button>
           <span className="flex-1" />
 
-          {bot ? <CallButton threadId={threadId} bot={bot} /> : null}
           <Tooltip>
             <TooltipTrigger render={<Button size="icon-xl" aria-label="Toggle details" aria-pressed={panel} onClick={() => setPanel((p) => !p)} className={cn("pointer-events-auto hidden xwide:inline-flex", panel && "bg-primary-hover")} />}>
               <PanelRight aria-hidden="true" />
@@ -897,22 +979,24 @@ export function Conversation({ threadId }: { threadId: string }) {
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-52">
                 {actions.map((group, i) => (
-                  <DropdownMenuGroup key={i}>
+                  <Fragment key={i}>
                     {i > 0 ? <DropdownMenuSeparator /> : null}
-                    {group.map((action) => (
-                      <DropdownMenuItem key={action.id} variant={action.destructive ? "destructive" : "default"} onClick={action.run}>
-                        <action.icon aria-hidden="true" />
-                        {action.label}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuGroup>
+                    <DropdownMenuGroup>
+                      {group.map((action) => (
+                        <DropdownMenuItem key={action.id} variant={action.destructive ? "destructive" : "default"} onClick={action.run}>
+                          <action.icon aria-hidden="true" />
+                          {action.label}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuGroup>
+                  </Fragment>
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
           ) : null}
         </header>
         {driving.length && !screen ? (
-          <div className="pointer-events-none absolute inset-x-0 top-[calc(64px+var(--safe-top)+var(--call-pill-space))] z-20 flex flex-wrap justify-center gap-2 px-3 wide:hidden">
+          <div className="pointer-events-none absolute inset-x-0 top-[calc(64px+var(--safe-top))] z-20 flex flex-wrap justify-center gap-2 px-3 wide:hidden">
             {driving.map((b) => (
               <Button key={b.id} size="lg" onClick={() => setScreen(b.id)} className="pointer-events-auto">
                 {driving.length > 1 ? <BotAvatar bot={b} size={20} /> : <Monitor data-icon="inline-start" aria-hidden="true" />}
@@ -927,11 +1011,18 @@ export function Conversation({ threadId }: { threadId: string }) {
           {jump ? <JumpToMessage key={jump.n} id={jump.id} ready={messages.length > 0} loaded={earlier === false} earlier={loadEarlier} /> : null}
           <FollowSent id={sent} />
           <MessageScroller className="flex-1">
-            <MessageScrollerViewport preserveScrollOnPrepend className="px-3 pt-[calc(64px+var(--safe-top)+var(--call-pill-space))] pb-(--composer-h) sm:px-4">
+            <MessageScrollerViewport preserveScrollOnPrepend className="px-3 pt-[calc(64px+var(--safe-top))] pb-(--composer-h) sm:px-4">
               <MessageScrollerContent className="gap-3 py-4">
                 {earlier && messages.length > 0 ? (
                   <MessageScrollerItem>
                     <LoadEarlier onLoad={loadEarlier} />
+                  </MessageScrollerItem>
+                ) : null}
+                {earlier === null && !loadFailed ? (
+                  <MessageScrollerItem className="flex flex-col gap-3" aria-label="Loading the conversation">
+                    <Skeleton className="h-10 w-2/3 self-end rounded-2xl" />
+                    <Skeleton className="h-24 w-3/4 rounded-2xl" />
+                    <Skeleton className="h-10 w-1/2 self-end rounded-2xl" />
                   </MessageScrollerItem>
                 ) : null}
                 {loadFailed && messages.length === 0 ? (
@@ -961,28 +1052,34 @@ export function Conversation({ threadId }: { threadId: string }) {
                   </MessageScrollerItem>
                 ) : null}
                 <WatchesContext.Provider value={watches}>
-                {messages.filter((m) => !m.spoken).map((m) => (
+                {messages.map((m) => (
                   <MessageScrollerItem key={m.id} messageId={m.id} className={cn((m.id === jumpTo || m.id === flash) && "rounded-2xl ring-2 ring-ring/40")}>
-                    <Line message={m} threadId={threadId} bots={bots} threads={threads} bot={bot} approvals={approvalMap} isRoom={Boolean(isRoom)} editing={editing === m.id} stops={Boolean(info?.answering?.includes(m.id))} touch={touch} answer={answers.get(m.id)} sentTo={sentTo.get(m.id)} noticed={runs.get(m.id)} onPick={pick} onView={setViewing} onDecide={decide} onOpenExchange={setExchange} onEdit={edit} onSelectText={setSelectText} onReacted={replaceMessage} onReply={replyTo} onJump={(id) => setJump((j) => ({ id, n: (j?.n ?? 0) + 1 }))} />
+                    <Line message={m} threadId={threadId} bots={bots} threads={threads} bot={bot} approvals={approvalMap} isRoom={Boolean(isRoom)} editing={editing === m.id} stops={Boolean(info?.answering?.includes(m.id))} touch={touch} answer={answers.get(m.id)} sentTo={sentTo.get(m.id)} noticed={runs.get(m.id)} onPick={onPick} onView={setViewing} onDecide={onDecide} onOpenExchange={setExchange} onEdit={onEdit} onSelectText={setSelectText} onReacted={replaceMessage} onReply={onReply} onJump={onJump} />
                   </MessageScrollerItem>
                 ))}
                 </WatchesContext.Provider>
-
+                {Object.entries(writing).map(([botId, text]) => (
+                  <MessageScrollerItem key={`writing-${botId}`}>
+                    <Writing name={isRoom ? (bots.find((x) => x.id === botId)?.name ?? null) : null} text={text} />
+                  </MessageScrollerItem>
+                ))}
 
                 {workingBots.length > 1 ? (
                   <MessageScrollerItem key="working">
                     <WorkLines working={workingBots} label={names(workingBots.map((w) => w.bot.name))} />
                   </MessageScrollerItem>
                 ) : (
-                  Object.entries(working).map(([botId, line]) => (
-                    <MessageScrollerItem key={`working-${botId}`}>
-                      <WorkLine bot={bots.find((x) => x.id === botId)} line={line} />
-                    </MessageScrollerItem>
-                  ))
+                  Object.entries(working)
+                    .filter(([botId]) => !(botId in writing))
+                    .map(([botId, line]) => (
+                      <MessageScrollerItem key={`working-${botId}`}>
+                        <WorkLine bot={bots.find((x) => x.id === botId)} line={line} />
+                      </MessageScrollerItem>
+                    ))
                 )}
               </MessageScrollerContent>
             </MessageScrollerViewport>
-            <MessageScrollerEdges top="calc(64px + var(--safe-top) + var(--call-pill-space) + 24px)" bottom="calc(var(--composer-h) + 24px)" />
+            <MessageScrollerEdges top="calc(64px + var(--safe-top) + 24px)" bottom="calc(var(--composer-h) + 24px)" />
             <MessageScrollerButton className="data-[direction=end]:bottom-[calc(var(--composer-h)+8px)]" />
           </MessageScroller>
         </MessageScrollerProvider>
@@ -1027,7 +1124,6 @@ export function Conversation({ threadId }: { threadId: string }) {
             </Marker>
           ) : null}
           {replying ? <ReplyingTo name={nameOf(replying.author, bots)} color={colorOf(replying.author, bots)} text={quoteText(replying)} onCancel={() => setReplying(null)} /> : null}
-          {onCall ? <CallComposer call={onCall} bot={bot ?? undefined} /> : (
           <div className="relative flex items-end gap-2.5">
           {slash ? <SlashMenu kind={slash.kind} skills={skills} bots={bots} query={slash.query} selected={slash.selected} onPickSkill={(skill) => insertSkill(skill.slug)} onPickBot={insertBot} /> : null}
           <Tooltip>
@@ -1065,8 +1161,9 @@ export function Conversation({ threadId }: { threadId: string }) {
 
               {busy && draft.trim() && !files.length ? (
                 <Tooltip>
-                  <TooltipTrigger render={<InputGroupButton type="button" variant="ghost" size="icon-sm" aria-label="Send after it finishes" disabled={sending} onClick={() => void send(undefined, true)} className="rounded-full" />}>
+                  <TooltipTrigger render={<InputGroupButton type="button" variant="ghost" size="sm" aria-label="Send after it finishes" disabled={sending} onClick={() => void send(undefined, true)} className="rounded-full" />}>
                     <ListEnd aria-hidden="true" />
+                    <span className="hidden pointer-coarse:inline">Later</span>
                   </TooltipTrigger>
                   <TooltipContent>Send after it finishes</TooltipContent>
                 </Tooltip>
@@ -1081,7 +1178,6 @@ export function Conversation({ threadId }: { threadId: string }) {
             </InputGroupAddon>
           </InputGroup>
           </div>
-          )}
         </form>
       </section>
       {panel && info ? <RightPanel thread={info.thread} bot={bot} working={busy} screen={screenProps} /> : null}

@@ -35,8 +35,6 @@ export type GondDesktop = {
   openExternal?: (url: string) => Promise<void>;
 
   setTheme?: (background: string, dark: boolean, system?: boolean) => Promise<void>;
-  menuBar?: () => Promise<boolean>;
-  setMenuBar?: (shown: boolean) => Promise<void>;
 
   updateState?: () => Promise<DesktopUpdate>;
   checkForUpdates?: () => Promise<DesktopUpdate>;
@@ -55,23 +53,19 @@ declare global {
   interface Window {
     gondDesktop?: GondDesktop;
 
-    kruDesktop?: GondDesktop;
-
     gondMobile?: GondMobile;
-
-    kruMobile?: GondMobile;
   }
 }
 
 export type NativeShell = "desktop" | "android";
 
 export function mobileShell(): GondMobile | null {
-  return typeof window === "undefined" ? null : (window.gondMobile ?? window.kruMobile ?? null);
+  return typeof window === "undefined" ? null : (window.gondMobile ?? null);
 }
 
 export function desktopShell(): GondDesktop | null {
   if (typeof window === "undefined") return null;
-  const bridge = window.gondDesktop ?? window.kruDesktop ?? null;
+  const bridge = window.gondDesktop ?? null;
   return typeof bridge?.changeServer === "function" ? bridge : null;
 }
 

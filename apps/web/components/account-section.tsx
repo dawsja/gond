@@ -3,6 +3,7 @@
 import { Camera } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { PersonAvatar } from "@/components/bot-avatar";
+import { failed } from "@/components/failed";
 import { useStore } from "@/components/store";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,8 +31,12 @@ export function AccountSection({ user }: { user: SessionUser }) {
   });
 
   async function removePicture() {
-    await del("/api/me/avatar").catch(() => undefined);
-    setMe({ ...me, avatar: null });
+    try {
+      await del("/api/me/avatar");
+      setMe({ ...me, avatar: null });
+    } catch (failure) {
+      failed("Couldn't remove the picture.")(failure);
+    }
   }
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
@@ -49,7 +54,7 @@ export function AccountSection({ user }: { user: SessionUser }) {
     const { error: failure } = await authClient.changePassword({ currentPassword: current, newPassword: next, revokeOtherSessions: true });
     setBusy(false);
     if (failure) {
-      setError(failure.status === 429 ? "Too many attempts. Wait a minute and try again." : failure.message || "That current password doesn't match.");
+      setError(failure.status === 429 ? "Too many attempts. Wait a minute and try again." : failure.status === 400 || failure.status === 401 ? "That current password doesn't match." : "Couldn't change the password. Try again.");
       return;
     }
     setCurrent("");
@@ -69,6 +74,10 @@ export function AccountSection({ user }: { user: SessionUser }) {
             <PersonAvatar name={me.name} avatar={me.avatar} size={56} />
             <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/45 text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
               {picture.busy ? <Spinner className="text-white" /> : <Camera className="size-5" aria-hidden="true" />}
+            </span>
+            {/* No hover on a touch screen: a camera badge says the picture can be changed. */}
+            <span aria-hidden="true" className="absolute -right-0.5 -bottom-0.5 hidden size-6 place-items-center rounded-full border border-primary-edge bg-primary text-foreground pointer-coarse:grid">
+              <Camera className="size-3.5" />
             </span>
           </TooltipTrigger>
           <TooltipContent>{me.avatar ? "Change your picture" : "Add a picture"}</TooltipContent>

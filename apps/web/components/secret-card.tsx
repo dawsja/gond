@@ -18,25 +18,45 @@ export function SecretCard({ message, bot }: { message: Message; bot: Bot | unde
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const id = message.approvalId;
+  const [loadFailed, setLoadFailed] = useState(false);
 
   const load = () => {
     if (!id) return;
     void api<{ request: SecretRequest }>(`/api/secret-requests/${id}`)
-      .then((d) => setRequest(d.request))
-      .catch(() => undefined);
+      .then((d) => {
+        setRequest(d.request);
+        setLoadFailed(false);
+      })
+      .catch(() => setLoadFailed(true));
   };
   useEffect(() => {
     void Promise.resolve().then(load);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
   useLiveEvents((event) => {
+    if (request && request.status !== "pending") return;
     if (event.topic === "approvals" || (event.topic === "thread" && event.threadId === message.threadId)) load();
   });
 
   if (request?.target === "login") return <LoginCard request={request} bot={bot} onAnswered={setRequest} />;
   const name = bot?.name ?? "A bot";
   const icon = <KeyRound aria-hidden="true" />;
-  if (!request) return <ActionCard bot={bot} icon={icon} title={`${name} needs something from you`} by={<Spinner aria-label="Loading" />} />;
+  if (!request) {
+    return (
+      <ActionCard
+        icon={icon}
+        title={`${name} needs something from you`}
+        by={loadFailed ? "Couldn't load this request." : <Spinner aria-label="Loading" />}
+        actions={
+          loadFailed ? (
+            <Button variant="outline" size="xl" onClick={load}>
+              Try again
+            </Button>
+          ) : undefined
+        }
+      />
+    );
+  }
 
   const [secret, ...reasonParts] = message.body.split(": ");
   const reason = reasonParts.join(": ");
@@ -68,7 +88,6 @@ export function SecretCard({ message, bot }: { message: Message; bot: Bot | unde
   return (
     <form onSubmit={answer} className="contents">
       <ActionCard
-        bot={bot}
         icon={icon}
         title={composio ? `${name} needs your Composio key` : `${name} needs a secret`}
         by={reason || undefined}

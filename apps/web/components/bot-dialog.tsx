@@ -4,6 +4,7 @@ import { APPROVAL_LEVELS, APPROVAL_LEVEL_LABELS, BOT_COLORS, BOT_EXPRESSIONS, BO
 import { useRouter } from "next/navigation";
 import { ImagePlus, Upload } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
+import { useDiscardChanges } from "@/components/discard-changes";
 import { GondBot } from "@/components/hq/gond-bot";
 import { usePicturePicker } from "@/components/picture-crop-dialog";
 import { useStore } from "@/components/store";
@@ -27,13 +28,12 @@ type Form = {
   expression: BotExpression;
   shape: BotShape;
   approval: (typeof APPROVAL_LEVELS)[number];
-  toolkits: string[];
   notify: boolean;
 };
 
 const APPROVAL_ITEMS = APPROVAL_LEVELS.map((level) => ({ value: level, label: APPROVAL_LEVEL_LABELS[level].title }));
 
-const EMPTY: Form = { name: "", title: "", description: "", color: BOT_COLORS[0], expression: "happy", shape: "cog", approval: "auto", toolkits: [], notify: true };
+const EMPTY: Form = { name: "", title: "", description: "", color: BOT_COLORS[0], expression: "happy", shape: "cog", approval: "auto", notify: true };
 
 export function BotDialog({ botId, onClose }: { botId: string | null; onClose: () => void }) {
   const { bots, refresh } = useStore();
@@ -48,6 +48,8 @@ export function BotDialog({ botId, onClose }: { botId: string | null; onClose: (
   const shown = photo === undefined ? (existing?.avatar ?? null) : (photo?.url ?? null);
   const picture = usePicturePicker("The bot's picture", async (blob) => setPhoto({ blob, url: URL.createObjectURL(blob) }));
   useEffect(() => () => void (photo && URL.revokeObjectURL(photo.url)), [photo]);
+  const dirty = photo !== undefined || (existing ? JSON.stringify(form) !== JSON.stringify(pick(existing)) : Boolean(form.title.trim() || form.description.trim()));
+  const discard = useDiscardChanges(dirty && !busy, onClose);
 
   useEffect(() => {
     if (!existing) api<{ name: string }>("/api/bots/name").then((d) => setForm((f) => (f.name ? f : { ...f, name: d.name, color: BOT_COLORS[bots.length % BOT_COLORS.length]! }))).catch(() => undefined);
@@ -95,11 +97,11 @@ export function BotDialog({ botId, onClose }: { botId: string | null; onClose: (
   }
 
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
+    <Dialog open onOpenChange={(open) => !open && discard.requestClose()}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{existing ? `Edit ${existing.name}` : "Create a bot"}</DialogTitle>
-          <DialogDescription>A name, a job, and a way of working. A focused bot beats a catch-all one.</DialogDescription>
+          <DialogDescription>{existing ? "Its look, its job and how much it asks before acting." : "A name, a job, and a way of working. A focused bot beats a catch-all one."}</DialogDescription>
         </DialogHeader>
         <form onSubmit={submit}>
           <FieldGroup className="gap-5">
@@ -162,7 +164,7 @@ export function BotDialog({ botId, onClose }: { botId: string | null; onClose: (
 
             <Field>
               <FieldLabel htmlFor="bot-description">Instructions</FieldLabel>
-              <Textarea id="bot-description" value={form.description} onChange={(e) => set("description", e.target.value)} rows={5} maxLength={BOT_LIMITS.description} placeholder="What it owns, what it must ask before doing, and what it returns. This becomes its SOUL.md." />
+              <Textarea id="bot-description" value={form.description} onChange={(e) => set("description", e.target.value)} rows={5} maxLength={BOT_LIMITS.description} placeholder="What it owns, what it must ask before doing, and what it returns." />
             </Field>
             <Field>
               <FieldLabel htmlFor="bot-approval">Approvals</FieldLabel>
@@ -206,7 +208,7 @@ export function BotDialog({ botId, onClose }: { botId: string | null; onClose: (
                   }} />
                 </Button>
               )}
-              <Button type="button" variant="outline" onClick={onClose}>
+              <Button type="button" variant="outline" onClick={discard.requestClose}>
                 Cancel
               </Button>
               <Button type="submit" disabled={busy}>
@@ -217,10 +219,11 @@ export function BotDialog({ botId, onClose }: { botId: string | null; onClose: (
           </FieldGroup>
         </form>
       </DialogContent>
+      {discard.prompt}
     </Dialog>
   );
 }
 
 function pick(bot: Bot): Form {
-  return { name: bot.name, title: bot.title, description: bot.description, color: bot.color, expression: bot.expression, shape: bot.shape, approval: bot.approval, toolkits: bot.toolkits, notify: bot.notify };
+  return { name: bot.name, title: bot.title, description: bot.description, color: bot.color, expression: bot.expression, shape: bot.shape, approval: bot.approval, notify: bot.notify };
 }

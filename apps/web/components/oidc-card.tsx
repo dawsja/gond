@@ -3,6 +3,7 @@
 import { OIDC_DEFAULT_SCOPES, type OidcSettings } from "@gond/shared";
 import { Check, Copy } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { LoadFailed } from "@/components/load-failed";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,8 +26,10 @@ export function OidcCard() {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<"callback" | "logout" | null>(null);
 
+  const [loadFailed, setLoadFailed] = useState(false);
   const load = useCallback(async () => {
     const data = await api<Reply>("/api/oidc").catch(() => null);
+    setLoadFailed(!data);
     if (!data) return;
     setState(data);
     setForm((f) => ({ ...f, name: data.oidc.name, issuer: data.oidc.issuer, clientId: data.oidc.clientId, scopes: data.oidc.scopes }));
@@ -61,8 +64,12 @@ export function OidcCard() {
   }
 
   async function forgetSecret() {
-    setState(await del<Reply>("/api/oidc/secret"));
-    toast.add({ type: "info", title: "Secret forgotten.", description: "The provider is off until a new one is saved." });
+    try {
+      setState(await del<Reply>("/api/oidc/secret"));
+      toast.add({ type: "info", title: "Secret forgotten.", description: "The provider is off until a new one is saved." });
+    } catch (failure) {
+      toast.add({ type: "error", title: failure instanceof Error ? failure.message : "Couldn't forget the secret." });
+    }
   }
 
   async function copy(which: "callback" | "logout") {
@@ -76,7 +83,7 @@ export function OidcCard() {
     }
   }
 
-  if (!state) return <Skeleton className="h-96 rounded-xl" />;
+  if (!state) return loadFailed ? <LoadFailed what="the sign-in settings" onRetry={() => void load()} /> : <Skeleton className="h-96 rounded-xl" />;
   const { oidc } = state;
   const ready = Boolean(oidc.issuer && oidc.clientId && oidc.hasClientSecret);
 

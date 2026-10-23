@@ -2,6 +2,7 @@
 
 import type { Bot, Routine, Skill } from "@gond/shared";
 import { useEffect, useState } from "react";
+import { failed } from "@/components/failed";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field";
@@ -29,7 +30,7 @@ export function RoutineDetails({ bot, routine, onClose, onChange }: { bot: Bot; 
 
   async function toggle(on: boolean) {
     setBusy(true);
-    await setRoutineEnabled(routine, on).catch(() => undefined);
+    await setRoutineEnabled(routine, on).catch(failed(on ? "Couldn't switch the routine on." : "Couldn't switch the routine off."));
     await onChange();
     setBusy(false);
   }

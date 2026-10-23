@@ -60,7 +60,6 @@ function holdOf(step) {
 
 export const THUMB_EDGE = 1024;
 
-export const CONTROL_HOLDERS = ["free", "bots", "person"];
 export const PERSON_HAS_CONTROL = "The person has taken control of the computer; wait for them to give it back or ask them.";
 
 export class ComputerActionError extends Error {

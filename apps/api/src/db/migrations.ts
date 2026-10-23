@@ -1,5 +1,7 @@
 import type { Database } from "bun:sqlite";
 
+const CALLS_OUT = `DELETE FROM gond_messages WHERE spoken = 1 OR (kind = 'event' AND author = 'system' AND (body = 'Call started' OR body LIKE 'Call ended · %'));`;
+
 const MIGRATIONS: Array<string | ((db: Database) => void)> = [
   `
   CREATE TABLE kru_bots (
@@ -648,9 +650,21 @@ const MIGRATIONS: Array<string | ((db: Database) => void)> = [
   `ALTER TABLE gond_messages ADD COLUMN spoken INTEGER NOT NULL DEFAULT 0;`,
   // The voice a call speaks in, per provider, as JSON.
   `ALTER TABLE gond_user_prefs ADD COLUMN call_voice TEXT;`,
+  // Calls were taken out: what was said on them and their start and end lines go. The columns stay
+  // (migrations only add), unused.
+  CALLS_OUT,
+  // Indexes for the queries that run most: a thread's routine runs and the person's last line (the
+  // thread list, rooms), the messages still waiting (every dispatcher tick), and what a
+  // conversation sent elsewhere (its messages, with the exchanges it opened).
+  `
+  CREATE INDEX gond_messages_author ON gond_messages (thread_id, author, created_at);
+  CREATE INDEX gond_messages_open ON gond_messages (created_at) WHERE answered_at IS NULL AND claimed_by IS NULL;
+  CREATE INDEX gond_messages_from ON gond_messages (from_thread_id, created_at) WHERE from_thread_id IS NOT NULL;
+  `,
 ];
 
 export const RENAME_VERSION = MIGRATIONS.indexOf(renameLegacyObjects) + 1;
+export const CALLS_OUT_VERSION = MIGRATIONS.indexOf(CALLS_OUT) + 1;
 export const LATEST_VERSION = MIGRATIONS.length;
 
 type Named = { name: string; sql: string | null };

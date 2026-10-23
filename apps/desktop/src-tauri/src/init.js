@@ -22,13 +22,43 @@
     openExternal: (url) => invoke("open_external", { url: String(url ?? "") }),
     setTheme: (background, dark, system) =>
       invoke("set_theme", { background: String(background ?? ""), dark: Boolean(dark), system: Boolean(system) }),
-    menuBar: () => invoke("menu_bar"),
-    setMenuBar: (shown) => invoke("set_menu_bar", { shown: Boolean(shown) }),
     updateState: () => invoke("update_state"),
     checkForUpdates: () => invoke("check_for_updates"),
     installUpdate: () => invoke("install_update"),
   });
   Object.defineProperty(window, "gondDesktop", { value: bridge, writable: false, configurable: false });
+
+  // Alt on its own, pressed and let go with nothing in between, shows the menu bar; Esc or a click hides it.
+  let altAlone = false;
+  let menuShown = false;
+  const toggleMenu = (hide) =>
+    invoke("toggle_menu_bar", { hide }).then(
+      (shown) => (menuShown = Boolean(shown)),
+      () => {},
+    );
+  window.addEventListener(
+    "keydown",
+    (event) => {
+      altAlone = event.key === "Alt" && !event.repeat && !event.ctrlKey && !event.shiftKey && !event.metaKey;
+      if (event.key === "Escape" && menuShown) void toggleMenu(true);
+    },
+    true,
+  );
+  window.addEventListener(
+    "keyup",
+    (event) => {
+      if (event.key !== "Alt" || !altAlone) return;
+      altAlone = false;
+      event.preventDefault();
+      void toggleMenu(false);
+    },
+    true,
+  );
+  window.addEventListener("pointerdown", () => {
+    altAlone = false;
+    if (menuShown) void toggleMenu(true);
+  }, true);
+  window.addEventListener("blur", () => (altAlone = false));
 
   window.open = (url) => {
     let target;

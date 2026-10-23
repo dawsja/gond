@@ -18,7 +18,6 @@ type Row = {
   model: string;
   approval: string;
   is_primary: number;
-  toolkits: string;
   thread_id: string;
   hidden: number;
   pinned: number;
@@ -29,14 +28,6 @@ type Row = {
   updated_at: string;
   avatar_at: string | null;
 };
-
-function parseJson<T>(text: string, fallback: T): T {
-  try {
-    return JSON.parse(text) as T;
-  } catch {
-    return fallback;
-  }
-}
 
 function toBot(row: Row): Bot {
   return {
@@ -50,7 +41,6 @@ function toBot(row: Row): Bot {
     expression: (BOT_EXPRESSIONS as readonly string[]).includes(row.expression) ? (row.expression as BotExpression) : "happy",
     shape: (BOT_SHAPES as readonly string[]).includes(row.shape) ? (row.shape as BotShape) : "cog",
     approval: (APPROVAL_LEVELS as readonly string[]).includes(row.approval) ? (row.approval as ApprovalLevel) : "ask",
-    toolkits: parseJson<string[]>(row.toolkits, []),
     threadId: row.thread_id,
     primary: row.is_primary === 1,
     hidden: row.hidden === 1,
@@ -110,7 +100,7 @@ export function setPrimary(userId: string, botId: string): Bot | null {
     db.query("UPDATE gond_bots SET is_primary = CASE WHEN id = ? THEN 1 ELSE 0 END WHERE user_id = ?").run(botId, userId);
     return toBot(db.query(`${SELECT} WHERE id = ?`).get(botId) as Row);
   });
-  if (bot) botsChanged();
+  if (bot) botsChanged(userId);
   return bot;
 }
 
@@ -125,8 +115,8 @@ export function createBot(input: BotInput, userId: string): Bot {
     ).run(threadId, id, input.name, userId, at, at);
     db.query("INSERT INTO gond_thread_members (thread_id, bot_id) VALUES (?, ?)").run(threadId, id);
     db.query(
-      `INSERT INTO gond_bots (id, name, title, description, voice, color, expression, shape, tilt, model, approval, toolkits, notify, thread_id, position, user_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO gond_bots (id, name, title, description, voice, color, expression, shape, tilt, model, approval, notify, thread_id, position, user_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       id,
       input.name,
@@ -140,7 +130,6 @@ export function createBot(input: BotInput, userId: string): Bot {
       0,
       DEFAULT_MODEL,
       input.approval,
-      JSON.stringify(input.toolkits),
       input.notify ? 1 : 0,
       threadId,
       Number(max.p) + 1,
@@ -149,7 +138,7 @@ export function createBot(input: BotInput, userId: string): Bot {
       at,
     );
     keepOnePrimary(db, userId);
-    botsChanged();
+    botsChanged(userId);
     return toBot(db.query(`${SELECT} WHERE id = ?`).get(id) as Row);
   });
 }
@@ -160,7 +149,7 @@ export function updateBot(id: string, patch: Partial<BotInput> & { hidden?: bool
   const next = { ...current, ...patch, updatedAt: now() };
   transaction((db) => {
     db.query(
-      `UPDATE gond_bots SET name = ?, title = ?, description = ?, color = ?, expression = ?, shape = ?, approval = ?, toolkits = ?, notify = ?, hidden = ?, pinned = ?, position = ?, updated_at = ? WHERE id = ?`,
+      `UPDATE gond_bots SET name = ?, title = ?, description = ?, color = ?, expression = ?, shape = ?, approval = ?, notify = ?, hidden = ?, pinned = ?, position = ?, updated_at = ? WHERE id = ?`,
     ).run(
       next.name,
       next.title,
@@ -169,7 +158,6 @@ export function updateBot(id: string, patch: Partial<BotInput> & { hidden?: bool
       next.expression,
       next.shape,
       next.approval,
-      JSON.stringify(next.toolkits),
       next.notify ? 1 : 0,
       next.hidden ? 1 : 0,
       next.pinned ? 1 : 0,
@@ -180,7 +168,7 @@ export function updateBot(id: string, patch: Partial<BotInput> & { hidden?: bool
     if (patch.name) db.query("UPDATE gond_threads SET name = ? WHERE id = ?").run(patch.name, current.threadId);
     if (patch.hidden !== undefined && patch.hidden !== current.hidden) keepOnePrimary(db, current.userId);
   });
-  botsChanged();
+  botsChanged(current.userId);
   return getBot(id);
 }
 
@@ -198,7 +186,7 @@ export function deleteBot(id: string): Bot | null {
     db.query("DELETE FROM gond_bots WHERE id = ?").run(id);
     keepOnePrimary(db, bot.userId);
   });
-  botsChanged();
+  botsChanged(bot.userId);
   return bot;
 }
 
@@ -218,16 +206,17 @@ export function setBotAvatar(botId: string, data: Uint8Array): Bot | null {
   const mediaType = pictureType(data);
   if (!mediaType) throw new Error("Use a PNG, JPEG, WebP or GIF");
   if (data.byteLength > AVATAR_MAX_BYTES) throw new Error("The picture must be under 2 MB");
-  if (!getBot(botId)) return null;
+  const bot = getBot(botId);
+  if (!bot) return null;
   ensureDatabase()
     .query("INSERT INTO gond_bot_avatars (bot_id, media_type, data, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(bot_id) DO UPDATE SET media_type = excluded.media_type, data = excluded.data, updated_at = excluded.updated_at")
     .run(botId, mediaType, data, now());
-  botsChanged();
+  botsChanged(bot.userId);
   return getBot(botId);
 }
 
 export function clearBotAvatar(botId: string): boolean {
   const changed = ensureDatabase().query("DELETE FROM gond_bot_avatars WHERE bot_id = ?").run(botId).changes > 0;
-  if (changed) botsChanged();
+  if (changed) botsChanged(getBot(botId)?.userId);
   return changed;
 }

@@ -121,7 +121,6 @@ function ToolApprovalCard({ message, approval, bot, noticed, onDecide }: { messa
   }
   return (
     <ActionCard
-      bot={bot}
       noticed={noticed}
       icon={shape.icon}
       title={shape.title}
@@ -136,7 +135,7 @@ function ToolApprovalCard({ message, approval, bot, noticed, onDecide }: { messa
           {shape.always ? (
             <Button size="xl" variant="outline" className="w-full" disabled={Boolean(busy)} onClick={() => void decide("always")}>
               {busy === "always" ? <Spinner data-icon="inline-start" /> : null}
-              Always
+              Always allow
             </Button>
           ) : null}
           <Button size="xl" variant="outline" className={cn("w-full", approval?.tool !== "ask_approval" && "text-destructive")} disabled={Boolean(busy)} onClick={() => void decide("deny")}>

@@ -3,7 +3,6 @@
 import { ACCENT_LABELS, ACCENTS, isAccent, type Accent } from "@gond/shared";
 import { Eye, Mail, Moon, Sun, SunMoon } from "lucide-react";
 import { useSyncExternalStore } from "react";
-import { MenuBarField } from "@/components/server-card";
 import { useStore } from "@/components/store";
 import { useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
@@ -13,7 +12,6 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectVa
 import { toast } from "@/components/ui/toast";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { api } from "@/lib/api";
-import { useNativeShell } from "@/lib/shell";
 
 const subscribeNever = () => () => {};
 
@@ -36,7 +34,6 @@ export function AppearanceCard() {
   const { theme, setTheme } = useTheme();
   const { me, setMe } = useStore();
   const mounted = useSyncExternalStore(subscribeNever, () => true, () => false);
-  const shell = useNativeShell();
 
   async function pick(accent: Accent) {
     if (accent === me.accent) return;
@@ -101,12 +98,6 @@ export function AppearanceCard() {
               </SelectContent>
             </Select>
           </Field>
-          {shell === "desktop" ? (
-            <>
-              <FieldSeparator />
-              <MenuBarField />
-            </>
-          ) : null}
         </FieldGroup>
 
         <div className="flex flex-col gap-2" aria-label="Preview" role="group">

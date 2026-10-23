@@ -5,7 +5,6 @@ import path from "node:path";
 export const FIRST_UID = 2001;
 
 export const NAME_PREFIX = "gond-";
-export const LEGACY_NAME_PREFIX = "kru-";
 
 const MAX_NAME = 32;
 export const USER_ID = /^[A-Za-z0-9_-]{1,64}$/;
@@ -228,39 +227,6 @@ export class Accounts {
     } catch (error) {
       this.log(`could not own ${dir}: ${error.message}`);
     }
-  }
-
-  adoptLegacyNames() {
-    let changed = false;
-    for (const [id, record] of this.records) {
-      if (record.admin || !record.name.startsWith(LEGACY_NAME_PREFIX)) continue;
-      const old = record.name;
-      const taken = new Set([this.agent.name, ...[...this.records.values()].map((r) => r.name)]);
-      const name = accountName({ name: old.slice(LEGACY_NAME_PREFIX.length) }, taken);
-      const oldHome = path.join(this.homesDir, old);
-      const home = path.join(this.homesDir, name);
-      try {
-        if (this.root && linuxUserExists(old)) {
-          const user = run("usermod", ["-l", name, old]);
-          if (!user.ok) throw new Error(`usermod failed: ${user.output.slice(0, 200)}`);
-          const group = run("groupmod", ["-n", name, old]);
-          if (!group.ok) this.log(`groupmod ${old}: ${group.output.slice(0, 200)}`);
-          const move = fs.existsSync(oldHome) && !fs.existsSync(home) ? ["-d", home, "-m", name] : ["-d", home, name];
-          const moved = run("usermod", move);
-          if (!moved.ok) throw new Error(`usermod failed: ${moved.output.slice(0, 200)}`);
-        } else if (fs.existsSync(oldHome) && !fs.existsSync(home)) {
-          fs.renameSync(oldHome, home);
-        }
-      } catch (error) {
-        this.log(`could not rename ${old}: ${error.message}`);
-        continue;
-      }
-      if (this.skillsRoot) fs.rmSync(path.join(this.skillsRoot, old), { recursive: true, force: true });
-      record.name = name;
-      changed = true;
-      this.log(`account ${old} is now ${name} for ${id}`);
-    }
-    if (changed) this.save();
   }
 
   restore() {

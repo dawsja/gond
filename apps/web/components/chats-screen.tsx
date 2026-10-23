@@ -12,12 +12,13 @@ import { ThreadConfirms, type Ask } from "@/components/thread-actions";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
+const onOpen = (dialog: ShellDialog) => dialog && openShellDialog(dialog);
+
 export function ChatsScreen({ className }: { className?: string }) {
   const { me } = useStore();
   const [ask, setAsk] = useState<Ask | null>(null);
   const [searching, setSearching] = useState(false);
   const { query, setQuery, rows, hits } = useBotSearch();
-  const onOpen = (dialog: ShellDialog) => dialog && openShellDialog(dialog);
   function closeSearch() {
     setQuery("");
     setSearching(false);
@@ -47,7 +48,7 @@ export function ChatsScreen({ className }: { className?: string }) {
           </>
         )}
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 pt-(--call-pill-space) pb-[calc(16px+var(--safe-bottom))]">
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-[calc(16px+var(--safe-bottom))]">
         <BotRows rows={rows} hits={hits} query={query} setQuery={setQuery} lookAs="sheet" onOpen={onOpen} onAsk={setAsk} />
       </div>
       <ThreadConfirms ask={ask} onClose={() => setAsk(null)} />

@@ -13,12 +13,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useHeld } from "@/hooks/use-held";
 import { api, del } from "@/lib/api";
 
 export function UsersCard() {
   const { me } = useStore();
   const [users, setUsers] = useState<UserSummary[] | null>(null);
   const [removing, setRemoving] = useState<UserSummary | null>(null);
+  const shownRemoving = useHeld(removing, Boolean(removing));
 
   const load = useCallback(async () => {
     const data = await api<{ users: UserSummary[] }>("/api/users").catch(() => null);
@@ -86,12 +88,12 @@ export function UsersCard() {
       <AlertDialog open={Boolean(removing)} onOpenChange={(open) => !open && setRemoving(null)}>
         <AlertDialogContent size="sm">
           <AlertDialogHeader>
-            <AlertDialogTitle>Remove {removing?.name}?</AlertDialogTitle>
-            <AlertDialogDescription>Their {removing?.bots ?? 0} {removing?.bots === 1 ? "bot" : "bots"}, every conversation and the bots&apos; files on the computer are deleted. This can&apos;t be undone.</AlertDialogDescription>
+            <AlertDialogTitle>Remove {shownRemoving?.name}?</AlertDialogTitle>
+            <AlertDialogDescription>Their {shownRemoving?.bots ?? 0} {shownRemoving?.bots === 1 ? "bot" : "bots"}, every conversation and the bots&apos; files on the computer are deleted. This can&apos;t be undone.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Keep them</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" onClick={() => removing && void remove(removing)}>
+            <AlertDialogAction variant="destructive" onAction={async () => removing && (await remove(removing))}>
               Remove
             </AlertDialogAction>
           </AlertDialogFooter>

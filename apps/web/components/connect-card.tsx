@@ -8,7 +8,7 @@ import { AppIcon, appName } from "@/components/app-icons";
 import { useLiveEvents } from "@/components/hq/live-events";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-import { api, post } from "@/lib/api";
+import { api, apiShared, post } from "@/lib/api";
 
 export function ConnectCard({ message, bot, toolkit }: { message: Message; bot: Bot | undefined; toolkit: string }) {
   const [connection, setConnection] = useState<Connection | null | undefined>(undefined);
@@ -16,13 +16,15 @@ export function ConnectCard({ message, bot, toolkit }: { message: Message; bot: 
   const [busy, setBusy] = useState(false);
   const [waiting, setWaiting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
 
   const load = useCallback(async () => {
     const [found, connections] = await Promise.all([
       api<{ app: AppCatalogEntry }>(`/api/catalog/${encodeURIComponent(toolkit)}`).catch(() => null),
-      api<{ connections: Connection[] }>("/api/connections").catch(() => null),
+      apiShared<{ connections: Connection[] }>("/api/connections").catch(() => null),
     ]);
     if (found) setApp(found.app);
+    setLoadFailed(!connections);
     if (connections) setConnection(connections.connections.find((c) => c.toolkit === toolkit) ?? null);
   }, [toolkit]);
   useEffect(() => {
@@ -59,17 +61,16 @@ export function ConnectCard({ message, bot, toolkit }: { message: Message; bot: 
 
   return (
     <ActionCard
-      bot={bot}
       icon={icon}
       title={`Connect ${name}`}
-      by={connection === undefined ? <Spinner aria-label="Loading" /> : `${by} needs it. Sign in once and every bot of yours can use it.`}
+      by={connection === undefined ? (loadFailed ? "Couldn't load this. Try again." : <Spinner aria-label="Loading" />) : `${by} needs it. Sign in once and every bot of yours can use it.`}
       actions={
-        <Button size="xl" variant="tint" className="w-full" disabled={busy || waiting || connection === undefined} onClick={() => void connect()}>
+        <Button size="xl" variant="tint" className="w-full" disabled={busy || waiting || (connection === undefined && !loadFailed)} onClick={() => void (connection === undefined ? load() : connect())}>
           {busy || waiting ? <Spinner data-icon="inline-start" /> : null}
-          {waiting ? "Opening the sign-in…" : connection?.status === "pending" ? `Finish connecting ${name}` : `Connect ${name}`}
+          {waiting ? "Opening the sign-in…" : connection === undefined && loadFailed ? "Try again" : connection?.status === "pending" ? `Finish connecting ${name}` : `Connect ${name}`}
         </Button>
       }
-      note={`You sign in on ${name}'s own site. Gond keeps the token and the bots never see it.`}
+      note={`You sign in on ${name}'s own site. Your bots use the connection but never see your password.`}
     >
       {connection?.status === "failed" || error ? (
         <p className="flex items-start gap-1.5 text-[13px] text-destructive">

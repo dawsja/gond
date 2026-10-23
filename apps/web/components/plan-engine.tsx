@@ -66,7 +66,13 @@ export function PlanSignedIn({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" onClick={() => void del(`/api/providers/${kind}`).then(onChange)}>
+            <AlertDialogAction
+              variant="destructive"
+              onAction={async () => {
+                await del(`/api/providers/${kind}`);
+                await onChange();
+              }}
+            >
               Sign out
             </AlertDialogAction>
           </AlertDialogFooter>

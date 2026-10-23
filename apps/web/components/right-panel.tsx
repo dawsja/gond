@@ -1,5 +1,7 @@
 "use client";
 
+import { failed } from "@/components/failed";
+import { LoadFailed } from "@/components/load-failed";
 import { APPROVAL_LEVEL_LABELS, screenOf, type Bot, type Routine, type Thread } from "@gond/shared";
 import { Clock } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -13,6 +15,7 @@ import { useStore } from "@/components/store";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { api } from "@/lib/api";
 import { describeSchedule } from "@/lib/schedule";
@@ -48,7 +51,7 @@ function RoutineRow({ routine, onOpen, onChange }: { routine: Routine; onOpen: (
         <span className={cn("block truncate text-[13px] font-medium", !routine.enabled && "text-muted-foreground")}>{routine.name}</span>
         <span className="block text-[12px] text-muted-foreground">{routine.enabled ? describeSchedule(routine.cron) : "Paused"}</span>
       </button>
-      <Switch size="sm" checked={routine.enabled} onCheckedChange={(on) => void setRoutineEnabled(routine, on).then(onChange)} aria-label={`${routine.name} on or off`} className="ml-1 shrink-0" />
+      <Switch size="sm" checked={routine.enabled} onCheckedChange={(on) => void setRoutineEnabled(routine, on).then(onChange).catch(failed(on ? "Couldn't switch the routine on." : "Couldn't switch the routine off."))} aria-label={`${routine.name} on or off`} className="ml-1 shrink-0" />
     </li>
   );
 }
@@ -58,15 +61,18 @@ export type ScreenProps = { open: string | null; onExpand: (botId: string) => vo
 
 export function RightPanelContent({ thread, bot, screen }: { thread: Thread; bot: Bot | null; working: boolean; screen?: ScreenProps }) {
   const { bots } = useStore();
-  const [routines, setRoutines] = useState<Routine[]>([]);
+  const [routines, setRoutines] = useState<Routine[] | null>(null);
+  const [routinesFailed, setRoutinesFailed] = useState(false);
   const [viewing, setViewing] = useState<Routine | null>(null);
   const drivers = useScreenDrivers(thread.id);
 
+  const botId = bot?.id;
   const load = useCallback(async () => {
-    if (!bot) return;
-    const data = await api<{ routines: Routine[] }>(`/api/routines?bot=${bot.id}`).catch(() => null);
+    if (!botId) return;
+    const data = await api<{ routines: Routine[] }>(`/api/routines?bot=${botId}`).catch(() => null);
+    setRoutinesFailed(!data);
     if (data) setRoutines(data.routines);
-  }, [bot]);
+  }, [botId]);
 
   useEffect(() => {
     void Promise.resolve().then(load);
@@ -91,7 +97,7 @@ export function RightPanelContent({ thread, bot, screen }: { thread: Thread; bot
             ))}
           </ul>
           <Button variant="outline" size="sm" onClick={() => openShellDialog({ kind: "edit-room", threadId: thread.id })} className="mt-3 w-full">
-            Edit group
+            Edit room
           </Button>
         </section>
         {drivers.map((driver) => (
@@ -117,7 +123,9 @@ export function RightPanelContent({ thread, bot, screen }: { thread: Thread; bot
 
       <section>
         <h2 className="text-[12px] font-medium uppercase tracking-wide text-muted-foreground">Routines</h2>
-        {routines.length === 0 ? (
+        {routines === null ? (
+          routinesFailed ? <LoadFailed what="the routines" onRetry={() => void load()} className="mt-2" /> : <Skeleton className="mt-2 h-14 rounded-xl" />
+        ) : routines.length === 0 ? (
           <Empty className="mt-2 border px-3 py-5">
             <EmptyHeader>
               <EmptyMedia variant="icon">
@@ -151,7 +159,7 @@ export function RightPanelContent({ thread, bot, screen }: { thread: Thread; bot
         </Button>
       </section>
 
-      {viewing ? <RoutineDetails bot={bot} routine={routines.find((r) => r.id === viewing.id) ?? viewing} onClose={() => setViewing(null)} onChange={load} /> : null}
+      {viewing ? <RoutineDetails bot={bot} routine={routines?.find((r) => r.id === viewing.id) ?? viewing} onClose={() => setViewing(null)} onChange={load} /> : null}
     </>
   );
 }
@@ -167,12 +175,12 @@ export function RightPanel(props: { thread: Thread; bot: Bot | null; working: bo
 export function DetailsSheet({ open, onOpenChange, ...props }: { open: boolean; onOpenChange: (open: boolean) => void; thread: Thread; bot: Bot | null; working: boolean; screen?: ScreenProps }) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="max-h-[85dvh] gap-0 rounded-t-2xl pb-[var(--safe-bottom)] xwide:hidden">
-        <SheetHeader className="pb-2">
+      <SheetContent side="bottom" className="gap-0 xwide:hidden">
+        <SheetHeader className="pb-3">
           <SheetTitle>{props.bot ? props.bot.name : props.thread.name}</SheetTitle>
-          <SheetDescription>{props.bot ? props.bot.title || "Teammate" : `${props.thread.members.length} bots`}</SheetDescription>
+          <SheetDescription>{props.bot ? props.bot.title || "Your bot" : `${props.thread.members.length} ${props.thread.members.length === 1 ? "bot" : "bots"}`}</SheetDescription>
         </SheetHeader>
-        <div className="flex min-h-0 flex-col gap-5 overflow-y-auto px-4 pb-4">{open ? <RightPanelContent {...props} /> : null}</div>
+        <div className="flex min-h-0 flex-col gap-5 overflow-y-auto px-6 pb-6">{open ? <RightPanelContent {...props} /> : null}</div>
       </SheetContent>
     </Sheet>
   );

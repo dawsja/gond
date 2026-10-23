@@ -5,7 +5,6 @@
   "description": "Gond: a self-hosted, open-source team of always-on AI bots with their own computer.",
   "license": "MIT",
   "workspaces": ["apps/*", "packages/*"],
-  "trustedDependencies": ["electron"],
   "engines": {
     "node": ">=22.13"
   },

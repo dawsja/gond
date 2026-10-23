@@ -69,22 +69,31 @@ export function clearWork(threadId: string, botId: string) {
   logs().delete(keyOf(threadId, botId));
 }
 
-export type TurnTiming = { totalMs: number; toolsMs: number; modelMs: number; rounds: number; calls: number; screen: number };
+export type TurnTiming = { totalMs: number; toolsMs: number; modelMs: number; rounds: number; calls: number; screen: number; queuedMs: number; setupMs: number; firstMs: number | null };
 
 /**
- * Where a turn's time went. A round is the model answering once with one or
- * more tool calls; the time no tool is running is the model's. Overlapping
- * calls count once.
+ * A turn's time from the message to its end: how long it waited to start (`queuedSince`), its setup
+ * until `ready()` (the model is asked), when `firstText()` came, then the model's rounds and the tools.
  */
-export function createTurnClock(now: () => number = Date.now) {
+export function createTurnClock(now: () => number = Date.now, queuedSince?: number) {
   const started = now();
   const open = new Map<string, number>();
   let idleSince: number | null = started;
+  let setupMs = 0;
+  let firstMs: number | null = null;
   let modelMs = 0;
   let rounds = 0;
   let calls = 0;
   let screen = 0;
   return {
+    ready() {
+      if (setupMs || rounds || open.size) return;
+      setupMs = now() - started;
+      idleSince = now();
+    },
+    firstText() {
+      if (firstMs === null) firstMs = now() - started;
+    },
     step(update: StepUpdate) {
       const finished = update.status === "done" || update.status === "failed";
       if (!finished && !open.has(update.id) && update.tool) {
@@ -104,7 +113,8 @@ export function createTurnClock(now: () => number = Date.now) {
     timing(): TurnTiming {
       const totalMs = now() - started;
       const model = modelMs + (idleSince !== null ? now() - idleSince : 0);
-      return { totalMs, toolsMs: totalMs - model, modelMs: model, rounds: rounds + 1, calls, screen };
+      const queuedMs = queuedSince === undefined ? 0 : Math.max(0, started - queuedSince);
+      return { totalMs, toolsMs: totalMs - setupMs - model, modelMs: model, rounds: rounds + 1, calls, screen, queuedMs, setupMs, firstMs };
     },
   };
 }
@@ -112,5 +122,6 @@ export function createTurnClock(now: () => number = Date.now) {
 const seconds = (ms: number) => `${(ms / 1000).toFixed(1)} s`;
 
 export function timingLine(name: string, run: string, timing: TurnTiming): string {
-  return `[gond] ${name} took ${seconds(timing.totalMs)} on ${run}: ${timing.rounds} model round${timing.rounds === 1 ? "" : "s"} (${seconds(timing.modelMs)}), ${timing.calls} tool call${timing.calls === 1 ? "" : "s"} (${timing.screen} on the screen, ${seconds(timing.toolsMs)})`;
+  const start = `waited ${seconds(timing.queuedMs)}, setup ${seconds(timing.setupMs)}, first words ${timing.firstMs === null ? "never" : `at ${seconds(timing.firstMs)}`}`;
+  return `[gond] ${name} took ${seconds(timing.totalMs)} on ${run} (${start}): ${timing.rounds} model round${timing.rounds === 1 ? "" : "s"} (${seconds(timing.modelMs)}), ${timing.calls} tool call${timing.calls === 1 ? "" : "s"} (${timing.screen} on the screen, ${seconds(timing.toolsMs)})`;
 }

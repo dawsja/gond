@@ -1,11 +1,11 @@
 "use client";
 
 import { ENGINE_LABELS, type Engine, type EngineSignIn } from "@gond/shared";
-import { Check, Copy, ExternalLink } from "lucide-react";
+import { Check, ExternalLink } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
@@ -16,28 +16,6 @@ const POLL_MS = 2_000;
 
 async function readSignIn(engine: Engine) {
   return (await api<{ signIn: EngineSignIn | null }>(`/api/box/engines/${engine}/sign-in`)).signIn;
-}
-
-function CodeToEnter({ code }: { code: string }) {
-  const [copied, setCopied] = useState(false);
-  const copy = async () => {
-    try {
-      await navigator.clipboard?.writeText(code);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 2_000);
-    } catch {
-      /* a phone without the clipboard: the code is selectable anyway */
-    }
-  };
-  return (
-    <div className="flex flex-col items-center gap-2">
-      <span className="w-full rounded-xl border bg-muted px-4 py-3 text-center font-mono text-2xl tracking-[0.2em] select-all">{code}</span>
-      <Button type="button" variant="ghost" size="sm" onClick={() => void copy()} className="pointer-coarse:min-h-11">
-        {copied ? <Check data-icon="inline-start" className="text-mint" /> : <Copy data-icon="inline-start" />}
-        {copied ? "Copied" : "Copy the code"}
-      </Button>
-    </div>
-  );
 }
 
 function PasteCode({ engine, onSent }: { engine: Engine; onSent: (signIn: EngineSignIn) => void }) {
@@ -143,7 +121,7 @@ export function EngineSignInDialog({ engine, onOpenChange, onDone }: { engine: E
   };
 
   return (
-    <Dialog open onOpenChange={onOpenChange}>
+    <Dialog open onOpenChange={(open) => (open ? onOpenChange(true) : state === "done" || state === "failed" ? onOpenChange(false) : cancel())}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Sign in to {info.name}</DialogTitle>
@@ -168,7 +146,6 @@ export function EngineSignInDialog({ engine, onOpenChange, onDone }: { engine: E
 
         {signIn && (state === "waiting" || state === "finishing") ? (
           <div className="flex flex-col gap-4">
-            {signIn.code ? <CodeToEnter code={signIn.code} /> : null}
             {signIn.url ? (
               <Button size="lg" className="w-full max-sm:h-12" render={<a href={signIn.url} target="_blank" rel="noreferrer noopener" />} nativeButton={false}>
                 <ExternalLink data-icon="inline-start" />
@@ -190,7 +167,7 @@ export function EngineSignInDialog({ engine, onOpenChange, onDone }: { engine: E
 
         {signIn && state === "done" ? (
           <p className="flex items-start gap-2 text-[13.5px]">
-            <Check className="mt-0.5 size-4 shrink-0 text-mint" aria-hidden="true" />
+            <Check className="mt-0.5 size-4 shrink-0 text-tone-ok" aria-hidden="true" />
             Signed in. Your bots use {info.name} from their next reply.
           </p>
         ) : null}
@@ -204,29 +181,25 @@ export function EngineSignInDialog({ engine, onOpenChange, onDone }: { engine: E
           </Alert>
         ) : null}
 
-        <div className="flex gap-2">
-          {state === "done" ? (
-            <Button className="flex-1" onClick={() => onOpenChange(false)}>
-              Done
-            </Button>
-          ) : state === "failed" ? (
-            <>
-              <Button className="flex-1" onClick={() => void start(engine)}>
-                Try again
-              </Button>
-              <Button variant="outline" onClick={() => onOpenChange(false)}>
-                Close
-              </Button>
-            </>
-          ) : (
-            <Button variant="outline" className="flex-1" onClick={cancel}>
-              Cancel
-            </Button>
-          )}
-        </div>
         <p className="text-[12px] text-muted-foreground">
           The sign-in stays in your account on the computer. You can also run <code className="rounded bg-muted px-1 font-mono text-[11.5px]">{info.signIn}</code> in a terminal there.
         </p>
+        <DialogFooter>
+          {state === "done" ? (
+            <Button onClick={() => onOpenChange(false)}>Done</Button>
+          ) : state === "failed" ? (
+            <>
+              <Button variant="outline" onClick={() => onOpenChange(false)}>
+                Close
+              </Button>
+              <Button onClick={() => void start(engine)}>Try again</Button>
+            </>
+          ) : (
+            <Button variant="outline" onClick={cancel}>
+              Cancel the sign-in
+            </Button>
+          )}
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

@@ -212,29 +212,25 @@ pub fn set_theme(
     Ok(())
 }
 
+/// A tap of Alt shows the menu bar, as in any Windows app, and a second one, Esc
+/// or a click in the page hides it; `hide` only ever hides. Shown or not after.
 #[tauri::command]
-pub fn menu_bar(window: WebviewWindow, state: State<'_, AppState>) -> Result<bool, String> {
-    if !trusted(&window, &state) {
-        return Err(NOT_HERE.to_string());
-    }
-    Ok(state.menu_bar())
-}
-
-#[tauri::command]
-pub fn set_menu_bar(
-    app: AppHandle,
+pub fn toggle_menu_bar(
     window: WebviewWindow,
     state: State<'_, AppState>,
-    shown: bool,
-) -> Result<(), String> {
-    if !trusted(&window, &state) {
+    hide: bool,
+) -> Result<bool, String> {
+    if !trusted(&window, &state) && !from_connect_page(&window) {
         return Err(NOT_HERE.to_string());
     }
-    state.update(&app, |config| config.menu_bar = shown);
-    for window in app.webview_windows().values() {
-        crate::apply_menu_bar(window);
-    }
-    Ok(())
+    let shown = window.is_menu_visible().unwrap_or(false);
+    let show = !hide && !shown;
+    let _ = if show {
+        window.show_menu()
+    } else {
+        window.hide_menu()
+    };
+    Ok(show)
 }
 
 #[tauri::command]

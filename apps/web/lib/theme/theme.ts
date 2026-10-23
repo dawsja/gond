@@ -7,7 +7,6 @@ export const THEME_STORAGE_KEY = "gond-theme";
 // The person's color lives on the server; this copy only paints the first frame before /api/me answers.
 export const ACCENT_STORAGE_KEY = "gond-accent";
 
-export const LEGACY_THEME_STORAGE_KEY = "kru-theme";
 export const DARK_QUERY = "(prefers-color-scheme: dark)";
 
 export function isTheme(value: unknown): value is Theme {
@@ -16,7 +15,7 @@ export function isTheme(value: unknown): value is Theme {
 
 export function readStoredTheme(): Theme {
   try {
-    const raw = window.localStorage.getItem(THEME_STORAGE_KEY) ?? window.localStorage.getItem(LEGACY_THEME_STORAGE_KEY);
+    const raw = window.localStorage.getItem(THEME_STORAGE_KEY);
     return isTheme(raw) ? raw : "system";
   } catch {
     return "system";
@@ -43,8 +42,6 @@ export function applyAccent(accent: string) {
 
 export const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem(${JSON.stringify(
   THEME_STORAGE_KEY,
-)})||localStorage.getItem(${JSON.stringify(
-  LEGACY_THEME_STORAGE_KEY,
 )});var d=t==="dark"||(t!=="light"&&matchMedia(${JSON.stringify(
   DARK_QUERY,
-)}).matches);document.documentElement.classList.toggle("dark",d);var a=localStorage.getItem(${JSON.stringify(ACCENT_STORAGE_KEY)});if(a&&/^[a-z]+$/.test(a))document.documentElement.setAttribute("data-accent",a);if(window.gondMobile||window.kruMobile)document.documentElement.setAttribute("data-shell","android")}catch(e){}})()`;
+)}).matches);document.documentElement.classList.toggle("dark",d);var a=localStorage.getItem(${JSON.stringify(ACCENT_STORAGE_KEY)});if(a&&/^[a-z]+$/.test(a))document.documentElement.setAttribute("data-accent",a);if(window.gondMobile)document.documentElement.setAttribute("data-shell","android")}catch(e){}})()`;

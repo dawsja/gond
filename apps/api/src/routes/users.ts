@@ -5,9 +5,7 @@ import type { Env } from "../app.ts";
 import { getAuth, invalidateAuth, oidcCallbackUrl, oidcLogoutUrl } from "../auth.ts";
 import { boxConfig, removeBoxAccount } from "../box.ts";
 import { clearOidcSecret, getOidcSettings, oidcReady, updateOidcSettings } from "../data/oidc.ts";
-import { listThreads } from "../data/threads.ts";
 import { deleteUserData, getUser, listUsers } from "../data/users.ts";
-import { endCallsOf } from "../calls.ts";
 import { stopAll } from "../responder.ts";
 
 export function authConfig(local: boolean): AuthConfig {
@@ -48,7 +46,6 @@ export function usersRoutes() {
     const user = getUser(id);
     if (!user) return c.json({ error: "Couldn't find that person" }, 404);
     if (user.role === "admin") return c.json({ error: "The admin can't be removed" }, 400);
-    endCallsOf(id);
     await stopAll(id).catch(() => undefined);
     deleteUserData(id);
     const box = boxConfig();

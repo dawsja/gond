@@ -37,8 +37,6 @@ const botFields = z.object({
   shape: z.enum(BOT_SHAPES),
   approval: z.enum(APPROVAL_LEVELS),
 
-  toolkits: z.array(z.string().trim().min(1).max(40)).max(40),
-
   notify: z.boolean(),
 });
 
@@ -49,7 +47,6 @@ export const botInputSchema = botFields.extend({
   expression: botFields.shape.expression.default("happy"),
   shape: botFields.shape.shape.default("cog"),
   approval: botFields.shape.approval.default("auto"),
-  toolkits: botFields.shape.toolkits.default([]),
   notify: botFields.shape.notify.default(true),
 });
 
@@ -59,7 +56,6 @@ export const botInputSchema = botFields.extend({
  * with its default, so pinning a bot would have made it forget its job.
  */
 export const botPatchSchema = botFields.partial();
-export type BotPatch = z.infer<typeof botPatchSchema>;
 export type BotInput = z.infer<typeof botInputSchema>;
 
 export const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
@@ -143,8 +139,6 @@ export type Message = {
   fromThreadId: string | null;
 
   steered: boolean;
-  /** Said out loud on a call: the person's words as heard, or what the bot's voice said. Kept for the bot, never shown. */
-  spoken: boolean;
 
   reactions: Reaction[];
   /** The message this one answers, quoted: who wrote it and its first words, or its first file's name. */
@@ -372,9 +366,7 @@ export const OIDC_PROVIDER_ID = "oidc";
 
 export const MOBILE_SIGN_IN_CALLBACK = "gond://sign-in";
 
-export const LEGACY_MOBILE_SIGN_IN_CALLBACK = "krubot://sign-in";
-
-export const SIGN_IN_APPS = ["android", "app", "desktop"] as const;
+export const SIGN_IN_APPS = ["android", "desktop"] as const;
 export type SignInApp = (typeof SIGN_IN_APPS)[number];
 export const OIDC_DEFAULT_SCOPES = "openid profile email";
 
@@ -412,10 +404,6 @@ export type ProviderKind = (typeof PROVIDER_KINDS)[number];
 /** The APIs a person types a key for; a ChatGPT or Grok plan is signed in to instead. */
 export const KEY_PROVIDER_KINDS = ["anthropic", "openai", "xai"] as const satisfies readonly ProviderKind[];
 export type KeyProviderKind = (typeof KEY_PROVIDER_KINDS)[number];
-
-export function isKeyProvider(kind: ProviderKind): kind is KeyProviderKind {
-  return (KEY_PROVIDER_KINDS as readonly string[]).includes(kind);
-}
 
 /** A plan a person signs in to, whose tokens Gond keeps and renews; each is an engine of its own. */
 export const PLAN_PROVIDER_KINDS = ["chatgpt", "grok"] as const satisfies readonly ProviderKind[];
@@ -509,11 +497,7 @@ export type VoiceSettings = {
   using: VoiceProvider | null;
   available: VoiceProvider[];
   openaiModel: string;
-  /** The voice a call speaks in, per provider, since each has its own; missing is the provider's default. */
-  callVoice: Partial<Record<VoiceProvider, string>>;
 };
-export const CALL_VOICE_ID = /^[a-z0-9_-]{1,64}$/i;
-export type CallVoice = { id: string; name: string; detail: string | null };
 export const VOICE_MODEL_ID = /^[\w.:/@+-]{1,120}$/;
 export const TRANSCRIBE_MAX_BYTES = 10 * 1024 * 1024;
 export const TRANSCRIBE_MAX_SECONDS = 120;
@@ -527,56 +511,6 @@ export function pickVoiceProvider(preference: VoicePreference, has: (kind: Voice
   if (preference !== "auto" && has(preference)) return preference;
   return VOICE_PROVIDERS.find(has) ?? null;
 }
-
-/**
- * A live call with a bot runs on a speaking model with the person's own key: OpenAI's GPT-Live or
- * xAI's realtime voice. It only talks; anything past small talk it hands to the bot's own turn.
- */
-export const CALL_MODELS: Record<VoiceProvider, { model: string; voice: string; label: string }> = {
-  xai: { model: "grok-voice-latest", voice: "eve", label: "xAI Grok" },
-  openai: { model: "gpt-live-1", voice: "marin", label: "OpenAI" },
-};
-/**
- * GPT-Live's voices, from OpenAI's docs, since its API has no list to ask (xAI's does: `GET /v1/tts/voices`).
- * Marin and Cedar first: OpenAI's best, and Marin its default.
- */
-export const OPENAI_CALL_VOICES: CallVoice[] = [
-  { id: "marin", name: "Marin", detail: null },
-  { id: "cedar", name: "Cedar", detail: null },
-  ...["alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse"].map((id) => ({ id, name: id[0]!.toUpperCase() + id.slice(1), detail: null })),
-  ...(
-    [
-      ["quartz", "Australian, feminine"],
-      ["ripple", "Australian, masculine"],
-      ["vesper", "British, masculine"],
-      ["willow", "Irish, feminine"],
-      ["stone", "Irish, masculine"],
-      ["gleam", "North American, feminine"],
-      ["meridian", "North American, masculine"],
-      ["delta", "Southern U.S., feminine"],
-      ["cinder", "Southern U.S., masculine"],
-      ["beacon", "Filipino, masculine"],
-      ["bossa", "Portuguese, feminine"],
-      ["tempo", "Portuguese, masculine"],
-      ["nuri", "German, feminine"],
-      ["juni", "German, feminine"],
-      ["flitz", "German, masculine"],
-      ["brise", "French, feminine"],
-      ["sillage", "French, masculine"],
-      ["nira", "Hindi, feminine"],
-      ["harema", "Japanese, feminine"],
-      ["shida", "Japanese, masculine"],
-      ["noeul", "Korean, feminine"],
-    ] as const
-  ).map(([id, detail]) => ({ id, name: id[0]!.toUpperCase() + id.slice(1), detail })),
-];
-
-/** Both sides of a call are mono 16-bit PCM at this rate. */
-export const CALL_SAMPLE_RATE = 24_000;
-export const CALL_MAX_MINUTES = 60;
-export type CallInfo = { id: string; threadId: string; botId: string; provider: VoiceProvider; startedAt: string };
-/** What a call's stream tells the page: its audio and how it ends. The words are never shown; a call is heard. */
-export type CallEvent = { type: "ready" } | { type: "audio"; data: string } | { type: "interrupt" } | { type: "ended"; reason: string | null };
 
 export const CLI_ENGINES = ["claude"] as const;
 export type CliEngine = (typeof CLI_ENGINES)[number];
@@ -686,8 +620,6 @@ export const DEFAULT_ENGINES: Record<Engine, EngineSettings> = {
 export type Onboarding = {
   done: boolean;
 
-  apps: string[];
-
   templates: string[];
 };
 
@@ -706,8 +638,6 @@ export type AiSettings = {
 
 export const DEFAULT_AI: AiSettings = { engine: "claude", enabled: ["claude"], engines: DEFAULT_ENGINES };
 
-export type EngineStatus = { installed: boolean; loggedIn: boolean; detail: string };
-
 export const ENGINE_SIGN_IN_STATES = ["starting", "waiting", "finishing", "done", "failed"] as const;
 export type EngineSignInState = (typeof ENGINE_SIGN_IN_STATES)[number];
 export type EngineSignIn = {
@@ -715,8 +645,6 @@ export type EngineSignIn = {
   state: EngineSignInState;
 
   url: string | null;
-
-  code: string | null;
 
   needsCode: boolean;
 
@@ -820,13 +748,18 @@ export const WORK_STEPS_MAX = 200;
 
 export type LiveEvent =
 
-  | { topic: "bots" }
+  | { topic: "bots"; userId?: string }
   /** A message landed on a thread, or (cleared) every message was removed. */
   | { topic: "thread"; threadId: string; cleared?: true }
   /** A message's reactions changed: all of them as they now stand. */
   | { topic: "reactions"; threadId: string; messageId: string; reactions: Reaction[] }
   /** A bot's live activity while it works: the line, or null when the turn ended. */
   | { topic: "activity"; threadId: string; botId: string; line: string | null }
+  /**
+   * The reply a bot is writing for the person, as far as it has got (already redacted), or null when
+   * it stopped: posted, or it was narration before a tool call.
+   */
+  | { topic: "writing"; threadId: string; botId: string; text: string | null }
   /** A step of a bot's work began or finished: the step as it now stands (see WorkStep). */
   | { topic: "work"; threadId: string; botId: string; step: WorkStep }
   /** Approvals changed. */
@@ -1186,7 +1119,6 @@ export type BotTemplate = {
   color: string;
   expression: BotExpression;
   description: string;
-  toolkits: string[];
   routine?: { name: string; cron: string; prompt: string };
 };
 
@@ -1201,7 +1133,6 @@ export const BOT_TEMPLATES: BotTemplate[] = [
     tagline: "Your always-on assistant. Reads what changed and what needs you, and briefs the others.",
     color: "#7650D8",
     expression: "wink",
-    toolkits: ["gmail", "googlecalendar"],
     description:
       "Own the outcome of what the person asks. Scan the connected channels, inbox, calendar and notes for what is new and what maps to their priorities; for each item give the source, why it matters, the proposed next step, and whether they owe a decision. Coordinate the other bots when a job fits one of them, and return one consolidated answer. Never send messages or change meetings without approval.",
     routine: { name: "Morning briefing", cron: "0 8 * * 1-5", prompt: "Review activity since yesterday across my connected channels, inbox and calendar. Return only items that map to my priorities, each with the source, why it matters, the proposed next step, and whether I owe a decision." },
@@ -1213,7 +1144,6 @@ export const BOT_TEMPLATES: BotTemplate[] = [
     tagline: "Researches accounts overnight, drafts outreach in your voice, and leaves a review list.",
     color: "#E04E0A",
     expression: "happy",
-    toolkits: ["gmail"],
     description:
       "Own account research, contact prioritisation and review-ready outreach. Score accounts against the ideal customer profile and recent intent, find up to three relevant contacts per account, and draft email outreach in the person's voice. Skip anyone already in an active sequence. Always return a review list; never send or enrol anyone yourself.",
   },
@@ -1224,7 +1154,6 @@ export const BOT_TEMPLATES: BotTemplate[] = [
     tagline: "Triages email into clear categories, surfaces what's urgent, drafts replies.",
     color: "#2F6FD6",
     expression: "surprised",
-    toolkits: ["gmail"],
     description:
       "Keep the inbox usable. Triage new mail into categories, surface urgent and blocked threads, and draft replies and clean-up. Every send stays behind approval. Report what changed in a few lines, newest first.",
     routine: { name: "Inbox triage", cron: "0 9,13,17 * * 1-5", prompt: "Triage everything new in the inbox since the last run. List urgent and blocked threads first, then drafts waiting for my approval." },
@@ -1236,7 +1165,6 @@ export const BOT_TEMPLATES: BotTemplate[] = [
     tagline: "Sources candidates, drafts outreach, preps scheduling.",
     color: "#11998A",
     expression: "wink",
-    toolkits: ["gmail", "googlecalendar"],
     description:
       "Own sourcing, candidate research, outreach drafts and scheduling preparation. For a role, find candidates who meet the must-have criteria, explain the evidence for each match, and draft personalised outreach in the person's voice. Never contact anyone without approval. Respect candidate privacy and source terms.",
   },
@@ -1247,7 +1175,6 @@ export const BOT_TEMPLATES: BotTemplate[] = [
     tagline: "Builds the weekly expense summary, matches receipts, nudges owners.",
     color: "#D98A08",
     expression: "happy",
-    toolkits: ["gmail", "googlesheets", "googledrive"],
     description:
       "Own weekly expense reconciliation and missing-information follow-up. Build the week's summary, match receipts from the inbox, flag missing categories or policy exceptions with a policy citation, and draft one follow-up per owner. Return the summary and drafts; never send messages or change reimbursements.",
     routine: { name: "Weekly expense summary", cron: "0 9 * * 1", prompt: "Build last week's expense summary: totals that reconcile, receipts matched, exceptions with policy citations, and one follow-up draft per owner." },
@@ -1259,7 +1186,6 @@ export const BOT_TEMPLATES: BotTemplate[] = [
     tagline: "Turns reports into repro packs: steps, screenshots, console notes.",
     color: "#D03A3A",
     expression: "surprised",
-    toolkits: ["github"],
     description:
       "Turn bug reports into reliable reproduction packs. Read the report, reproduce it in a staging environment or a fresh clone in your home folder, and return exact steps, expected and actual behaviour, screenshots, environment details, relevant console or network notes, and a minimal test case when possible. Never use production customer data.",
   },
@@ -1270,7 +1196,6 @@ export const BOT_TEMPLATES: BotTemplate[] = [
     tagline: "Investigates performance questions with evidence and links.",
     color: "#0B8EC8",
     expression: "happy",
-    toolkits: ["github"],
     description:
       "Investigate product-performance questions using the connected observability and source tools. Preserve links and screenshots, separate evidence from hypotheses, and return a short write-up with the highest-impact issue first. Never change alerts or production settings.",
   },
@@ -1281,7 +1206,6 @@ export const BOT_TEMPLATES: BotTemplate[] = [
     tagline: "Turns portfolio noise into a ranked watch list before the QBR.",
     color: "#CF3D85",
     expression: "wink",
-    toolkits: ["gmail", "googlesheets"],
     description:
       "Review the accounts in the portfolio. Combine usage, support escalations, renewal timing and stakeholder activity into a ranked watch list; for each account include the evidence, why it matters, and a suggested next step. Never contact customers or edit the CRM without approval.",
   },
@@ -1432,7 +1356,7 @@ export function plainMarkdown(text: string): string {
 export type ToolLabel = { verb: string; detail: string | null };
 export type ToolLabelContext = { home?: string | null; servers?: { name: string }[] };
 
-const BRIDGE_PREFIX = /^mcp__(?:gond|kru)__/;
+const BRIDGE_PREFIX = /^mcp__gond__/;
 const COMPOSIO_ACTION = /^[A-Z][A-Z0-9]+_[A-Z0-9_]+$/;
 const MCP_TOOL = /^mcp__([^_].*?)__(.+)$/;
 const LABEL_MAX = 60;

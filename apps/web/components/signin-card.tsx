@@ -9,7 +9,7 @@ import { useLiveEvents } from "@/components/hq/live-events";
 import { Button } from "@/components/ui/button";
 import { McpPasteSignIn, startMcpSignIn } from "@/components/mcp-signin";
 import { Spinner } from "@/components/ui/spinner";
-import { api } from "@/lib/api";
+import { apiShared } from "@/lib/api";
 
 export function SignInCard({ message, bot }: { message: Message; bot: Bot | undefined }) {
   const toolkit = composioCardToolkit(message.approvalId);
@@ -24,9 +24,11 @@ function McpSignInCard({ message, bot }: { message: Message; bot: Bot | undefine
   const [error, setError] = useState<string | null>(null);
 
   const [waiting, setWaiting] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
 
   const load = useCallback(async () => {
-    const data = await api<{ servers: McpServer[] }>("/api/mcp-servers").catch(() => null);
+    const data = await apiShared<{ servers: McpServer[] }>("/api/mcp-servers").catch(() => null);
+    setLoadFailed(!data);
     if (data) setServer(data.servers.find((s) => s.id === id) ?? null);
   }, [id]);
   useEffect(() => {
@@ -68,17 +70,16 @@ function McpSignInCard({ message, bot }: { message: Message; bot: Bot | undefine
 
   return (
     <ActionCard
-      bot={bot}
       icon={icon}
       title={`Sign in to ${name}`}
-      by={server === undefined ? <Spinner aria-label="Loading" /> : host ? `${by} added it · ${host}` : `${by} added it`}
+      by={server === undefined ? (loadFailed ? "Couldn't load this. Try again." : <Spinner aria-label="Loading" />) : !server?.enabled ? `It's switched off. Turn it on under Settings → Apps → MCP servers to sign in.` : host ? `${by} added it · ${host}` : `${by} added it`}
       actions={
-        <Button size="xl" variant={waiting ? "outline" : "tint"} className="w-full" disabled={busy || !server?.enabled} onClick={() => void signIn()}>
+        <Button size="xl" variant={waiting ? "outline" : "tint"} className="w-full" disabled={busy || (server !== undefined && !server?.enabled) || (server === undefined && !loadFailed)} onClick={() => void (server === undefined ? load() : signIn())}>
           {busy ? <Spinner data-icon="inline-start" /> : null}
-          {waiting ? "Open the sign-in again" : server?.authStatus === "error" ? "Try again" : `Sign in to ${name}`}
+          {server === undefined && loadFailed ? "Try again" : waiting ? "Open the sign-in again" : server?.authStatus === "error" ? "Try again" : `Sign in to ${name}`}
         </Button>
       }
-      note={`You sign in on ${host || "the app's own site"}. Gond keeps the token and the bots never see it.`}
+      note={`You sign in on ${host || "the app's own site"}. Your bots use the sign-in but never see your password.`}
     >
       {(server?.authStatus === "error" && server.authError) || error ? (
         <p className="flex items-start gap-1.5 text-[13px] text-destructive">

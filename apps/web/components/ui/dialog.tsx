@@ -39,6 +39,17 @@ function DialogOverlay({
   )
 }
 
+/**
+ * Where focus goes when a pop-up opens: on a touch screen the pop-up itself, so the keyboard stays
+ * down until a field is tapped. base-ui only does this for one opened by a touched trigger, and ours
+ * are opened from state.
+ */
+export function useInitialFocus() {
+  const popup = React.useRef<HTMLDivElement>(null)
+  const initialFocus = React.useCallback(() => (window.matchMedia("(pointer: coarse)").matches ? popup.current : true), [])
+  return { popup, initialFocus }
+}
+
 // The header's and footer's dividers show only while something is scrolled under them.
 function trackScrollEdges(el: HTMLDivElement | null) {
   if (!el) return
@@ -64,6 +75,7 @@ function DialogContent({
   overlayClassName,
   bodyClassName,
   container,
+  initialFocus,
   ...props
 }: DialogPrimitive.Popup.Props &
   Pick<DialogPrimitive.Portal.Props, "container"> & {
@@ -71,10 +83,13 @@ function DialogContent({
   overlayClassName?: string
   bodyClassName?: string
 }) {
+  const { popup, initialFocus: focusOnOpen } = useInitialFocus()
   return (
     <DialogPortal container={container}>
       <DialogOverlay className={overlayClassName} />
       <DialogPrimitive.Popup
+        ref={popup}
+        initialFocus={initialFocus ?? focusOnOpen}
         data-slot="dialog-content"
         className={cn(
 
@@ -139,7 +154,7 @@ function DialogFooter({
     <div
       data-slot="dialog-footer"
       className={cn(
-        "sticky bottom-0 z-10 -mx-6 -mt-2 flex flex-col-reverse gap-2 border-t border-transparent bg-card px-6 pt-3 group-data-below/dialog-body:border-border pb-6 max-sm:pb-[max(24px,var(--safe-bottom))] sm:flex-row sm:justify-end [&>button]:h-9 [&>button]:px-3.5 max-sm:[&>button]:h-11",
+        "sticky bottom-0 z-10 -mx-6 -mt-2 flex flex-col-reverse gap-2 border-t border-transparent bg-card px-6 pt-3 group-data-below/dialog-body:border-border pb-6 max-sm:pb-[max(24px,var(--safe-bottom))] sm:flex-row sm:justify-end [&>*]:h-9 [&>*]:px-3.5 max-sm:[&>*]:h-11",
         className
       )}
       {...props}

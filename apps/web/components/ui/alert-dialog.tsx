@@ -5,9 +5,20 @@ import { AlertDialog as AlertDialogPrimitive } from "@base-ui/react/alert-dialog
 import { cn } from "cn"
 
 import { Button } from "@/components/ui/button"
+import { useInitialFocus } from "@/components/ui/dialog"
+import { Spinner } from "@/components/ui/spinner"
+import { toast } from "@/components/ui/toast"
 
-function AlertDialog({ ...props }: AlertDialogPrimitive.Root.Props) {
-  return <AlertDialogPrimitive.Root data-slot="alert-dialog" {...props} />
+const ActionsContext = React.createContext<React.RefObject<AlertDialogPrimitive.Root.Actions | null> | null>(null)
+
+function AlertDialog({ actionsRef, ...props }: AlertDialogPrimitive.Root.Props) {
+  const own = React.useRef<AlertDialogPrimitive.Root.Actions | null>(null)
+  const actions = actionsRef ?? own
+  return (
+    <ActionsContext.Provider value={actions}>
+      <AlertDialogPrimitive.Root data-slot="alert-dialog" actionsRef={actions} {...props} />
+    </ActionsContext.Provider>
+  )
 }
 
 function AlertDialogTrigger({ ...props }: AlertDialogPrimitive.Trigger.Props) {
@@ -31,7 +42,7 @@ function AlertDialogOverlay({
       forceRender
       data-slot="alert-dialog-overlay"
       className={cn(
-        "fixed inset-0 isolate z-50 bg-black/60 duration-100 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
+        "fixed inset-0 isolate z-[90] bg-black/60 duration-100 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
         className
       )}
       {...props}
@@ -42,18 +53,22 @@ function AlertDialogOverlay({
 function AlertDialogContent({
   className,
   size = "default",
+  initialFocus,
   ...props
 }: AlertDialogPrimitive.Popup.Props & {
   size?: "default" | "sm"
 }) {
+  const { popup, initialFocus: focusOnOpen } = useInitialFocus()
   return (
     <AlertDialogPortal>
       <AlertDialogOverlay />
       <AlertDialogPrimitive.Popup
+        ref={popup}
+        initialFocus={initialFocus ?? focusOnOpen}
         data-slot="alert-dialog-content"
         data-size={size}
         className={cn(
-          "group/alert-dialog-content fixed top-1/2 left-1/2 z-50 grid w-full grid-cols-[minmax(0,1fr)] -translate-x-1/2 -translate-y-1/2 gap-5 rounded-3xl border border-primary-edge bg-card p-6 text-card-foreground shadow-subtle-3 duration-100 outline-none data-[size=default]:max-w-xs data-[size=sm]:max-w-xs data-[size=default]:sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          "group/alert-dialog-content fixed top-1/2 left-1/2 z-[90] grid max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] grid-cols-[minmax(0,1fr)] -translate-x-1/2 -translate-y-1/2 gap-5 overflow-y-auto rounded-3xl border border-primary-edge bg-card p-6 text-card-foreground shadow-subtle-3 duration-100 outline-none data-[size=sm]:max-w-sm data-[size=default]:max-w-md data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
           className
         )}
         {...props}
@@ -70,7 +85,7 @@ function AlertDialogHeader({
     <div
       data-slot="alert-dialog-header"
       className={cn(
-        "grid grid-rows-[auto_1fr] place-items-center gap-1.5 text-center has-data-[slot=alert-dialog-media]:grid-rows-[auto_auto_1fr] has-data-[slot=alert-dialog-media]:gap-x-4 sm:group-data-[size=default]/alert-dialog-content:place-items-start sm:group-data-[size=default]/alert-dialog-content:text-left sm:group-data-[size=default]/alert-dialog-content:has-data-[slot=alert-dialog-media]:grid-rows-[auto_1fr]",
+        "grid place-items-start gap-1.5 text-left",
         className
       )}
       {...props}
@@ -86,7 +101,7 @@ function AlertDialogFooter({
     <div
       data-slot="alert-dialog-footer"
       className={cn(
-        "flex flex-col-reverse gap-2 pt-1 [&>button]:h-9 [&>button]:px-3.5 max-sm:[&>button]:h-11 group-data-[size=sm]/alert-dialog-content:grid group-data-[size=sm]/alert-dialog-content:grid-cols-2 group-data-[size=sm]/alert-dialog-content:[&>*:only-child]:col-span-2 sm:flex-row sm:justify-end",
+        "flex flex-col-reverse gap-2 pt-1 [&>*]:h-9 [&>*]:px-3.5 max-sm:[&>*]:h-11 sm:flex-row sm:justify-end",
         className
       )}
       {...props}
@@ -104,9 +119,9 @@ function AlertDialogMedia({
       data-slot="alert-dialog-media"
       data-tone={tone}
       className={cn(
-        "mb-2 inline-flex size-10 items-center justify-center rounded-full bg-muted sm:group-data-[size=default]/alert-dialog-content:row-span-2 *:[svg:not([class*='size-'])]:size-5",
+        "mb-2 inline-flex size-10 items-center justify-center rounded-full bg-muted *:[svg:not([class*='size-'])]:size-5",
         "data-[tone=warn]:bg-[color-mix(in_oklch,var(--tone-warn)_14%,transparent)] data-[tone=warn]:text-tone-warn",
-        "data-[tone=destructive]:bg-destructive/10 data-[tone=destructive]:text-destructive dark:data-[tone=destructive]:bg-destructive/20",
+        "data-[tone=destructive]:bg-[color-mix(in_oklch,var(--destructive)_14%,transparent)] data-[tone=destructive]:text-destructive",
         className
       )}
       {...props}
@@ -122,7 +137,7 @@ function AlertDialogTitle({
     <AlertDialogPrimitive.Title
       data-slot="alert-dialog-title"
       className={cn(
-        "font-heading text-lg leading-tight font-semibold wrap-anywhere sm:group-data-[size=default]/alert-dialog-content:group-has-data-[slot=alert-dialog-media]/alert-dialog-content:col-start-2",
+        "font-heading text-lg leading-tight font-semibold wrap-anywhere",
         className
       )}
       {...props}
@@ -146,20 +161,53 @@ function AlertDialogDescription({
   )
 }
 
+/**
+ * The confirm's main button. With `onAction` it stays open while the work runs (a spinner, the
+ * buttons held), closes once it's done, and on a failure stays open with the reason in a toast.
+ */
 function AlertDialogAction({
   className,
   variant,
   size = "lg",
+  onAction,
+  children,
+  disabled,
   ...props
 }: AlertDialogPrimitive.Close.Props &
-  Pick<React.ComponentProps<typeof Button>, "variant" | "size">) {
+  Pick<React.ComponentProps<typeof Button>, "variant" | "size"> & {
+  onAction?: () => Promise<unknown>
+}) {
+  const actions = React.useContext(ActionsContext)
+  const [pending, setPending] = React.useState(false)
+  if (onAction) {
+    const run = async () => {
+      setPending(true)
+      try {
+        await onAction()
+        actions?.current?.close()
+      } catch (failure) {
+        toast.add({ type: "error", title: failure instanceof Error && failure.message ? failure.message : "That didn't work. Try again." })
+      } finally {
+        setPending(false)
+      }
+    }
+    return (
+      <Button data-slot="alert-dialog-action" variant={variant} size={size} className={cn(className)} disabled={Boolean(disabled) || pending} onClick={() => void run()}>
+        {pending ? <Spinner data-icon="inline-start" /> : null}
+        {children}
+      </Button>
+    )
+  }
   return (
     <AlertDialogPrimitive.Close
+      disabled={disabled}
       data-slot="alert-dialog-action"
       className={cn(className)}
       render={<Button variant={variant} size={size} />}
       {...props}
-    />
+    >
+      {children}
+    </AlertDialogPrimitive.Close>
   )
 }
 

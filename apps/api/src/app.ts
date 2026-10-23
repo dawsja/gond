@@ -22,7 +22,6 @@ import { threadsRoutes } from "./routes/threads.ts";
 import { authConfig, usersRoutes } from "./routes/users.ts";
 import { releaseRoutes } from "./routes/release.ts";
 import { voiceRoutes } from "./routes/voice.ts";
-import { callsRoutes } from "./routes/calls.ts";
 
 export type Env = { Variables: { session: Session } };
 
@@ -123,7 +122,6 @@ export function createApp() {
   app.route("/api", secretsRoutes());
   app.route("/api", providerRoutes());
   app.route("/api", voiceRoutes());
-  app.route("/api", callsRoutes());
   app.route("/api", pushRoutes());
   app.route("/api", usersRoutes());
   app.route("/api", releaseRoutes());

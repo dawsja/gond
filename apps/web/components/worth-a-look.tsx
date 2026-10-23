@@ -7,7 +7,7 @@ import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { ApprovalCard } from "@/components/approval-card";
 import { BotAvatar } from "@/components/bot-avatar";
-import { shortTime } from "@/components/sidebar";
+import { shortTime } from "@/lib/time";
 import { useStore, type ThreadRow } from "@/components/store";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -28,7 +28,6 @@ const messageOf = (approval: Approval): Message => ({
   approvalId: approval.id,
   fromThreadId: null,
   steered: false,
-  spoken: false,
   reactions: [],
   replyTo: null,
   createdAt: approval.createdAt,
@@ -136,7 +135,7 @@ export function WorthALook({ as, className }: { as: "sheet" | "popover"; classNa
       <span className="flex min-w-0 flex-1 flex-col text-left">
         <span className="truncate text-[14px] leading-[18px] font-semibold">{count(total, "thing", "things")} worth a look</span>
         <span className="truncate text-[12px] leading-4 font-medium text-tint-ink">
-          {[approvals.length ? `${approvals.length} needs you` : null, noticed.length ? `${noticed.length} noticed` : null].filter(Boolean).join(" · ")}
+          {[approvals.length ? `${approvals.length} ${approvals.length === 1 ? "needs" : "need"} you` : null, noticed.length ? `${noticed.length} noticed` : null].filter(Boolean).join(" · ")}
         </span>
       </span>
       <ChevronDown className={cn("size-4 shrink-0 text-tint-ink transition-transform", open && "rotate-180")} aria-hidden="true" />
@@ -153,13 +152,13 @@ export function WorthALook({ as, className }: { as: "sheet" | "popover"; classNa
     return (
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger className={pill}>{trigger}</PopoverTrigger>
-        <PopoverContent align="start" className="max-h-[min(72dvh,620px)] w-[400px] gap-3 overflow-y-auto rounded-3xl p-3.5">
+        <PopoverContent align="start" className="max-h-[min(72dvh,620px)] w-[400px] gap-3">
           <div className="flex items-baseline justify-between gap-2 px-1">
             <PopoverTitle className="text-[16px] font-semibold">Worth a look</PopoverTitle>
             {noticed.length ? (
-              <button type="button" onClick={() => void markSeen()} className="rounded-full px-1 text-[12.5px] font-semibold text-tint-ink outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/50">
+              <Button variant="ghost" size="sm" onClick={() => void markSeen()}>
                 Mark all seen
-              </button>
+              </Button>
             ) : null}
           </div>
           <List close={close} />

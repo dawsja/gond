@@ -2,6 +2,7 @@
 
 import { BellOff, BellRing } from "lucide-react";
 import { useEffect, useState } from "react";
+import { failed } from "@/components/failed";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,7 +14,7 @@ import { shellBridge, useNativeShell } from "@/lib/shell";
 
 type State = "checking" | "unsupported" | "off" | "on" | "blocked";
 
-const NOTIFICATIONS_EVENTS = ["gond:notifications", "kru:notifications"];
+const NOTIFICATIONS_EVENT = "gond:notifications";
 
 export function NotificationsCard() {
   const shell = useNativeShell();
@@ -34,9 +35,9 @@ export function NotificationsCard() {
     };
     void Promise.resolve().then(read);
     const onChange = () => void read();
-    for (const event of NOTIFICATIONS_EVENTS) window.addEventListener(event, onChange);
+    window.addEventListener(NOTIFICATIONS_EVENT, onChange);
     return () => {
-      for (const event of NOTIFICATIONS_EVENTS) window.removeEventListener(event, onChange);
+      window.removeEventListener(NOTIFICATIONS_EVENT, onChange);
     };
   }, []);
 
@@ -46,7 +47,7 @@ export function NotificationsCard() {
       setShellNotificationsOff(false);
       const granted = typeof bridge.notificationsState === "function" && (await bridge.notificationsState()) === "granted";
       if (!granted && typeof bridge.requestNotifications === "function") await bridge.requestNotifications();
-      return void window.dispatchEvent(new Event("gond:notifications"));
+      return void window.dispatchEvent(new Event(NOTIFICATIONS_EVENT));
     }
     setBusy(true);
     try {
@@ -65,19 +66,21 @@ export function NotificationsCard() {
     const bridge = shellBridge();
     if (bridge) {
       setShellNotificationsOff(true);
-      return void window.dispatchEvent(new Event("gond:notifications"));
+      return void window.dispatchEvent(new Event(NOTIFICATIONS_EVENT));
     }
     setBusy(true);
     try {
       await disablePush();
       setState("off");
+    } catch (failure) {
+      failed("Couldn't turn notifications off.")(failure);
     } finally {
       setBusy(false);
     }
   }
 
   const where = shell === "android" ? "this phone" : shell === "desktop" ? "this computer" : "this browser";
-  const how = shell === "android" ? "The phone's notifications" : shell === "desktop" ? "The desktop's notifications" : "Web Push";
+  const how = shell === "android" ? "The phone's notifications" : shell === "desktop" ? "The desktop's notifications" : "Browser notifications";
   return (
     <Card>
       <CardHeader>
@@ -120,14 +123,14 @@ export function NotificationsCard() {
                   : state === "unsupported"
                     ? shell
                       ? "This version of the app can't show notifications. Update it."
-                      : "Push needs a secure address (https, or localhost) and a browser that supports it."
+                      : "This browser can't show notifications from this address."
                     : ""}
           </span>
         </div>
         {state === "unsupported" && !shell ? (
           <Alert>
             <AlertTitle>Not available on this address</AlertTitle>
-            <AlertDescription>Open Gond over https (a reverse proxy with TLS, see the README) or on localhost to use push notifications.</AlertDescription>
+            <AlertDescription>Notifications need Gond on a secure address (one starting with https). Ask whoever runs this Gond, or use the Gond app.</AlertDescription>
           </Alert>
         ) : null}
       </CardContent>

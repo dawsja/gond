@@ -4,10 +4,12 @@ import { hasKeyHeader, joinCommandLine, type McpServer } from "@gond/shared";
 import { LogIn, Plug, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
+import { failed } from "@/components/failed";
 import { useLiveEvents } from "@/components/hq/live-events";
 import { McpIcon } from "@/components/app-icons";
 import { McpDialog } from "@/components/mcp-dialog";
 import { McpPasteSignIn, startMcpSignIn } from "@/components/mcp-signin";
+import { LoadFailed } from "@/components/load-failed";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +19,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useHeld } from "@/hooks/use-held";
 import { api, del, patch, post } from "@/lib/api";
 import { toast } from "@/components/ui/toast";
 
@@ -24,6 +27,7 @@ export function McpCard() {
   const [servers, setServers] = useState<McpServer[] | null>(null);
   const [editing, setEditing] = useState<McpServer | "new" | null>(null);
   const [removing, setRemoving] = useState<McpServer | null>(null);
+  const shownRemoving = useHeld(removing, Boolean(removing));
   const [signingIn, setSigningIn] = useState<string | null>(null);
 
   const [finishing, setFinishing] = useState<McpServer | null>(null);
@@ -59,8 +63,10 @@ export function McpCard() {
     }
   }
 
+  const [loadFailed, setLoadFailed] = useState(false);
   const load = useCallback(async () => {
     const data = await api<{ servers: McpServer[] }>("/api/mcp-servers").catch(() => null);
+    setLoadFailed(!data);
     if (data) setServers(data.servers);
   }, []);
   useEffect(() => {
@@ -84,7 +90,7 @@ export function McpCard() {
       </CardHeader>
       <CardContent>
         {!servers ? (
-          <Spinner />
+          loadFailed ? <LoadFailed what="your MCP servers" onRetry={() => void load()} /> : <Spinner />
         ) : servers.length === 0 ? (
           <Empty className="border py-6">
             <EmptyHeader>
@@ -127,12 +133,12 @@ export function McpCard() {
                   <TooltipContent>Refresh tools and connection</TooltipContent>
                 </Tooltip>
                 <Tooltip>
-                  <TooltipTrigger render={<Button variant="ghost" size="icon-xs" aria-label={`Delete ${server.name}`} onClick={() => setRemoving(server)} className="text-destructive opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 focus-visible:opacity-100" />}>
+                  <TooltipTrigger render={<Button variant="ghost" size="icon-xs" aria-label={`Remove ${server.name}`} onClick={() => setRemoving(server)} className="text-destructive opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 focus-visible:opacity-100" />}>
                     <Trash2 aria-hidden="true" />
                   </TooltipTrigger>
-                  <TooltipContent>Delete</TooltipContent>
+                  <TooltipContent>Remove</TooltipContent>
                 </Tooltip>
-                <Switch size="sm" checked={server.enabled} onCheckedChange={(on) => void patch(`/api/mcp-servers/${server.id}`, { enabled: on }).then(load)} aria-label={`${server.name} on or off`} />
+                <Switch size="sm" checked={server.enabled} onCheckedChange={(on) => void patch(`/api/mcp-servers/${server.id}`, { enabled: on }).then(load).catch(failed(on ? `Couldn't turn ${server.name} on.` : `Couldn't turn ${server.name} off.`))} aria-label={`${server.name} on or off`} />
               </li>
             ))}
           </ul>
@@ -148,6 +154,7 @@ export function McpCard() {
           </DialogHeader>
           {finishing ? (
             <McpPasteSignIn
+              inDialog
               name={finishing.name}
               onDone={(name) => {
                 setFinishing(null);
@@ -162,11 +169,18 @@ export function McpCard() {
         <AlertDialogContent size="sm">
           <AlertDialogHeader>
             <AlertDialogTitle>Remove this server?</AlertDialogTitle>
-            <AlertDialogDescription>The bots lose {removing?.name}&apos;s tools on their next reply.</AlertDialogDescription>
+            <AlertDialogDescription>The bots lose {shownRemoving?.name}&apos;s tools on their next reply.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Keep it</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" onClick={() => removing && void del(`/api/mcp-servers/${removing.id}`).then(load).finally(() => setRemoving(null))}>
+            <AlertDialogAction
+              variant="destructive"
+              onAction={async () => {
+                if (!removing) return;
+                await del(`/api/mcp-servers/${removing.id}`);
+                await load();
+              }}
+            >
               Remove
             </AlertDialogAction>
           </AlertDialogFooter>

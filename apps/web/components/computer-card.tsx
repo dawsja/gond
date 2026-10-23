@@ -72,9 +72,9 @@ export function ComputerCard({ status, admin, onCheck }: { status: BoxStatus | n
     : !status
       ? { text: "Checking…", tone: "unknown", detail: "" }
       : !status.configured
-        ? { text: "Not set up", tone: "problem", detail: "No computer is configured. Set GOND_BOX_URL on the API." }
+        ? { text: "Not set up", tone: "problem", detail: "Gond isn't connected to a computer. Set GOND_BOX_URL on the API to connect it." }
         : !status.reachable
-          ? { text: "Unreachable", tone: "problem", detail: "The computer isn't answering. Is the box container running?" }
+          ? { text: "Unreachable", tone: "problem", detail: "The computer isn't answering. Check that its container is running." }
           : { text: "Running", tone: "ok", detail: liveSessions ? (liveSessions === 1 ? (admin ? "1 bot session is live on it." : "1 of your bots is live on it.") : admin ? `${liveSessions} bot sessions are live on it.` : `${liveSessions} of your bots are live on it.`) : admin ? "No bot is working on it right now." : "None of your bots is working on it right now." };
 
   const blocked = boxUpdating || !status?.reachable;
@@ -189,7 +189,7 @@ export function ComputerCard({ status, admin, onCheck }: { status: BoxStatus | n
           />
           <AlertDialogFooter>
             <AlertDialogCancel>Not now</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" onClick={() => void start("reset")}>
+            <AlertDialogAction variant="destructive" onAction={() => start("reset")}>
               Reset for everyone
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -211,10 +211,10 @@ export function ComputerCard({ status, admin, onCheck }: { status: BoxStatus | n
               { title: "Kept", lines: ["Everyone's files and bots' memory", "New messages, answered after"] },
             ]}
           />
-          {docker && !docker.available ? <p className="text-[13px] text-muted-foreground">Image pulls are off ({docker.reason}), so it&apos;s patched in place instead.</p> : null}
+          {docker && !docker.available ? <p className="text-[13px] text-muted-foreground">This server can&apos;t download a new image, so the computer is updated in place instead.</p> : null}
           <AlertDialogFooter>
             <AlertDialogCancel>Not now</AlertDialogCancel>
-            <AlertDialogAction onClick={() => void start("update")}>Update</AlertDialogAction>
+            <AlertDialogAction onAction={() => start("update")}>Update</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

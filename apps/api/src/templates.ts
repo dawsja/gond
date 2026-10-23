@@ -9,11 +9,10 @@ export function templateById(id: string): BotTemplate | null {
   return BOT_TEMPLATES.find((t) => t.id === id) ?? null;
 }
 
-export async function addFromTemplate(template: BotTemplate, userId: string, options: { toolkits?: string[]; enableRoutine?: boolean } = {}): Promise<Bot> {
+export async function addFromTemplate(template: BotTemplate, userId: string, options: { enableRoutine?: boolean } = {}): Promise<Bot> {
   const taken = new Set(listBots({ includeHidden: true, userId }).map((b) => b.name.toLowerCase()));
   let name = template.name;
   for (let i = 2; taken.has(name.toLowerCase()); i += 1) name = `${template.name} ${i}`;
-  const toolkits = options.toolkits ?? template.toolkits;
   const bot = createBot(
     botInputSchema.parse({
       name,
@@ -21,7 +20,6 @@ export async function addFromTemplate(template: BotTemplate, userId: string, opt
       description: template.description,
       color: template.color,
       expression: template.expression,
-      toolkits,
     }),
     userId,
   );

@@ -86,8 +86,6 @@ export type PromptContext = {
 
   skillsIndex: string;
 
-  skills: Skill[];
-
   mcpServers: McpServerNote[];
 };
 
@@ -100,21 +98,27 @@ export function systemPromptFor(bot: Bot, context: PromptContext): string {
   const memory = context.memory?.trim()
     ? `## Memory (MEMORY.md)\n${context.memory.trim()}${context.memoryTruncated ? "\n\n[Only the first part of MEMORY.md loads each turn. Trim it or move notes into memory/<topic>.md.]" : ""}`
     : "## Memory (MEMORY.md)\nEmpty so far. Write what you learn about the person and the job as you go.";
+  // What every bot of the person's shares comes first and what changes most comes last, so the
+  // providers' prompt caches keep the longest prefix from one turn to the next.
   return [
     `## What you are\n${assistantFirst()}`,
-    renderSoul(bot).trim(),
-    `## Team\n${roster(context.bots, bot)}`,
     `## House rules\n${houseRules(bot.userId)}`,
     `## Formatting\n${formatting()}`,
-    `## Where you are\n${where}\nYour approval level right now is ${APPROVAL_LEVEL_LABELS[bot.approval].title}.\nThe person's time zone is ${context.timezone}. Today is ${new Date().toISOString().slice(0, 10)}.`,
-    `## Connected apps\n${apps.length ? `${apps.map((a) => `- ${a.name}: tools named ${a.toolkit.toUpperCase()}_…`).join("\n")}\nCall an app's tools directly for anything in it (on Claude Code they are mcp__gond__<NAME>; search your tools for the app's name if they aren't listed). Never look through files or the shell for an app's data.` : "- None connected to you yet. Ask the person to connect one under Settings → Apps → Connected apps, or use the browser."}`,
-    memory,
-    context.teamMemory?.trim() ? `## Team memory (~/${teamMemoryPath(bot.userId)}, shared by the person's bots)\n${context.teamMemory.trim().slice(0, 12_000)}` : `## Team memory (~/${teamMemoryPath(bot.userId)})\nEmpty so far. Put there what every teammate should know, with team_memory_update.`,
-    `## Skills (the person's library, ~/.skills)\n${context.skillsIndex}`,
-    ...context.skills.map((skill) => `## Skill in use: /${skill.slug} (${skill.name})\nFollow these instructions for this job.\n\n${skillBrief(skill, 16_000)}`),
-    context.mcpServers.length ? `## Your MCP servers\n${context.mcpServers.map((m) => `- ${m.name}: ${m.note ?? `tools named mcp__${m.name}__…`}`).join("\n")}\nThey are the person's own servers, attached to every bot's session by Gond; their writes go through approval like any other. Use their tools directly for anything they cover. If one's tools are missing or a call says it needs a sign-in, tell the person in one line; never look for MCP settings, tokens or credentials in ~/.claude or any config file, and never try to sign a server in yourself.` : "",
     context.toolNotes ? `## Tools\n${context.toolNotes}` : "",
+    renderSoul(bot).trim(),
+    `## Team\n${roster(context.bots, bot)}`,
+    `## Connected apps\n${apps.length ? `${apps.map((a) => `- ${a.name}: tools named ${a.toolkit.toUpperCase()}_…`).join("\n")}\nCall an app's tools directly for anything in it (on Claude Code they are mcp__gond__<NAME>; search your tools for the app's name if they aren't listed). Never look through files or the shell for an app's data.` : "- None connected to you yet. Ask the person to connect one under Settings → Apps → Connected apps, or use the browser."}`,
+    `## Skills (the person's library, ~/.skills)\n${context.skillsIndex}`,
+    context.mcpServers.length ? `## Your MCP servers\n${context.mcpServers.map((m) => `- ${m.name}: ${m.note ?? `tools named mcp__${m.name}__…`}`).join("\n")}\nThey are the person's own servers, attached to every bot's session by Gond; their writes go through approval like any other. Use their tools directly for anything they cover. If one's tools are missing or a call says it needs a sign-in, tell the person in one line; never look for MCP settings, tokens or credentials in ~/.claude or any config file, and never try to sign a server in yourself.` : "",
+    context.teamMemory?.trim() ? `## Team memory (~/${teamMemoryPath(bot.userId)}, shared by the person's bots)\n${context.teamMemory.trim().slice(0, 12_000)}` : `## Team memory (~/${teamMemoryPath(bot.userId)})\nEmpty so far. Put there what every teammate should know, with team_memory_update.`,
+    memory,
+    `## Where you are\n${where}\nYour approval level right now is ${APPROVAL_LEVEL_LABELS[bot.approval].title}.\nThe person's time zone is ${context.timezone}. Today is ${new Date().toISOString().slice(0, 10)}.`,
   ]
     .filter(Boolean)
     .join("\n\n");
+}
+
+/** The skills a message names with /slug, in full, for that turn's prompt (never the system prompt, which they would change on every message). */
+export function skillsInUse(skills: Skill[]): string {
+  return skills.map((skill) => `## Skill in use: /${skill.slug} (${skill.name})\nFollow these instructions for this job.\n\n${skillBrief(skill, 16_000)}`).join("\n\n");
 }

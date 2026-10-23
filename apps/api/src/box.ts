@@ -39,14 +39,6 @@ export function boxConfig(userId: string | null = null): BoxConfig | null {
   return url ? { url, token: boxToken(), user: userId } : null;
 }
 
-export function requireBoxConfig(userId: string | null = null): BoxConfig {
-  const config = boxConfig(userId);
-  if (!config) {
-    throw new Error("Gond needs its box to run bots. Start the box container and set GOND_BOX_URL (docker-compose.yml does both).");
-  }
-  return config;
-}
-
 export class BoxError extends Error {
   readonly status: number;
   readonly code: string | null;
@@ -63,7 +55,7 @@ export function personHasControl(error: unknown): boolean {
 }
 
 function headersFor(config: BoxConfig, extra: Record<string, string> = {}): Record<string, string> {
-  return { Authorization: `Bearer ${config.token}`, ...(config.user ? { "X-Gond-User": config.user, "X-Kru-User": config.user } : {}), ...extra };
+  return { Authorization: `Bearer ${config.token}`, ...(config.user ? { "X-Gond-User": config.user } : {}), ...extra };
 }
 
 async function request(config: BoxConfig, route: string, init: { method: string; headers?: Record<string, string>; body?: string | Uint8Array<ArrayBuffer>; signal?: AbortSignal }, retried = false): Promise<Response> {
@@ -230,22 +222,6 @@ export async function openBoxStream(config: BoxConfig, route: string, signal?: A
   return res;
 }
 
-export function createTerminal(config: BoxConfig, input: { bot?: string | null; cols: number; rows: number }): Promise<{ id: string; cwd: string }> {
-  return call(config, "POST", "/terminals", input);
-}
-
-export function terminalInput(config: BoxConfig, id: string, data: string): Promise<{ ok: true }> {
-  return call(config, "POST", `/terminals/${id}/input`, { data });
-}
-
-export function terminalResize(config: BoxConfig, id: string, size: { cols: number; rows: number }): Promise<{ ok: true }> {
-  return call(config, "POST", `/terminals/${id}/resize`, size);
-}
-
-export async function closeTerminal(config: BoxConfig, id: string): Promise<void> {
-  await call(config, "DELETE", `/terminals/${id}`);
-}
-
 export type ClaudeCheck = { status: "ok" | "missing" | "unauthenticated" | "error"; detail: string };
 
 export function checkClaude(config: BoxConfig): Promise<ClaudeCheck> {
@@ -326,6 +302,8 @@ export type AgentEvent =
   | { type: "activity"; line: string }
   | { type: "step"; step: StepUpdate }
   | { type: "tool_call"; callId: string; name: string; input: Record<string, unknown> }
+  | { type: "text_delta"; text: string }
+  | { type: "text_end" }
   | AgentTurnResult
   | { type: "error"; missing: boolean; message: string };
 

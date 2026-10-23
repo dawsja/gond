@@ -2,6 +2,7 @@
 
 import { defaultOAuthRedirect, joinCommandLine, MCP_OAUTH_REDIRECTS, MCP_TRANSPORTS, type McpOAuthRedirect, type McpServer, type McpTransport, splitCommandLine } from "@gond/shared";
 import { useState, type FormEvent } from "react";
+import { useDiscardChanges } from "@/components/discard-changes";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -44,6 +45,8 @@ export function McpDialog({ server, onClose, onSaved }: { server: McpServer | nu
   const [env, setEnv] = useState(toLines(server?.env ?? {}));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [start] = useState(() => JSON.stringify([name, transport, url, headers, redirect, command, env]));
+  const discard = useDiscardChanges(!busy && JSON.stringify([name, transport, url, headers, redirect, command, env]) !== start, onClose);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -64,7 +67,7 @@ export function McpDialog({ server, onClose, onSaved }: { server: McpServer | nu
   }
 
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
+    <Dialog open onOpenChange={(open) => !open && discard.requestClose()}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{server ? `Edit ${server.name}` : "Add an MCP server"}</DialogTitle>
@@ -127,7 +130,7 @@ export function McpDialog({ server, onClose, onSaved }: { server: McpServer | nu
             )}
             {error ? <FieldError>{error}</FieldError> : null}
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={onClose}>
+              <Button type="button" variant="outline" onClick={discard.requestClose}>
                 Cancel
               </Button>
               <Button type="submit" disabled={busy}>
@@ -138,6 +141,7 @@ export function McpDialog({ server, onClose, onSaved }: { server: McpServer | nu
           </FieldGroup>
         </form>
       </DialogContent>
+      {discard.prompt}
     </Dialog>
   );
 }

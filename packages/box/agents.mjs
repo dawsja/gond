@@ -16,9 +16,10 @@ export const FLAG_FLOORS = {
   "--setting-sources": "1.0.100",
   "--max-turns": "1.0.0",
   "--replay-user-messages": "1.0.0",
+  "--include-partial-messages": "1.0.90",
 };
 
-const OPTIONAL_FLAGS = ["--strict-mcp-config", "--setting-sources", "--replay-user-messages"];
+const OPTIONAL_FLAGS = ["--strict-mcp-config", "--setting-sources", "--replay-user-messages", "--include-partial-messages"];
 
 export function parseVersion(text) {
   const match = /(\d+)\.(\d+)\.(\d+)/.exec(text ?? "");
@@ -121,6 +122,7 @@ export function sessionArgs({ model, maxTurns, systemPromptFile, mcpConfigFile, 
   if (has("--setting-sources")) args.push("--setting-sources", "project");
 
   if (has("--replay-user-messages")) args.push("--replay-user-messages");
+  if (has("--include-partial-messages")) args.push("--include-partial-messages");
   args.push(resume ? "--resume" : "--session-id", sessionId);
   return args;
 }
@@ -152,6 +154,16 @@ export function settle(event) {
     text: typeof event.result === "string" ? event.result : "",
     stopReason: event.stop_reason ?? event.terminal_reason ?? null,
   };
+}
+
+/**
+ * The words of a reply as the model writes them, from the CLI's partial messages: a delta of text,
+ * or the end of the text so far when a tool call starts (that text was narration, not the reply).
+ */
+export function streamText(event) {
+  if (event?.type === "content_block_delta" && event.delta?.type === "text_delta" && typeof event.delta.text === "string") return { type: "text_delta", text: event.delta.text };
+  if (event?.type === "content_block_start" && /tool_use$/.test(event.content_block?.type ?? "")) return { type: "text_end" };
+  return null;
 }
 
 export function readReply(reply, event) {
@@ -256,11 +268,7 @@ export class AgentSession extends BridgedSession {
         sessionArgs({ model, maxTurns, systemPromptFile: persona.file, mcpConfigFile: mcp.file, permission, sessionId, resume, allowed, optional }),
         { resume },
       );
-    let outcome = await launch(true);
-    if (outcome.failed && isUnknownOption(outcome.stderr)) {
-      this.onWarning(`Claude Code rejected an optional flag (${outcome.stderr.trim().slice(0, 120)}); relaunching without ${OPTIONAL_FLAGS.join(", ")}.`);
-      outcome = await launch(false);
-    }
+    const outcome = await launch(!this.withoutOptional);
     if (outcome.failed) throw new Error(`Claude Code didn't start: ${outcome.stderr.trim().slice(0, 300) || "no output"}`);
     this.replays = outcome.replays;
     this.argsKey = argsKey;
@@ -304,6 +312,14 @@ export class AgentSession extends BridgedSession {
     child.on("close", (code, signal) => {
       if (this.child !== child) return;
       this.log("exit", { code, signal, resume: this.resume, sawInit: this.sawInit });
+      // The launch no longer waits to see the CLI take its flags, so one that refuses an optional flag
+      // is caught here, and the turn route launches it again without them.
+      const flagRejected = !this.sawInit && OPTIONAL_FLAGS.some((flag) => args.includes(flag)) && isUnknownOption(this.stderr);
+      if (flagRejected) {
+        this.withoutOptional = true;
+        this.flagRejected = true;
+        this.onWarning(`Claude Code rejected an optional flag (${this.stderr.trim().slice(0, 120)}); relaunching without ${OPTIONAL_FLAGS.join(", ")}.`);
+      }
       const turn = this.turn;
       this.child = null;
       if (turn) {
@@ -314,6 +330,7 @@ export class AgentSession extends BridgedSession {
           stopReason: turn.interrupted ? "interrupted" : "exited",
           error: turn.interrupted ? "The turn was interrupted" : this.stderr.trim().slice(0, 500) || `Claude Code exited (${signal ?? code})`,
           resumeFailed: isResumeFailure({ resume: this.resume, sawInit: this.sawInit, stderr: this.stderr, exitCode: code }),
+          flagRejected,
         });
       }
       this.cleanup();
@@ -326,10 +343,8 @@ export class AgentSession extends BridgedSession {
         settleLaunch(true);
       });
       child.once("close", () => settleLaunch(true));
-
-      setTimeout(() => {
-        if (this.child === child && child.exitCode === null) settleLaunch(false);
-      }, 1_500);
+      // Written to stdin at once: the pipe holds the prompt until the CLI reads it.
+      child.once("spawn", () => settleLaunch(false));
     });
   }
 
@@ -338,6 +353,11 @@ export class AgentSession extends BridgedSession {
     try {
       event = JSON.parse(line);
     } catch {
+      return;
+    }
+    if (event.type === "stream_event") {
+      const text = this.turn && !event.parent_tool_use_id ? streamText(event.event) : null;
+      if (text) this.turn.onEvent(text);
       return;
     }
     this.log("out", event.type === "user" ? loggable(event) : event);

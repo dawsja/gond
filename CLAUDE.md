@@ -27,10 +27,12 @@ what is here. The README says what Gond is; this says how it is made.
   `fromTrustedPage` does. `on_permission_request` in `lib.rs` allows
   notifications, clipboard reads and the microphone to that origin only;
   on Linux `allow_media` first turns WebKitGTK's media stream on, which
-  it ships off. The address rules live in the `server-url` crate
-  with the same tests Android's `ServerUrl.kt` has. The menu bar is hidden
-  unless the person turns it on (`menu_bar` in `config.json`, the switch in
-  Settings → Appearance, applied to every window). The package scripts go
+  it ships off, or the composer's mic gets nothing. The address rules live in the `server-url` crate
+  with the same tests Android's `ServerUrl.kt` has. The menu bar is always
+  hidden; a tap of Alt on its own shows it, as in any Windows app, and a
+  second tap, Esc, a click in the page or a pick from it hides it again
+  (the listener in `init.js`, `toggle_menu_bar` in `bridge.rs`). There is
+  no setting for it. The package scripts go
   through `scripts/cargo.mjs`, which skips with a notice where cargo is
   missing and fails in CI. It updates itself (`updater.rs`, the updater
   plugin): 5 s after start and every 6 hours it reads `latest.json` from
@@ -145,9 +147,24 @@ what is here. The README says what Gond is; this says how it is made.
   middle scrolls (`dialog-body`): the header, title and close together,
   sticks to the top and the footer to the bottom, so neither scrolls out
   of reach, and each shows a `border` line only while something is
-  scrolled under it (`trackScrollEdges`). Menus, a
-  `Select`'s list and popovers are a `rounded-2xl` card with the same
-  edge and `h-9` rows on every pointer. All of it lives in
+  scrolled under it (`trackScrollEdges`). A sheet (the details sheet) is
+  the same card from the bottom, and a confirm (`AlertDialog`) is the same
+  card at every size, left-aligned, its buttons stacked full width on a
+  phone, scrolling when it is taller than the screen, and above everything
+  else (the computer's window included). On a touch screen no pop-up
+  puts focus in a field when it opens (`useInitialFocus` in
+  `ui/dialog.tsx`), so the keyboard stays down. A confirm whose button
+  does work passes `onAction` (`AlertDialogAction`, `Confirm`): it stays
+  open with a spinner, closes when the work is done and stays with the
+  reason in a toast when it fails; its words are held while it fades
+  (`useHeld`). A dialog someone types a lot into asks "Discard your
+  changes?" before closing with edits (`useDiscardChanges`). Menus, the
+  right-click and long-press menu, a `Select`'s list and popovers are a
+  `rounded-2xl` card with the same edge and `h-9` rows on every pointer,
+  kept off the screen's edges (`collisionPadding`); a `Select`'s list is
+  at least as wide as its box and as wide as its longest option allows.
+  Every `Button` under a coarse pointer has a 44px hit area even when it
+  is drawn smaller, and a toggle is 44px tall. All of it lives in
   `components/ui`; a call site only sets its width. The one exception is
   the picture viewer (`image-viewer.tsx`): a tap on any picture in a
   conversation, the person's or a bot's, opens it over a `bg-black/90`
@@ -220,9 +237,17 @@ what is here. The README says what Gond is; this says how it is made.
   Effects that set state do it off the effect's own tick
   (`Promise.resolve().then(...)`), which is what the lint rule wants.
 - **Live data flows through the store.** `components/store.tsx` holds bots,
-  threads, approvals, activity, you (`me`) and the box update; it refetches
-  on `/api/events` topics. Add a topic in `packages/shared` and handle it
-  there rather than polling from a component.
+  threads, approvals, you (`me`) and the box update; it refetches on
+  `/api/events` topics. Add a topic in `packages/shared` and handle it
+  there rather than polling from a component. What each bot is doing is
+  its own context (`useActivity`), since it changes many times a turn and
+  only what shows it should redraw. A load that several events can ask for
+  at once is single-flight (`singleFlight` in `lib/single-flight.ts`,
+  `useSingleFlight` in a component): one request at a time and one more
+  after it, however many asked. A message is a memoized `Line`, its
+  callbacks kept stable (`useStableCallback`), so a keystroke or a bot's
+  streamed words don't redraw the conversation; a GET several cards make at
+  once goes through `apiShared`. Background polls skip a hidden page.
 - **A bot's screen is live in its conversation.** Every bot has a screen
   of its own (see Box), so the store holds `desktop` (`DesktopState`: the
   screens running, one `ScreenState` per bot, `screenOf` for one, and the
@@ -282,7 +307,7 @@ what is here. The README says what Gond is; this says how it is made.
   SVG named `.png` is refused) and keeps it in `gond_bot_avatars`;
   `Bot.avatar` is its URL with a version, or null. `BotAvatar` draws the
   picture when there is one, crown and all.
-- **A group is edited like a bot.** Edit group (`room-dialog.tsx` with a
+- **A room is edited like a bot.** Edit room (`room-dialog.tsx` with a
   `threadId`, `PATCH /api/rooms/:id`) renames it and changes its bots,
   from the room's ⋯ and long-press menu, its pill (on a wide screen; the
   details sheet on a phone) and the panel; the room says what changed in
@@ -300,7 +325,7 @@ what is here. The README says what Gond is; this says how it is made.
   two, `addressedIn`), else to the bots that answered them since they last
   wrote, else to whoever their last line went to, else to `roomAnswerer`
   (the primary if it is there, else the first bot). The opening line and
-  any change to the group name that bot; the placeholder says who answers
+  any change to the room name that bot; the placeholder says who answers
   next ("Patch answers next"); a steered line says whom it
   went to; and a `::choices` tap in a room is sent as `@handle option` to the
   bot that offered it. A bot's own line still wakes only those it
@@ -362,43 +387,9 @@ what is here. The README says what Gond is; this says how it is made.
   the person has (`VOICE_PROVIDERS`, xAI first), or one by name, which
   falls back to Automatic when its key goes; the OpenAI-compatible
   model can be renamed there, for a server of the person's own like a
-  local Whisper. `Permissions-Policy` allows
+  local Whisper. The mic is always the system's default input.
+  `Permissions-Policy` allows
   the microphone for the app's own origin and nothing else.
-- **A bot can be called.** The phone circle in a bot's header
-  (`CallButton` in `components/call/call-controls.tsx`, never in a room)
-  starts a call on the person's xAI or OpenAI key, the one Settings →
-  Voice picks; without one a tap says where to add one. The call lives in
-  `CallProvider` (`call-provider.tsx`, inside the shell, so it outlives
-  every screen): the microphone goes up as 24 kHz PCM from an AudioWorklet
-  (`public/call-capture.js`, `lib/call-audio.ts`; a ScriptProcessor where
-  there is none, and either wired to the speakers through a silent gain,
-  since some engines only run what reaches them) in short POSTs, a
-  microphone that won't start says why (`MicError`), and the
-  voice comes down the call's SSE stream and plays in order
-  (`CallPlayer`), the same SSE-and-POST shape as the screen, since the
-  API is reached through Next's proxy. In the call's own chat the
-  composer is the call (`CallComposer`: mute, what is happening and the
-  clock, `CallWave`, hang up). A call is heard, never read: the chat shows
-  only "Call started" and "Call ended", and what was said is kept for the
-  bot (`Message.spoken`) but left out of the chat, the list's preview,
-  unread counts and search. Anywhere else the call shrinks: on a
-  phone to an ink pill under the header (`CallPill`, which sets
-  `--call-pill-space` so screens leave room for it), on a wide screen to
-  a card in the sidebar above the profile (`CallBar`, with mute, the
-  bot's screen and hang up); a tap goes back to the chat, and while the
-  bot waits on a card either one shows the card's question with "Needs
-  you". Leaving the chat never hangs up, and one call runs at a time
-  (calling another bot asks first). Hang-up is the one solid red,
-  `variant="hangup"` on `--hangup`, in both themes. Settings → Voice also
-  picks the call's voice (`call-voice-card.tsx`: xAI's own list from its
-  `/tts/voices`, OpenAI's `OPENAI_CALL_VOICES` from its docs since it has
-  no list, a sample through `/api/voice/sample` on the person's key, the
-  pick kept per provider as `call_voice`), and the microphone and speaker
-  (`audio-devices-card.tsx`, `lib/audio-devices.ts`: kept on that device,
-  since devices are, with a live level meter and a test sound; calls and
-  the composer's mic open the picked one through `microphone()` and fall
-  back to the system's when it's gone). A desktop app's webview takes the
-  system default, which is often not the headset the person talks into.
 - **Steps are recorded, never shown.** While a bot works the conversation
   shows one line of what it is doing (`WorkLine`); the work log behind it
   is kept by the API but the web never lists it. When several work at once
@@ -406,6 +397,24 @@ what is here. The README says what Gond is; this says how it is made.
   a row of squares lighting up in each one's colour in turn
   (`animate-light-up`, lit and still under reduced motion), no words; a tap
   opens each bot's own line under it and taps again to close.
+- **A reply shows as it is written.** The bot's own words to the person
+  stream into a bubble like the one they become (`Writing` in
+  `conversation.tsx`, from the `writing` live event, kept in the
+  conversation and not the store, since it changes several times a
+  second), in place of that bot's work line. The API sends the whole text
+  so far, redacted, at most every `WRITING_INTERVAL_MS`
+  (`createWriting` in `src/writing.ts`), only for a turn whose answer goes
+  to the person, never while the text could still be `NOTHING_NEW`
+  (`couldBeQuiet`), and null when a tool call starts (what came before was
+  narration, which stays a step) or the turn ends. A bubble that stopped
+  stays until the messages are loaded again, so the posted one replaces it
+  without a blink, and `::choices` in it are inert. Claude Code streams with
+  `--include-partial-messages` (the box's `streamText` turns its
+  `stream_event`s into `text_delta` and `text_end`); `native.ts` streams
+  all three API shapes (`anthropicAssembler`, `openAiAssembler`,
+  `responsesText` over `sseStream` in `src/sse.ts`, which the MCP client
+  reads a streamed reply with too) into the same step an unstreamed
+  answer gives, and a server that answers JSON anyway is read as before.
 - **Mascots come from the gond-bot skill** (`components/hq/gond-bot.tsx`),
   copied 1:1. Don't redraw the cog. A bot's `shape` (`BOT_SHAPES`) picks
   its body: the cog, always the default, or a gumdrop, cloud, circle or
@@ -442,8 +451,8 @@ what is here. The README says what Gond is; this says how it is made.
   from the tree. Anything a person has to act on (a decision, a sign-in,
   a key) is a card, not a link. Every one of them is built on
   `action-card.tsx`: `ActionCard` is the bot's bubble grey with the pill
-  edge, `rounded-3xl`, the bot (its mascot, or its picture) peeking over its top edge
-  (`animate-peek`), the question as the title with a warn `Badge` "Needs
+  edge, `rounded-3xl`, the card's icon in a primary circle, the question
+  as the title with a warn `Badge` "Needs
   you" and who and where under it, then what it is about (`ActionRows`
   for figures with a big total, a long value under its label, a row with
   `items` that opens on a tap to the lines behind it, like each grocery
@@ -514,7 +523,7 @@ what is here. The README says what Gond is; this says how it is made.
   desktop and the last row of the Settings list on a phone (`useSignOut`).
   Account is the person themselves (picture, password, notifications);
   Appearance is how it looks (the theme, which stays on the device, the
-  color, and the desktop's menu bar); About is the app (the server's
+  color); About is the app (the server's
   version and, for the admin, updating it, `server-update-card.tsx`; the
   server an app is connected to, its version and updates; `about-card.tsx`
   with the link to the repository). All three are everybody's.
@@ -534,6 +543,11 @@ what is here. The README says what Gond is; this says how it is made.
   same rules, and a request that comes back with no message gets
   `statusMessage` in `lib/api.ts`, never a bare status. Text only a bot
   reads (a tool's error) is written for the model and can be exact.
+  People see "room" for a conversation with several bots, never "group".
+  Something the person did that fails says so (`failed` in
+  `components/failed.ts`, never `.catch(() => undefined)` on their
+  action), and something that fails to load shows `LoadFailed` with Try
+  again, never a spinner forever.
 
 ## API
 
@@ -543,7 +557,9 @@ what is here. The README says what Gond is; this says how it is made.
 - Data access lives in `src/data/*.ts`. A write that the UI should see
   emits an event through `src/events.ts` (`botsChanged`, `threadChanged`,
   `settingsChanged`, or `emit({ topic })`). The web hears it on
-  `/api/events`.
+  `/api/events`. `botsChanged` takes the owner when the caller knows it
+  (`threadChanged` always does), so one person's bot replying doesn't make
+  everyone reload their list.
 - **Migrations are append-only**: add a new SQL string to `MIGRATIONS` in
   `src/db/migrations.ts`; never edit an earlier one. A new enum value in a
   `CHECK` means rebuilding that table in a new migration (see the messages
@@ -558,6 +574,14 @@ what is here. The README says what Gond is; this says how it is made.
   follows `gond_messages`' rowids, so a migration that rebuilds that table
   (or a VACUUM) ends with `INSERT INTO gond_messages_fts (gond_messages_fts)
   VALUES ('rebuild')`.
+- **Hot queries have an index.** The dispatcher's claim, `noticedIn`,
+  `botLinesSincePerson` and a conversation's sent lines each read an index
+  of their own (`gond_messages_open`, `_author`, `_from`), and a logic test
+  reads their query plans so a change that loses one fails. A page of
+  messages loads its reactions and quotes in one query each (`toMessages`),
+  and what only needs a person's conversation ids reads `threadRefs`, not
+  `listThreads`. A route that only checks a conversation is the person's
+  uses `ownsThread`; `ownThread` builds the whole `Thread`.
 - Anything that runs on the box goes through `src/box.ts`. The API never
   reads the Claude sign-in and never sends connected-app credentials to
   the box; app actions run through Composio in the API.
@@ -594,7 +618,8 @@ what is here. The README says what Gond is; this says how it is made.
   more than a page, and what you have connected kept at the top. Like an
   MCP server, a connected app works for every one of the person's bots
   (`toolsFor(userId)` is every active connection); nothing is picked per
-  bot, and a bot's old `toolkits` column is read by nothing.
+  bot. The `toolkits` column on `gond_bots` is left from before and read by
+  nothing; `Bot` has no such field.
 - **Three approval levels, and none gates a bot's own folder.** `ask`
   ("Always ask"), `auto` ("Auto", the default for a new bot) and `full`
   ("Always allow") are the whole set. Reading is never gated, and nor is a
@@ -641,7 +666,9 @@ what is here. The README says what Gond is; this says how it is made.
   what arrived since that agent's last turn (`seenBy` in
   `src/responder.ts`, dropped on a failed turn). The box picks
   (`turnPrompt` in `packages/box/sessions.mjs`): the follow-up only when
-  the session is one it resumed, never a fresh or recovered one. Session
+  the session is one it resumed, never a fresh or recovered one. The
+  transcript and the memory a prompt carries are read in
+  `src/transcript.ts`. Session
   ids survive a restart in `/state/sessions.json` (`createSessionStore`),
   per agent, person and engine, forgotten with the bot, the person or a
   reset. What drops out of the window is folded, `SUMMARY_BATCH` at a
@@ -719,11 +746,29 @@ what is here. The README says what Gond is; this says how it is made.
   in the responder (`src/responder.ts`); a tick stays quick. While the
   computer updates or resets (`src/updater.ts`), nothing new starts and
   pending messages wait. The dispatcher also chases stalled handoffs
-  (`src/nudges.ts`) about once a minute. With `GOND_TURN_TIMING=1` (off
+  (`src/nudges.ts`) about once a minute. The tick is every 2 s, but a new
+  message or a bot coming free wakes it at once (`wake`, from the `thread`
+  event and an `activity` that ends), so nothing waits for the interval.
+  Before the model, a turn's setup runs side by side (the SOUL.md write,
+  only when it changed, `soulsWritten`; memory; the skills mirror; the
+  connected apps; the `api` engine's MCP tool lists, kept five minutes per
+  server, `listings`). With `GOND_TURN_TIMING=1` (off
   by default, `turnTiming()`) every turn logs one line when it ends
   (`timingLine` from `createTurnClock` in `src/work.ts`): how long it
-  took, on what, its model rounds and its tool calls, the screen's apart,
-  so `docker compose logs api | grep took` says where a slow turn went.
+  took, on what, how long it waited to start, its setup and when its
+  first words came, its model rounds and its tool calls, the screen's
+  apart, so `docker compose logs api | grep took` says where a slow turn
+  went.
+- **The system prompt holds still.** `systemPromptFor` puts what every bot
+  of a person's shares first (what it is, the house rules, formatting,
+  the tools' notes), then the bot, its team, apps, skills index and
+  servers, then the memories and where it is, so a provider's prompt
+  cache keeps the longest prefix; what a message brings (a `/slug`
+  skill, `skillsInUse`) goes in that turn's prompt instead, since on
+  Claude Code a changed system prompt is sent again whole. On Anthropic's
+  own API `withCacheBreakpoints` marks the tools, the system prompt and
+  the conversation so far; a ChatGPT plan gets a `prompt_cache_key` per
+  bot and conversation.
 - **Only handoffs nested in handoffs are hops.** `MAX_CHAIN` stops bots
   waking each other forever. A result lands a hop up from its brief
   (`resultDepth`), and a teammate that hands part of its task on keeps its
@@ -998,7 +1043,8 @@ what is here. The README says what Gond is; this says how it is made.
   (`ENGINE_LABELS[engine].providers`, best first) and `engineRun` takes the
   first the person has a key for. A key is only ever typed in one place,
   Settings → AI with An API key picked, on its API's row (`KeyList`). The box gets the LLM proxy (`/api/llm/:kind/*` in
-  `src/routes/llm.ts`) and the provider's proxy token; the token names whose row it is
+  `src/routes/llm.ts`; the hosts, auth headers and URLs it and `native.ts`
+  share are `src/providers.ts`) and the provider's proxy token; the token names whose row it is
   (`providerByToken`), only the proxy decrypts the key, and
   `allSecretValues()` includes every key for redaction.
 - **A ChatGPT plan is an engine you sign in to** (`src/chatgpt.ts`,
@@ -1064,36 +1110,6 @@ what is here. The README says what Gond is; this says how it is made.
   answers `{ text }`. The format is read from the file's extension (Bun's
   multipart parser drops a part's own type). Audio is never stored or
   logged.
-- **A call is the bot's voice, not another bot** (`src/calls.ts`,
-  `src/voice-link.ts`, `src/routes/calls.ts`). The API holds the call:
-  `POST /api/threads/:id/call` opens a WebSocket to the person's voice
-  model with their key (`CALL_MODELS`: OpenAI's GPT-Live with client
-  delegation, or xAI's realtime voice with `ask_bot`, `bot_status` and
-  `end_call` tools; xAI speaks one response at a time and drops a
-  `response.create` sent while one runs, so its asks go through
-  `SpeakQueue`, which waits its turn and asks again when one never
-  starts, and an answer is said through that response's own
-  instructions), so the key never reaches the page, and the page
-  hears it on `/api/calls/:id/stream` and sends audio to
-  `/api/calls/:id/audio`. Each provider's events read as the same
-  signals (`readLiveEvent`, `readXaiEvent`, pure and tested). The voice
-  only talks: anything past small talk it hands over, and that becomes a
-  hidden prompt (`callPrompt`) the dispatcher answers as a normal turn of
-  the bot's, on its own engine, with its memory, tools, cards and
-  approvals; `botTurn` gives that answer to the voice instead of the chat
-  (`answerOnCall`, and `closeCallTurn` when it ended with nothing), and
-  posts it as usual if the call has ended. What each side says is kept
-  as it settles (a pause of `SETTLE_MS`), answered and `spoken`, so the
-  bot's transcript carries the call (its voice's lines marked, since its
-  own session never heard them), and no page is ever sent the words. The voice learns the bot's progress from the work line
-  (`session.thinking.append` for GPT-Live, `bot_status` for xAI) and is
-  told when a card comes up, which is still only answered by a tap. A
-  spoken "stop" is Stop (`stopFromMessage`), and a line that only closes
-  ("that's all", "ok thanks, bye", `endsCall`) or xAI's `end_call` hangs
-  up after the voice's goodbye. A call posts "Call started" and "Call
-  ended · 5 min", ends when its page stops listening for `ORPHAN_MS`, at
-  `CALL_MAX_MINUTES`, or when its person is deleted, and lives in memory,
-  so a restart ends it and its hand-overs are answered in the chat.
 - **Secrets never leave the API.** `src/data/secrets.ts` stores them
   encrypted, per person, and only `readSecret`/`injectSecrets` decrypt, at
   the moment of use: the MCP proxy in `src/routes/mcp.ts`, which fills a
@@ -1144,7 +1160,7 @@ what is here. The README says what Gond is; this says how it is made.
   mirrors a person's library to `~/.skills/<slug>/` in their home only
   (on change, at start, after a reset, and before their first turn in a
   process). The system prompt carries the index; a `/slug` in the message
-  puts that skill in full, with where its files are. A routine with a
+  puts that skill in full in that turn's prompt, with where its files are. A routine with a
   `skillId` posts `Use /slug.` ahead of its prompt, from its owner's
   library only. A bot makes one with `save_skill` (best from a folder it
   built in its home, or a .skill file) and changes one with
@@ -1282,13 +1298,14 @@ what is here. The README says what Gond is; this says how it is made.
   `getPrimary`, `createBot`, `createRoom`, `searchMessages` and the push
   functions take the user; the responder and the bot tools use the
   conversation's owner. Connected apps, the Composio key, MCP servers,
-  secrets, the AI and its providers, and the computer (terminals, the
-  desktop, a bot's files, the sign-in status) are everyone's own and
+  secrets, the AI and its providers, and the computer (the desktop, a
+  bot's files, the sign-in status) are everyone's own and
   answer only for the signed-in person; nothing is shared between people.
   Skills are too. Reads everyone needs (a reduced settings view) stay
   open and are narrowed inside their routes. A live event about a
-  conversation or a person reaches only its owner (`routes/events.ts`);
-  `ai` and `skills` are such topics.
+  conversation or a person reaches only its owner (`routes/events.ts`,
+  which keeps each conversation's owner once read and writes each event
+  once for every listener); `ai` and `skills` are such topics.
 - **Every person has an account on the box.** `boxConfig(userId)` in
   `src/box.ts` makes the client for one person, and every request about a
   home carries them in `X-Gond-User`. The box answers `no_account` for
@@ -1331,9 +1348,8 @@ what is here. The README says what Gond is; this says how it is made.
   `/etc/passwd` doesn't survive a container recreate but the homes do.
   Every route about a home takes the person from `X-Gond-User`
   (`accountFor`) and runs as them: `agentEnv(account)`, `asUser(account)`,
-  `botDir(account, id)`, a terminal in their home, a screen per bot on a
-  display of its own, and sessions, terminals and screen connections
-  answer 404 for anyone else's. Separation is Unix
+  `botDir(account, id)`, a screen per bot on a display of its own, and
+  sessions and screen connections answer 404 for anyone else's. Separation is Unix
   permissions inside one container: real, but not a hard security
   boundary. Without root (a dev checkout) every account shares this
   process's user and only the homes differ.
@@ -1342,6 +1358,12 @@ what is here. The README says what Gond is; this says how it is made.
   before a session starts. Claude Code's sign-in (`.claude`,
   each person's own) is never readable through the files API
   and survive Reset.
+- **A session starts without a pause.** `AgentSession.spawn` resolves as
+  soon as Claude Code is running and the prompt goes to its stdin at once.
+  A CLI too old for an optional flag (`OPTIONAL_FLAGS`, floors in
+  `FLAG_FLOORS`) exits before its init; the turn ends `flagRejected` and
+  the turn route launches it again without them, as it does after a failed
+  resume.
 - **A model list comes from the CLI** (`models.mjs`,
   `/engines/:engine/models`). Claude Code has no list, so
   it offers its aliases (`fable`, `opus`, `sonnet`, `haiku`, best first,
@@ -1352,10 +1374,9 @@ what is here. The README says what Gond is; this says how it is made.
   that may not run.
 - **A sign-in is the CLI's own login, driven here** (`sign-in.mjs`,
   `/engines/:engine/sign-in`). One job per person and engine: the login
-  command in a pseudo terminal as them (the same `pty.spawn` recipe as a
-  terminal, wide enough that no link wraps, `CI` dropped so the CLIs print
-  the link), the link and the code parsed out of what it prints, the code
-  from the sign-in page written back for Claude Code, and the outcome
+  command in a pseudo terminal as them (`pty.spawn`, wide enough that no link wraps, `CI` dropped so the CLIs print
+  the link), the link parsed out of what it prints, the code from the
+  sign-in page written back for Claude Code, and the outcome
   confirmed by asking the CLI itself. Only the link, the code and a short
   error ever leave; the transcript never does. Parsing and the job are
   pure functions with tests (`test/sign-in.test.mjs`) so nothing there
@@ -1429,9 +1450,9 @@ what is here. The README says what Gond is; this says how it is made.
   The one thing kept is each person's CLI sign-ins, set aside in
   `/state/logins/<user id>` and put back by `ensure()` when that person's
   next account is made, so a reset never signs anybody out of their plan.
-  Each person can also reset just their own account (Settings → Computer,
+  Each person can also reset just their own account (Settings → Your space,
   `home-reset-card.tsx` → `POST /api/box/home/reset`, which stops their
-  bots first → the box's `POST /home/reset`): their desktop, terminals and
+  bots first → the box's `POST /home/reset`): their desktop and
   sessions close, every process of theirs is killed, and `refreshHome`
   empties the home but for what `homeKeeps` keeps, every memory (each
   bot's `MEMORY.md`, `memory/` and `SOUL.md`, and the team's), the CLIs'
@@ -1508,7 +1529,7 @@ changed and why, written for the person reading the log.
   set up and is a user.
 - All bots, everyone's, share one computer, and every person has their
   own Linux account on it: their own home, their bots' files, their CLI
-  sign-ins, their terminals and a screen for each of their bots. Separate bots are not a
+  sign-ins and a screen for each of their bots. Separate bots are not a
   security boundary there; separate people are Unix permissions inside
   one container, which keeps their work apart but is not a hard boundary
   either. The container and the unprivileged users are. Rows in the
@@ -1535,4 +1556,4 @@ changed and why, written for the person reading the log.
   listed in the README's Advanced settings, never added to the example.
   The API finds the Docker socket's group itself as it starts
   (`apps/api/docker-entrypoint.sh`), so no setting asks for it. Names are
-  `GOND_*`; a `KRU_*` name is legacy, read for one release with a warning.
+  `GOND_*`.

@@ -1,4 +1,5 @@
 import type { LiveEvent } from "@gond/shared";
+import { threadOwner } from "./data/threads.ts";
 
 type Listener = (event: LiveEvent) => void;
 
@@ -25,10 +26,10 @@ export function emit(event: LiveEvent) {
   }
 }
 
-export const botsChanged = () => emit({ topic: "bots" });
+export const botsChanged = (userId?: string | null) => emit(userId ? { topic: "bots", userId } : { topic: "bots" });
 export const threadChanged = (threadId: string, cleared?: true) => {
   emit(cleared ? { topic: "thread", threadId, cleared } : { topic: "thread", threadId });
-  emit({ topic: "bots" });
+  botsChanged(threadOwner(threadId));
 };
 export const approvalsChanged = () => emit({ topic: "approvals" });
 export const settingsChanged = () => emit({ topic: "settings" });
@@ -37,7 +38,3 @@ export const skillsChanged = (userId: string | null | undefined) => {
   if (userId) emit({ topic: "skills", userId });
 };
 export const activity = (threadId: string, botId: string, line: string | null) => emit({ topic: "activity", threadId, botId, line });
-
-export function listenerCount() {
-  return listeners().size;
-}

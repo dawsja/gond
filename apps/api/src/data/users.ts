@@ -42,11 +42,6 @@ export function listUsers(): UserSummary[] {
   });
 }
 
-export function countUsers(): number {
-  const row = ensureDatabase().query('SELECT COUNT(*) AS n FROM "user"').get() as { n: number };
-  return Number(row.n);
-}
-
 export function ensureAdmin(): string | null {
   const db = ensureDatabase();
   const admin = db.query('SELECT id FROM "user" WHERE role = ? ORDER BY createdAt ASC LIMIT 1').get("admin") as { id: string } | null;

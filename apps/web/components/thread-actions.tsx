@@ -7,14 +7,8 @@ import { Confirm } from "@/components/confirm-dialog";
 import type { ShellDialog } from "@/components/shell";
 import { useStore, type ThreadRow } from "@/components/store";
 import { TransferPrimaryDialog } from "@/components/transfer-primary";
-import { toast } from "@/components/ui/toast";
+import { failed } from "@/components/failed";
 import { del, patch } from "@/lib/api";
-
-function failed(fallback: string) {
-  return (failure: unknown) => {
-    toast.add({ type: "error", title: failure instanceof Error && failure.message ? failure.message : fallback });
-  };
-}
 
 export type Ask = { kind: "delete" | "transfer"; thread: ThreadRow };
 
@@ -41,7 +35,7 @@ export function threadActions({ thread, bot, bots, onOpen, onAsk, refresh }: { t
     }
   } else if (thread.kind === "room") {
     groups.push([
-      { id: "edit", label: "Edit group", icon: Pencil, run: () => onOpen({ kind: "edit-room", threadId: thread.id }) },
+      { id: "edit", label: "Edit room", icon: Pencil, run: () => onOpen({ kind: "edit-room", threadId: thread.id }) },
       {
         id: "pin",
         label: thread.pinned ? "Unpin" : "Pin to the top",
@@ -67,7 +61,9 @@ export function ThreadConfirms({ ask, onClose }: { ask: Ask | null; onClose: () 
 
   async function deleteAsked() {
     if (!ask) return;
-    await (askBot ? del(`/api/bots/${askBot.id}`) : del(`/api/rooms/${ask.thread.id}`)).catch(() => undefined);
+    await (askBot ? del(`/api/bots/${askBot.id}`) : del(`/api/rooms/${ask.thread.id}`)).catch((failure: unknown) => {
+      throw failure instanceof Error && failure.message ? failure : new Error(askBot ? `Couldn't delete ${askBot.name}.` : "Couldn't delete the room.");
+    });
     await refresh();
     if (pathname === `/app/t/${ask.thread.id}`) router.replace("/app");
   }
@@ -80,7 +76,7 @@ export function ThreadConfirms({ ask, onClose }: { ask: Ask | null; onClose: () 
         title={askBot ? `Delete ${askBot.name}?` : "Delete this room?"}
         description={askBot ? "Its conversation and its files on the computer go with it. This can't be undone." : "The room and its messages are removed. The bots stay."}
         action="Delete"
-        onConfirm={() => void deleteAsked()}
+        onConfirm={deleteAsked}
       />
       <TransferPrimaryDialog bot={askBot} open={ask?.kind === "transfer"} onOpenChange={(open) => !open && onClose()} />
     </>

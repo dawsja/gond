@@ -7,12 +7,13 @@ import { randomString } from "./ids.ts";
 import { activeTurns, answerMessage, computerAway } from "./responder.ts";
 import { chaseStalledDelegations } from "./nudges.ts";
 import { isUpdating } from "./updater.ts";
+import { subscribe } from "./events.ts";
 
-type State = { timer: ReturnType<typeof setInterval> | null; owner: string; ticking: boolean; lastChase: number };
+type State = { timer: ReturnType<typeof setInterval> | null; owner: string; ticking: boolean; lastChase: number; woken: boolean };
 const holder = globalThis as typeof globalThis & { __gondDispatcher?: State };
 
 function state(): State {
-  return (holder.__gondDispatcher ??= { timer: null, owner: randomString(8), ticking: false, lastChase: 0 });
+  return (holder.__gondDispatcher ??= { timer: null, owner: randomString(8), ticking: false, lastChase: 0, woken: false });
 }
 
 export const TICK_MS = 2_000;
@@ -21,13 +22,22 @@ export function startDispatcher(options: { intervalMs?: number } = {}) {
   const current = state();
   if (current.timer) return;
   current.timer = setInterval(() => void tick(), options.intervalMs ?? TICK_MS);
+  // A new message, or a bot coming free, is picked up at once; the interval is only the fallback.
+  subscribe((event) => {
+    if (event.topic === "thread" || (event.topic === "activity" && event.line === null)) wake();
+  });
   console.info("[gond] Dispatcher started");
 }
 
-export function stopDispatcher() {
+/** One tick on the next turn of the event loop, however many ask for it before then. */
+export function wake() {
   const current = state();
-  if (current.timer) clearInterval(current.timer);
-  current.timer = null;
+  if (current.woken) return;
+  current.woken = true;
+  setTimeout(() => {
+    current.woken = false;
+    void tick();
+  }, 0);
 }
 
 export function runDueRoutines(at = new Date()) {

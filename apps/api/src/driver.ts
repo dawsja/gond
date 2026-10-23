@@ -46,12 +46,12 @@ export function agentToolsFor(tools: Record<string, DriverTool>): AgentTool[] {
 
 const MAX_TOOL_RESULT = 24_000;
 
-function clip(text: string) {
-  return text.length > MAX_TOOL_RESULT ? `${text.slice(0, MAX_TOOL_RESULT)}\n[… ${text.length - MAX_TOOL_RESULT} more characters]` : text;
+export function clipToolResult(text: string, limit = MAX_TOOL_RESULT) {
+  return text.length > limit ? `${text.slice(0, limit)}\n[… ${text.length - limit} more characters]` : text;
 }
 
 export function clipParts(parts: ToolPart[]): ToolPart[] {
-  return parts.map((part) => (part.type === "text" ? { ...part, text: clip(part.text) } : part));
+  return parts.map((part) => (part.type === "text" ? { ...part, text: clipToolResult(part.text) } : part));
 }
 
 export type CliTurn = {
@@ -81,6 +81,8 @@ export type CliTurn = {
   onLog?: (line: string) => void;
 
   onStep?: (step: StepUpdate) => void;
+  // The reply's words so far as the model writes them, or null when a tool call ends them.
+  onText?: (text: string | null) => void;
 };
 
 export type CliTurnResult = {
@@ -94,11 +96,8 @@ export type CliTurnResult = {
 type StreamEvent = { type?: string; message?: { content?: unknown }; parent_tool_use_id?: string | null };
 type ContentBlock = { type?: string; id?: string; text?: string; name?: string; input?: Record<string, unknown>; tool_use_id?: string; content?: unknown; is_error?: boolean };
 
-const BRIDGE_PREFIXES = ["mcp__gond__", "mcp__kru__"];
-
 function isPermissionTool(name: string): boolean {
-  const bridge = BRIDGE_PREFIXES.find((prefix) => name.startsWith(prefix));
-  return bridge !== undefined && name.slice(bridge.length) === "permission";
+  return name === "mcp__gond__permission";
 }
 
 function parseStream(line: string): StreamEvent | null {
@@ -165,7 +164,7 @@ export async function cliTurn(turn: CliTurn): Promise<CliTurnResult> {
     try {
       if (!tool) throw new Error(`No such tool: ${name}`);
       const value = await tool.execute(input, callId);
-      content = isToolParts(value) ? clipParts(value) : clip(resultAsText(value));
+      content = isToolParts(value) ? clipParts(value) : clipToolResult(resultAsText(value));
     } catch (error) {
       content = error instanceof Error ? error.message : "Tool failed";
       isError = true;
@@ -175,6 +174,7 @@ export async function cliTurn(turn: CliTurn): Promise<CliTurnResult> {
 
   const context: ToolLabelContext = { home: turn.home ?? null, servers: (turn.mcpServers ?? []).flatMap((server) => (typeof (server as { name?: unknown }).name === "string" ? [{ name: (server as { name: string }).name }] : [])) };
 
+  let segment = "";
   const result = await runAgentTurn(
     turn.box,
     turn.agentId,
@@ -198,6 +198,12 @@ export async function cliTurn(turn: CliTurn): Promise<CliTurnResult> {
       onEvent: (event) => {
         if (event.type === "tool_call") {
           inflight.push(handleCall(event.callId, event.name, event.input));
+        } else if (event.type === "text_delta") {
+          segment += event.text;
+          turn.onText?.(segment);
+        } else if (event.type === "text_end") {
+          if (segment) turn.onText?.(null);
+          segment = "";
         } else if (event.type === "line") {
           if (turn.onLog) for (const line of activityLine(event.line, context)) turn.onLog(line);
           if (turn.onStep) for (const step of workSteps(event.line, context)) turn.onStep(step);

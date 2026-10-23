@@ -1,17 +1,8 @@
 import { mkdirSync, chmodSync } from "node:fs";
 import path from "node:path";
 
-const warned = new Set<string>();
-
 export function env(name: string): string | undefined {
-  const value = process.env[`GOND_${name}`];
-  if (value !== undefined) return value;
-  const legacy = process.env[`KRU_${name}`];
-  if (legacy !== undefined && !warned.has(name)) {
-    warned.add(name);
-    console.warn(`[gond] KRU_${name} is now GOND_${name}; the old name stops working in the next release.`);
-  }
-  return legacy;
+  return process.env[`GOND_${name}`];
 }
 
 export function dataDir() {

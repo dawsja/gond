@@ -1,6 +1,6 @@
 import type { ComposioKeyStatus } from "@gond/shared";
 import { Hono } from "hono";
-import { ownThread, userId } from "../access.ts";
+import { ownsThread, userId } from "../access.ts";
 import type { Env } from "../app.ts";
 import { appUrl } from "../config.ts";
 import { applyComposioKey, catalogEntry, composioKey, composioKeySource, disconnect, forgetComposioCache, refreshConnection, startConnection } from "../composio.ts";
@@ -44,7 +44,7 @@ export function connectionsRoutes() {
     const toolkit = c.req.param("toolkit").toLowerCase();
     if (!(await catalogEntry(userId(c), toolkit))) return c.json({ error: "That app isn't in the catalog" }, 404);
     const body = (await c.req.json().catch(() => ({}))) as { threadId?: unknown };
-    const thread = typeof body.threadId === "string" && ownThread(c, body.threadId) ? body.threadId : null;
+    const thread = typeof body.threadId === "string" && ownsThread(c, body.threadId) ? body.threadId : null;
     try {
       return c.json(await startConnection(userId(c), toolkit, thread));
     } catch (error) {
@@ -61,7 +61,7 @@ export function connectionsRoutes() {
     const toolkit = (c.req.query("toolkit") ?? "").toLowerCase();
     if (toolkit) await refreshConnection(userId(c), toolkit);
     const thread = c.req.query("thread") ?? "";
-    const where = thread && ownThread(c, thread) ? `/app/t/${thread}` : "/app/settings/apps";
+    const where = thread && ownsThread(c, thread) ? `/app/t/${thread}` : "/app/settings/apps";
     return c.redirect(`${appUrl()}${where}?connected=${encodeURIComponent(toolkit)}`);
   });
 

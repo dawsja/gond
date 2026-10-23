@@ -19,13 +19,12 @@ test("the escapes a terminal acts on are taken out, hyperlinks and all", () => {
 test("Claude Code's login gives its link and asks for a code", () => {
   const parsed = parseSignIn("claude", CLAUDE_OUT);
   assert.equal(parsed.url, CLAUDE_URL);
-  assert.equal(parsed.code, null);
-  assert.ok(signInReady("claude", parsed));
+  assert.ok(signInReady(parsed));
   assert.ok(needsCode("claude"));
 });
 
 test("half a line isn't a sign-in yet", () => {
-  assert.equal(signInReady("claude", parseSignIn("claude", "Opening browser to sign in…\r\n")), false);
+  assert.equal(signInReady(parseSignIn("claude", "Opening browser to sign in…\r\n")), false);
 });
 
 test("each CLI's own login command, with the binaries the box runs", () => {
@@ -89,7 +88,7 @@ test("a sign-in nobody finishes is killed and says so", async () => {
 
 test("what a sign-in tells the app is the link, the code and nothing else", () => {
   const { running } = job("claude", CLAUDE_OUT);
-  assert.deepEqual(Object.keys(running.view()).sort(), ["code", "engine", "error", "needsCode", "startedAt", "state", "url"]);
+  assert.deepEqual(Object.keys(running.view()).sort(), ["engine", "error", "needsCode", "startedAt", "state", "url"]);
 });
 
 test("the last line is what the CLI said, warnings aside", () => {

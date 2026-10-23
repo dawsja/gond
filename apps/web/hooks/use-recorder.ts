@@ -2,7 +2,6 @@
 
 import { TRANSCRIBE_MAX_SECONDS } from "@gond/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { microphone } from "@/lib/audio-devices";
 
 // Both transcription APIs take webm and mp4; Safari records only mp4.
 const FORMATS = [
@@ -37,7 +36,7 @@ export function useRecorder(onDone: (audio: File) => void) {
 
   const start = useCallback(async () => {
     if (take.current) return;
-    const stream = await microphone();
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     const [mimeType, extension] = FORMATS.find(([type]) => MediaRecorder.isTypeSupported(type)) ?? ["", "webm"];
     const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
     const current: Take = { recorder, stream, timer: 0, started: Date.now(), extension, chunks: [], keep: true };

@@ -5,7 +5,6 @@ import { useState } from "react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
 import { post } from "@/lib/api";
 
@@ -20,10 +19,10 @@ export function HomeResetCard() {
     setBusy(true);
     try {
       await post("/api/box/home/reset");
-      toast.add({ type: "success", title: "Your computer is fresh.", description: "Your bots pick up where they left off." });
+      toast.add({ type: "success", title: "Your space on the computer is fresh.", description: "Your bots pick up where they left off." });
       setConfirming(false);
     } catch (failure) {
-      toast.add({ type: "error", title: failure instanceof Error ? failure.message : "Couldn't reset your computer." });
+      toast.add({ type: "error", title: failure instanceof Error ? failure.message : "Couldn't start your space fresh." });
     } finally {
       setBusy(false);
     }
@@ -33,7 +32,7 @@ export function HomeResetCard() {
     <Card>
       <CardHeader>
         <CardTitle>Start fresh</CardTitle>
-        <CardDescription>Put your account on the computer back the way it was built, when it&apos;s cluttered or something your bots installed is in the way. Only your account changes; nobody else&apos;s.</CardDescription>
+        <CardDescription>Put your space on the computer back the way it was built, when it&apos;s cluttered or something your bots installed is in the way. Only your space changes; nobody else&apos;s.</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-5 wide:grid-cols-2">
         <section>
@@ -56,21 +55,20 @@ export function HomeResetCard() {
       <CardFooter>
         <Button variant="destructive" onClick={() => setConfirming(true)}>
           <RotateCcw data-icon="inline-start" aria-hidden="true" />
-          Reset my computer
+          Start my space fresh
         </Button>
       </CardFooter>
 
       <AlertDialog open={confirming} onOpenChange={(open) => !busy && setConfirming(open)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Reset your computer?</AlertDialogTitle>
-            <AlertDialogDescription>Your bots stop what they&apos;re doing, and everything installed and every file on your account goes. Their memories and your sign-ins stay. This can&apos;t be undone.</AlertDialogDescription>
+            <AlertDialogTitle>Start your space fresh?</AlertDialogTitle>
+            <AlertDialogDescription>Your bots stop what they&apos;re doing, and everything installed and every file in your space goes. Their memories and your sign-ins stay. This can&apos;t be undone.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={busy}>Not now</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" disabled={busy} onClick={() => void reset()}>
-              {busy ? <Spinner data-icon="inline-start" /> : null}
-              {busy ? "Resetting…" : "Reset"}
+            <AlertDialogAction variant="destructive" onAction={reset}>
+              Start fresh
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -23,7 +23,6 @@ const bot: Bot = {
   expression: "happy",
   shape: "cog",
   approval: "ask",
-  toolkits: [],
   threadId: "t-1",
   primary: true,
   hidden: false,
@@ -264,7 +263,8 @@ describe("redaction", () => {
 
 describe("LLM proxy", () => {
   test("keys go out the way each provider wants them", async () => {
-    const { authHeaders, isAnthropicHost, presentedToken, upstreamUrl } = await import("../src/routes/llm.ts");
+    const { presentedToken } = await import("../src/routes/llm.ts");
+    const { authHeaders, isAnthropicHost, upstreamUrl } = await import("../src/providers.ts");
     expect(isAnthropicHost("https://api.anthropic.com")).toBe(true);
     expect(isAnthropicHost("https://openrouter.ai/api")).toBe(false);
     expect(authHeaders("anthropic", "https://api.anthropic.com", "k")).toEqual({ "x-api-key": "k" });
@@ -277,7 +277,7 @@ describe("LLM proxy", () => {
   });
 
   test("a proxied path never leaves the provider's address, whatever the box sends", async () => {
-    const { proxiedUrl } = await import("../src/routes/llm.ts");
+    const { proxiedUrl } = await import("../src/providers.ts");
     expect(proxiedUrl("https://api.z.ai/api/anthropic", "v1/messages", "?beta=1")?.href).toBe("https://api.z.ai/api/anthropic/v1/messages?beta=1");
     expect(proxiedUrl("https://api.openai.com/v1", "/models", "")?.href).toBe("https://api.openai.com/v1/models");
 
@@ -316,14 +316,14 @@ describe("mobile sign-in", () => {
   });
 
   test("the code goes back to the app that asked", async () => {
-    const { DESKTOP_SIGN_IN_CALLBACK, LEGACY_MOBILE_SIGN_IN_CALLBACK, MOBILE_SIGN_IN_CALLBACK } = await import("@gond/shared");
+    const { DESKTOP_SIGN_IN_CALLBACK, MOBILE_SIGN_IN_CALLBACK } = await import("@gond/shared");
     const { signInApp, signInCallback } = await import("../src/mobile-sign-in.ts");
     expect(signInCallback(signInApp("desktop"))).toBe(DESKTOP_SIGN_IN_CALLBACK);
     expect(signInCallback(signInApp("android"))).toBe(MOBILE_SIGN_IN_CALLBACK);
 
-    expect(signInCallback(signInApp("app"))).toBe(LEGACY_MOBILE_SIGN_IN_CALLBACK);
-    expect(signInCallback(signInApp(undefined))).toBe(LEGACY_MOBILE_SIGN_IN_CALLBACK);
-    expect(signInCallback(signInApp("something else"))).toBe(LEGACY_MOBILE_SIGN_IN_CALLBACK);
+    expect(signInCallback(signInApp("app"))).toBe(MOBILE_SIGN_IN_CALLBACK);
+    expect(signInCallback(signInApp(undefined))).toBe(MOBILE_SIGN_IN_CALLBACK);
+    expect(signInCallback(signInApp("something else"))).toBe("gond://sign-in");
   });
 
   test("next stays on this server", async () => {
@@ -362,7 +362,8 @@ describe("calling an API directly", () => {
   });
 
   test("a ChatGPT plan streams the Responses API and reads back as the same step", async () => {
-    const { sseEvents, readResponses, planError, toolList, stepMessages } = await import("../src/native.ts");
+    const { readResponses, planError, toolList, stepMessages } = await import("../src/native.ts");
+    const { sseEvents } = await import("../src/sse.ts");
     const stream = [
       'event: response.output_item.done\ndata: {"type":"response.output_item.done","item":{"type":"reasoning","id":"rs_1"}}',
       'data: {"type":"response.completed","response":{"output":[{"type":"reasoning","id":"rs_1"},{"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":"Looking now."}]},{"type":"function_call","id":"fc_1","call_id":"call_1","name":"gond.Bash","arguments":"{\\"command\\":\\"ls\\"}"}]}}',
@@ -396,6 +397,77 @@ describe("calling an API directly", () => {
     expect(shot).toEqual([{ type: "function_call_output", call_id: "c", output: [{ type: "input_text", text: "ok" }, { type: "input_image", image_url: "data:image/png;base64,AAAA" }] }]);
   });
 
+  test("a streamed answer reads back as the step an unstreamed one does, its words told as they come", async () => {
+    const { anthropicAssembler, openAiAssembler, responsesText, readAnthropic, readOpenAi } = await import("../src/native.ts");
+    const { sseStream } = await import("../src/sse.ts");
+    const said: (string | null)[] = [];
+    const anthropic = anthropicAssembler((text) => said.push(text));
+    for (const event of [
+      { type: "message_start", message: { id: "m", role: "assistant", content: [], stop_reason: null } },
+      { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
+      { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Looking " } },
+      { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "now." } },
+      { type: "content_block_stop", index: 0 },
+      { type: "content_block_start", index: 1, content_block: { type: "tool_use", id: "tu_1", name: "Bash", input: {} } },
+      { type: "content_block_delta", index: 1, delta: { type: "input_json_delta", partial_json: '{"comm' } },
+      { type: "content_block_delta", index: 1, delta: { type: "input_json_delta", partial_json: 'and":"ls"}' } },
+      { type: "content_block_stop", index: 1 },
+      { type: "message_delta", delta: { stop_reason: "tool_use" } },
+      { type: "message_stop" },
+    ]) anthropic.push(event);
+    const streamed = readAnthropic(anthropic.result().payload);
+    expect(streamed).toEqual(readAnthropic({ content: [{ type: "text", text: "Looking now." }, { type: "tool_use", id: "tu_1", name: "Bash", input: { command: "ls" } }], stop_reason: "tool_use" }));
+    expect(said).toEqual(["Looking ", "Looking now.", null]);
+    const failing = anthropicAssembler();
+    failing.push({ type: "error", error: { type: "overloaded_error", message: "Overloaded" } });
+    expect(failing.result().failure).toBeTruthy();
+
+    said.length = 0;
+    const openai = openAiAssembler((text) => said.push(text));
+    for (const chunk of [
+      { choices: [{ delta: { role: "assistant", content: "Look" } }] },
+      { choices: [{ delta: { content: "ing now.", reasoning_content: "hm" } }] },
+      { choices: [{ delta: { tool_calls: [{ index: 0, id: "call_1", type: "function", function: { name: "Bash", arguments: '{"command"' } }] } }] },
+      { choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: ':"ls"}' } }] }, finish_reason: "tool_calls" }] },
+    ]) openai.push(chunk);
+    const chat = readOpenAi(openai.result().payload);
+    expect(chat.text).toBe("Looking now.");
+    expect(chat.calls).toEqual([{ id: "call_1", name: "Bash", input: { command: "ls" } }]);
+    expect(chat.stopReason).toBe("tool_calls");
+    expect(chat.raw).toEqual([{ role: "assistant", content: "Looking now.", reasoning_content: "hm", tool_calls: [{ id: "call_1", type: "function", function: { name: "Bash", arguments: '{"command":"ls"}' } }] }]);
+    expect(said).toEqual(["Look", "Looking now.", null]);
+
+    said.length = 0;
+    const words = responsesText((text) => said.push(text));
+    for (const event of [{ type: "response.output_text.delta", delta: "Hi" }, { type: "response.output_text.delta", delta: " there" }, { type: "response.output_item.added", item: { type: "function_call" } }]) words(event);
+    expect(said).toEqual(["Hi", "Hi there", null]);
+
+    const torn = new Response(
+      new ReadableStream({
+        start(controller) {
+          for (const piece of ['data: {"a":1}\n\nda', 'ta: {"b":2}\n\n']) controller.enqueue(new TextEncoder().encode(piece));
+          controller.close();
+        },
+      }),
+    ).body!;
+    const events: unknown[] = [];
+    for await (const event of sseStream(torn)) events.push(event);
+    expect(events).toEqual([{ a: 1 }, { b: 2 }]);
+  });
+
+  test("Anthropic's API reads the tools, the system prompt and the conversation so far from its cache", async () => {
+    const { withCacheBreakpoints } = await import("../src/native.ts");
+    const ephemeral = { type: "ephemeral" };
+    const first = withCacheBreakpoints("Be kind.", [{ name: "Bash" }, { name: "Read" }], [{ role: "user", content: "hi" }]);
+    expect(first.system).toEqual([{ type: "text", text: "Be kind.", cache_control: ephemeral }]);
+    expect(first.tools).toEqual([{ name: "Bash" }, { name: "Read", cache_control: ephemeral }]);
+    expect(first.messages).toEqual([{ role: "user", content: [{ type: "text", text: "hi", cache_control: ephemeral }] }]);
+    const round = withCacheBreakpoints("Be kind.", [], [{ role: "user", content: "hi" }, { role: "assistant", content: [{ type: "tool_use", id: "t" }] }, { role: "user", content: [{ type: "tool_result", tool_use_id: "t", content: "ok" }] }]);
+    expect(round.tools).toEqual([]);
+    expect(round.messages[0]).toEqual({ role: "user", content: "hi" });
+    expect(round.messages[2]).toEqual({ role: "user", content: [{ type: "tool_result", tool_use_id: "t", content: "ok", cache_control: ephemeral }] });
+  });
+
   test("a ChatGPT plan's models keep its order and only the listed ones", async () => {
     const { readModels } = await import("../src/routes/llm.ts");
     expect(readModels({ models: [{ slug: "gpt-5.5", display_name: "GPT-5.5", visibility: "list" }, { slug: "gpt-old", visibility: "hide" }, { slug: "gpt-5.5-mini", display_name: "GPT-5.5 mini", visibility: "list" }] })).toEqual([
@@ -407,7 +479,8 @@ describe("calling an API directly", () => {
 
   test("a Grok plan is the Responses API with plain tools, its reasoning carried and its own refusals", async () => {
     const { readResponses, grokError, toolList } = await import("../src/native.ts");
-    const { readModels, authHeaders } = await import("../src/routes/llm.ts");
+    const { readModels } = await import("../src/routes/llm.ts");
+    const { authHeaders } = await import("../src/providers.ts");
     const { grokAccount } = await import("../src/grok.ts");
     const step = readResponses(
       [
@@ -892,8 +965,6 @@ describe("work log", () => {
   test("workSteps leaves out the permission tool and bad lines", () => {
     const permission = JSON.stringify({ type: "assistant", message: { content: [{ type: "tool_use", id: "p", name: "mcp__gond__permission", input: {} }] } });
     expect(workSteps(permission)).toEqual([]);
-    const legacy = JSON.stringify({ type: "assistant", message: { content: [{ type: "tool_use", id: "p", name: "mcp__kru__permission", input: {} }] } });
-    expect(workSteps(legacy)).toEqual([]);
     expect(workSteps("not json")).toEqual([]);
   });
 
@@ -948,6 +1019,47 @@ describe("files the person sends", () => {
   });
 });
 
+describe("a reply as it is written", () => {
+  test("the person sees the words at most every so often, never a quiet reply, and the end clears them", async () => {
+    const { createWriting, couldBeQuiet, WRITING_INTERVAL_MS } = await import("../src/writing.ts");
+    let t = 0;
+    let pending: (() => void) | null = null;
+    const timers = { now: () => t, later: (run: () => void) => ((pending = run), () => (pending = null)) };
+    const sent: (string | null)[] = [];
+    const writing = createWriting((text) => sent.push(text), (text) => text.replace("hunter2", "[secret]"), timers);
+    writing.text("NOTHING");
+    writing.text("`NOTHING_NEW`");
+    expect(sent).toEqual([]);
+    writing.text("Done, the password hunter2");
+    expect(sent).toEqual(["Done, the password [secret]"]);
+    t = 10;
+    writing.text("Done, the password hunter2 is set");
+    writing.text("Done, the password hunter2 is set.");
+    expect(sent).toHaveLength(1);
+    t = WRITING_INTERVAL_MS;
+    (pending as (() => void) | null)?.();
+    expect(sent.at(-1)).toBe("Done, the password [secret] is set.");
+    writing.close();
+    expect(sent.at(-1)).toBeNull();
+    writing.close();
+    expect(sent.filter((text) => text === null)).toHaveLength(1);
+    expect(couldBeQuiet("**noth")).toBe(true);
+    expect(couldBeQuiet("No problem")).toBe(false);
+  });
+
+  test("what changes from one message to the next stays out of the system prompt", async () => {
+    const { systemPromptFor, skillsInUse } = await import("../src/souls.ts");
+    const bot = { id: "b1", userId: "u1", name: "Scout", title: "", description: "", approval: "auto", primary: true } as never;
+    const thread = { id: "t1", kind: "bot", name: "", members: [] } as never;
+    const context = { bots: [], thread, memory: null, memoryTruncated: false, teamMemory: null, connections: [], toolNotes: "notes", timezone: "UTC", skillsIndex: "- /tidy: Tidy", mcpServers: [] };
+    const system = systemPromptFor(bot, context);
+    expect(system.indexOf("## House rules")).toBeLessThan(system.indexOf("## Memory"));
+    expect(system.indexOf("## Tools")).toBeLessThan(system.indexOf("## Where you are"));
+    expect(system).not.toContain("Skill in use");
+    expect(skillsInUse([{ slug: "tidy", name: "Tidy", description: "", instructions: "Sort it.", files: [] } as never])).toContain("## Skill in use: /tidy (Tidy)");
+  });
+});
+
 describe("turn timing", () => {
   test("a turn's time splits into the model's rounds and the tools' time", async () => {
     const { createTurnClock, timingLine } = await import("../src/work.ts");
@@ -967,8 +1079,22 @@ describe("turn timing", () => {
     clock.step({ id: "note-1", kind: "note", title: "thinking", status: "done" });
     t = 12_000;
     const timing = clock.timing();
-    expect(timing).toEqual({ totalMs: 12_000, toolsMs: 2000, modelMs: 10_000, rounds: 3, calls: 3, screen: 2 });
-    expect(timingLine("Patch", "api MiniMax-M2", timing)).toBe("[gond] Patch took 12.0 s on api MiniMax-M2: 3 model rounds (10.0 s), 3 tool calls (2 on the screen, 2.0 s)");
+    expect(timing).toEqual({ totalMs: 12_000, toolsMs: 2000, modelMs: 10_000, rounds: 3, calls: 3, screen: 2, queuedMs: 0, setupMs: 0, firstMs: null });
+    expect(timingLine("Patch", "api MiniMax-M2", timing)).toBe("[gond] Patch took 12.0 s on api MiniMax-M2 (waited 0.0 s, setup 0.0 s, first words never): 3 model rounds (10.0 s), 3 tool calls (2 on the screen, 2.0 s)");
+  });
+
+  test("the wait before a turn, its setup and its first words are told apart from the model's time", async () => {
+    const { createTurnClock } = await import("../src/work.ts");
+    let t = 1000;
+    const clock = createTurnClock(() => t, 400);
+    t = 1800;
+    clock.ready();
+    t = 2500;
+    clock.firstText();
+    t = 3000;
+    clock.firstText();
+    t = 4000;
+    expect(clock.timing()).toMatchObject({ totalMs: 3000, queuedMs: 600, setupMs: 800, firstMs: 1500, modelMs: 2200, toolsMs: 0 });
   });
 });
 
@@ -1284,66 +1410,43 @@ describe("message search index", () => {
   });
 });
 
-describe("calls", () => {
-  test("a line that only closes the call hangs up, one that asks for more doesn't", async () => {
-    const { endsCall } = await import("../src/calls.ts");
-    for (const line of ["Bye", "Goodbye!", "OK thanks, bye.", "That's all", "that's it, thanks", "Thank you so much, that's all for now", "Bye Patch", "Hang up", "End the call please", "Alright, talk to you later", "I'm done"]) expect(endsCall(line, "Patch")).toBe(true);
-    for (const line of ["That's all I need, now book it", "bye the way can you check", "Is that all?", "Goodbye message for the team", "Find me a flight"]) expect(endsCall(line, "Patch")).toBe(false);
-  });
-
-  test("each voice's events read as the same signals", async () => {
-    const { readLiveEvent, readXaiEvent } = await import("../src/voice-link.ts");
-    expect(readLiveEvent({ type: "session.started" })).toEqual([{ kind: "ready" }]);
-    expect(readLiveEvent({ type: "session.input_transcript.delta", delta: "Find me" })).toEqual([{ kind: "heard", text: "Find me", final: false }]);
-    expect(readLiveEvent({ type: "session.delegation.created", delegation: { id: "item_1", type: "delegation", target: "client" } })).toEqual([{ kind: "delegate", id: "item_1", request: null }]);
-    expect(readLiveEvent({ type: "session.closed", reason: "expired" })).toEqual([{ kind: "closed", reason: "expired" }]);
-    expect(readXaiEvent({ type: "response.function_call_arguments.done", name: "ask_bot", call_id: "c1", arguments: '{"request":"Book it"}' })).toEqual([{ kind: "delegate", id: "c1", request: "Book it" }]);
-    expect(readXaiEvent({ type: "response.function_call_arguments.done", name: "ask_bot", call_id: "c1", arguments: "{oops" })).toEqual([{ kind: "delegate", id: "c1", request: null }]);
-    expect(readXaiEvent({ type: "response.function_call_arguments.done", name: "end_call", call_id: "c3", arguments: "{}" })).toEqual([{ kind: "hang-up", id: "c3" }]);
-    expect(readXaiEvent({ type: "input_audio_buffer.speech_started" })).toEqual([{ kind: "interrupt" }]);
-    expect(readXaiEvent({ type: "error", error: { message: "bad key" } })).toEqual([{ kind: "error", message: "bad key" }]);
-  });
-
-  test("speech said apart is joined as sentences, and a word split across fragments stays whole", async () => {
-    const { joinSpeech } = await import("../src/calls.ts");
-    expect(joinSpeech("Hang on.", "I'm looking")).toBe("Hang on. I'm looking");
-    expect(joinSpeech("Fridays out", " of town")).toBe("Fridays out of town");
-    expect(joinSpeech("Net", "'s your bot")).toBe("Net's your bot");
-    expect(joinSpeech("Done.", " Next")).toBe("Done. Next");
-  });
-
-  test("a call's length reads in minutes", async () => {
-    const { callLength } = await import("../src/calls.ts");
-    expect(callLength(20_000)).toBe("under a minute");
-    expect(callLength(70_000)).toBe("1 min");
-    expect(callLength(5 * 60_000)).toBe("5 min");
+describe("message indexes", () => {
+  test("the queries that run most use an index, never a scan of every message", async () => {
+    const { Database } = await import("bun:sqlite");
+    const { runMigrations } = await import("../src/db/migrations.ts");
+    const db = new Database(":memory:", { strict: true });
+    runMigrations(db);
+    const plan = (sql: string) => (db.query(`EXPLAIN QUERY PLAN ${sql}`).all() as { detail: string }[]).map((row) => row.detail).join(" | ");
+    const pending = plan(
+      "SELECT m.*, t.user_id FROM gond_messages m LEFT JOIN gond_threads t ON t.id = m.thread_id WHERE m.answered_at IS NULL AND m.claimed_by IS NULL AND m.kind IN ('message', 'prompt') ORDER BY m.created_at ASC",
+    );
+    expect(pending).toContain("gond_messages_open");
+    expect(pending).not.toContain("TEMP B-TREE");
+    expect(plan("SELECT body, created_at FROM gond_messages WHERE thread_id = 't' AND author = 'routine' ORDER BY created_at DESC LIMIT 1")).toContain("gond_messages_author");
+    const sent = plan("SELECT * FROM gond_messages WHERE (thread_id = 't' OR from_thread_id = 't') ORDER BY created_at DESC, rowid DESC LIMIT 200");
+    expect(sent).toContain("gond_messages_from");
+    expect(sent).not.toMatch(/SCAN gond_messages(?! USING)/);
   });
 });
 
-describe("speaking on xAI", () => {
-  test("asks wait for the reply in progress, and one refused or never started is asked again", async () => {
-    const { SpeakQueue } = await import("../src/voice-link.ts");
-    const sent: string[] = [];
-    const queue = new SpeakQueue((ask) => sent.push(ask?.instructions ?? "plain"), 20);
-    queue.started();
-    queue.ask({ instructions: "answer" });
-    expect(sent).toEqual([]);
-    queue.finished();
-    expect(sent).toEqual(["answer"]);
-    // Refused (another reply had just begun): asked again once that one is done.
-    queue.refused();
-    queue.started();
-    queue.finished();
-    expect(sent).toEqual(["answer", "answer"]);
-    queue.started();
-    queue.finished();
-    await Bun.sleep(30);
-    expect(sent).toEqual(["answer", "answer"]);
-    // Never started at all: asked again after a moment, and not for ever.
-    queue.ask({ instructions: "lost" });
-    await Bun.sleep(150);
-    expect(sent.filter((s) => s === "lost")).toHaveLength(4);
-    queue.stop();
+describe("taking calls out", () => {
+  test("what was said on calls and their start and end lines go, everything else stays", async () => {
+    const { Database } = await import("bun:sqlite");
+    const { runMigrations, CALLS_OUT_VERSION } = await import("../src/db/migrations.ts");
+    const db = new Database(":memory:", { strict: true });
+    runMigrations(db, CALLS_OUT_VERSION - 1);
+    const at = "2026-10-22T00:00:00Z";
+    db.query("INSERT INTO gond_threads (id, kind, bot_id, name, user_id, created_at, updated_at) VALUES ('t1', 'room', NULL, 'Room', 'u1', ?, ?)").run(at, at);
+    const post = (id: string, author: string, kind: string, body: string, spoken = 0) =>
+      db.query("INSERT INTO gond_messages (id, thread_id, author, kind, body, attachments, depth, spoken, created_at) VALUES (?, 't1', ?, ?, ?, '[]', 0, ?, ?)").run(id, author, kind, body, spoken, at);
+    post("typed", "you", "message", "Call started, please");
+    post("start", "system", "event", "Call started");
+    post("heard", "you", "message", "Who's Net", 1);
+    post("said", "bot-1", "message", "Net is your network bot.", 1);
+    post("end", "system", "event", "Call ended · 2 min");
+    post("other", "system", "event", "Stopped.");
+    runMigrations(db, CALLS_OUT_VERSION);
+    expect((db.query("SELECT id FROM gond_messages ORDER BY rowid").all() as { id: string }[]).map((r) => r.id)).toEqual(["typed", "other"]);
   });
 });
 

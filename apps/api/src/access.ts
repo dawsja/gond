@@ -1,7 +1,7 @@
 import type { Context, Next } from "hono";
 import type { Env } from "./app.ts";
 import { getBot } from "./data/bots.ts";
-import { getThread } from "./data/threads.ts";
+import { getThread, threadOwner } from "./data/threads.ts";
 import { isAdmin } from "./data/users.ts";
 
 export function userId(c: Context<Env>): string {
@@ -25,4 +25,8 @@ export function ownBot(c: Context<Env>, id: string) {
 export function ownThread(c: Context<Env>, id: string) {
   const thread = getThread(id);
   return thread && thread.userId === userId(c) ? thread : null;
+}
+
+export function ownsThread(c: Context<Env>, id: string): boolean {
+  return threadOwner(id) === userId(c);
 }

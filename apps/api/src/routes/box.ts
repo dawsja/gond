@@ -5,9 +5,7 @@ import {
   BoxError,
   boxConfig,
   cancelEngineSignIn,
-  closeTerminal,
   connectDesktop,
-  createTerminal,
   deleteBoxFile,
   desktopControl,
   desktopInput,
@@ -22,8 +20,6 @@ import {
   startDesktop,
   startEngineSignIn,
   stopDesktop,
-  terminalInput,
-  terminalResize,
   writeBoxFile,
   type BoxConfig,
 } from "../box.ts";
@@ -33,7 +29,7 @@ import { containsSecret, hideSecrets } from "../data/secrets.ts";
 import { pictureType } from "../images.ts";
 import { botHome } from "../memory.ts";
 import { watchEngineSignIn } from "../status.ts";
-import { stopAll, tellHandedBack } from "../responder.ts";
+import { forgetSouls, stopAll, tellHandedBack } from "../responder.ts";
 import { isUpdating, startReset, startUpdate, updateReport } from "../updater.ts";
 
 const STREAM_ID = /^[a-f0-9]{16}$/;
@@ -100,70 +96,9 @@ export function boxRoutes() {
     await stopAll(person).catch(() => undefined);
     try {
       const result = await resetBoxHome(box);
+      forgetSouls();
       void emitDesktop(person);
       return c.json(result);
-    } catch (error) {
-      return boxErrorResponse(c, error);
-    }
-  });
-
-  app.post("/box/terminals", async (c) => {
-    const box = requireBox(c);
-    if (box instanceof Response) return box;
-    const body = (await c.req.json().catch(() => ({}))) as { bot?: string; cols?: number; rows?: number };
-    if (body.bot && !ownBot(c, body.bot)) return c.json({ error: "Couldn't find that bot" }, 404);
-    try {
-      return c.json({ terminal: await createTerminal(box, { bot: body.bot ?? null, cols: Number(body.cols) || 80, rows: Number(body.rows) || 24 }) });
-    } catch (error) {
-      return boxErrorResponse(c, error);
-    }
-  });
-
-  app.get("/box/terminals/:id/stream", (c) => {
-    const id = c.req.param("id");
-    if (!STREAM_ID.test(id)) return c.json({ error: "That terminal isn't valid" }, 400);
-    const box = requireBox(c);
-    if (box instanceof Response) return box;
-    return proxyStream(c, box, `/terminals/${id}/stream`);
-  });
-
-  app.post("/box/terminals/:id/input", async (c) => {
-    const id = c.req.param("id");
-    if (!STREAM_ID.test(id)) return c.json({ error: "That terminal isn't valid" }, 400);
-    const box = requireBox(c);
-    if (box instanceof Response) return box;
-    const body = (await c.req.json().catch(() => ({}))) as { data?: string };
-    if (typeof body.data !== "string") return c.json({ error: "Nothing was sent" }, 400);
-    try {
-      await terminalInput(box, id, body.data);
-      return c.json({ ok: true });
-    } catch (error) {
-      return boxErrorResponse(c, error);
-    }
-  });
-
-  app.post("/box/terminals/:id/resize", async (c) => {
-    const id = c.req.param("id");
-    if (!STREAM_ID.test(id)) return c.json({ error: "That terminal isn't valid" }, 400);
-    const box = requireBox(c);
-    if (box instanceof Response) return box;
-    const body = (await c.req.json().catch(() => ({}))) as { cols?: number; rows?: number };
-    try {
-      await terminalResize(box, id, { cols: Number(body.cols) || 80, rows: Number(body.rows) || 24 });
-      return c.json({ ok: true });
-    } catch (error) {
-      return boxErrorResponse(c, error);
-    }
-  });
-
-  app.delete("/box/terminals/:id", async (c) => {
-    const id = c.req.param("id");
-    if (!STREAM_ID.test(id)) return c.json({ error: "That terminal isn't valid" }, 400);
-    const box = requireBox(c);
-    if (box instanceof Response) return box;
-    try {
-      await closeTerminal(box, id);
-      return c.body(null, 204);
     } catch (error) {
       return boxErrorResponse(c, error);
     }

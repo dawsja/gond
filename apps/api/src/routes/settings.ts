@@ -16,7 +16,7 @@ export function settingsRoutes() {
   app.get("/settings", (c) => {
     const settings = getSettings();
 
-    return c.json({ settings: admin(c) ? settings : { ...settings, onboarding: { done: true, apps: [], templates: [] } } });
+    return c.json({ settings: admin(c) ? settings : { ...settings, onboarding: { done: true, templates: [] } } });
   });
 
   app.get("/ai", (c) => c.json({ ai: getAi(userId(c)) }));
@@ -84,23 +84,20 @@ export function settingsRoutes() {
 
   app.post("/onboarding/complete", async (c) => {
     if (getSettings().onboarding.done) return c.json({ error: "Setup is already done" }, 409);
-    const body = (await c.req.json().catch(() => ({}))) as { apps?: string[]; templates?: string[]; timezone?: string };
+    const body = (await c.req.json().catch(() => ({}))) as { templates?: string[]; timezone?: string };
 
-    const apps = Array.isArray(body.apps) ? body.apps.map((a) => String(a).toLowerCase()).filter((a) => /^[a-z0-9_-]{1,64}$/.test(a)).slice(0, 50) : [];
     const picked = Array.isArray(body.templates) ? body.templates.map(String) : [];
     const templates = BOT_TEMPLATES.filter((t) => picked.includes(t.id)).map((t) => t.id);
     const created = [];
     for (const id of templates) {
       const template = templateById(id);
       if (!template) continue;
-
-      const toolkits = template.toolkits.filter((t) => apps.includes(t));
-      created.push(await addFromTemplate(template, userId(c), { toolkits: toolkits.length ? toolkits : [] }));
+      created.push(await addFromTemplate(template, userId(c)));
     }
     if (typeof body.timezone === "string") setUserTimezone(userId(c), body.timezone);
     const settings = updateSettings({
       ...(typeof body.timezone === "string" ? { timezone: body.timezone.slice(0, 64) } : {}),
-      onboarding: { done: true, apps, templates },
+      onboarding: { done: true, templates },
     });
     return c.json({ settings, bots: created });
   });

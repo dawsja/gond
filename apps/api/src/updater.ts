@@ -3,7 +3,7 @@ import { boxConfig, boxUpdateStatus, forgetBoxAccounts, health, resetBox, startB
 import { dockerAvailability, DockerError, findBoxContainer, imageId, pullImage, recreateContainer } from "./docker.ts";
 import { emit } from "./events.ts";
 import { postMessage } from "./data/threads.ts";
-import { activeTurns, type StopCause } from "./responder.ts";
+import { activeTurns, forgetSouls, type StopCause } from "./responder.ts";
 import { syncSkills } from "./skills.ts";
 import { forgetClaudeCheck } from "./status.ts";
 
@@ -203,6 +203,7 @@ async function runReset(): Promise<void> {
     await waitForBox(box, 60_000);
     forgetClaudeCheck();
 
+    forgetSouls();
     log("Writing the skills library back…");
     await syncSkills();
     set({ phase: "done", finishedAt: new Date().toISOString() });

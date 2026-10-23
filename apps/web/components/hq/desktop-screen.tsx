@@ -25,6 +25,7 @@ import {
 import { useCallback, useRef, useState, type ReactNode, type RefObject } from "react";
 
 import { BotAvatar } from "@/components/bot-avatar";
+import { Confirm } from "@/components/confirm-dialog";
 import { DesktopFrame, DesktopToolbar, DesktopView, INITIAL_REPORT, screenUrl, type DesktopReport, type DesktopViewHandle } from "@/components/hq/box-desktop";
 import { useStore } from "@/components/store";
 import { Button } from "@/components/ui/button";
@@ -210,29 +211,31 @@ function PhoneControls({
             <Ellipsis aria-hidden="true" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-60" container={frame}>
-            <DropdownMenuGroup>
-              {live ? (
-                <DropdownMenuItem onClick={() => onControlChange(control === "person" ? "free" : "person")}>
-                  {control === "person" ? <Undo2 aria-hidden="true" /> : <Hand aria-hidden="true" />}
-                  {control === "person" ? "I'm done" : "Take control"}
-                </DropdownMenuItem>
-              ) : null}
-              {live ? (
-                <DropdownMenuItem onClick={() => view.current?.zoomTo(zoomed ? 1 : 2)}>
-                  {zoomed ? <ZoomOut aria-hidden="true" /> : <ZoomIn aria-hidden="true" />}
-                  {zoomed ? "Fit the screen" : "Zoom in"}
-                </DropdownMenuItem>
-              ) : null}
-              {broken ? (
-                <DropdownMenuItem onClick={() => view.current?.reconnect()}>
-                  <RotateCw aria-hidden="true" />
-                  Reconnect
-                </DropdownMenuItem>
-              ) : null}
-            </DropdownMenuGroup>
+            {live || broken ? (
+              <DropdownMenuGroup>
+                {live ? (
+                  <DropdownMenuItem onClick={() => onControlChange(control === "person" ? "free" : "person")}>
+                    {control === "person" ? <Undo2 aria-hidden="true" /> : <Hand aria-hidden="true" />}
+                    {control === "person" ? "I'm done" : "Take control"}
+                  </DropdownMenuItem>
+                ) : null}
+                {live ? (
+                  <DropdownMenuItem onClick={() => view.current?.zoomTo(zoomed ? 1 : 2)}>
+                    {zoomed ? <ZoomOut aria-hidden="true" /> : <ZoomIn aria-hidden="true" />}
+                    {zoomed ? "Fit the screen" : "Zoom in"}
+                  </DropdownMenuItem>
+                ) : null}
+                {broken ? (
+                  <DropdownMenuItem onClick={() => view.current?.reconnect()}>
+                    <RotateCw aria-hidden="true" />
+                    Reconnect
+                  </DropdownMenuItem>
+                ) : null}
+              </DropdownMenuGroup>
+            ) : null}
             {canType ? (
               <>
-                <DropdownMenuSeparator />
+                {live || broken ? <DropdownMenuSeparator /> : null}
                 <DropdownMenuGroup>
                   <DropdownMenuCheckboxItem checked={trackpad} onCheckedChange={onTrackpad} closeOnClick>
                     <Touchpad aria-hidden="true" />
@@ -249,11 +252,11 @@ function PhoneControls({
             ) : null}
             {onStop ? (
               <>
-                <DropdownMenuSeparator />
+                {live || broken || canType ? <DropdownMenuSeparator /> : null}
                 <DropdownMenuGroup>
                   <DropdownMenuItem variant="destructive" onClick={onStop}>
                     <MonitorOff aria-hidden="true" />
-                    Stop the desktop
+                    Turn off the screen
                   </DropdownMenuItem>
                 </DropdownMenuGroup>
               </>
@@ -412,24 +415,36 @@ export function DesktopScreen({
 
 /** A bot's whole computer, opened from its panel: the screen as the page, with Stop. */
 export function BoxDesktop({ bot, onClose, control, onControlChange }: { bot: Bot; onClose: () => void; control: DesktopControl; onControlChange: (holder: "person" | "free") => void }) {
+  const [stopping, setStopping] = useState(false);
   const stopDesktop = useCallback(async () => {
-    await fetch(screenUrl(bot.id), { method: "DELETE" }).catch(() => undefined);
+    const res = await fetch(screenUrl(bot.id), { method: "DELETE" }).catch(() => null);
+    if (!res?.ok) throw new Error("Couldn't turn off the screen. Try again.");
     onClose();
   }, [bot.id, onClose]);
 
   return (
-    <DesktopScreen
-      botId={bot.id}
-      title={bot.name}
-      wideTitle={`${bot.name} · Computer`}
-      icon={<BotAvatar bot={bot} size={32} />}
-      driver={bot.name}
-      control={control}
-      onControlChange={onControlChange}
-      onClose={onClose}
-      closeLabel="Hide (the screen keeps running)"
-      backdropLabel="Hide the screen"
-      onStop={() => void stopDesktop()}
-    />
+    <>
+      <DesktopScreen
+        botId={bot.id}
+        title={bot.name}
+        wideTitle={`${bot.name} · Computer`}
+        icon={<BotAvatar bot={bot} size={32} />}
+        driver={bot.name}
+        control={control}
+        onControlChange={onControlChange}
+        onClose={onClose}
+        closeLabel="Hide (the screen keeps running)"
+        backdropLabel="Hide the screen"
+        onStop={() => setStopping(true)}
+      />
+      <Confirm
+        open={stopping}
+        onOpenChange={setStopping}
+        title={`Turn off ${bot.name}'s screen?`}
+        description="Whatever is open on it closes, and anything it was doing there stops. It starts again the next time it's needed."
+        action="Turn off"
+        onConfirm={stopDesktop}
+      />
+    </>
   );
 }

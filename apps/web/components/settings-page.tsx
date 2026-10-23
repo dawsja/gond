@@ -18,8 +18,6 @@ import { McpCard } from "@/components/mcp-card";
 import { NotificationsCard } from "@/components/notifications-card";
 import { OidcCard } from "@/components/oidc-card";
 import { VoiceCard } from "@/components/voice-card";
-import { AudioDevicesCard } from "@/components/audio-devices-card";
-import { CallVoiceCard } from "@/components/call-voice-card";
 import { SecretsCard } from "@/components/secrets-card";
 import { ServerCard } from "@/components/server-card";
 import { SkillsCard } from "@/components/skills-card";
@@ -30,6 +28,7 @@ import { useStore } from "@/components/store";
 import { Button } from "@/components/ui/button";
 import { PersonAvatar } from "@/components/bot-avatar";
 import { useSignOut } from "@/components/profile-menu";
+import { LoadFailed } from "@/components/load-failed";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
 import { api } from "@/lib/api";
@@ -55,11 +54,13 @@ export function SettingsPage({ user, section, index = false }: { user: SessionUs
     activeLink.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [current.id]);
 
+  const [aiFailed, setAiFailed] = useState(false);
   const load = useCallback(async (fresh = false) => {
     const [a, st] = await Promise.all([
       api<{ ai: AiSettings }>("/api/ai").catch(() => null),
       api<{ status: BoxStatus }>(`/api/status${fresh ? "?fresh=1" : ""}`).catch(() => null),
     ]);
+    setAiFailed(!a);
     if (a) setAi(a.ai);
     if (st) setStatus(st.status);
   }, []);
@@ -71,8 +72,8 @@ export function SettingsPage({ user, section, index = false }: { user: SessionUs
     const chatgptError = params.get("chatgpt_error");
     void Promise.resolve().then(() => {
       if (mcp) toast.add({ type: "success", title: `Signed in to ${mcp}.`, description: "Its tools work for every bot from their next reply." });
-      if (mcpError) toast.add({ type: "error", title: "MCP sign-in didn't complete.", description: mcpError });
-      if (chatgptError) toast.add({ type: "error", title: "ChatGPT sign-in didn't complete.", description: chatgptError });
+      if (mcpError) toast.add({ type: "error", title: "The sign-in to that tool server didn't finish.", description: "Try signing in again from its row under MCP servers." });
+      if (chatgptError) toast.add({ type: "error", title: "The ChatGPT sign-in didn't finish.", description: "Try Continue with ChatGPT again." });
       return load(Boolean(connected));
     });
   }, [load, params]);
@@ -101,7 +102,7 @@ export function SettingsPage({ user, section, index = false }: { user: SessionUs
             </span>
             <span className="min-w-0 flex-1">
               <span className="block text-[15px] font-medium">{s.label}</span>
-              <span className="block truncate text-[12.5px] text-muted-foreground">{s.blurb}</span>
+              <span className="line-clamp-2 block text-[12.5px] text-muted-foreground">{s.blurb}</span>
             </span>
             <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
           </Link>
@@ -159,17 +160,11 @@ export function SettingsPage({ user, section, index = false }: { user: SessionUs
       break;
     case "ai":
       body = (
-        ai ? <AiSteps ai={ai} status={status} onChange={setAi} onRefresh={() => load(true)} /> : <Skeleton className="h-96 rounded-xl" />
+        ai ? <AiSteps ai={ai} status={status} onChange={setAi} onRefresh={() => load(true)} /> : aiFailed ? <LoadFailed what="your AI settings" onRetry={() => void load()} /> : <Skeleton className="h-96 rounded-xl" />
       );
       break;
     case "voice":
-      body = (
-        <>
-          <VoiceCard />
-          <CallVoiceCard />
-          <AudioDevicesCard />
-        </>
-      );
+      body = <VoiceCard />;
       break;
     case "computer":
       body = <HomeResetCard />;

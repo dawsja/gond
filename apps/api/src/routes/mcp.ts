@@ -1,14 +1,12 @@
 import { mcpServerInputSchema } from "@gond/shared";
 import { Hono, type Context, type MiddlewareHandler } from "hono";
-import { ownThread, userId } from "../access.ts";
+import { ownsThread, userId } from "../access.ts";
 import type { Env } from "../app.ts";
 import { createMcpServer, deleteMcpServer, getMcpServer, listMcpServers, markMcpRefreshed, mcpProxyToken, mcpServerOwner, setMcpAuthStatus, updateMcpServer } from "../data/mcp.ts";
 import { completeMcpLogin, completeMcpLoginFrom, mcpLoginHandBack, probeMcpServer, signOutMcp, startMcpLogin } from "../mcp-oauth.ts";
 import { McpSession, forwardMcp } from "../mcp-client.ts";
-import { injectSecrets } from "../data/secrets.ts";
 import { resolveMcpIcon } from "../mcp-icon.ts";
 import { timingSafeEqualString } from "../ids.ts";
-import { proxiedUrl } from "./llm.ts";
 import { completeChatGptLogin, completeChatGptLoginFrom, isChatGptState } from "../chatgpt.ts";
 
 function validate(input: unknown) {
@@ -103,7 +101,7 @@ export function mcpRoutes() {
     if (!server) return c.json({ error: "Couldn't find that server" }, 404);
 
     const body = (await c.req.json().catch(() => ({}))) as { threadId?: unknown; app?: unknown };
-    const threadId = typeof body.threadId === "string" && ownThread(c, body.threadId) ? body.threadId : undefined;
+    const threadId = typeof body.threadId === "string" && ownsThread(c, body.threadId) ? body.threadId : undefined;
     try {
       return c.json({ url: await startMcpLogin(server.id, { threadId, app: body.app === "desktop" ? "desktop" : undefined }) });
     } catch (error) {
@@ -153,12 +151,12 @@ export function mcpRoutes() {
 
 export function mcpProxyRoutes() {
   const app = new Hono();
-  const HOP = new Set(["host", "connection", "content-length", "transfer-encoding", "x-gond-mcp-token", "x-gond-mcp-auth", "x-kru-mcp-token", "x-kru-mcp-auth", "cookie"]);
+  const HOP = new Set(["host", "connection", "content-length", "transfer-encoding", "x-gond-mcp-token", "x-gond-mcp-auth", "cookie"]);
 
   app.all("/mcp/:id/*", async (c) => {
     const server = getMcpServer(c.req.param("id"));
     if (!server || server.transport !== "http" || !server.url) return c.json({ error: "Couldn't find that MCP server" }, 404);
-    const token = c.req.header("x-gond-mcp-token") ?? c.req.header("x-kru-mcp-token") ?? "";
+    const token = c.req.header("x-gond-mcp-token") ?? "";
     const expected = mcpProxyToken(server.id) ?? "";
     // Never a 401 to the session: Claude Code reads one as an OAuth sign-in it should run itself.
     if (!expected || token.length !== expected.length || !timingSafeEqualString(token, expected)) return c.json({ error: "That token isn't valid for this server" }, 403);

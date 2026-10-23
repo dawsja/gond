@@ -56,8 +56,12 @@ export function readLogin(userId: string, name: string): string | null {
   return row ? decryptSecret(row.value) : null;
 }
 
+export function secretHider(): (text: string) => string {
+  return createRedactor(allSecretValues(), Infinity);
+}
+
 export function hideSecrets(text: string): string {
-  return createRedactor(allSecretValues(), Infinity)(text);
+  return secretHider()(text);
 }
 
 export function containsSecret(data: Uint8Array): boolean {

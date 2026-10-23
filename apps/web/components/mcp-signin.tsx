@@ -3,6 +3,7 @@
 import type { McpServer } from "@gond/shared";
 import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
+import { DialogFooter } from "@/components/ui/dialog";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
@@ -24,7 +25,7 @@ export async function startMcpSignIn(server: Pick<McpServer, "id" | "oauthRedire
   }
 }
 
-export function McpPasteSignIn({ name, onDone }: { name: string; onDone?: (name: string) => void }) {
+export function McpPasteSignIn({ name, onDone, inDialog = false }: { name: string; onDone?: (name: string) => void; inDialog?: boolean }) {
   const shell = useNativeShell();
   const [address, setAddress] = useState("");
   const [busy, setBusy] = useState(false);
@@ -58,12 +59,21 @@ export function McpPasteSignIn({ name, onDone }: { name: string; onDone?: (name:
           </FieldDescription>
           {error ? <FieldError>{error}</FieldError> : null}
         </Field>
-        <div>
-          <Button type="submit" size="sm" disabled={busy || !address.trim()}>
-            {busy ? <Spinner data-icon="inline-start" /> : null}
-            Finish sign-in
-          </Button>
-        </div>
+        {inDialog ? (
+          <DialogFooter>
+            <Button type="submit" disabled={busy || !address.trim()}>
+              {busy ? <Spinner data-icon="inline-start" /> : null}
+              Finish sign-in
+            </Button>
+          </DialogFooter>
+        ) : (
+          <div>
+            <Button type="submit" size="sm" disabled={busy || !address.trim()}>
+              {busy ? <Spinner data-icon="inline-start" /> : null}
+              Finish sign-in
+            </Button>
+          </div>
+        )}
       </FieldGroup>
     </form>
   );

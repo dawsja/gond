@@ -31,7 +31,6 @@ const HOMES_DIR = process.env.HOMES_DIR || "/home";
 const SKILLS_ROOT = process.env.SKILLS_DIR || "/srv/gond/skills";
 
 const AGENT_SOCKET_DIR = process.env.AGENT_SOCKET_DIR || "/tmp/gond-agents";
-const LEGACY_USER_HEADER = "x-kru-user";
 
 const GOND_MCP_SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), "gond-mcp.mjs");
 const FILE_JOB = path.join(path.dirname(fileURLToPath(import.meta.url)), "file-job.mjs");
@@ -54,9 +53,6 @@ const DEFAULT_EXEC_TIMEOUT_MS = 10 * 60 * 1000;
 const MAX_EXEC_TIMEOUT_MS = 30 * 60 * 1000;
 
 const FEED_BYTES = 256 * 1024;
-const MAX_TERMINALS = 8;
-
-const TERMINAL_IDLE_MS = 30 * 60 * 1000;
 const SSE_KEEPALIVE_MS = 15_000;
 
 const DESKTOP_DISPLAY = Number(process.env.DESKTOP_DISPLAY || 1);
@@ -643,74 +639,6 @@ function writeSkillFolder(account, slug, files) {
 function deleteSkillFolder(account, slug) {
   if (!SLUG.test(slug)) throw new HttpError(400, "Bad skill slug");
   fs.rmSync(path.join(libraryOf(account), slug), { recursive: true, force: true });
-  return { ok: true };
-}
-
-const terminals = new Map();
-
-export function terminalCwd(account, bot) {
-  if (bot === undefined || bot === null || bot === "") return account.home;
-  return botDir(account, bot);
-}
-
-function terminalSize(body) {
-  const cols = Math.min(Math.max(Math.floor(Number(body.cols)) || 80, 20), 500);
-  const rows = Math.min(Math.max(Math.floor(Number(body.rows)) || 24, 5), 200);
-  return { cols, rows };
-}
-
-async function createTerminal(account, body) {
-  if (terminals.size >= MAX_TERMINALS) throw new HttpError(429, `At most ${MAX_TERMINALS} terminals at once`);
-  const cwd = terminalCwd(account, body.bot);
-  const { cols, rows } = terminalSize(body);
-
-  const { default: pty } = await import("node-pty");
-  const id = randomBytes(8).toString("hex");
-  const shell = pty.spawn("bash", ["-l"], {
-    name: "xterm-256color",
-    cols,
-    rows,
-    cwd,
-    ...asUser(account),
-    env: agentEnv(account, { TERM: "xterm-256color", COLORTERM: "truecolor", SHELL: "/bin/bash" }),
-  });
-  const terminal = { id, user: account.id, shell, feed: new Feed(), viewers: 0, idle: null };
-  terminals.set(id, terminal);
-  shell.onData((data) => terminal.feed.publish({ data: Buffer.from(data).toString("base64") }));
-  shell.onExit(({ exitCode }) => {
-    terminal.feed.publish({ exit: exitCode });
-    terminal.feed.close();
-    terminals.delete(id);
-  });
-  touchTerminal(terminal);
-  return { id, cwd };
-}
-
-function touchTerminal(terminal) {
-  if (terminal.idle) clearTimeout(terminal.idle);
-  terminal.idle = null;
-  if (terminal.viewers === 0) {
-    terminal.idle = setTimeout(() => closeTerminal(terminal.id), TERMINAL_IDLE_MS);
-  }
-}
-
-function existingTerminal(account, id) {
-  const terminal = terminals.get(id);
-  if (!terminal || terminal.user !== account.id) throw new HttpError(404, "No such terminal");
-  return terminal;
-}
-
-function closeTerminal(id) {
-  const terminal = terminals.get(id);
-  if (!terminal) return { ok: true };
-  terminals.delete(id);
-  if (terminal.idle) clearTimeout(terminal.idle);
-  try {
-    terminal.shell.kill("SIGHUP");
-  } catch {
-    /* already gone */
-  }
-  terminal.feed.close();
   return { ok: true };
 }
 
@@ -1424,7 +1352,6 @@ function refuseWhileUpdating() {
 async function pauseEverything() {
   stopAllDesktops();
   cancelSignIns();
-  for (const id of [...terminals.keys()]) closeTerminal(id);
   await Promise.allSettled([...agents.values()].map((agent) => agent.close({ keepSession: true })));
   agents.clear();
 }
@@ -1432,7 +1359,6 @@ async function pauseEverything() {
 async function closeAccountWork(account) {
   stopDesktop(account);
   cancelSignIns(account);
-  for (const [id, terminal] of [...terminals]) if (terminal.user === account.id) closeTerminal(id);
   for (const [id, agent] of [...agents]) {
     if (agent.user !== account.id) continue;
     agents.delete(id);
@@ -1444,7 +1370,6 @@ async function closeAccountWork(account) {
 async function resetAccountHome(account) {
   stopDesktop(account);
   cancelSignIns(account);
-  for (const [id, terminal] of [...terminals]) if (terminal.user === account.id) closeTerminal(id);
   for (const [id, agent] of [...agents]) {
     if (agent.user !== account.id) continue;
     agents.delete(id);
@@ -1462,7 +1387,7 @@ async function startUpdate() {
   };
   append("== Pausing the computer\n");
   await pauseEverything();
-  append("Bots, terminals and the desktop are paused.\n");
+  append("Bots and the desktop are paused.\n");
   const child = spawn("bash", [UPDATE_SCRIPT], { env: { ...process.env, DEBIAN_FRONTEND: "noninteractive" }, stdio: ["ignore", "pipe", "pipe"] });
   const current = update;
   const timer = setTimeout(() => {
@@ -1668,13 +1593,24 @@ async function agentTurnRoute(request, response, id, account) {
   try {
     const settings = { model: body.model, maxTurns, systemPrompt, tools, permission, mcpServers: Array.isArray(body.mcpServers) ? body.mcpServers : [], access: parseAccess(body.access) };
     let launch = await agent.ensure(settings);
-    let result = await agent.turnWith({ prompt: turnPrompt(body, launch), images, timeoutMs, systemPrompt, onEvent: sendEvent, signal: stop.signal });
+    const turn = (prompt) =>
+      agent.turnWith({ prompt, images, timeoutMs, systemPrompt, onEvent: sendEvent, signal: stop.signal }).catch((error) => {
+        if (agent.flagRejected) return { ok: false, text: "", stopReason: "exited", error: error.message, flagRejected: true };
+        throw error;
+      });
+    let result = await turn(turnPrompt(body, launch));
+    if (result.flagRejected && !stop.signal.aborted) {
+      agent.flagRejected = false;
+      await agent.close({ keepSession: Boolean(launch.resumed) });
+      launch = await agent.ensure(settings);
+      result = await turn(turnPrompt(body, launch));
+    }
     let recovered = Boolean(launch.recovered);
     if (result.resumeFailed && !stop.signal.aborted) {
       await agent.close({ keepSession: false });
       launch = await agent.ensure(settings);
       recovered = true;
-      result = await agent.turnWith({ prompt: body.prompt, images, timeoutMs, systemPrompt, onEvent: sendEvent, signal: stop.signal });
+      result = await turn(body.prompt);
     }
     rememberSession(agent);
     sendEvent({ type: "result", ...result, sessionId: agent.sessionId, launched: launch.launched, resumed: launch.resumed ?? false, recovered });
@@ -1733,39 +1669,8 @@ async function agentRoute(request, response, parts, account) {
   throw new HttpError(404, "Not found");
 }
 
-async function terminalRoute(request, response, parts, account) {
-  const id = parts[1];
-  const action = parts[2];
-  if (request.method === "POST" && !id) return createTerminal(account, await readJson(request));
-  if (!id) throw new HttpError(404, "Not found");
-  const terminal = existingTerminal(account, id);
-  if (request.method === "DELETE" && !action) return closeTerminal(id);
-  if (request.method === "GET" && action === "stream") {
-    terminal.viewers += 1;
-    touchTerminal(terminal);
-    streamFeed(request, response, terminal.feed);
-    request.on("close", () => {
-      terminal.viewers -= 1;
-      if (terminals.has(id)) touchTerminal(terminal);
-    });
-    return STREAMED;
-  }
-  if (request.method === "POST" && action === "input") {
-    const body = await readJson(request);
-    if (typeof body.data !== "string") throw new HttpError(400, "Missing data");
-    terminal.shell.write(Buffer.from(body.data, "base64").toString("utf8"));
-    return { ok: true };
-  }
-  if (request.method === "POST" && action === "resize") {
-    const { cols, rows } = terminalSize(await readJson(request));
-    terminal.shell.resize(cols, rows);
-    return { ok: true };
-  }
-  throw new HttpError(404, "Not found");
-}
-
 function accountFor(request) {
-  const id = String(request.headers["x-gond-user"] ?? request.headers[LEGACY_USER_HEADER] ?? "").trim();
+  const id = String(request.headers["x-gond-user"] ?? "").trim();
   if (!id) throw new HttpError(400, "Missing X-Gond-User");
   if (!USER_ID.test(id)) throw new HttpError(400, "Bad user id");
   const account = accounts.get(id);
@@ -1822,7 +1727,6 @@ async function route(request, response, url) {
   if (!(request.method === "GET" && (parts[0] === "files" || (parts[0] === "agents" && parts.length === 1)))) refuseWhileUpdating();
   const account = accountFor(request);
   if (request.method === "POST" && parts.length === 2 && parts[0] === "home" && parts[1] === "reset") return resetAccountHome(account);
-  if (parts[0] === "terminals") return terminalRoute(request, response, parts, account);
   if (parts[0] === "desktop") return desktopRoute(request, response, parts, account);
   if (request.method === "POST" && parts.length === 1 && parts[0] === "computer") return computerRoute(request, response, account);
   if (parts[0] === "agents") return agentRoute(request, response, parts, account);
@@ -1915,7 +1819,6 @@ export function startServer({ port = PORT, host = HOST } = {}) {
   accounts.clearLegacySkills();
 
   accounts.materialize(agentAccount());
-  accounts.adoptLegacyNames();
   accounts.restore();
   const server = createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", "http://box");
@@ -1937,7 +1840,6 @@ export function startServer({ port = PORT, host = HOST } = {}) {
     stopAllDesktops();
     cancelSignIns();
     systemBus?.kill("SIGTERM");
-    for (const terminal of terminals.keys()) closeTerminal(terminal);
     await Promise.allSettled([...agents.values()].map((agent) => agent.close({ keepSession: true })));
     process.exit(0);
   };

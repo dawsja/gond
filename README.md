@@ -120,7 +120,7 @@ API that; Update then patches in place and skips the image.
 
 **More people.** The admin is the one local account, made with the setup
 token, and can always sign in with a password. To let others in, add your
-identity provider in Settings → Authentication. Register a client with the
+identity provider in Settings → Sign-in. Register a client with the
 redirect URL `<APP_URL>/api/auth/callback/oidc` and the sign-out URL
 `<APP_URL>/login`. Everyone who signs in that way gets their own Linux
 account (`gond-<name>`) with a private home, and nothing is shared between
@@ -158,44 +158,6 @@ need. These also work in `.env`, and nothing needs them:
 | `GOND_TURN_TIMING` | Set to `1` to log how long each bot turn took and where the time went | off |
 | `BOT_IDLE_MS` | How long an idle bot session stays open | `600000` |
 | `GOND_BOX_MEMORY`, `GOND_BOX_CPUS`, `GOND_BOX_SHM` | The computer's limits | `4g`, `2`, `256m` |
-
-## Moving from Kru Bot
-
-Gond is Kru Bot renamed, so an install moves over with its data: the same
-volumes under new names, the same `.env` under new names, and one sign-in.
-
-1. Stop the old install: `docker compose down`.
-2. Point the clone at the new repository and pull it:
-   `git remote set-url origin https://github.com/dawsja/gond.git && git pull`.
-3. Make the new volumes, still empty: `docker compose pull && docker compose
-   create`.
-4. Copy each of the seven volumes into its new one:
-
-   ```sh
-   docker run --rm -v kru-data:/from -v gond-data:/to alpine sh -c 'cd /from && cp -a . /to'
-   ```
-
-   The seven are `kru-data`, `kru-box-state`, `kru-box-homes`,
-   `kru-box-home`, `kru-box-bots`, `kru-box-cache` and `kru-box-claude`,
-   each to the same name with `gond` for `kru`. Compose prefixes a volume
-   with the project name, the folder's by default, so the real names are
-   more like `krubot_kru-data` and `gond_gond-data`; `docker volume ls`
-   shows them.
-5. Rename the variables in `.env`: `sed -i 's/^KRU_/GOND_/' .env`. The old
-   names still work this release, with a warning in the API's logs.
-6. Rename the repository secrets in CI (`KRU_ANDROID_*` → `GOND_ANDROID_*`)
-   if you build the Android app there.
-7. `docker compose up -d`.
-
-The first start logs what it moved: the database file renamed, the tables
-renamed, the stored secrets re-keyed under the new names, and every
-person's account on the box renamed from `kru-<name>` to `gond-<name>`.
-Sessions don't carry over, so everyone signs in again, once. Then open
-Settings → Computer → Update so the box picks up its new image. Composio
-connections are untouched: their ids are kept on purpose. Install the new
-desktop and Android apps from the releases page; they have new ids, so they
-sit beside the old ones until you remove those. Once everything is in and
-working, `docker volume rm` the `kru-*` volumes.
 
 ## Development
 

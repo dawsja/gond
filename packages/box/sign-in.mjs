@@ -28,8 +28,6 @@ const URL_AT = {
   claude: /https:\/\/claude\.com\/\S*oauth\S*/i,
 };
 
-const CODE = /\b[A-Z0-9]{3,8}-[A-Z0-9]{3,8}\b/;
-
 function firstUrl(engine, text) {
   const found = URL_AT[engine]?.exec(text) ?? /https:\/\/\S+/i.exec(text);
   if (!found) return null;
@@ -41,15 +39,11 @@ function firstUrl(engine, text) {
 export function parseSignIn(engine, text) {
   const clean = stripAnsi(text);
   const url = firstUrl(engine, clean) ?? firstUrl(engine, clean.replace(/\n[ \t]*/g, ""));
-  if (engine === "claude") return { url, code: null };
-  const fromUrl = url ? /[?&]user_code=([A-Za-z0-9-]+)/.exec(url)?.[1] : null;
-  const labelled = /(?:one-time code|Confirm this code)[^\n]*\n\s*([A-Z0-9]{3,8}-[A-Z0-9]{3,8})/i.exec(clean)?.[1];
-  const code = fromUrl ?? labelled ?? CODE.exec(url ? clean.slice(clean.indexOf(url) + url.length) : clean)?.[0] ?? null;
-  return { url, code };
+  return { url };
 }
 
-export function signInReady(engine, parsed) {
-  return Boolean(parsed.url) && (needsCode(engine) || Boolean(parsed.code));
+export function signInReady(parsed) {
+  return Boolean(parsed.url);
 }
 
 export function lastLine(text, max = 200) {
@@ -69,7 +63,6 @@ export class SignInJob {
     this.now = now;
     this.state = "starting";
     this.url = null;
-    this.code = null;
     this.error = null;
     this.startedAt = now().toISOString();
     this.pty = null;
@@ -97,9 +90,8 @@ export class SignInJob {
     this.transcript = (this.transcript + data).slice(-TRANSCRIPT_BYTES);
     if (this.state !== "starting") return;
     const parsed = parseSignIn(this.engine, this.transcript);
-    if (!signInReady(this.engine, parsed)) return;
+    if (!signInReady(parsed)) return;
     this.url = parsed.url;
-    this.code = parsed.code;
     this.state = "waiting";
   }
 
@@ -159,7 +151,6 @@ export class SignInJob {
       engine: this.engine,
       state: this.state,
       url: this.url,
-      code: this.code,
       needsCode: needsCode(this.engine),
       error: this.error,
       startedAt: this.startedAt,

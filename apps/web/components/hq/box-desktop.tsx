@@ -881,7 +881,7 @@ export function DesktopToolbar({
         </IconButton>
       ) : null}
       {onStop ? (
-        <IconButton container={bar} label="Stop the desktop" onClick={onStop}>
+        <IconButton container={bar} label="Turn off the screen" onClick={onStop}>
           <MonitorOff />
         </IconButton>
       ) : null}

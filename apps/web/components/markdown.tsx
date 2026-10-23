@@ -2,13 +2,13 @@
 
 import { ChevronLeft, ChevronRight, CircleAlert, Info, Lightbulb, OctagonAlert, Square, SquareCheck, TriangleAlert, WrapText } from "lucide-react";
 import type { AlignType, Blockquote, Code, List, ListItem, Nodes, Table } from "mdast";
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Choices, Meter, StatusBadge } from "@/components/chat-blocks";
 import { CopyButton } from "@/components/copy-button";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Toggle } from "@/components/ui/toggle";
-import { badgeOf, calloutOf, choicesOf, definitionsOf, isLineBreak, meterOf, parseInline, parseMarkdown, plainText, safeHref, sourceOf, type CalloutKind, type Definitions } from "@/lib/markdown";
+import { badgeOf, calloutOf, choicesOf, definitionsOf, isLineBreak, meterOf, parseMarkdown, plainText, safeHref, sourceOf, type CalloutKind, type Definitions } from "@/lib/markdown";
 import { cn } from "@/lib/utils";
 
 type Doc = { source: string; definitions: Definitions };
@@ -208,7 +208,7 @@ function TableView({ table, doc }: { table: Table; doc: Doc }) {
   const pinned = (c: number) => c === 0 && cn("sticky left-0 z-[1]", edges.start && "shadow-[inset_-1px_0_0_var(--color-border)]");
   return (
     <div className="flex flex-col gap-1">
-      <div ref={ref} className="overflow-x-auto overscroll-x-contain rounded-xl border bg-background">
+      <div ref={ref} data-scroll-x="" className="overflow-x-auto overscroll-x-contain rounded-xl border bg-background">
         <table className="w-full border-collapse text-[13px] leading-5 tabular-nums">
           <thead className="bg-bubble-inset">
             <tr>
@@ -347,7 +347,7 @@ function NodeView({ node, doc, depth }: { node: Nodes; doc: Doc; depth: number }
   }
 }
 
-export function Markdown({ text, className }: { text: string; className?: string }) {
+export const Markdown = memo(function Markdown({ text, className }: { text: string; className?: string }) {
   const { root, doc } = useMemo(() => {
     const root = parseMarkdown(text);
     return { root, doc: { source: text.replace(/\r\n?/g, "\n"), definitions: definitionsOf(root) } };
@@ -357,9 +357,4 @@ export function Markdown({ text, className }: { text: string; className?: string
       <Walk nodes={root.children} doc={doc} />
     </div>
   );
-}
-
-export function InlineMarkdown({ text }: { text: string }) {
-  const { nodes, doc } = useMemo(() => ({ nodes: parseInline(text), doc: { source: text, definitions: new Map() as Definitions } }), [text]);
-  return <Walk nodes={nodes} doc={doc} />;
-}
+});

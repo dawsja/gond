@@ -4,6 +4,7 @@ import type { ComposioKeyStatus } from "@gond/shared";
 import { KeyRound } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useLiveEvents } from "@/components/hq/live-events";
+import { LoadFailed } from "@/components/load-failed";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,8 +23,10 @@ export function ComposioCard({ onChange }: { onChange: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [removing, setRemoving] = useState(false);
 
+  const [loadFailed, setLoadFailed] = useState(false);
   const load = useCallback(async () => {
     const data = await api<ComposioKeyStatus>("/api/composio").catch(() => null);
+    setLoadFailed(!data);
     if (data) setStatus(data);
   }, []);
   useEffect(() => {
@@ -69,16 +72,16 @@ export function ComposioCard({ onChange }: { onChange: () => void }) {
       <CardHeader>
         <CardTitle>Composio</CardTitle>
         <CardDescription>
-          Your apps live in your own Composio project: nobody else sees them. Get a free API key at{" "}
+          Composio connects your bots to apps like Gmail, Google Calendar, Slack and Notion. Your connections live in your own Composio project, so nobody else sees them. Get a free API key from your dashboard at{" "}
           <a href="https://dashboard.composio.dev" target="_blank" rel="noreferrer" className="text-foreground underline underline-offset-2">
             dashboard.composio.dev
-          </a>{" "}
-          under Settings → API keys.
+          </a>
+          .
         </CardDescription>
       </CardHeader>
       <CardContent>
         {!status ? (
-          <Spinner />
+          loadFailed ? <LoadFailed what="your Composio key" onRetry={() => void load()} /> : <Spinner />
         ) : source && !editing ? (
           <div className="flex flex-wrap items-center gap-3 rounded-xl border p-4">
             <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted">
@@ -89,7 +92,7 @@ export function ComposioCard({ onChange }: { onChange: () => void }) {
                 API key
                 <Badge variant="secondary">{source === "own" ? "Key saved" : "Server's key"}</Badge>
               </span>
-              <span className="text-[12.5px] text-muted-foreground">{source === "own" ? "Stored encrypted. It is never shown again, and the bots never see it." : "You're on the key set as COMPOSIO_API_KEY on the server. Add your own to use it instead."}</span>
+              <span className="text-[12.5px] text-muted-foreground">{source === "own" ? "Stored encrypted. It is never shown again, and the bots never see it." : "You're using the key this server was set up with. Add your own to use yours instead."}</span>
             </span>
             <span className="flex shrink-0 gap-1">
               <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
@@ -143,7 +146,7 @@ export function ComposioCard({ onChange }: { onChange: () => void }) {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" onClick={() => void remove()}>
+            <AlertDialogAction variant="destructive" onAction={remove}>
               Remove
             </AlertDialogAction>
           </AlertDialogFooter>

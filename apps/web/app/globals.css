@@ -24,19 +24,6 @@
   }
 }
 
-/* Room a call's pill takes under the header on a phone, when the call is away from this screen. */
-:root {
-  --call-pill-space: 0px;
-}
-:root[data-call-pill] {
-  --call-pill-space: 52px;
-}
-@media (width >= 48rem) {
-  :root:not([data-shell="android"])[data-call-pill] {
-    --call-pill-space: 0px;
-  }
-}
-
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -60,7 +47,6 @@
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
-  --color-hangup: var(--hangup);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -174,8 +160,6 @@
   --magenta: #b8307f;
   --grape: #8250df;
   --ember: #c2301a;
-  /* A phone's hang-up red, deep enough for a white icon in both themes. */
-  --hangup: #c2301a;
   --tone-ok: #1a7d38;
   --tone-warn: #8a5a00;
   --tone-bad: #c2301a;
@@ -239,10 +223,6 @@
   --shadow-subtle-3: 0 16px 40px rgba(20, 16, 8, 0.16),
     0 0 0 1px rgba(20, 16, 8, 0.06);
   --grid-line: rgba(20, 16, 8, 0.07);
-  /* How far bot identity colours are pulled toward the ink so they stay
-     legible as small text on light surfaces: at 40% every bot name clears
-     4.5:1 on both linen and paper-white. */
-  --bot-ink-mix: 40%;
   color-scheme: light;
 }
 
@@ -261,7 +241,6 @@
   --magenta: #f28bca;
   --grape: #c58af9;
   --ember: #cf6679;
-  --hangup: #c4372b;
   --tone-ok: #a5d6a7;
   --tone-warn: #ffe082;
   --tone-bad: #ef9a9a;
@@ -323,7 +302,6 @@
   --shadow-subtle-3: 0 16px 40px rgba(0, 0, 0, 0.45),
     0 0 0 1px rgba(255, 255, 255, 0.06);
   --grid-line: rgba(255, 255, 255, 0.055);
-  --bot-ink-mix: 0%;
   color-scheme: dark;
 }
 
@@ -441,16 +419,11 @@
 }
 
 @theme {
-  --animate-peek: peek 3.2s ease-in-out infinite;
   --animate-hop: hop 0.9s cubic-bezier(0.34, 1.56, 0.64, 1) 2;
   --animate-confetti: confetti 1.1s ease-out 1 both;
   --animate-pop: pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both;
   --animate-light-up: light-up 1.6s ease-in-out infinite;
 
-  @keyframes peek {
-    0%, 70%, 100% { transform: translateY(0); }
-    80%, 90% { transform: translateY(-4px); }
-  }
   @keyframes hop {
     0%, 100% { transform: translateY(0); }
     35% { transform: translateY(-7px); }

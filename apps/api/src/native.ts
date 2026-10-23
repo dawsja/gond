@@ -1,14 +1,14 @@
 import { CHATGPT_USAGE_URL, PROVIDER_LABELS, isOpenAiShaped, isPlanProvider, toolLabel, toolLine, type ProviderKind } from "@gond/shared";
-import { clipParts, isToolParts, resultAsText, type DriverTool, type ToolPart } from "./driver.ts";
+import { clipParts, clipToolResult, isToolParts, resultAsText, type DriverTool, type ToolPart } from "./driver.ts";
+import { sseStream } from "./sse.ts";
 import { labelStep, type StepUpdate } from "./work.ts";
-import { authHeaders, isAnthropicHost, isMiniMaxHost, isOpenAiHost, upstreamUrl } from "./routes/llm.ts";
+import { ANTHROPIC_VERSION, authHeaders, isAnthropicHost, isMiniMaxHost, isOpenAiHost, upstreamUrl } from "./providers.ts";
 
 const MAX_STEPS = 80;
 
 // Thinking counts toward it on the models that think (MiniMax M3.1 thinks at its deepest unless told otherwise).
 const MAX_OUTPUT_TOKENS = 16_000;
 
-const MAX_TOOL_RESULT = 24_000;
 
 export type NativeAccess = {
   kind: ProviderKind;
@@ -48,6 +48,10 @@ export type NativeTurn = {
   onStep?: (step: StepUpdate) => void;
 
   steers?: SteerQueue;
+  // Keeps one conversation's requests on the same cache, where the API takes a key (a ChatGPT plan).
+  cacheKey?: string;
+  // The reply's words so far as the model writes them, or null when a tool call ends them.
+  onText?: TextSink;
 };
 
 export class SteerQueue {
@@ -86,12 +90,8 @@ type Call = { id: string; name: string; input: Record<string, unknown> };
 
 type Step = { text: string; calls: Call[]; searches: Call[]; stopReason: string | null; raw: unknown[] };
 
-function clip(text: string) {
-  return text.length > MAX_TOOL_RESULT ? `${text.slice(0, MAX_TOOL_RESULT)}\n[… ${text.length - MAX_TOOL_RESULT} more characters]` : text;
-}
-
 function partsOf(value: unknown): ToolPart[] {
-  return isToolParts(value) ? clipParts(value) : [{ type: "text", text: clip(resultAsText(value)) }];
+  return isToolParts(value) ? clipParts(value) : [{ type: "text", text: clipToolResult(resultAsText(value)) }];
 }
 
 function mediaBlocks(kind: ProviderKind, attachments: NativeTurn["attachments"]): unknown[] {
@@ -152,6 +152,7 @@ export function providerError(status: number, body: unknown): string {
   const detail = typeof message === "string" && message.trim() ? message.trim() : typeof body === "string" && body.trim() ? body.trim() : "";
   if (status === 401 || status === 403) return `The API refused the key${detail ? `: ${detail}` : "."}`;
   if (status === 404) return `The API has no such endpoint or model${detail ? `: ${detail}` : ". Check the base URL and the model id."}`;
+  if (!status) return `The API stopped partway${detail ? `: ${detail}` : "."}`;
   return `The API answered ${status}${detail ? `: ${detail}` : "."}`;
 }
 
@@ -194,23 +195,106 @@ export function planError(status: number, body: unknown): string {
   return providerError(status, body);
 }
 
-/** Server-sent events into their `data` payloads, in order. */
-export function sseEvents(text: string): unknown[] {
-  const out: unknown[] = [];
-  for (const block of text.split(/\r?\n\r?\n/)) {
-    const data = block
-      .split(/\r?\n/)
-      .filter((line) => line.startsWith("data:"))
-      .map((line) => line.slice(5).replace(/^ /, ""))
-      .join("\n");
-    if (!data || data === "[DONE]") continue;
-    try {
-      out.push(JSON.parse(data));
-    } catch {
-      /* a keep-alive or a torn line */
+type TextSink = (text: string | null) => void;
+
+/** Anthropic's streamed events back into the message an unstreamed call answers, telling `onText` the reply's words on the way. */
+export function anthropicAssembler(onText?: TextSink) {
+  let message: Record<string, unknown> = {};
+  const blocks: Record<string, unknown>[] = [];
+  const json = new Map<number, string>();
+  let text = "";
+  let failure: unknown = null;
+  return {
+    push(raw: unknown) {
+      const event = (raw ?? {}) as { type?: string; index?: number; message?: Record<string, unknown>; content_block?: Record<string, unknown>; delta?: Record<string, unknown>; error?: unknown };
+      const index = event.index ?? 0;
+      if (event.type === "message_start" && event.message) message = event.message;
+      else if (event.type === "content_block_start" && event.content_block) {
+        blocks[index] = { ...event.content_block };
+        const type = String(event.content_block.type ?? "");
+        // What came before a tool call or a search narrated it; the reply is what follows.
+        if (type.endsWith("tool_use") || type === "web_search_tool_result") {
+          if (text) onText?.(null);
+          text = "";
+        }
+      } else if (event.type === "content_block_delta" && event.delta && blocks[index]) {
+        const block = blocks[index];
+        const delta = event.delta;
+        if (delta.type === "text_delta" && typeof delta.text === "string") {
+          block.text = `${block.text ?? ""}${delta.text}`;
+          text += delta.text;
+          onText?.(text);
+        } else if (delta.type === "input_json_delta" && typeof delta.partial_json === "string") json.set(index, (json.get(index) ?? "") + delta.partial_json);
+        else if (delta.type === "thinking_delta" && typeof delta.thinking === "string") block.thinking = `${block.thinking ?? ""}${delta.thinking}`;
+        else if (delta.type === "signature_delta" && typeof delta.signature === "string") block.signature = delta.signature;
+        else if (delta.type === "citations_delta" && delta.citation) block.citations = [...((block.citations as unknown[]) ?? []), delta.citation];
+      } else if (event.type === "content_block_stop" && blocks[index] && json.has(index)) {
+        try {
+          blocks[index].input = JSON.parse(json.get(index) || "{}");
+        } catch {
+          blocks[index].input = {};
+        }
+        json.delete(index);
+      } else if (event.type === "message_delta" && event.delta) message = { ...message, ...event.delta };
+      else if (event.type === "error") failure = event;
+    },
+    result(): { payload: unknown; failure: unknown } {
+      return { payload: { ...message, content: blocks.filter(Boolean) }, failure };
+    },
+  };
+}
+
+/** A chat API's streamed chunks back into the message an unstreamed call answers. */
+export function openAiAssembler(onText?: TextSink) {
+  const message: Record<string, unknown> = {};
+  const calls: { id?: string; type?: string; function: { name: string; arguments: string } }[] = [];
+  let finish: unknown = null;
+  let failure: unknown = null;
+  return {
+    push(raw: unknown) {
+      const chunk = (raw ?? {}) as { choices?: { delta?: Record<string, unknown>; finish_reason?: unknown }[]; error?: unknown };
+      if (chunk.error) failure = chunk;
+      const choice = chunk.choices?.[0];
+      if (!choice) return;
+      if (choice.finish_reason) finish = choice.finish_reason;
+      for (const [key, value] of Object.entries(choice.delta ?? {})) {
+        if (key === "tool_calls" && Array.isArray(value)) {
+          if (!calls.length && typeof message.content === "string" && message.content) onText?.(null);
+          for (const part of value as { index?: number; id?: string; type?: string; function?: { name?: string; arguments?: string } }[]) {
+            const call = (calls[part.index ?? 0] ??= { function: { name: "", arguments: "" } });
+            if (part.id) call.id = part.id;
+            if (part.type) call.type = part.type;
+            if (part.function?.name) call.function.name += part.function.name;
+            if (part.function?.arguments) call.function.arguments += part.function.arguments;
+          }
+        } else if (key === "role") message.role = value;
+        // Every other field a provider streams (the content, a model's reasoning) is text to join, as it arrives whole when not streamed.
+        else if (typeof value === "string") {
+          message[key] = `${(message[key] as string | undefined) ?? ""}${value}`;
+          if (key === "content" && !calls.length) onText?.(message.content as string);
+        }
+      }
+    },
+    result(): { payload: unknown; failure: unknown } {
+      const toolCalls = calls.filter(Boolean).map((call) => ({ ...call, type: call.type ?? "function" }));
+      return { payload: { choices: [{ message: { role: "assistant", ...message, ...(toolCalls.length ? { tool_calls: toolCalls } : {}) }, finish_reason: finish }] }, failure };
+    },
+  };
+}
+
+/** The reply's words in a Responses API stream, for `onText`; the step itself is still `readResponses`. */
+export function responsesText(onText?: TextSink) {
+  let text = "";
+  return (raw: unknown) => {
+    const event = (raw ?? {}) as { type?: string; delta?: unknown; item?: { type?: string } };
+    if (event.type === "response.output_text.delta" && typeof event.delta === "string") {
+      text += event.delta;
+      onText?.(text);
+    } else if (event.type === "response.output_item.added" && event.item?.type === "function_call") {
+      if (text) onText?.(null);
+      text = "";
     }
-  }
-  return out;
+  };
 }
 
 type ResponseItem = { type?: string; id?: string; role?: string; content?: unknown; call_id?: string; name?: string; arguments?: string; namespace?: string; encrypted_content?: unknown };
@@ -255,14 +339,14 @@ export function readResponses(events: unknown[], kind: ProviderKind = "chatgpt")
   return { text, calls, searches: [], stopReason, raw };
 }
 
-async function sendResponses(turn: NativeTurn, input: unknown[]): Promise<Step> {
+async function sendResponses(turn: NativeTurn, input: unknown[], onText?: TextSink): Promise<Step> {
   const { baseUrl, token } = turn.access;
   const grok = turn.access.kind === "grok";
   const tools = toolList(turn.access, turn.tools, turn.model);
   const res = await fetch(upstreamUrl(baseUrl, "responses", ""), {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "text/event-stream", authorization: `Bearer ${token}` },
-    body: JSON.stringify({ model: turn.model, instructions: turn.instructions, input, ...(tools.length ? { tools } : {}), store: false, stream: true, ...(grok ? { include: ["reasoning.encrypted_content"] } : {}) }),
+    body: JSON.stringify({ model: turn.model, instructions: turn.instructions, input, ...(tools.length ? { tools } : {}), store: false, stream: true, ...(grok ? { include: ["reasoning.encrypted_content"] } : {}), ...(turn.access.kind === "chatgpt" && turn.cacheKey ? { prompt_cache_key: turn.cacheKey } : {}) }),
     redirect: "manual",
     signal: turn.signal,
   });
@@ -276,7 +360,13 @@ async function sendResponses(turn: NativeTurn, input: unknown[]): Promise<Step> 
     }
     throw new Error(grok ? grokError(res.status, payload) : planError(res.status, payload));
   }
-  return readResponses(sseEvents(await res.text()), turn.access.kind);
+  const events: unknown[] = [];
+  const words = responsesText(onText);
+  for await (const event of sseStream(res.body!)) {
+    events.push(event);
+    words(event);
+  }
+  return readResponses(events, turn.access.kind);
 }
 
 /**
@@ -287,23 +377,56 @@ export function outputLimit(access: Pick<NativeAccess, "upstream">): { max_token
   return access.upstream && isOpenAiHost(access.upstream) ? { max_completion_tokens: MAX_OUTPUT_TOKENS } : { max_tokens: MAX_OUTPUT_TOKENS };
 }
 
-async function send(turn: NativeTurn, messages: unknown[]): Promise<Step> {
-  if (isPlanProvider(turn.access.kind)) return sendResponses(turn, messages);
+const CACHEABLE_BLOCKS = new Set(["text", "image", "document", "tool_use", "tool_result"]);
+
+/**
+ * Anthropic's cache breakpoints: after the tools, after the system prompt and after the conversation
+ * so far, so a turn's next model round reads everything before it from the cache.
+ */
+export function withCacheBreakpoints(system: string, tools: unknown[], messages: unknown[]): { system: unknown[]; tools: unknown[]; messages: unknown[] } {
+  const mark = <T extends object>(block: T) => ({ ...block, cache_control: { type: "ephemeral" } });
+  const last = messages.at(-1) as { role?: string; content?: unknown } | undefined;
+  let marked = messages;
+  if (last && typeof last.content === "string") {
+    marked = [...messages.slice(0, -1), { ...last, content: [mark({ type: "text", text: last.content })] }];
+  } else if (last && Array.isArray(last.content) && last.content.length) {
+    const tail = last.content.at(-1) as { type?: string };
+    if (CACHEABLE_BLOCKS.has(tail.type ?? "")) marked = [...messages.slice(0, -1), { ...last, content: [...last.content.slice(0, -1), mark(tail)] }];
+  }
+  return {
+    system: [mark({ type: "text", text: system })],
+    tools: tools.length ? [...tools.slice(0, -1), mark(tools.at(-1) as object)] : tools,
+    messages: marked,
+  };
+}
+
+async function send(turn: NativeTurn, messages: unknown[], onText?: TextSink): Promise<Step> {
+  if (isPlanProvider(turn.access.kind)) return sendResponses(turn, messages, onText);
   const { kind, baseUrl, token } = turn.access;
   const openai = isOpenAiShaped(kind);
   const url = upstreamUrl(baseUrl, openai ? "chat/completions" : "v1/messages", "");
   const body = openai
-    ? { model: turn.model, messages: [{ role: "system", content: turn.instructions }, ...messages], tools: toolList(turn.access, turn.tools, turn.model), ...outputLimit(turn.access) }
-    : { model: turn.model, system: turn.instructions, messages, tools: toolList(turn.access, turn.tools, turn.model), max_tokens: MAX_OUTPUT_TOKENS };
+    ? { model: turn.model, messages: [{ role: "system", content: turn.instructions }, ...messages], tools: toolList(turn.access, turn.tools, turn.model), ...outputLimit(turn.access), stream: true }
+    : anthropicNative(turn.access)
+      ? { model: turn.model, ...withCacheBreakpoints(turn.instructions, toolList(turn.access, turn.tools, turn.model), messages), max_tokens: MAX_OUTPUT_TOKENS, stream: true }
+      : { model: turn.model, system: turn.instructions, messages, tools: toolList(turn.access, turn.tools, turn.model), max_tokens: MAX_OUTPUT_TOKENS, stream: true };
   const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...authHeaders(kind, baseUrl, token), ...(openai ? {} : { "anthropic-version": "2023-06-01", ...betaHeaders(turn.access, turn.tools) }) },
+    headers: { "Content-Type": "application/json", ...authHeaders(kind, baseUrl, token), ...(openai ? {} : { "anthropic-version": ANTHROPIC_VERSION, ...betaHeaders(turn.access, turn.tools) }) },
     body: JSON.stringify(body),
     redirect: "manual",
     signal: turn.signal,
   });
-  const payload: unknown = await res.json().catch(() => null);
-  if (!res.ok) throw new Error(providerError(res.status, payload));
+  // A server that doesn't stream answers the whole thing at once, as it did before streaming was asked for.
+  if (!res.ok || !(res.headers.get("content-type") ?? "").includes("text/event-stream") || !res.body) {
+    const payload: unknown = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(providerError(res.status, payload));
+    return openai ? readOpenAi(payload) : readAnthropic(payload);
+  }
+  const assembler = openai ? openAiAssembler(onText) : anthropicAssembler(onText);
+  for await (const event of sseStream(res.body)) assembler.push(event);
+  const { payload, failure } = assembler.result();
+  if (failure) throw new Error(providerError(0, failure));
   return openai ? readOpenAi(payload) : readAnthropic(payload);
 }
 
@@ -406,7 +529,8 @@ export async function nativeTurn(turn: NativeTurn): Promise<NativeResult> {
     if (turn.signal?.aborted) return { ok: false, text: "", stopReason: "aborted", error: null };
     let answer: Step;
     try {
-      answer = await send(turn, messages);
+      const before = said.filter(Boolean);
+      answer = await send(turn, messages, turn.onText && ((text) => turn.onText!(text === null ? null : [...before, text].join("\n\n"))));
     } catch (error) {
       if (turn.signal?.aborted) return { ok: false, text: "", stopReason: "aborted", error: null };
       throw error;
@@ -435,6 +559,7 @@ export async function nativeTurn(turn: NativeTurn): Promise<NativeResult> {
       const empty = answer.stopReason === "max_tokens" ? "The model spent its whole reply thinking and wrote nothing. Try again, or a model that thinks less." : "The API answered with nothing.";
       return { ok: Boolean(text), text, stopReason: answer.stopReason, error: text ? null : empty };
     }
+    turn.onText?.(null);
     messages.push(...answer.raw);
     const answers = await Promise.all(
       answer.calls.map(async (call) => {
@@ -450,7 +575,7 @@ export async function nativeTurn(turn: NativeTurn): Promise<NativeResult> {
         } catch (error) {
           const text = error instanceof Error ? error.message : "Tool failed";
           turn.onStep?.({ id: call.id, output: text, status: "failed" });
-          return { call, parts: [{ type: "text", text: clip(text) }], isError: true } satisfies ToolAnswer;
+          return { call, parts: [{ type: "text", text: clipToolResult(text) }], isError: true } satisfies ToolAnswer;
         }
       }),
     );

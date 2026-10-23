@@ -31,8 +31,3 @@ export function isPasteChord(event: KeyboardEvent) {
   return event.code === "Insert" && event.shiftKey && !primary;
 }
 
-export function isTerminalCopyChord(event: KeyboardEvent) {
-  if (event.altKey) return false;
-  if (event.code === "KeyC" && event.shiftKey && (event.ctrlKey || event.metaKey)) return true;
-  return event.code === "Insert" && event.ctrlKey && !event.shiftKey;
-}

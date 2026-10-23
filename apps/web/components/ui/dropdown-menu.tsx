@@ -34,6 +34,7 @@ function DropdownMenuContent({
   return (
     <MenuPrimitive.Portal container={container}>
       <MenuPrimitive.Positioner
+        collisionPadding={8}
         className="isolate z-50 outline-none"
         align={align}
         alignOffset={alignOffset}
@@ -42,7 +43,7 @@ function DropdownMenuContent({
       >
         <MenuPrimitive.Popup
           data-slot="dropdown-menu-content"
-          className={cn("z-50 max-h-(--available-height) w-(--anchor-width) min-w-32 origin-(--transform-origin) overflow-x-hidden overflow-y-auto rounded-2xl border border-primary-edge bg-popover p-1.5 text-popover-foreground shadow-subtle-3 duration-100 outline-none pointer-coarse:min-w-64 pointer-coarse:rounded-3xl pointer-coarse:p-2.5 pointer-coarse:shadow-subtle-3 data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:overflow-hidden data-closed:fade-out-0 data-closed:zoom-out-95", className )}
+          className={cn("z-50 max-h-(--available-height) w-(--anchor-width) max-w-[calc(100vw-1rem)] min-w-32 origin-(--transform-origin) overflow-x-hidden overflow-y-auto rounded-2xl border border-primary-edge bg-popover p-1.5 text-popover-foreground shadow-subtle-3 duration-100 outline-none pointer-coarse:min-w-64 pointer-coarse:rounded-3xl pointer-coarse:p-2.5 pointer-coarse:shadow-subtle-3 data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:overflow-hidden data-closed:fade-out-0 data-closed:zoom-out-95", className )}
           {...props}
         />
       </MenuPrimitive.Positioner>
@@ -89,7 +90,7 @@ function DropdownMenuItem({
       data-inset={inset}
       data-variant={variant}
       className={cn(
-        "group/dropdown-menu-item relative flex cursor-default items-center gap-1.5 min-h-9 rounded-xl px-2.5 py-1.5 text-sm outline-hidden select-none pointer-coarse:h-12 pointer-coarse:gap-3.5 pointer-coarse:rounded-2xl pointer-coarse:px-3 pointer-coarse:text-[17px] pointer-coarse:[&_svg:not([class*='size-'])]:size-5 focus:bg-accent focus:text-accent-foreground not-data-[variant=destructive]:focus:**:text-accent-foreground data-inset:pl-7 data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 data-[variant=destructive]:focus:text-destructive dark:data-[variant=destructive]:focus:bg-destructive/20 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 data-[variant=destructive]:*:[svg]:text-destructive",
+        "group/dropdown-menu-item relative flex cursor-default items-center gap-1.5 min-h-9 rounded-xl px-2.5 py-1.5 text-sm outline-hidden select-none pointer-coarse:min-h-12 pointer-coarse:gap-3.5 pointer-coarse:rounded-2xl pointer-coarse:px-3 pointer-coarse:text-[17px] pointer-coarse:[&_svg:not([class*='size-'])]:size-5 focus:bg-accent focus:text-accent-foreground not-data-[variant=destructive]:focus:**:text-accent-foreground data-inset:pl-7 data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 data-[variant=destructive]:focus:text-destructive dark:data-[variant=destructive]:focus:bg-destructive/20 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 data-[variant=destructive]:*:[svg]:text-destructive",
         className
       )}
       {...props}
@@ -160,7 +161,7 @@ function DropdownMenuCheckboxItem({
       data-slot="dropdown-menu-checkbox-item"
       data-inset={inset}
       className={cn(
-        "relative flex cursor-default items-center gap-1.5 min-h-9 rounded-xl py-1.5 pr-8 pl-2.5 text-sm outline-hidden select-none pointer-coarse:h-12 pointer-coarse:gap-3.5 pointer-coarse:rounded-2xl pointer-coarse:pr-11 pointer-coarse:pl-3 pointer-coarse:text-[17px] pointer-coarse:[&_svg:not([class*='size-'])]:size-5 focus:bg-accent focus:text-accent-foreground focus:**:text-accent-foreground data-inset:pl-7 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "relative flex cursor-default items-center gap-1.5 min-h-9 rounded-xl py-1.5 pr-8 pl-2.5 text-sm outline-hidden select-none pointer-coarse:min-h-12 pointer-coarse:gap-3.5 pointer-coarse:rounded-2xl pointer-coarse:pr-11 pointer-coarse:pl-3 pointer-coarse:text-[17px] pointer-coarse:[&_svg:not([class*='size-'])]:size-5 focus:bg-accent focus:text-accent-foreground focus:**:text-accent-foreground data-inset:pl-7 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className
       )}
       checked={checked}

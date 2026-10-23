@@ -1,9 +1,9 @@
 import { DEFAULT_ENGINES, ENGINE_ACCESS, ENGINES, MODEL_ID_PATTERN, PROVIDER_KINDS, type Connection, type Engine, type EngineSettings, type Onboarding, type Settings } from "@gond/shared";
 import { ensureDatabase } from "../db/init.ts";
-import { emit, settingsChanged } from "../events.ts";
+import { settingsChanged } from "../events.ts";
 import { now } from "../ids.ts";
 
-const EMPTY_ONBOARDING: Onboarding = { done: false, apps: [], templates: [] };
+const EMPTY_ONBOARDING: Onboarding = { done: false, templates: [] };
 
 export function readEngines(json: string | null, legacyModel: string | null): Record<Engine, EngineSettings> {
   let stored: Partial<Record<Engine, Partial<EngineSettings>>> = {};
@@ -30,7 +30,8 @@ export function getSettings(): Settings {
   const row = ensureDatabase().query("SELECT onboarding, timezone FROM gond_settings WHERE id = 1").get() as { onboarding: string; timezone: string } | null;
   let onboarding = EMPTY_ONBOARDING;
   try {
-    onboarding = { ...EMPTY_ONBOARDING, ...(JSON.parse(row?.onboarding ?? "{}") as Partial<Onboarding>) };
+    const stored = JSON.parse(row?.onboarding ?? "{}") as Partial<Onboarding>;
+    onboarding = { done: stored.done === true, templates: Array.isArray(stored.templates) ? stored.templates : [] };
   } catch {
     /* defaults */
   }

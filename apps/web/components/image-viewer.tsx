@@ -20,6 +20,7 @@ export function ImageViewer({ images, openId, onOpenId }: { images: ViewerImage[
   const index = images.findIndex((image) => image.id === openId);
   const image = index >= 0 ? images[index]! : null;
   const [zoom, setZoom] = useState<{ x: number; y: number } | null>(null);
+  const [broken, setBroken] = useState<string | null>(null);
   const press = useRef<{ x: number; y: number; moved: boolean; origin: { x: number; y: number } | null } | null>(null);
 
   const go = (step: number) => {
@@ -90,10 +91,21 @@ export function ImageViewer({ images, openId, onOpenId }: { images: ViewerImage[
           {image ? (
             <>
               <DialogPrimitive.Title className="sr-only">{image.name}</DialogPrimitive.Title>
-              <div className="absolute inset-0 flex items-center justify-center overflow-hidden px-4 pt-[calc(var(--safe-top)+72px)] pb-[calc(var(--safe-bottom)+24px)] wide:px-20">
+              <div
+                className="absolute inset-0 flex items-center justify-center overflow-hidden px-4 pt-[calc(var(--safe-top)+72px)] pb-[calc(var(--safe-bottom)+24px)] wide:px-20"
+                onClick={(event) => {
+                  // A tap on the dark around the picture closes it, as on a phone's photo viewer.
+                  if (event.target !== event.currentTarget) return;
+                  setZoom(null);
+                  onOpenId(null);
+                }}
+              >
+                {broken === image.id ? <p className="rounded-full bg-primary px-4 py-2.5 text-[13.5px] text-foreground">Couldn&apos;t load this picture. Download it to open it.</p> : null}
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   key={image.id}
+                  onError={() => setBroken(image.id)}
+                  hidden={broken === image.id}
                   src={`/api/attachments/${image.id}`}
                   alt={image.name}
                   draggable={false}

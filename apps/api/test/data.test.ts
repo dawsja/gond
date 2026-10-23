@@ -270,14 +270,13 @@ describe("data", () => {
   test("a patch keeps what it doesn't mention", async () => {
     const { createBot, updateBot } = await import("../src/data/bots.ts");
     const { botInputSchema, botPatchSchema, routinePatchSchema, skillPatchSchema } = await import("@gond/shared");
-    const lead = createBot(botInputSchema.parse({ name: "Patch Lead", title: "Team Lead", description: "Runs the team.", toolkits: ["gmail"], notify: false }), "u-admin");
+    const lead = createBot(botInputSchema.parse({ name: "Patch Lead", title: "Team Lead", description: "Runs the team.", notify: false }), "u-admin");
 
     const parsed = botPatchSchema.parse({ pinned: true });
     expect(parsed).toEqual({});
     const after = updateBot(lead.id, { ...parsed, pinned: true })!;
     expect(after.title).toBe("Team Lead");
     expect(after.description).toBe("Runs the team.");
-    expect(after.toolkits).toEqual(["gmail"]);
     expect(after.notify).toBe(false);
     expect(after.pinned).toBe(true);
     expect(routinePatchSchema.parse({ enabled: false })).toEqual({ enabled: false });
@@ -360,7 +359,6 @@ describe("data", () => {
     const dev = findBot("Dev")!;
     expect(dev.title).toBe("Developer");
     expect(dev.color).toBe("#2F6FD6");
-    expect(dev.toolkits).toEqual([]);
     expect(synced).toEqual([dev.id]);
     expect(listMessages(maker.threadId).some((m) => m.body.includes("added Dev"))).toBe(true);
     expect(await tool.execute({ name: "Dev", title: "Developer", description: "A second one." }, "call")).toContain("Created Dev 2");
@@ -665,52 +663,6 @@ describe("data", () => {
     deleteProvider("u-admin", "xai");
   });
 
-  test("a call's voice is picked from the provider's own list, sampled with the person's key, and kept per provider", async () => {
-    const { saveProvider } = await import("../src/data/providers.ts");
-    const { getVoice, setVoice } = await import("../src/data/voice.ts");
-    const { voiceRoutes } = await import("../src/routes/voice.ts");
-    const { Hono } = await import("hono");
-    const said: { path: string; body: unknown }[] = [];
-    const upstream = Bun.serve({
-      port: 0,
-      async fetch(request) {
-        const path = new URL(request.url).pathname;
-        if (path === "/x/v1/tts/voices") return Response.json({ voices: [{ voice_id: "eve", name: "Eve", language: "en" }, { voice_id: "ara", name: "Ara", language: "en" }, { voice_id: "../bad", name: "Bad" }] });
-        said.push({ path, body: await request.json() });
-        return new Response(new Uint8Array([0xff, 0xfb, 1, 2]), { headers: { "content-type": "audio/mpeg" } });
-      },
-    });
-    const app = asPerson(new Hono(), "u-voices");
-    app.route("/api", voiceRoutes());
-    try {
-      expect(await (await app.request("/api/voice/voices")).json()).toEqual({ provider: null, voices: [], chosen: null });
-      saveProvider("u-voices", "xai", { baseUrl: `http://127.0.0.1:${upstream.port}/x/v1`, apiKey: "xai-voices-key-123456" });
-      saveProvider("u-voices", "openai", { baseUrl: `http://127.0.0.1:${upstream.port}/v1`, apiKey: "sk-voices-key-123456" });
-
-      expect(await (await app.request("/api/voice/voices")).json()).toEqual({ provider: "xai", voices: [{ id: "eve", name: "Eve", detail: null }, { id: "ara", name: "Ara", detail: null }], chosen: "eve" });
-      expect((await app.request("/api/voice/call-voice", { method: "PUT", body: JSON.stringify({ voice: "ara" }) })).status).toBe(200);
-      expect(getVoice("u-voices").callVoice).toEqual({ xai: "ara" });
-      expect((await app.request("/api/voice/call-voice", { method: "PUT", body: JSON.stringify({ voice: "../etc" }) })).status).toBe(400);
-
-      const sample = await app.request("/api/voice/sample?voice=ara");
-      expect(sample.headers.get("content-type")).toBe("audio/mpeg");
-      expect(said[0]).toMatchObject({ path: "/x/v1/tts", body: { voice_id: "ara", language: "en" } });
-
-      setVoice("u-voices", { preference: "openai" });
-      const openai = (await (await app.request("/api/voice/voices")).json()) as { provider: string; voices: { id: string }[]; chosen: string };
-      expect(openai.provider).toBe("openai");
-      expect(openai.chosen).toBe("marin");
-      expect(openai.voices.map((v) => v.id)).toContain("cedar");
-      await app.request("/api/voice/sample?voice=cedar");
-      expect(said[1]).toMatchObject({ path: "/v1/audio/speech", body: { voice: "cedar", model: "gpt-4o-mini-tts" } });
-      // Picking the default forgets the choice, so a provider's new default follows.
-      await app.request("/api/voice/call-voice", { method: "PUT", body: JSON.stringify({ voice: "marin" }) });
-      expect(getVoice("u-voices").callVoice).toEqual({ xai: "ara" });
-    } finally {
-      upstream.stop(true);
-    }
-  });
-
   test("voice picks the cheapest key unless one is chosen, and transcribes through it", async () => {
     const { saveProvider, deleteProvider } = await import("../src/data/providers.ts");
     const { getVoice, setVoice } = await import("../src/data/voice.ts");
@@ -734,7 +686,7 @@ describe("data", () => {
       return app.request("/api/transcribe", { method: "POST", body: form });
     };
     try {
-      expect(getVoice("u-voice")).toEqual({ preference: "auto", using: null, available: [], openaiModel: "gpt-transcribe", callVoice: {} });
+      expect(getVoice("u-voice")).toEqual({ preference: "auto", using: null, available: [], openaiModel: "gpt-transcribe" });
       expect((await send()).status).toBe(409);
 
       saveProvider("u-voice", "openai", { baseUrl: `http://127.0.0.1:${upstream.port}/v1`, apiKey: "sk-voice-key-123456" });
@@ -959,7 +911,6 @@ describe("data", () => {
       const { boxMcpServers } = await import("../src/mcp.ts");
       const other = createBot(botInputSchema.parse({ name: "Bystander" }), "u-admin");
       const theirs = createBot(botInputSchema.parse({ name: "Elsewhere" }), "u-mcp-other");
-      expect(getBot(bot.id)!.toolkits.some((t) => t.startsWith("mcp:"))).toBe(false);
       expect(boxMcpServers(getBot(bot.id)!).map((m) => m.name)).not.toContain("robinhood");
       expect(boxMcpServers(theirs).map((m) => m.name)).not.toContain("robinhood");
       expect(String(await baseTools({ ...context, bot: other, thread: getThread(other.threadId)! }).connect_app!.execute({ app: "robinhood" }, "c"))).toContain("Sign in card");
@@ -1090,7 +1041,7 @@ describe("data", () => {
       expect(servers.find((m) => m.name === "notion")?.note).toContain("sign in");
       expect(servers.find((m) => m.name === "local")?.note).toContain("not a plan or an API key");
 
-      const system = systemPromptFor(bot, { bots: [], thread, memory: null, memoryTruncated: false, teamMemory: null, connections: [], toolNotes: "", timezone: "UTC", skillsIndex: "", skills: [], mcpServers: servers });
+      const system = systemPromptFor(bot, { bots: [], thread, memory: null, memoryTruncated: false, teamMemory: null, connections: [], toolNotes: "", timezone: "UTC", skillsIndex: "", mcpServers: servers });
       expect(system).toContain("- toad: tools named mcp__toad__…");
       expect(system).toContain("- notion: not attached yet");
     } finally {
@@ -1714,10 +1665,10 @@ describe("data", () => {
     const { connectionsRoutes } = await import("../src/routes/connections.ts");
     const { mcpProxyRoutes, mcpRoutes } = await import("../src/routes/mcp.ts");
     const { Hono } = await import("hono");
-    const { baseTools, loadTeamMemory } = await import("../src/tools.ts");
+    const { baseTools } = await import("../src/tools.ts");
+    const { loadTeamMemory } = await import("../src/transcript.ts");
     const { promptFor } = await import("../src/responder.ts");
     const { systemPromptFor } = await import("../src/souls.ts");
-    const { allowedToolkits, usableBot } = await import("../src/toolkits.ts");
     const { boxMcpServers } = await import("../src/mcp.ts");
     const { botInputSchema } = await import("@gond/shared");
     const read: string[] = [];
@@ -1738,19 +1689,19 @@ describe("data", () => {
       expect(read).toContain(".team/u-other/MEMORY.md");
 
       saveConnection("u-admin", { toolkit: "gmail", name: "Gmail", accountId: "acc-admin", status: "active" });
-      const comet = createBot(botInputSchema.parse({ name: "Comet", toolkits: ["gmail"] }), "u-other");
+      const comet = createBot(botInputSchema.parse({ name: "Comet" }), "u-other");
       expect(listConnections("u-other")).toEqual([]);
       expect(await toolsFor("u-other")).toEqual([]);
       await expect(executeAction("u-other", "GMAIL_SEND_EMAIL", {}, "gmail")).rejects.toThrow();
       const thread = getThread(comet.threadId)!;
-      const system = systemPromptFor(usableBot(comet), { bots: listBots({ includeHidden: true, userId: "u-other" }), thread, memory: null, memoryTruncated: false, teamMemory: null, connections: listConnections("u-other"), toolNotes: "", timezone: "UTC", skillsIndex: "", skills: [], mcpServers: [] });
+      const system = systemPromptFor(comet, { bots: listBots({ includeHidden: true, userId: "u-other" }), thread, memory: null, memoryTruncated: false, teamMemory: null, connections: listConnections("u-other"), toolNotes: "", timezone: "UTC", skillsIndex: "", mcpServers: [] });
       expect(system.startsWith("## What you are\nYou are a personal assistant, not a coding agent.")).toBe(true);
       expect(system).toContain("Nobody else yet");
       expect(system).toContain("~/.team/u-other/MEMORY.md");
       expect(system).not.toContain("Dylan");
       expect(system).toContain("None connected to you yet");
       expect(system).not.toContain("- Gmail");
-      const withNotion = systemPromptFor(usableBot(comet), { bots: [], thread, memory: null, memoryTruncated: false, teamMemory: null, connections: [{ toolkit: "notion", name: "Notion", accountId: "acc-n", status: "active" }] as never, toolNotes: "", timezone: "UTC", skillsIndex: "", skills: [], mcpServers: [] });
+      const withNotion = systemPromptFor(comet, { bots: [], thread, memory: null, memoryTruncated: false, teamMemory: null, connections: [{ toolkit: "notion", name: "Notion", accountId: "acc-n", status: "active" }] as never, toolNotes: "", timezone: "UTC", skillsIndex: "", mcpServers: [] });
       expect(withNotion).toContain("- Notion: tools named NOTION_…");
       expect(withNotion).toContain("mcp__gond__<NAME>");
 
@@ -1796,7 +1747,6 @@ describe("data", () => {
       const adminServer = createMcpServer({ name: "private", transport: "http", url: "https://admin.example/mcp", headers: {}, args: [], env: {}, enabled: true }, "u-admin");
       const theirs = createMcpServer({ name: "private", transport: "http", url: "https://other.example/mcp", headers: { Authorization: "{{secret:TOKEN}}" }, args: [], env: {}, enabled: true }, "u-other");
 
-      expect(allowedToolkits(["gmail", "shortcut", "Not a toolkit!", "mcp:anything"])).toEqual(["gmail", "shortcut"]);
       expect(boxMcpServers({ userId: "u-other" }).map((m) => m.name)).toEqual(["private"]);
       expect(boxMcpServers({ userId: "u-admin" }).map((m) => m.name)).toContain("private");
       const routes = asPerson(new Hono(), "u-other").route("/api", mcpRoutes());
@@ -2094,7 +2044,7 @@ describe("stop", () => {
     const { createBot } = await import("../src/data/bots.ts");
     const { botInputSchema } = await import("@gond/shared");
     const { getMessage, postMessage, dropMessage } = await import("../src/data/threads.ts");
-    const { transcriptLines } = await import("../src/tools.ts");
+    const { transcriptLines } = await import("../src/transcript.ts");
     const { threadsRoutes } = await import("../src/routes/threads.ts");
     const { Hono } = await import("hono");
     const bot = createBot(botInputSchema.parse({ name: "Quoted" }), "u-quote");
@@ -2119,7 +2069,8 @@ describe("stop", () => {
     const { createBot } = await import("../src/data/bots.ts");
     const { botInputSchema } = await import("@gond/shared");
     const { getMessage, getThread, listMessages, postMessage, setReaction } = await import("../src/data/threads.ts");
-    const { baseTools, transcriptLines } = await import("../src/tools.ts");
+    const { baseTools } = await import("../src/tools.ts");
+    const { transcriptLines } = await import("../src/transcript.ts");
     const { botTurn } = await import("../src/responder.ts");
 
     const bot = createBot(botInputSchema.parse({ name: "Thumbs Bot" }), "u-react");
@@ -2935,27 +2886,6 @@ describe("the rename", () => {
     db.query("DELETE FROM gond_threads WHERE id = 't1'").run();
     expect(db.query("SELECT id FROM gond_messages").all()).toEqual([]);
     db.close();
-  });
-
-  test("a krubot.db in the data directory becomes gond.db", async () => {
-    const { closeDb, getDb, dbPath } = await import("../src/db/sqlite.ts");
-    const other = mkdtempSync(path.join(tmpdir(), "gond-legacy-"));
-    const { writeFileSync, existsSync } = await import("node:fs");
-    writeFileSync(path.join(other, "krubot.db"), "");
-    writeFileSync(path.join(other, "krubot.db-wal"), "");
-    closeDb();
-    process.env.GOND_DATA_DIR = other;
-    try {
-      getDb();
-      expect(dbPath()).toBe(path.join(other, "gond.db"));
-      expect(existsSync(path.join(other, "gond.db"))).toBe(true);
-      expect(existsSync(path.join(other, "krubot.db"))).toBe(false);
-      expect(existsSync(path.join(other, "krubot.db-wal"))).toBe(false);
-    } finally {
-      closeDb();
-      process.env.GOND_DATA_DIR = dir;
-      rmSync(other, { recursive: true, force: true });
-    }
   });
 
   test("secrets from before the rename are rewritten once at start", async () => {
@@ -3931,100 +3861,43 @@ describe("rooms and a bot's files", () => {
       else process.env.GOND_BOX_TOKEN = boxToken;
     }
   });
-});
 
-describe("calls", () => {
-  async function until(check: () => boolean, ms = 4000) {
-    const end = Date.now() + ms;
-    while (!check()) {
-      if (Date.now() > end) throw new Error("timed out");
-      await Bun.sleep(20);
-    }
-  }
-
-  test("a call relays the person's words, hands requests to the bot's turn, speaks its answer and hangs up on goodbye", async () => {
-    await seedUsers(["u-caller", "user"]);
+  test("a page of messages carries the same reactions and quotes as each message read alone", async () => {
     const { createBot } = await import("../src/data/bots.ts");
-    const { getThread, listMessages } = await import("../src/data/threads.ts");
-    const { saveProvider } = await import("../src/data/providers.ts");
-    const { startCall, listen, answerOnCall, callOf } = await import("../src/calls.ts");
+    const { getMessage, listMessages, postMessage, recentMessages, setReaction } = await import("../src/data/threads.ts");
     const { botInputSchema } = await import("@gond/shared");
-
-    const received: { type: string; [key: string]: unknown }[] = [];
-    let auth = "";
-    let socket: { send: (data: string) => void } | null = null;
-    const fake = Bun.serve({
-      port: 0,
-      fetch(req, server) {
-        auth = req.headers.get("authorization") ?? "";
-        return server.upgrade(req) ? undefined : new Response("no", { status: 400 });
-      },
-      websocket: {
-        open(ws) {
-          socket = ws;
-        },
-        message(ws, data) {
-          const event = JSON.parse(String(data)) as { type: string };
-          received.push(event);
-          if (event.type === "session.update") ws.send(JSON.stringify({ type: "session.updated" }));
-          if (event.type === "response.create") {
-            ws.send(JSON.stringify({ type: "response.created" }));
-            ws.send(JSON.stringify({ type: "response.done" }));
-          }
-        },
-      },
-    });
-    const say = (event: object) => socket!.send(JSON.stringify(event));
-    try {
-      const bot = createBot(botInputSchema.parse({ name: "Patch Caller", title: "Travel" }), "u-caller");
-      saveProvider("u-caller", "xai", { baseUrl: `http://127.0.0.1:${fake.port}/v1`, apiKey: "xai-test-key-1234567890" });
-      const thread = getThread(bot.threadId)!;
-      const started = startCall(thread, "u-caller");
-      if (!started.ok) throw new Error(started.error);
-      const events: { type: string }[] = [];
-      listen(started.call.id, (event) => events.push(event));
-
-      await until(() => events.some((e) => e.type === "ready"));
-      expect(auth).toBe("Bearer xai-test-key-1234567890");
-      const session = received.find((e) => e.type === "session.update") as unknown as { session: { tools: { name: string }[] } };
-      expect(session.session.tools.map((t) => t.name)).toEqual(["ask_bot", "bot_status", "end_call"]);
-
-      say({ type: "conversation.item.input_audio_transcription.completed", transcript: "Find me a flight to Denver on Friday" });
-      await until(() => listMessages(thread.id).some((m) => m.author === "you" && m.spoken));
-      expect(listMessages(thread.id).find((m) => m.author === "you" && m.spoken)!.body).toBe("Find me a flight to Denver on Friday");
-
-      say({ type: "response.function_call_arguments.done", name: "ask_bot", call_id: "c1", arguments: JSON.stringify({ request: "A nonstop flight to Denver on Friday morning" }) });
-      await until(() => listMessages(thread.id).some((m) => m.kind === "prompt"));
-      const prompt = listMessages(thread.id).find((m) => m.kind === "prompt")!;
-      expect(prompt.body).toContain("A nonstop flight to Denver on Friday morning");
-      expect(received.some((e) => e.type === "conversation.item.create" && (e.item as { call_id?: string }).call_id === "c1")).toBe(true);
-
-      expect(answerOnCall(prompt.id, "**Found** one at $284.")).toBe(true);
-      expect(answerOnCall(prompt.id, "again")).toBe(false);
-      await until(() => received.some((e) => e.type === "conversation.item.create" && JSON.stringify(e).includes("Found one at $284.")));
-      expect(listMessages(thread.id).some((m) => m.author === bot.id && m.body.includes("$284"))).toBe(false);
-
-      say({ type: "response.function_call_arguments.done", name: "bot_status", call_id: "c2", arguments: "{}" });
-      await until(() => received.some((e) => e.type === "conversation.item.create" && (e.item as { call_id?: string }).call_id === "c2"));
-      expect(JSON.stringify(received.at(-2) ?? {}) + JSON.stringify(received.at(-1) ?? {})).toContain("isn't working on anything");
-
-      say({ type: "conversation.item.input_audio_transcription.completed", transcript: "Ok thanks, bye!" });
-      say({ type: "response.output_audio_transcript.delta", delta: "Bye, safe travels." });
-      say({ type: "response.output_audio_transcript.done" });
-      await until(() => events.some((e) => e.type === "ended"));
-      const lines = listMessages(thread.id);
-      expect(lines.some((m) => m.author === bot.id && m.spoken && m.body === "Bye, safe travels.")).toBe(true);
-      expect(lines.at(-1)!.body).toBe("Call ended · under a minute");
-      expect(lines.some((m) => m.kind === "event" && m.body === "Call started")).toBe(true);
-      expect(getThread(thread.id)!.lastMessage).toBeNull();
-      expect(callOf("u-caller")).toBeNull();
-    } finally {
-      fake.stop(true);
-    }
+    const bot = createBot(botInputSchema.parse({ name: "Pager" }), "u-admin");
+    const asked = postMessage({ threadId: bot.threadId, author: "you", body: "What's the plan?" });
+    const answer = postMessage({ threadId: bot.threadId, author: bot.id, body: "Ship on Friday." });
+    const reply = postMessage({ threadId: bot.threadId, author: "you", body: "Good.", replyTo: answer.id });
+    setReaction(getMessage(answer.id)!, "you", "👍");
+    const alone = [asked, answer, reply].map((m) => getMessage(m.id)!);
+    const page = listMessages(bot.threadId, { includeSent: true }).filter((m) => alone.some((a) => a.id === m.id));
+    expect(page).toEqual(alone);
+    expect(page[1]!.reactions.map((r) => r.emoji)).toEqual(["👍"]);
+    expect(page[2]!.replyTo?.author).toBe(bot.id);
+    expect(recentMessages(bot.threadId, 10).filter((m) => alone.some((a) => a.id === m.id))).toEqual(alone);
   });
 
-  test("an answer for a call that has ended goes into the chat instead", async () => {
-    const { answerOnCall } = await import("../src/calls.ts");
-    expect(answerOnCall("m-not-on-a-call", "Hello")).toBe(false);
+  test("a person's conversation ids come without building each conversation", async () => {
+    const { listThreads, threadRefs } = await import("../src/data/threads.ts");
+    const refs = threadRefs("u-admin");
+    expect(refs.map((r) => r.id).sort()).toEqual(listThreads({ userId: "u-admin" }).map((t) => t.id).sort());
+    expect(threadRefs("u-nobody")).toEqual([]);
+  });
+
+  test("a conversation's change tells only its owner to reload the list", async () => {
+    const { createBot } = await import("../src/data/bots.ts");
+    const { subscribe, threadChanged } = await import("../src/events.ts");
+    const { botInputSchema } = await import("@gond/shared");
+    const bot = createBot(botInputSchema.parse({ name: "Owned" }), "u-admin");
+    const heard: unknown[] = [];
+    const stop = subscribe((event) => heard.push(event));
+    try {
+      threadChanged(bot.threadId);
+    } finally {
+      stop();
+    }
+    expect(heard).toEqual([{ topic: "thread", threadId: bot.threadId }, { topic: "bots", userId: "u-admin" }]);
   });
 });

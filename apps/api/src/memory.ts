@@ -21,4 +21,3 @@ export function teamMemoryPath(userId: string) {
 export const LEGACY_TEAM_MEMORY_PATH = ".team/MEMORY.md";
 
 export const MAX_MEMORY_BYTES = 24 * 1024;
-export const MAX_MEMORY_LINES = 200;

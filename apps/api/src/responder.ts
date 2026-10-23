@@ -10,7 +10,7 @@ import { allSecretValues } from "./data/secrets.ts";
 import { userTimezone } from "./data/prefs.ts";
 import { listConnections } from "./data/settings.ts";
 import { listSkills } from "./data/skills.ts";
-import { botLinesSincePerson, closePending, closeSentFrom, dropMessage, getAttachment, getMessage, getThread, listThreads, markAnswered, postMessage, reactionsOf, recentMessages, releaseClaim, threadBusy, unsteer } from "./data/threads.ts";
+import { botLinesSincePerson, closePending, closeSentFrom, dropMessage, getAttachment, getMessage, getThread, markAnswered, postMessage, reactionsOf, recentMessages, releaseClaim, threadBusy, threadRefs, unsteer } from "./data/threads.ts";
 import { computerTools, secretCommandTool } from "./computer.ts";
 import { computerTool } from "./computer-tool.ts";
 import { attachmentNote, deliverAttachments, type Delivered } from "./inbox.ts";
@@ -19,7 +19,8 @@ import { cliTurn } from "./driver.ts";
 import { EngineSetupError, engineRun, type EngineRun } from "./engines.ts";
 import { getSummary } from "./data/summaries.ts";
 import { summarizeThread } from "./summaries.ts";
-import { activity } from "./events.ts";
+import { activity, emit } from "./events.ts";
+import { createWriting } from "./writing.ts";
 import { boxMcpServers, mcpServersFor } from "./mcp.ts";
 import { nativeMcpTools } from "./mcp-client.ts";
 import { nativeTurn, readsPdf, SteerQueue } from "./native.ts";
@@ -27,14 +28,13 @@ import { botHome, soulPath } from "./memory.ts";
 import { sendPush } from "./push.ts";
 import { createRedactor } from "./redact.ts";
 import { skillsFor, skillsIndex, skillsReady } from "./skills.ts";
-import { renderSoul, systemPromptFor } from "./souls.ts";
-import { usableBot } from "./toolkits.ts";
+import { renderSoul, skillsInUse, systemPromptFor } from "./souls.ts";
 import { clearWork, clipOutput, createTurnClock, labelStep, recordStep, timingLine, type StepUpdate } from "./work.ts";
 import { boxPermission, endTurnOnExpiry } from "./approvals.ts";
 import { noteInterrupted, takeInterrupted, wasInterrupted } from "./resume.ts";
 import { turnTiming } from "./config.ts";
-import { answerOnCall, closeCallTurn } from "./calls.ts";
-import { appTools, baseTools, loadMemory, loadTeamMemory, MAX_CHAIN, MAX_ROOM_LINES, permissionTool, resultDepth, teamTools, TOOL_NOTES, transcript } from "./tools.ts";
+import { appTools, baseTools, MAX_CHAIN, MAX_ROOM_LINES, permissionTool, resultDepth, teamTools, TOOL_NOTES } from "./tools.ts";
+import { loadMemory, loadTeamMemory, transcript } from "./transcript.ts";
 
 const CONTEXT_LINES = 30;
 const ROOM_LOOKBACK = 30;
@@ -218,7 +218,7 @@ export async function stopBot(bot: Bot) {
 
 export async function stopAll(userId: string): Promise<{ stopped: number; dropped: number }> {
   const total = { stopped: 0, dropped: 0 };
-  for (const thread of listThreads({ userId })) {
+  for (const thread of threadRefs(userId)) {
     const one = await stopThread(thread.id);
     total.stopped += one.stopped;
     total.dropped += one.dropped;
@@ -289,8 +289,8 @@ export async function postFromPerson(thread: Thread, input: { body: string; atta
 
 // "stop" in the chat is Stop: everything halts, nothing reads the message as
 // a task, and the bot that was working says what it stopped.
-export async function stopFromMessage(thread: Thread, body: string, options: { spoken?: boolean } = {}): Promise<Message> {
-  const message = postMessage({ threadId: thread.id, author: "you", body, answered: true, spoken: options.spoken });
+async function stopFromMessage(thread: Thread, body: string): Promise<Message> {
+  const message = postMessage({ threadId: thread.id, author: "you", body, answered: true });
   const working = [...activeTurns().values()].find((turn) => turn.threadId === thread.id)?.botId;
   const bots = listBots({ includeHidden: true, userId: thread.userId });
   const author = working ?? targetsFor({ author: "you", body }, thread, bots, roomBefore(thread))[0]?.id;
@@ -322,12 +322,22 @@ export function roomBefore(thread: Thread, message?: Pick<Message, "id" | "creat
   return message ? recent.filter((m) => m.id !== message.id && m.createdAt <= message.createdAt) : recent;
 }
 
+// Each bot's SOUL.md as last written to the computer, so a turn writes it only when it changed.
+const soulsWritten = new Map<string, string>();
+
+export function forgetSouls() {
+  soulsWritten.clear();
+}
+
 export async function syncSoul(bot: Bot) {
   const box = boxConfig(bot.userId);
   if (!box) return;
+  const soul = renderSoul(bot);
+  if (soulsWritten.get(bot.id) === soul) return;
   try {
     await ensureBotHome(box, bot.id);
-    await writeBoxFile(box, soulPath(bot.id), renderSoul(bot));
+    await writeBoxFile(box, soulPath(bot.id), soul);
+    soulsWritten.set(bot.id, soul);
   } catch (error) {
     console.warn(`[gond] could not write SOUL.md for ${bot.name}: ${error instanceof Error ? error.message : error}`);
   }
@@ -405,7 +415,7 @@ export function promptFor(bot: Bot, thread: Thread, message: Message, bots: Bot[
 export async function botTurn(bot: Bot, thread: Thread, message: Message, parent?: AbortSignal): Promise<string> {
   const box = boxConfig(thread.userId);
   if (!box) {
-    postMessage({ threadId: thread.id, author: "system", kind: "event", body: "No box is running, so no bot can work. Start the box container and set GOND_BOX_URL.", answered: true });
+    postMessage({ threadId: thread.id, author: "system", kind: "event", body: "Gond isn't connected to its computer, so no bot can answer. Whoever runs this Gond can fix it.", answered: true });
     if (message.author === "routine") finishRoutineRun(message.id, false);
     return "";
   }
@@ -443,10 +453,7 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
   // message goes back to wait and is answered again once the computer is back.
   let again = false;
 
-  let failed = false;
-
   const endUnanswered = async (failure: string, detail: string, setupError: boolean) => {
-    failed = true;
     const cause = stopCauseOf(controller.signal);
     stopped = cause === "stopped";
     if (cause === "updating" || (!cause && box && !(await computerAnswers(box)))) {
@@ -472,7 +479,13 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
   const ownerHome = boxHome(thread.userId);
   const labels: ToolLabelContext = { home: ownerHome ? `${ownerHome}/${botHome(bot.id)}` : null, servers: mcpServersFor(bot).map((server) => ({ name: server.name })) };
 
-  const clock = createTurnClock();
+  const clock = createTurnClock(Date.now, Date.parse(message.createdAt));
+  // Only an answer bound for the person is shown as it is written; one for a teammate or up a chain isn't theirs to read.
+  const writing = active.route === "person" ? createWriting((text) => emit({ topic: "writing", threadId: thread.id, botId: bot.id, text }), scrub) : null;
+  const onText = (text: string | null) => {
+    if (text) clock.firstText();
+    writing?.text(text);
+  };
   // What this turn finished, in words, for the turn that answers again if this one is cut off.
   const done: string[] = [];
   const resumed = takeInterrupted(message.id);
@@ -488,30 +501,31 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
     });
   };
   try {
-    await syncSoul(bot);
-    const [memory, teamMemory] = await Promise.all([loadMemory(box, bot.id), loadTeamMemory(box, bot.userId)]);
+    const mcpServers = boxMcpServers(bot);
     const skills = listSkills(bot.userId);
-    await skillsReady(bot.userId);
-
-    const usable = usableBot(bot);
-    const mcpServers = boxMcpServers(usable);
-
     const ai = getAi(thread.userId);
     const run = engineRun(ai, thread.userId);
 
     active.steer = run.native ? async (text) => steers.push(text) : async (text) => (await steerAgent(box, agentId, text).catch(() => ({ steered: false }))).steered;
 
-    const nativeMcp = run.native ? await nativeMcpTools({ bot: usable, thread, signal: controller.signal }) : null;
+    // None of these wait on another, and each is a round trip to the computer or a service.
+    const [memory, teamMemory, nativeMcp, apps] = await Promise.all([
+      syncSoul(bot).then(() => loadMemory(box, bot.id)),
+      loadTeamMemory(box, bot.userId),
+      run.native ? nativeMcpTools({ bot: bot, thread, signal: controller.signal }) : null,
+      appTools(context),
+      skillsReady(bot.userId),
+    ]);
     const tools = {
       ...(nativeMcp?.tools ?? {}),
       ...baseTools(context),
       ...teamTools(context),
-      ...(await appTools(context)),
+      ...apps,
       ...(run.native ? computerTools(context) : { permission: permissionTool(context) }),
       ...computerTool(context),
       ...secretCommandTool(context),
     };
-    const instructions = systemPromptFor(usable, {
+    const instructions = systemPromptFor(bot, {
       bots,
       thread,
       memory: memory.text,
@@ -521,18 +535,19 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
       toolNotes: TOOL_NOTES,
       timezone: userTimezone(thread.userId),
       skillsIndex: skillsIndex(skills),
-      skills: skillsFor(message.body, skills),
 
-      mcpServers: nativeMcp?.servers ?? mcpServersFor(usable).map((m) => ({ name: m.name, note: m.authStatus === "needed" ? `not attached yet: it waits for the person to sign in, from its card or Settings → Apps → MCP servers → ${m.name} → Sign in, and its tools arrive on your next reply after that` : m.authStatus === "error" ? `sign-in problem (${m.authError ?? "unknown"}); its tools may fail` : undefined })),
+      mcpServers: nativeMcp?.servers ?? mcpServersFor(bot).map((m) => ({ name: m.name, note: m.authStatus === "needed" ? `not attached yet: it waits for the person to sign in, from its card or Settings → Apps → MCP servers → ${m.name} → Sign in, and its tools arrive on your next reply after that` : m.authStatus === "error" ? `sign-in problem (${m.authError ?? "unknown"}); its tools may fail` : undefined })),
     });
 
     const delivered = message.attachments.length ? await deliverAttachments(box, bot, message, controller.signal, { pdf: !run.native || readsPdf(run.native) }) : { files: [], inline: [] };
     controller.signal.throwIfAborted();
-    const resumeNote = resumed ? `\n\n${resumed}` : "";
-    const prompt = promptFor(bot, thread, message, bots, delivered.files, { summary: getSummary(thread.id)?.summary }) + resumeNote;
+    const inUse = skillsInUse(skillsFor(message.body, skills));
+    const turnNotes = `${inUse ? `\n\n${inUse}` : ""}${resumed ? `\n\n${resumed}` : ""}`;
+    const prompt = promptFor(bot, thread, message, bots, delivered.files, { summary: getSummary(thread.id)?.summary }) + turnNotes;
     const since = run.native ? null : (seenBy().get(agentId) ?? null);
-    const followUp = since ? promptFor(bot, thread, message, bots, delivered.files, { since }) + resumeNote : undefined;
+    const followUp = since ? promptFor(bot, thread, message, bots, delivered.files, { since }) + turnNotes : undefined;
     summaryRun = run;
+    clock.ready();
     const result = run.native
       ? await nativeTurn({
           access: run.native,
@@ -545,6 +560,8 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
           onLog: (line) => activity(thread.id, bot.id, hide(line)),
           onStep: step,
           steers,
+          cacheKey: agentId,
+          onText,
         }).then((native) => ({ ...native, recovered: false }))
       : await cliTurn({
       box,
@@ -565,6 +582,7 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
       signal: controller.signal,
       onLog: (line) => activity(thread.id, bot.id, hide(line)),
       onStep: step,
+      onText,
     });
     if (result.ok) seenBy().set(agentId, message.createdAt);
     else seenBy().delete(agentId);
@@ -576,12 +594,10 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
       // Nothing for the person (in a room, often a line meant for another bot): nothing is posted.
     } else if (result.ok && result.text.trim()) {
       reply = scrub(result.text.trim());
-      if (!answerOnCall(message.id, reply)) {
-        deliverReply(bot, thread, message, reply);
+      deliverReply(bot, thread, message, reply);
 
-        if (bot.notify && (message.author === "you" || message.author === "routine")) {
-          void sendPush({ title: bot.name, body: plainMarkdown(reply).slice(0, 140), url: `/app/t/${thread.id}`, tag: thread.id, threadId: thread.id }, thread.userId);
-        }
+      if (bot.notify && (message.author === "you" || message.author === "routine")) {
+        void sendPush({ title: bot.name, body: plainMarkdown(reply).slice(0, 140), url: `/app/t/${thread.id}`, tag: thread.id, threadId: thread.id }, thread.userId);
       }
     } else {
       const detail = hide(result.error ?? (result.stopReason ? `stopped (${result.stopReason})` : "no reply"));
@@ -597,6 +613,7 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
       await endUnanswered(`${bot.name} hit a problem: ${detail.slice(0, 500)}`, detail, error instanceof EngineSetupError);
     }
   } finally {
+    writing?.close();
     parent?.removeEventListener("abort", follow);
     steers.shut();
     const free = await releaseComputer(thread.userId, thread.id, { botId: bot.id });
@@ -611,7 +628,6 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
     if (summaryRun && turnTiming()) console.log(timingLine(bot.name, `${summaryRun.engine}${summaryRun.model ? ` ${summaryRun.model}` : ""}`, clock.timing()));
   }
   if (again) return "";
-  if (!reply) closeCallTurn(message.id, stopped ? "stopped" : failed ? "failed" : "quiet");
   await reportBack(bot, message, reply, stopped, broke);
   if (message.author === "routine") finishRoutineRun(message.id, Boolean(reply) || quiet);
   if (quiet) dropMessage(message.id);

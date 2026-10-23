@@ -5,10 +5,12 @@ import { injectSecrets } from "./data/secrets.ts";
 import type { DriverTool, ToolPart, ToolResult } from "./driver.ts";
 import { mcpServersFor } from "./mcp.ts";
 import { bearerFor, probeMcpServer } from "./mcp-oauth.ts";
-import { proxiedUrl } from "./routes/llm.ts";
+import { proxiedUrl } from "./providers.ts";
+import { sseStream } from "./sse.ts";
 
 const PROTOCOL_VERSION = "2025-06-18";
-const OPEN_TIMEOUT_MS = 10_000;
+const OPEN_TIMEOUT_MS = 6_000;
+const LIST_CACHE_MS = 5 * 60_000;
 const CALL_TIMEOUT_MS = 120_000;
 const MAX_RESULT = 24_000;
 const TOOL_NAME = /^[A-Za-z0-9_-]{1,64}$/;
@@ -82,34 +84,11 @@ export async function replyTo(res: Response, id: number): Promise<RpcReply> {
     if (!reply) throw new Error("The server answered without a reply to the call");
     return reply;
   }
-  const reader = res.body!.pipeThrough(new TextDecoderStream()).getReader();
-  let buffer = "";
-  try {
-    for (;;) {
-      const { value, done } = await reader.read();
-      if (value) buffer += value.replace(/\r\n/g, "\n");
-      let end: number;
-      while ((end = buffer.indexOf("\n\n")) >= 0) {
-        const data = buffer
-          .slice(0, end)
-          .split("\n")
-          .filter((line) => line.startsWith("data:"))
-          .map((line) => line.slice(5).replace(/^ /, ""))
-          .join("\n");
-        buffer = buffer.slice(end + 2);
-        if (!data) continue;
-        try {
-          const reply = matching(JSON.parse(data), id);
-          if (reply) return reply;
-        } catch {
-          // a notification or keep-alive we don't read
-        }
-      }
-      if (done) throw new Error("The server closed the stream without a reply");
-    }
-  } finally {
-    void reader.cancel().catch(() => undefined);
+  for await (const event of sseStream(res.body!)) {
+    const reply = matching(event, id);
+    if (reply) return reply;
   }
+  throw new Error("The server closed the stream without a reply");
 }
 
 export class McpSession {
@@ -175,6 +154,11 @@ export function toolResultOf(result: unknown): ToolResult {
 
 export type McpServerNote = { name: string; note?: string };
 
+// Each server's tool list, so a turn doesn't open every server just to learn its tools; a refresh,
+// a sign-in or new headers make a new key.
+const listings = new Map<string, { at: number; tools: McpToolInfo[] }>();
+const listingKey = (server: McpServer) => JSON.stringify([server.id, server.url, server.refreshedAt, server.authStatus, server.headers]);
+
 /**
  * The `api` engine's MCP servers: it runs in the API, not in a CLI on the
  * box, so it talks to each HTTP server itself. Tools carry the CLI's names
@@ -187,13 +171,27 @@ export async function nativeMcpTools(context: { bot: Bot; thread: Thread; signal
       if (server.transport !== "http") return { name: server.name, note: "runs as a command on the computer, so only Claude Code can use it, not a plan or an API key Gond calls itself" };
       if (server.authStatus === "needed") return { name: server.name, note: `not attached yet: it waits for the person to sign in, from its card or Settings → Apps → MCP servers → ${server.name} → Sign in` };
       const session = new McpSession(server);
+      let opened: Promise<void> | null = null;
+      const ready = (signal?: AbortSignal) =>
+        (opened ??= session.open(signal).catch((error: unknown) => {
+          opened = null;
+          throw error;
+        }));
+      const key = listingKey(server);
+      const cached = listings.get(key);
       let listed: McpToolInfo[];
-      try {
-        const signal = AbortSignal.any([AbortSignal.timeout(OPEN_TIMEOUT_MS), ...(context.signal ? [context.signal] : [])]);
-        await session.open(signal);
-        listed = await session.listTools(signal);
-      } catch (error) {
-        return { name: server.name, note: `didn't answer this time (${error instanceof Error ? error.message : "unknown error"}); tell the person if you need it` };
+      if (cached && Date.now() - cached.at < LIST_CACHE_MS) {
+        listed = cached.tools;
+      } else {
+        try {
+          const signal = AbortSignal.any([AbortSignal.timeout(OPEN_TIMEOUT_MS), ...(context.signal ? [context.signal] : [])]);
+          await ready(signal);
+          listed = await session.listTools(signal);
+          listings.set(key, { at: Date.now(), tools: listed });
+        } catch (error) {
+          listings.delete(key);
+          return { name: server.name, note: `didn't answer this time (${error instanceof Error ? error.message : "unknown error"}); tell the person if you need it` };
+        }
       }
       for (const tool of listed) {
         const name = `mcp__${server.name}__${tool.name}`;
@@ -206,6 +204,7 @@ export async function nativeMcpTools(context: { bot: Bot; thread: Thread; signal
             if (decision === "deny") return "NOT done: the person denied this action.";
             if (decision === "expired") return expiredText(`for ${name}`);
             const signal = AbortSignal.any([AbortSignal.timeout(CALL_TIMEOUT_MS), ...(context.signal ? [context.signal] : [])]);
+            await ready(signal);
             return toolResultOf(await session.request("tools/call", { name: tool.name, arguments: input }, signal));
           },
         };

@@ -56,10 +56,6 @@ impl AppState {
         lock(&self.config).server.clone()
     }
 
-    pub fn menu_bar(&self) -> bool {
-        lock(&self.config).menu_bar
-    }
-
     pub fn update(&self, app: &AppHandle, change: impl FnOnce(&mut Config)) {
         let mut config = lock(&self.config);
         change(&mut config);
@@ -248,13 +244,9 @@ fn page_builder<'a>(
         })
 }
 
-pub fn apply_menu_bar(window: &WebviewWindow) {
-    let shown = window.state::<AppState>().menu_bar();
-    let _ = if shown {
-        window.show_menu()
-    } else {
-        window.hide_menu()
-    };
+/// The menu bar stays out of the way: hidden in every window, and shown for a moment by a tap of Alt.
+pub fn hide_menu_bar(window: &WebviewWindow) {
+    let _ = window.hide_menu();
 }
 
 // WebKitGTK ships with media capture off, so getUserMedia isn't there for the composer's mic or a
@@ -275,7 +267,7 @@ fn allow_media(_window: &WebviewWindow) {}
 
 fn present(window: &WebviewWindow) {
     allow_media(window);
-    apply_menu_bar(window);
+    hide_menu_bar(window);
     let dark = matches!(window.theme(), Ok(Theme::Dark));
     let _ = window.set_background_color(Some(if dark { DARK } else { LIGHT }));
     let _ = window.show();
@@ -381,8 +373,7 @@ pub fn run() {
             bridge::platform,
             bridge::version,
             bridge::open_window,
-            bridge::menu_bar,
-            bridge::set_menu_bar,
+            bridge::toggle_menu_bar,
             bridge::update_state,
             bridge::check_for_updates,
             bridge::install_update,

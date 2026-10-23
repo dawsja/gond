@@ -4,6 +4,7 @@ import { LOGIN_FIELD_LABELS, type LoginFieldKind, type SecretMeta } from "@gond/
 import { KeyRound, LogIn, Pencil, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useLiveEvents } from "@/components/hq/live-events";
+import { LoadFailed } from "@/components/load-failed";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,6 +14,7 @@ import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
+import { useHeld } from "@/hooks/use-held";
 import { api, del } from "@/lib/api";
 
 type Forgetting = { title: string; names: string[]; detail: string };
@@ -56,7 +58,7 @@ function ChangeDialog({ changing, onClose, onSaved }: { changing: Changing; onCl
           <DialogDescription>What&apos;s saved now is never shown. Type a new value to replace it; it&apos;s encrypted again as it&apos;s saved.</DialogDescription>
         </DialogHeader>
         <form onSubmit={save} className="contents">
-          <FieldGroup className="dialog-body gap-4">
+          <FieldGroup className="gap-4">
             {changing.fields.map((field) => (
               <Field key={field.name}>
                 <FieldLabel htmlFor={`change-${field.name}`}>{changing.fields.length > 1 ? field.label : "New value"}</FieldLabel>
@@ -78,9 +80,9 @@ function ChangeDialog({ changing, onClose, onSaved }: { changing: Changing; onCl
             <Button type="button" size="lg" variant="outline" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit" size="lg" variant="tint" disabled={!given.length || busy}>
+            <Button type="submit" size="lg" disabled={!given.length || busy}>
               {busy ? <Spinner data-icon="inline-start" /> : null}
-              Save
+              {busy ? "Saving…" : "Save"}
             </Button>
           </DialogFooter>
         </form>
@@ -97,10 +99,13 @@ function breakable(text: string) {
 export function SecretsCard() {
   const [secrets, setSecrets] = useState<SecretMeta[] | null>(null);
   const [forgetting, setForgetting] = useState<Forgetting | null>(null);
+  const shownForgetting = useHeld(forgetting, Boolean(forgetting));
   const [changing, setChanging] = useState<Changing | null>(null);
 
+  const [loadFailed, setLoadFailed] = useState(false);
   const load = useCallback(async () => {
     const data = await api<{ secrets: SecretMeta[] }>("/api/secrets").catch(() => null);
+    setLoadFailed(!data);
     if (data) setSecrets(data.secrets);
   }, []);
   useEffect(() => {
@@ -136,7 +141,7 @@ export function SecretsCard() {
         </CardHeader>
         <CardContent>
           {!secrets ? (
-            <Spinner />
+            loadFailed ? <LoadFailed what="your secrets" onRetry={() => void load()} /> : <Spinner />
           ) : sites.size === 0 ? (
             <Empty className="border py-6">
               <EmptyHeader>
@@ -177,7 +182,7 @@ export function SecretsCard() {
         </CardHeader>
         <CardContent>
           {!secrets ? (
-            <Spinner />
+            loadFailed ? <LoadFailed what="your secrets" onRetry={() => void load()} /> : <Spinner />
           ) : keys.length === 0 ? (
             <Empty className="border py-6">
               <EmptyHeader>
@@ -214,12 +219,12 @@ export function SecretsCard() {
       <AlertDialog open={Boolean(forgetting)} onOpenChange={(open) => !open && setForgetting(null)}>
         <AlertDialogContent size="sm">
           <AlertDialogHeader>
-            <AlertDialogTitle>Forget {breakable(forgetting?.title ?? "")}?</AlertDialogTitle>
-            <AlertDialogDescription>{forgetting?.detail}</AlertDialogDescription>
+            <AlertDialogTitle>Forget {breakable(shownForgetting?.title ?? "")}?</AlertDialogTitle>
+            <AlertDialogDescription>{shownForgetting?.detail}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Keep it</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" onClick={() => forgetting && void forget(forgetting)}>
+            <AlertDialogAction variant="destructive" onAction={async () => forgetting && (await forget(forgetting))}>
               Forget
             </AlertDialogAction>
           </AlertDialogFooter>

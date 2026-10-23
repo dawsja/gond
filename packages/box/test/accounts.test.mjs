@@ -30,40 +30,6 @@ test("accountName is gond- plus the person's letters, unique among the taken", (
   assert.ok(accountName({ name: "x".repeat(80) }).length <= 32);
 });
 
-test("an account from before the rename gets its gond- name, the same uid and its home moved over", () => {
-  const f = fixture();
-  try {
-    const state = path.join(f.dir, "state");
-    fs.mkdirSync(state, { recursive: true });
-    fs.writeFileSync(
-      path.join(state, "accounts.json"),
-      JSON.stringify({ version: 1, accounts: { "u-admin": { name: "agent", uid: 1001, slot: 0, admin: true }, "u-ada": { name: "kru-ada", uid: FIRST_UID, slot: 1, admin: false } } }),
-    );
-    const oldHome = path.join(f.dir, "homes", "kru-ada");
-    fs.mkdirSync(path.join(oldHome, ".bots"), { recursive: true });
-    fs.writeFileSync(path.join(oldHome, "notes.md"), "mine");
-    fs.mkdirSync(path.join(f.skills, "kru-ada", "hello"), { recursive: true });
-    fs.symlinkSync(path.join(f.skills, "kru-ada"), path.join(oldHome, ".skills"));
-    const accounts = f.make();
-    accounts.adoptLegacyNames();
-    accounts.restore();
-    const ada = accounts.get("u-ada");
-    assert.equal(ada.name, "gond-ada");
-    assert.equal(ada.home, path.join(f.dir, "homes", "gond-ada"));
-    assert.equal(accounts.get("u-admin").name, "agent");
-    assert.equal(fs.existsSync(oldHome), false);
-    assert.equal(fs.readFileSync(path.join(ada.home, "notes.md"), "utf8"), "mine");
-    assert.equal(fs.readlinkSync(path.join(ada.home, ".skills")), path.join(f.skills, "gond-ada"));
-    assert.equal(fs.existsSync(path.join(f.skills, "kru-ada")), false);
-    const saved = JSON.parse(fs.readFileSync(path.join(state, "accounts.json"), "utf8"));
-    assert.equal(saved.accounts["u-ada"].name, "gond-ada");
-    assert.equal(saved.accounts["u-ada"].uid, FIRST_UID);
-    assert.equal(f.make().get("u-ada").name, "gond-ada");
-  } finally {
-    f.cleanup();
-  }
-});
-
 test("uids and desktop slots are the lowest free ones", () => {
   assert.equal(nextUid(new Set([1001])), FIRST_UID);
   assert.equal(nextUid(new Set([1001, FIRST_UID, FIRST_UID + 1])), FIRST_UID + 2);

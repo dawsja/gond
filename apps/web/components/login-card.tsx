@@ -55,7 +55,6 @@ export function LoginCard({ request, bot, onAnswered }: { request: SecretRequest
   return (
     <form onSubmit={answer} className="contents">
       <ActionCard
-        bot={bot}
         icon={icon}
         title={`Sign in to ${site}`}
         by={request.reason || `${name} is on the sign-in page`}

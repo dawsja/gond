@@ -45,7 +45,7 @@ export function readiness(engine: Engine, status: BoxStatus | null, providers: R
   if (!status.configured || !status.reachable) return { state: "problem", text: "The computer isn't reachable, so the sign-in can't be checked." };
   const notYet: Readiness = { state: "waiting", text: "Not signed in yet.", signIn: engine };
   if (status.claude.status === "ok") return { state: "ready", text: `Signed in${status.claude.email ? ` as ${status.claude.email}` : ""} on the computer.` };
-  if (status.claude.status === "missing") return { state: "problem", text: "The computer has no claude CLI. The admin can update it." };
+  if (status.claude.status === "missing") return { state: "problem", text: "Claude Code isn't installed on the computer. Updating the computer (the admin can, under Settings → Shared computer) puts it back." };
   return notYet;
 }
 
@@ -212,7 +212,7 @@ export function AiSteps({ ai, status, onChange, onRefresh }: { ai: AiSettings; s
             <SelectTrigger size="lg" aria-label="Where your bots run" className="mx-0.5 inline-flex align-middle">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="w-80">
+            <SelectContent>
               <SelectGroup>
                 {ENGINES.map((value) => (
                   <SelectItem key={value} value={value}>

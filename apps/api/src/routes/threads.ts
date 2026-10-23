@@ -1,6 +1,6 @@
 import { ATTACHMENT_TYPES, MAX_ATTACHMENTS, MAX_ATTACHMENT_BYTES, isReaction, plainMarkdown, roomAnswerer, type Bot, type ChatAttachment, type Thread } from "@gond/shared";
 import { Hono } from "hono";
-import { ownThread, userId } from "../access.ts";
+import { ownThread, ownsThread, userId } from "../access.ts";
 import type { Env } from "../app.ts";
 import { getBot, listBots } from "../data/bots.ts";
 import { attachmentOwner, createRoom, deleteRoom, getAttachment, getMessage, getThread, listExchange, listMessages, listThreads, markThreadRead, postMessage, searchMessages, setReaction, storeAttachment, updateRoom } from "../data/threads.ts";
@@ -47,22 +47,22 @@ export function threadsRoutes() {
   });
 
   app.get("/threads/:id/work", (c) => {
-    const thread = ownThread(c, c.req.param("id"));
-    if (!thread) return c.json({ error: "Couldn't find that conversation" }, 404);
-    return c.json({ work: workFor(thread.id) });
+    const id = c.req.param("id");
+    if (!ownsThread(c, id)) return c.json({ error: "Couldn't find that conversation" }, 404);
+    return c.json({ work: workFor(id) });
   });
 
   app.get("/threads/:id/messages", (c) => {
-    const thread = ownThread(c, c.req.param("id"));
-    if (!thread) return c.json({ error: "Couldn't find that conversation" }, 404);
-    const messages = listMessages(thread.id, { after: c.req.query("after") ?? null, before: c.req.query("before") ?? null, limit: Number(c.req.query("limit")) || 200, includeSent: true });
+    const id = c.req.param("id");
+    if (!ownsThread(c, id)) return c.json({ error: "Couldn't find that conversation" }, 404);
+    const messages = listMessages(id, { after: c.req.query("after") ?? null, before: c.req.query("before") ?? null, limit: Number(c.req.query("limit")) || 200, includeSent: true });
     return c.json({ messages });
   });
 
   app.put("/threads/:id/messages/:messageId/reaction", async (c) => {
-    const thread = ownThread(c, c.req.param("id"));
-    const message = thread ? getMessage(c.req.param("messageId")) : null;
-    if (!thread || !message || message.threadId !== thread.id) return c.json({ error: "Couldn't find that message" }, 404);
+    const id = c.req.param("id");
+    const message = ownsThread(c, id) ? getMessage(c.req.param("messageId")) : null;
+    if (!message || message.threadId !== id) return c.json({ error: "Couldn't find that message" }, 404);
     if (message.kind !== "message" || ["you", "system", "routine"].includes(message.author)) return c.json({ error: "Only a bot's message takes a reaction" }, 400);
     const body = (await c.req.json().catch(() => null)) as { emoji?: unknown } | null;
     const emoji = body?.emoji ?? null;
@@ -133,13 +133,13 @@ export function threadsRoutes() {
   });
 
   app.post("/threads/:id/read", (c) => {
-    if (!ownThread(c, c.req.param("id"))) return c.json({ error: "Couldn't find that conversation" }, 404);
+    if (!ownsThread(c, c.req.param("id"))) return c.json({ error: "Couldn't find that conversation" }, 404);
     markThreadRead(c.req.param("id"));
     return c.json({ ok: true });
   });
 
   app.post("/threads/:id/interrupt", async (c) => {
-    if (!ownThread(c, c.req.param("id"))) return c.json({ error: "Couldn't find that conversation" }, 404);
+    if (!ownsThread(c, c.req.param("id"))) return c.json({ error: "Couldn't find that conversation" }, 404);
     const { stopped, dropped } = await stopThread(c.req.param("id"));
     return c.json({ ok: true, stopped, dropped });
   });
@@ -177,7 +177,7 @@ export function threadsRoutes() {
   });
 
   app.delete("/rooms/:id", async (c) => {
-    if (!ownThread(c, c.req.param("id"))) return c.json({ error: "Couldn't find that room" }, 404);
+    if (!ownsThread(c, c.req.param("id"))) return c.json({ error: "Couldn't find that room" }, 404);
     await stopThread(c.req.param("id"));
     return deleteRoom(c.req.param("id")) ? c.body(null, 204) : c.json({ error: "Couldn't find that room" }, 404);
   });

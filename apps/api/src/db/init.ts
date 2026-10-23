@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { reencryptOidcSecret } from "../data/oidc.ts";
 import { now } from "../ids.ts";
-import { encryptSecret, decryptSecret, isLegacySecret, SecretKeyError } from "../secrets.ts";
+import { encryptSecret, decryptSecret, SecretKeyError } from "../secrets.ts";
 import { noteInterrupted } from "../resume.ts";
 import { runMigrations } from "./migrations.ts";
 import { dbPath, getDb } from "./sqlite.ts";
@@ -51,7 +51,6 @@ export function rotateLegacySecrets(db: Database) {
   }
 }
 
-export { isLegacySecret };
 
 export function ensureDatabase(): Database {
   const db = getDb();

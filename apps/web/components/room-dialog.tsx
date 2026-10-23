@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { patch, post } from "@/lib/api";
 
-/** A new group, or an existing one (`threadId`) renamed and its bots changed. */
+/** A new room, or an existing one (`threadId`) renamed and its bots changed. */
 export function RoomDialog({ threadId = null, onClose }: { threadId?: string | null; onClose: () => void }) {
   const { bots, threads, refresh } = useStore();
   const router = useRouter();
@@ -27,6 +27,7 @@ export function RoomDialog({ threadId = null, onClose }: { threadId?: string | n
     event.preventDefault();
     if (busy) return;
     setBusy(true);
+    setError(null);
     try {
       if (existing) {
         await patch<{ thread: Thread }>(`/api/rooms/${existing.id}`, { name: name.trim(), members });
@@ -38,7 +39,7 @@ export function RoomDialog({ threadId = null, onClose }: { threadId?: string | n
       }
       onClose();
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : existing ? "Couldn't save the group." : "Couldn't create the room.");
+      setError(failure instanceof Error ? failure.message : existing ? "Couldn't save the room." : "Couldn't create the room.");
       setBusy(false);
     }
   }
@@ -47,8 +48,8 @@ export function RoomDialog({ threadId = null, onClose }: { threadId?: string | n
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>{existing ? "Edit group" : "New group"}</DialogTitle>
-          <DialogDescription>{existing ? "Rename it, or change which bots are in it. The conversation stays as it is." : "Put bots in a room so they can coordinate: pass work, assign ownership, and pull you in for judgment calls."}</DialogDescription>
+          <DialogTitle>{existing ? `Edit ${existing.name}` : "New room"}</DialogTitle>
+          <DialogDescription>{existing ? "Rename it, or change which bots are in it. The conversation stays as it is." : "Put bots in a room together. They hand work to each other and bring you in when they need a decision."}</DialogDescription>
         </DialogHeader>
         <form onSubmit={submit}>
           <FieldGroup className="gap-4">

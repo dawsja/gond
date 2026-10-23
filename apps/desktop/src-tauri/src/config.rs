@@ -10,7 +10,6 @@ pub struct Config {
     pub server: Option<String>,
     pub bounds: Option<Bounds>,
     pub maximized: bool,
-    pub menu_bar: bool,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]

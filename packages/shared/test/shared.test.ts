@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { addressedIn, newerVersion, BOT_TEMPLATES, CURATED_TOOLKITS, draftIdOf, editedEmailInput, emailDraftOf, emailEditable, emailName, emailText, sendDraftAction, wordDiff, LEGACY_MOBILE_SIGN_IN_CALLBACK, MOBILE_SIGN_IN_CALLBACK, SIGN_IN_APPS, approvalLine, botInputSchema, composioCard, composioCardToolkit, fromNativeAction, gerund, handleOf, isClosing, isQuietReply, isQuietTool, isStopRequest, routineName, joinCommandLine, mentionsIn, pickBotName, pickVoiceProvider, plainMarkdown, roomAnswerer, roomTargets, ruleLabel, splitCommandLine, toolLabel, toolLine } from "../src/index.ts";
+import { addressedIn, newerVersion, BOT_TEMPLATES, draftIdOf, editedEmailInput, emailDraftOf, emailEditable, emailName, emailText, sendDraftAction, wordDiff, MOBILE_SIGN_IN_CALLBACK, SIGN_IN_APPS, approvalLine, botInputSchema, composioCard, composioCardToolkit, fromNativeAction, gerund, handleOf, isClosing, isQuietReply, isQuietTool, isStopRequest, routineName, joinCommandLine, mentionsIn, pickBotName, pickVoiceProvider, plainMarkdown, roomAnswerer, roomTargets, ruleLabel, splitCommandLine, toolLabel, toolLine } from "../src/index.ts";
 
 describe("shared", () => {
   test("pickBotName avoids taken names and numbers when exhausted", () => {
@@ -20,17 +20,15 @@ describe("shared", () => {
 
   test("templates parse as bot input", () => {
     for (const t of BOT_TEMPLATES) {
-      const parsed = botInputSchema.safeParse({ name: t.name, title: t.title, description: t.description, color: t.color, expression: t.expression, toolkits: t.toolkits });
+      const parsed = botInputSchema.safeParse({ name: t.name, title: t.title, description: t.description, color: t.color, expression: t.expression });
       expect(parsed.success).toBe(true);
       expect("isChief" in t).toBe(false);
-      for (const toolkit of t.toolkits) expect(CURATED_TOOLKITS.has(toolkit)).toBe(true);
     }
   });
 
   test("bot input defaults", () => {
     const bot = botInputSchema.parse({ name: "Pip" });
     expect(bot.approval).toBe("auto");
-    expect(bot.toolkits).toEqual([]);
   });
 
   test("a command line splits like a shell and joins back", () => {
@@ -46,10 +44,9 @@ describe("shared", () => {
 });
 
 describe("sign-in and cards", () => {
-  test("the phone apps come back to the gond scheme, the older one to the legacy scheme", () => {
+  test("the phone app comes back to the gond scheme", () => {
     expect(MOBILE_SIGN_IN_CALLBACK).toBe("gond://sign-in");
-    expect(LEGACY_MOBILE_SIGN_IN_CALLBACK).toBe("krubot://sign-in");
-    expect(SIGN_IN_APPS).toEqual(["android", "app", "desktop"]);
+    expect(SIGN_IN_APPS).toEqual(["android", "desktop"]);
   });
 
   test("a connected app's card is named by its toolkit", () => {
@@ -86,7 +83,6 @@ describe("plain markdown", () => {
     expect(toolLabel("Task", { description: "Find the bug" })).toEqual({ verb: "Running a subtask", detail: "Find the bug" });
     expect(toolLabel("TodoWrite", { todos: [] })).toEqual({ verb: "Planning", detail: null });
     expect(toolLabel("mcp__gond__permission", {})).toBeNull();
-    expect(toolLabel("mcp__kru__permission", {})).toBeNull();
     expect(toolLabel("mcp__gond__set_profile", { title: "x" })).toEqual({ verb: "Updating its profile", detail: null });
     expect(toolLabel("post_message", { text: "hi" })).toEqual({ verb: "Posting a message", detail: null });
     expect(toolLabel("send_file", { path: "~/.team/u1/report.pdf" })).toEqual({ verb: "Sending", detail: "report.pdf" });

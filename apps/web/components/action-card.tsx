@@ -21,17 +21,16 @@ export function cheerOnFold(id: string) {
 }
 
 /**
- * Every card a bot posts for the person to act on: the bot's bubble grey with the pill edge, the bot
- * peeking over its top edge, the question with "Needs you", then what it is about, the buttons and a
- * line on privacy. A card from a bot speaking up on its own (`noticed`) wears the person's color.
+ * Every card a bot posts for the person to act on: the bot's bubble grey with the pill edge, its icon,
+ * the question with "Needs you", then what it is about, the buttons and a line on privacy. A card from
+ * a bot speaking up on its own (`noticed`) wears the person's color.
  */
-export function ActionCard({ bot, icon, title, by, children, actions, note, noticed = false, className }: { bot?: Bot; icon: ReactNode; title: ReactNode; by?: ReactNode; children?: ReactNode; actions?: ReactNode; note?: ReactNode; noticed?: boolean; className?: string }) {
+export function ActionCard({ icon, title, by, children, actions, note, noticed = false, className }: { icon: ReactNode; title: ReactNode; by?: ReactNode; children?: ReactNode; actions?: ReactNode; note?: ReactNode; noticed?: boolean; className?: string }) {
   return (
-    <div className={cn("relative w-full max-w-[440px]", bot && "mt-7")}>
-      {bot ? <BotAvatar bot={{ ...bot, primary: false }} size={52} className="absolute -top-[27px] right-24 animate-peek motion-reduce:animate-none" /> : null}
+    <div className="relative w-full max-w-[440px]">
       <div data-slot="action-card" className={cn("relative flex flex-col gap-3.5 rounded-3xl border p-4", noticed ? "border-tint-edge bg-tint-wash" : "border-primary-edge bg-bubble-bot", className)}>
         <div className="flex items-start gap-3">
-          {noticed || !bot ? <span className={cn("grid size-10 shrink-0 place-items-center rounded-full [&_svg]:size-[18px]", noticed ? "bg-tint-solid text-tint-foreground" : "border border-primary-edge bg-primary text-foreground")}>{icon}</span> : null}
+          <span className={cn("grid size-10 shrink-0 place-items-center rounded-full [&_svg]:size-[18px]", noticed ? "bg-tint-solid text-tint-foreground" : "border border-primary-edge bg-primary text-foreground")}>{icon}</span>
           <div className="min-w-0 flex-1 self-center">
             <p className="text-[15px] leading-5 font-semibold break-words">{title}</p>
             {by ? <p className="text-[12.5px] leading-4 break-words text-muted-foreground">{by}</p> : null}

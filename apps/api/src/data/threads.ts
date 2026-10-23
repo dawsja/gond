@@ -28,7 +28,6 @@ type MessageRow = {
   claimed_by: string | null;
   answered_at: string | null;
   steered: number;
-  spoken: number;
   reply_to: string | null;
   created_at: string;
 };
@@ -42,7 +41,9 @@ function parseAttachments(text: string): ChatAttachment[] {
   }
 }
 
-function toMessage(row: MessageRow): Message {
+type QuotedRow = Pick<MessageRow, "id" | "author" | "body" | "attachments">;
+
+function messageFrom(row: MessageRow, reactions: Reaction[], quote: Quote | null): Message {
   return {
     id: row.id,
     threadId: row.thread_id,
@@ -54,16 +55,41 @@ function toMessage(row: MessageRow): Message {
     approvalId: row.approval_id,
     fromThreadId: row.from_thread_id,
     steered: row.steered === 1,
-    spoken: row.spoken === 1,
-    reactions: reactionsOf(row.id),
-    replyTo: row.reply_to ? quoteOf(row.reply_to) : null,
+    reactions,
+    replyTo: quote,
     createdAt: row.created_at,
   };
 }
 
+function toMessage(row: MessageRow): Message {
+  return messageFrom(row, reactionsOf(row.id), row.reply_to ? quoteOf(row.reply_to) : null);
+}
+
+/** A page of messages with their reactions and quotes: two queries for the lot rather than two each. */
+function toMessages(rows: MessageRow[]): Message[] {
+  if (rows.length === 0) return [];
+  const db = ensureDatabase();
+  // One statement whatever the page's size: the ids go in as a JSON array.
+  const reactionRows = db
+    .query("SELECT message_id, author, emoji FROM gond_message_reactions WHERE message_id IN (SELECT value FROM json_each(?)) ORDER BY created_at, rowid")
+    .all(JSON.stringify(rows.map((row) => row.id))) as ({ message_id: string } & Reaction)[];
+  const reactions = new Map<string, Reaction[]>();
+  for (const { message_id, author, emoji } of reactionRows) reactions.set(message_id, [...(reactions.get(message_id) ?? []), { author, emoji }]);
+  const quotedIds = [...new Set(rows.flatMap((row) => (row.reply_to ? [row.reply_to] : [])))];
+  const quoted = new Map<string, QuotedRow>();
+  if (quotedIds.length) {
+    const found = db.query("SELECT id, author, body, attachments FROM gond_messages WHERE id IN (SELECT value FROM json_each(?))").all(JSON.stringify(quotedIds)) as QuotedRow[];
+    for (const row of found) quoted.set(row.id, row);
+  }
+  return rows.map((row) => messageFrom(row, reactions.get(row.id) ?? [], row.reply_to ? quoteFrom(row.reply_to, quoted.get(row.reply_to) ?? null) : null));
+}
+
 /** A message as a reply quotes it; null once it is gone. */
 function quoteOf(id: string): Quote | null {
-  const row = ensureDatabase().query("SELECT author, body, attachments FROM gond_messages WHERE id = ?").get(id) as Pick<MessageRow, "author" | "body" | "attachments"> | null;
+  return quoteFrom(id, ensureDatabase().query("SELECT id, author, body, attachments FROM gond_messages WHERE id = ?").get(id) as QuotedRow | null);
+}
+
+function quoteFrom(id: string, row: QuotedRow | null): Quote | null {
   if (!row) return null;
   const words = plainMarkdown(row.body);
   const text = words || parseAttachments(row.attachments)[0]?.name || "";
@@ -99,7 +125,7 @@ function noticedIn(row: ThreadRow): Thread["noticed"] {
   const run = db.query("SELECT body, created_at FROM gond_messages WHERE thread_id = ? AND author = 'routine' ORDER BY created_at DESC LIMIT 1").get(row.id) as { body: string; created_at: string } | null;
   if (!run || !isWatchRun(run.body)) return null;
   const said = db
-    .query("SELECT body, created_at FROM gond_messages WHERE thread_id = ? AND kind = 'message' AND spoken = 0 AND author NOT IN ('you', 'system', 'routine') AND created_at > ? AND created_at > ? ORDER BY created_at LIMIT 1")
+    .query("SELECT body, created_at FROM gond_messages WHERE thread_id = ? AND kind = 'message' AND author NOT IN ('you', 'system', 'routine') AND created_at > ? AND created_at > ? ORDER BY created_at LIMIT 1")
     .get(row.id, run.created_at, row.last_read_at ?? "") as { body: string; created_at: string } | null;
   return said ? { watch: routineName(run.body) ?? "", body: said.body, at: said.created_at } : null;
 }
@@ -107,10 +133,10 @@ function noticedIn(row: ThreadRow): Thread["noticed"] {
 function toThread(row: ThreadRow): Thread {
   const db = ensureDatabase();
   const last = db
-    .query("SELECT author, body, created_at FROM gond_messages WHERE thread_id = ? AND kind IN ('message', 'approval', 'signin') AND spoken = 0 ORDER BY created_at DESC LIMIT 1")
+    .query("SELECT author, body, created_at FROM gond_messages WHERE thread_id = ? AND kind IN ('message', 'approval', 'signin') ORDER BY created_at DESC LIMIT 1")
     .get(row.id) as { author: string; body: string; created_at: string } | null;
   const unread = db
-    .query("SELECT COUNT(*) AS n FROM gond_messages WHERE thread_id = ? AND author NOT IN ('you') AND kind IN ('message', 'approval', 'signin') AND spoken = 0 AND created_at > ?")
+    .query("SELECT COUNT(*) AS n FROM gond_messages WHERE thread_id = ? AND author NOT IN ('you') AND kind IN ('message', 'approval', 'signin') AND created_at > ?")
     .get(row.id, row.last_read_at ?? "") as { n: number };
   return {
     id: row.id,
@@ -150,6 +176,13 @@ export function listThreads(options: { kind?: "bot" | "room"; userId?: string } 
   return rows.map(toThread);
 }
 
+export type ThreadRef = Pick<Thread, "id" | "kind" | "name">;
+
+/** A person's conversations by id, kind and name: what a lookup needs, without each one's last message and counts. */
+export function threadRefs(userId: string): ThreadRef[] {
+  return ensureDatabase().query("SELECT id, kind, name FROM gond_threads WHERE user_id = ? ORDER BY updated_at DESC").all(userId) as ThreadRef[];
+}
+
 export function threadOwner(threadId: string): string | null {
   const row = ensureDatabase().query("SELECT user_id FROM gond_threads WHERE id = ?").get(threadId) as { user_id: string | null } | null;
   return row?.user_id ?? null;
@@ -162,7 +195,7 @@ export function createRoom(name: string, botIds: string[], userId: string): Thre
     db.query("INSERT INTO gond_threads (id, kind, bot_id, name, user_id, created_at, updated_at) VALUES (?, 'room', NULL, ?, ?, ?, ?)").run(id, name, userId, at, at);
     for (const botId of new Set(botIds)) db.query("INSERT INTO gond_thread_members (thread_id, bot_id) VALUES (?, ?)").run(id, botId);
   });
-  botsChanged();
+  botsChanged(userId);
   return getThread(id)!;
 }
 
@@ -177,7 +210,7 @@ export function updateRoom(id: string, patch: { name?: string; members?: string[
       for (const botId of new Set(patch.members)) db.query("INSERT INTO gond_thread_members (thread_id, bot_id) VALUES (?, ?)").run(id, botId);
     }
   });
-  botsChanged();
+  botsChanged(thread.userId);
   return getThread(id);
 }
 
@@ -185,13 +218,13 @@ export function deleteRoom(id: string): boolean {
   const thread = getThread(id);
   if (!thread || thread.kind !== "room") return false;
   ensureDatabase().query("DELETE FROM gond_threads WHERE id = ?").run(id);
-  botsChanged();
+  botsChanged(thread.userId);
   return true;
 }
 
 export function markThreadRead(id: string) {
   ensureDatabase().query("UPDATE gond_threads SET last_read_at = ? WHERE id = ?").run(now(), id);
-  botsChanged();
+  botsChanged(threadOwner(id));
 }
 
 export type NewMessage = {
@@ -212,7 +245,6 @@ export type NewMessage = {
 
   replyTo?: string | null;
 
-  spoken?: boolean;
 };
 
 export function postMessage(input: NewMessage): Message {
@@ -222,9 +254,9 @@ export function postMessage(input: NewMessage): Message {
   const needsAnswer = !input.answered && !input.steered && ((kind === "message" && (input.author === "you" || input.author === "routine" || Boolean(input.fromThreadId) || Boolean(input.wake))) || kind === "prompt");
   transaction((db) => {
     db.query(
-      `INSERT INTO gond_messages (id, thread_id, author, kind, body, attachments, depth, approval_id, from_thread_id, answered_at, steered, spoken, reply_to, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(id, input.threadId, input.author, kind, input.body, JSON.stringify(input.attachments ?? []), input.depth ?? 0, input.approvalId ?? null, input.fromThreadId ?? null, needsAnswer ? null : at, input.steered ? 1 : 0, input.spoken ? 1 : 0, input.replyTo ?? null, at);
+      `INSERT INTO gond_messages (id, thread_id, author, kind, body, attachments, depth, approval_id, from_thread_id, answered_at, steered, reply_to, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(id, input.threadId, input.author, kind, input.body, JSON.stringify(input.attachments ?? []), input.depth ?? 0, input.approvalId ?? null, input.fromThreadId ?? null, needsAnswer ? null : at, input.steered ? 1 : 0, input.replyTo ?? null, at);
     db.query("UPDATE gond_threads SET updated_at = ? WHERE id = ?").run(at, input.threadId);
     if (input.author === "you") db.query("UPDATE gond_threads SET last_read_at = ? WHERE id = ?").run(at, input.threadId);
     for (const file of input.attachments ?? []) db.query("UPDATE gond_attachments SET message_id = ? WHERE id = ?").run(id, file.id);
@@ -253,12 +285,12 @@ export function listMessages(threadId: string, options: { after?: string | null;
   const ids = options.includeSent ? [threadId, threadId] : [threadId];
   if (options.after) {
     const rows = db.query(`SELECT * FROM gond_messages WHERE ${where} AND created_at > ? ORDER BY created_at ASC, rowid ASC LIMIT ?`).all(...ids, options.after, limit) as MessageRow[];
-    return rows.map(toMessage);
+    return toMessages(rows);
   }
   const rows = db
     .query(`SELECT * FROM gond_messages WHERE ${where} ${options.before ? "AND created_at < ?" : ""} ORDER BY created_at DESC, rowid DESC LIMIT ?`)
     .all(...(options.before ? [...ids, options.before, limit] : [...ids, limit])) as MessageRow[];
-  return rows.reverse().map(toMessage);
+  return toMessages(rows.reverse());
 }
 
 export function listExchange(threadId: string, withThreadId: string, limit = 500): Message[] {
@@ -267,14 +299,14 @@ export function listExchange(threadId: string, withThreadId: string, limit = 500
       `SELECT * FROM gond_messages WHERE kind = 'message' AND ((thread_id = ? AND from_thread_id = ?) OR (thread_id = ? AND from_thread_id = ?)) ORDER BY created_at ASC, rowid ASC LIMIT ?`,
     )
     .all(threadId, withThreadId, withThreadId, threadId, limit) as MessageRow[];
-  return rows.map(toMessage);
+  return toMessages(rows);
 }
 
 export function recentMessages(threadId: string, count: number): Message[] {
   const rows = ensureDatabase()
     .query("SELECT * FROM gond_messages WHERE thread_id = ? AND kind IN ('message', 'approval', 'signin') ORDER BY created_at DESC LIMIT ?")
     .all(threadId, count) as MessageRow[];
-  return rows.reverse().map(toMessage);
+  return toMessages(rows.reverse());
 }
 
 /** The words of a search, each matched anywhere in a message (case aside), in any order. */
@@ -300,11 +332,11 @@ export function searchMessages(query: string, userId: string, limit = 50): Messa
         .query(
           `SELECT m.* FROM (SELECT rowid AS r FROM gond_messages_fts WHERE gond_messages_fts MATCH ? ORDER BY rowid DESC) f
            JOIN gond_messages m ON m.rowid = f.r JOIN gond_threads t ON t.id = m.thread_id
-           WHERE t.user_id = ? AND m.kind = 'message' AND m.spoken = 0 ${short} LIMIT ?`,
+           WHERE t.user_id = ? AND m.kind = 'message' ${short} LIMIT ?`,
         )
         .all(indexed.map((term) => `"${term.replaceAll('"', '""')}"`).join(" AND "), userId, ...likes, limit)
-    : db.query(`SELECT m.* FROM gond_messages m JOIN gond_threads t ON t.id = m.thread_id WHERE t.user_id = ? AND m.kind = 'message' AND m.spoken = 0 ${short} ORDER BY m.created_at DESC LIMIT ?`).all(userId, ...likes, limit);
-  return (rows as MessageRow[]).map(toMessage);
+    : db.query(`SELECT m.* FROM gond_messages m JOIN gond_threads t ON t.id = m.thread_id WHERE t.user_id = ? AND m.kind = 'message' ${short} ORDER BY m.created_at DESC LIMIT ?`).all(userId, ...likes, limit);
+  return toMessages(rows as MessageRow[]);
 }
 
 export function claimPendingMessages(owner: string, room: (userId: string) => number): Message[] {

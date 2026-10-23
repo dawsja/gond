@@ -21,8 +21,8 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
     <AuthShell eyebrow="Sign in" title="Welcome back" description={oidc ? `Sign in with ${oidc.name}, or with the admin account.` : "Sign in to your bots."}>
       {accounts === null ? (
         <Alert className="mb-4">
-          <AlertTitle>The API isn&apos;t answering.</AlertTitle>
-          <AlertDescription>Is the api container running?</AlertDescription>
+          <AlertTitle>Gond isn&apos;t answering right now.</AlertTitle>
+          <AlertDescription>Try again in a moment. If it keeps happening, tell whoever runs this Gond.</AlertDescription>
         </Alert>
       ) : null}
       {typeof error === "string" && error ? (

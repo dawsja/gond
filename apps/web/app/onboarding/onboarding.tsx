@@ -1,15 +1,15 @@
 "use client";
 
 import type { BotExpression } from "@gond/shared";
-import { APP_CATALOG, BOT_TEMPLATES, ENGINE_LABELS, ENGINES, type AiSettings, type BoxStatus, type Engine, type EngineSettings } from "@gond/shared";
+import { BOT_TEMPLATES, ENGINE_LABELS, ENGINES, type AiSettings, type BoxStatus, type Engine, type EngineSettings } from "@gond/shared";
 import { Check, LogIn } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { AppIcon } from "@/components/app-icons";
 import { ContinueWithChatGpt } from "@/components/chatgpt-plan";
 import { SignInWithGrok } from "@/components/grok-plan";
 import { readiness } from "@/components/ai-steps";
 import { EngineSignInDialog } from "@/components/engine-signin";
+import { LoadFailed } from "@/components/load-failed";
 import { ModelPicker } from "@/components/model-picker";
 import { AddProviderKey, useProviders } from "@/components/providers-card";
 import { GondBot } from "@/components/hq/gond-bot";
@@ -23,8 +23,8 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { api, patch, post } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
-type Step = "welcome" | "apps" | "team" | "ai";
-const STEPS: Step[] = ["welcome", "apps", "team", "ai"];
+type Step = "welcome" | "team" | "ai";
+const STEPS: Step[] = ["welcome", "team", "ai"];
 
 const FLOATERS: { color: string; expression: BotExpression; className: string }[] = [
   { color: "#11998A", expression: "happy", className: "left-[8%] top-[18%]" },
@@ -49,25 +49,30 @@ function Floaters() {
 export function Onboarding() {
   const router = useRouter();
   const [step, setStep] = useState<Step>("welcome");
-  const [apps, setApps] = useState<string[]>([]);
   const [templates, setTemplates] = useState<string[]>(["assistant"]);
   const [status, setStatus] = useState<BoxStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [ai, setAi] = useState<AiSettings | null>(null);
+  const [aiFailed, setAiFailed] = useState(false);
+  const [aiAttempt, setAiAttempt] = useState(0);
   const { providers, reload: reloadProviders } = useProviders();
   useEffect(() => {
     let alive = true;
     void Promise.resolve().then(() =>
       api<{ ai: AiSettings }>("/api/ai")
-        .then((d) => alive && setAi(d.ai))
-        .catch(() => undefined),
+        .then((d) => {
+          if (!alive) return;
+          setAi(d.ai);
+          setAiFailed(false);
+        })
+        .catch(() => alive && setAiFailed(true)),
     );
     return () => {
       alive = false;
     };
-  }, []);
+  }, [aiAttempt]);
 
   async function saveAi(next: { engine?: Engine; enabled?: Engine[]; engines?: Partial<Record<Engine, Partial<EngineSettings>>> }) {
     try {
@@ -103,7 +108,7 @@ export function Onboarding() {
     setBusy(true);
     setError(null);
     try {
-      await post("/api/onboarding/complete", { apps, templates, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone });
+      await post("/api/onboarding/complete", { templates, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone });
       router.replace("/app");
       router.refresh();
     } catch (failure) {
@@ -123,29 +128,6 @@ export function Onboarding() {
             <p className="mt-3 max-w-md text-center text-[15px] leading-6 text-muted-foreground">
               Each one has its own computer, job and memory. Give it real work; it comes back when it needs you.
             </p>
-          </>
-        ) : null}
-
-        {step === "apps" ? (
-          <>
-            <h1 className="text-center text-[26px] font-semibold tracking-[-0.5px]">What do you use every day?</h1>
-            <p className="mt-2 text-center text-[14px] text-muted-foreground">Your teammates get these apps once you connect them under Settings.</p>
-            <ToggleGroup multiple variant="outline" aria-label="Apps" value={apps} onValueChange={setApps} className="mt-6 grid max-h-[46vh] w-full grid-cols-2 overflow-y-auto p-1 sm:grid-cols-3">
-              {APP_CATALOG.map((app) => {
-                const on = apps.includes(app.toolkit);
-                return (
-                  <ToggleGroupItem key={app.toolkit} value={app.toolkit} className="h-12 justify-start gap-2.5 rounded-xl bg-card px-3 text-[14px] font-medium hover:border-ash hover:bg-card data-pressed:border-control data-pressed:bg-card data-pressed:ring-1 data-pressed:ring-control aria-pressed:border-control aria-pressed:bg-card aria-pressed:ring-1 aria-pressed:ring-control">
-                    <AppIcon toolkit={app.toolkit} logo={app.logo} size={22} />
-                    <span className="flex-1 truncate text-left">{app.name}</span>
-                    {on ? (
-                      <span className="flex size-5 items-center justify-center rounded-full bg-control text-control-foreground">
-                        <Check className="size-3" aria-hidden="true" />
-                      </span>
-                    ) : null}
-                  </ToggleGroupItem>
-                );
-              })}
-            </ToggleGroup>
           </>
         ) : null}
 
@@ -175,7 +157,7 @@ export function Onboarding() {
             <h1 className="text-center text-[26px] font-semibold tracking-[-0.5px]">Choose what your bots run on</h1>
             <p className="mt-2 max-w-md text-center text-[14px] leading-6 text-muted-foreground">Sign in to a plan, or add an API key. You can change this later under Settings → AI.</p>
             {!ai ? (
-              <Spinner className="mt-6" />
+              aiFailed ? <LoadFailed what="your AI settings" onRetry={() => setAiAttempt((n) => n + 1)} className="mt-6" /> : <Spinner className="mt-6" />
             ) : (
               <AiStep ai={ai} status={status} providers={providers} onSave={saveAi} onProviderSaved={() => void reloadProviders()} />
             )}
@@ -186,10 +168,13 @@ export function Onboarding() {
 
         <div className="mt-8 flex w-full max-w-xs flex-col gap-2">
           {step === "ai" ? (
-            <Button size="xl" onClick={() => void finish()} disabled={busy}>
-              {busy ? <Spinner data-icon="inline-start" /> : null}
-              {busy ? "Setting up…" : "Finish"}
-            </Button>
+            <>
+              <Button size="xl" onClick={() => void finish()} disabled={busy}>
+                {busy ? <Spinner data-icon="inline-start" /> : null}
+                {busy ? "Setting up…" : "Finish"}
+              </Button>
+              <p className="text-center text-[12.5px] text-muted-foreground">Not set up yet? Finish anyway: your bots answer once it&apos;s done under Settings → AI.</p>
+            </>
           ) : (
             <Button size="xl" onClick={next}>
               {step === "welcome" ? "Get started" : "Next"}
@@ -229,15 +214,15 @@ function AiStep({
   return (
     <FieldGroup className="mt-6 w-full gap-5">
       <Field>
-        <FieldTitle>Engines</FieldTitle>
-        <ToggleGroup aria-label="Engines" variant="pill" multiple value={ai.enabled} onValueChange={(next) => next.length && void onSave({ enabled: next as Engine[] })} className="flex-wrap">
+        <FieldTitle>Where your bots run</FieldTitle>
+        <ToggleGroup aria-label="Where your bots run" variant="pill" multiple value={ai.enabled} onValueChange={(next) => next.length && void onSave({ enabled: next as Engine[] })} className="flex-wrap">
           {ENGINES.map((engine) => (
-            <ToggleGroupItem key={engine} value={engine} className="pointer-coarse:min-h-11">
+            <ToggleGroupItem key={engine} value={engine}>
               {ENGINE_LABELS[engine].name}
             </ToggleGroupItem>
           ))}
         </ToggleGroup>
-        <FieldDescription>Turn on the ones you have. You can add more later.</FieldDescription>
+        <FieldDescription>Pick the ones you have. You can change this later.</FieldDescription>
       </Field>
       {ai.enabled.map((engine) => {
         const info = ENGINE_LABELS[engine];

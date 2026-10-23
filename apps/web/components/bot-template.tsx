@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { BotAvatar } from "@/components/bot-avatar";
 import { copyToClipboard } from "@/components/hq/clipboard";
+import { LoadFailed } from "@/components/load-failed";
 import { useStore } from "@/components/store";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -72,12 +73,17 @@ export function ShareBotDialog({ botId, onClose }: { botId: string; onClose: () 
   const bot = botById(botId);
   const [template, setTemplate] = useState<BotTemplateSummary | null>(null);
   const [copying, setCopying] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     void api<{ template: BotTemplateSummary }>(`/api/bots/${botId}/template/summary`)
-      .then((data) => setTemplate(data.template))
-      .catch(() => undefined);
-  }, [botId]);
+      .then((data) => {
+        setTemplate(data.template);
+        setLoadFailed(false);
+      })
+      .catch(() => setLoadFailed(true));
+  }, [botId, attempt]);
 
   const copy = async () => {
     setCopying(true);
@@ -100,12 +106,14 @@ export function ShareBotDialog({ botId, onClose }: { botId: string; onClose: () 
           <DialogTitle>Share {name} as a template</DialogTitle>
           <DialogDescription className="sr-only">A copy of {name} someone else can add, without its memory, secrets or conversations.</DialogDescription>
         </DialogHeader>
-        <div className="dialog-body flex flex-col gap-5">
+        <div className="flex flex-col gap-5">
           {template ? (
             <>
               <Who template={template} bot={bot} />
               <Contents template={template} />
             </>
+          ) : loadFailed ? (
+            <LoadFailed what="what goes in the template" onRetry={() => setAttempt((n) => n + 1)} />
           ) : (
             <Skeleton className="h-40 w-full rounded-2xl" />
           )}
@@ -115,7 +123,7 @@ export function ShareBotDialog({ botId, onClose }: { botId: string; onClose: () 
             <Download data-icon="inline-start" aria-hidden="true" />
             Download .bot file
           </Button>
-          <Button size="lg" variant="tint" disabled={copying} onClick={() => void copy()}>
+          <Button size="lg" disabled={copying} onClick={() => void copy()}>
             {copying ? <Spinner data-icon="inline-start" /> : <Link2 data-icon="inline-start" aria-hidden="true" />}
             Copy link
           </Button>
@@ -165,10 +173,10 @@ export function SharedTemplate() {
     <Dialog open={Boolean(template || error)} onOpenChange={(open) => !open && close()}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{template ? `Add ${template.name}?` : "Shared bot"}</DialogTitle>
-          <DialogDescription>{template ? "A copy of a bot someone shared, for you to make your own." : null}</DialogDescription>
+          <DialogTitle>{template ? `Add ${template.name}?` : "This shared bot can't be added"}</DialogTitle>
+          <DialogDescription>{template ? "A copy of a bot someone shared, for you to make your own." : "The link may be old, or the bot it came from is gone."}</DialogDescription>
         </DialogHeader>
-        <div className="dialog-body flex flex-col gap-5">
+        <div className="flex flex-col gap-5">
           {error ? (
             <Alert variant="destructive">
               <AlertDescription>{error}</AlertDescription>
@@ -187,7 +195,7 @@ export function SharedTemplate() {
             Not now
           </Button>
           {template ? (
-            <Button size="lg" variant="tint" disabled={adding} onClick={() => void add()}>
+            <Button size="lg" disabled={adding} onClick={() => void add()}>
               {adding ? <Spinner data-icon="inline-start" /> : null}
               Add {template.name}
             </Button>

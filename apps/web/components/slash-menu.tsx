@@ -49,7 +49,7 @@ export function SlashMenu({ kind, skills, bots, query, selected, onPickSkill, on
   const current = kind === "skill" ? (skillMatches[selected]?.id ?? "") : (botMatches[selected]?.id ?? "");
   const empty = kind === "skill" ? (skills.length ? "No skill matches." : "No skills yet. Add one under Settings → Skills.") : "No bot matches.";
   return (
-    <div className="absolute inset-x-0 bottom-full z-10 mb-2 overflow-hidden rounded-xl border bg-popover shadow-md" role="listbox" aria-label={kind === "skill" ? "Skills" : "Bots"}>
+    <div className="absolute inset-x-0 bottom-full z-10 mb-2 overflow-hidden rounded-2xl border border-primary-edge bg-popover p-1.5 shadow-subtle-3 pointer-coarse:rounded-3xl" aria-label={kind === "skill" ? "Skills" : "Bots"}>
       <Command value={current} shouldFilter={false} loop>
         <CommandList className="max-h-64">
           {skillMatches.length === 0 && botMatches.length === 0 ? <CommandEmpty>{empty}</CommandEmpty> : null}
@@ -75,7 +75,7 @@ export function SlashMenu({ kind, skills, bots, query, selected, onPickSkill, on
             </CommandGroup>
           )}
         </CommandList>
-        <div className="flex items-center gap-2 border-t px-2.5 py-1.5 text-[11px] text-muted-foreground">
+        <div className="flex items-center gap-2 border-t px-2.5 pt-1.5 text-[11px] text-muted-foreground pointer-coarse:hidden">
           <Kbd>↑↓</Kbd> choose <Kbd>Tab</Kbd> insert <Kbd>Esc</Kbd> close
         </div>
       </Command>

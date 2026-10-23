@@ -1,37 +1,30 @@
 "use client";
 
 import { handleOf, isWatchRun, plainMarkdown, routineName, type Bot, type Message } from "@gond/shared";
-import { MessageSquareText, Phone, Pin, Plus, Search } from "lucide-react";
+import { Bot as BotIcon, MessageSquareText, Pin, Plus, Search, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useMemo, useState, type ReactElement, type ReactNode } from "react";
+import { Fragment, memo, useEffect, useMemo, useState, type ReactElement, type ReactNode } from "react";
 import { BotAvatar, PersonAvatar, RoomAvatar, roomMembers } from "@/components/bot-avatar";
-import { CallBar, useCallLine } from "@/components/call/call-controls";
 import { GondBot } from "@/components/hq/gond-bot";
 import { ProfileMenu } from "@/components/profile-menu";
 import type { ShellDialog } from "@/components/shell";
-import { useStore, type ThreadRow } from "@/components/store";
+import { useActivity, useStore, type ThreadRow } from "@/components/store";
 import { threadActions, ThreadConfirms, type Ask } from "@/components/thread-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ContextMenu, ContextMenuContent, ContextMenuGroup, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
+import { ContextMenu, ContextMenuContent, ContextMenuGroup, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarMenuSkeleton, useSidebar } from "@/components/ui/sidebar";
 import { api } from "@/lib/api";
 import { useDrafts } from "@/lib/drafts";
+import { shortTime } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { WorthALook } from "@/components/worth-a-look";
 
-export function shortTime(iso: string, now = new Date()): string {
-  const date = new Date(iso);
-  const sameDay = date.toDateString() === now.toDateString();
-  if (sameDay) return date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-  const days = (now.getTime() - date.getTime()) / 86_400_000;
-  if (days < 6) return date.toLocaleDateString(undefined, { weekday: "long" });
-  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-}
+const IDLE: Record<string, string> = {};
 
 function preview(thread: ThreadRow, bots: Bot[], activity: Record<string, string>): string {
   const busyBot = Object.keys(activity)[0];
@@ -55,21 +48,24 @@ function ThreadMenu({ thread, bot, onOpen, onAsk, trigger, children }: { thread:
       <ContextMenuTrigger render={trigger}>{children}</ContextMenuTrigger>
       <ContextMenuContent className="w-52">
         {groups.map((group, i) => (
-          <ContextMenuGroup key={i} className={cn(i > 0 && "border-t pt-1 mt-1")}>
-            {group.map((action) => (
-              <ContextMenuItem key={action.id} variant={action.destructive ? "destructive" : "default"} onClick={action.run}>
-                <action.icon aria-hidden="true" />
-                {action.label}
-              </ContextMenuItem>
-            ))}
-          </ContextMenuGroup>
+          <Fragment key={i}>
+            {i > 0 ? <ContextMenuSeparator /> : null}
+            <ContextMenuGroup>
+              {group.map((action) => (
+                <ContextMenuItem key={action.id} variant={action.destructive ? "destructive" : "default"} onClick={action.run}>
+                  <action.icon aria-hidden="true" />
+                  {action.label}
+                </ContextMenuItem>
+              ))}
+            </ContextMenuGroup>
+          </Fragment>
         ))}
       </ContextMenuContent>
     </ContextMenu>
   );
 }
 
-function PinnedTile({ thread, bot, active, onOpen, onAsk }: { thread: ThreadRow; bot: Bot | undefined; active: boolean; onOpen: (dialog: ShellDialog) => void; onAsk: (ask: Ask) => void }) {
+const PinnedTile = memo(function PinnedTile({ thread, bot, active, onOpen, onAsk }: { thread: ThreadRow; bot: Bot | undefined; active: boolean; onOpen: (dialog: ShellDialog) => void; onAsk: (ask: Ask) => void }) {
   const { setOpenMobile } = useSidebar();
   const { bots } = useStore();
   return (
@@ -91,13 +87,12 @@ function PinnedTile({ thread, bot, active, onOpen, onAsk }: { thread: ThreadRow;
       </Link>
     </ThreadMenu>
   );
-}
+});
 
-function Row({ thread, bot, active, bots, activity, draft, onOpen, onAsk }: { thread: ThreadRow; bot: Bot | undefined; active: boolean; bots: Bot[]; activity: Record<string, string>; draft: string | undefined; onOpen: (dialog: ShellDialog) => void; onAsk: (ask: Ask) => void }) {
+const Row = memo(function Row({ thread, bot, active, bots, activity, draft, onOpen, onAsk }: { thread: ThreadRow; bot: Bot | undefined; active: boolean; bots: Bot[]; activity: Record<string, string>; draft: string | undefined; onOpen: (dialog: ShellDialog) => void; onAsk: (ask: Ask) => void }) {
   const { setOpenMobile } = useSidebar();
   const working = Object.keys(activity).length > 0;
-  const calling = useCallLine(thread.id);
-  const drafted = !active && !working && !calling && draft ? draft.replace(/\s+/g, " ").trim() : "";
+  const drafted = !active && !working && draft ? draft.replace(/\s+/g, " ").trim() : "";
   return (
     <ThreadMenu thread={thread} bot={bot} onOpen={onOpen} onAsk={onAsk} trigger={<SidebarMenuItem />}>
         <SidebarMenuButton size="lg" isActive={active} render={<Link href={`/app/t/${thread.id}`} aria-current={active ? "page" : undefined} onClick={() => setOpenMobile(false)} />} className="h-[76px] gap-4 rounded-2xl px-3 data-active:bg-card data-active:[--surface:var(--card)] data-active:shadow-subtle hover:bg-card/60 wide:h-14 wide:gap-3 wide:rounded-xl wide:px-2.5">
@@ -126,13 +121,8 @@ function Row({ thread, bot, active, bots, activity, draft, onOpen, onAsk }: { th
               </span>
               {thread.lastMessage ? <span className="shrink-0 text-[13px] text-ash wide:text-[11px]">{shortTime(thread.lastMessage.at)}</span> : null}
             </span>
-            <span className={cn("flex items-center gap-1.5 text-[15px] leading-6 text-muted-foreground wide:text-[12.5px] wide:leading-5", working && !calling && "italic")}>
-              {calling ? (
-                <span className="flex min-w-0 items-center gap-1.5 font-medium text-tint-ink tabular-nums">
-                  <Phone className="size-3.5 shrink-0" aria-hidden="true" />
-                  <span className="truncate">{calling}</span>
-                </span>
-              ) : drafted ? (
+            <span className={cn("flex items-center gap-1.5 text-[15px] leading-6 text-muted-foreground wide:text-[12.5px] wide:leading-5", working && "italic")}>
+              {drafted ? (
                 <span className="truncate">
                   <span className="font-medium text-foreground">Draft: </span>
                   {drafted}
@@ -146,7 +136,7 @@ function Row({ thread, bot, active, bots, activity, draft, onOpen, onAsk }: { th
         </SidebarMenuButton>
     </ThreadMenu>
   );
-}
+});
 
 export function useBotSearch() {
   const { bots, threads } = useStore();
@@ -209,9 +199,13 @@ export function NewMenu({ onOpen, size = "icon-lg" }: { onOpen: (dialog: ShellDi
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuGroup>
-          <DropdownMenuItem onClick={() => onOpen({ kind: "new-bot" })}>Create a bot</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => onOpen({ kind: "new-bot" })}>
+            <BotIcon aria-hidden="true" />
+            New bot
+          </DropdownMenuItem>
           <DropdownMenuItem onClick={() => onOpen({ kind: "new-room" })} disabled={bots.length === 0}>
-            New group
+            <Users aria-hidden="true" />
+            {bots.length === 0 ? "New room (make a bot first)" : "New room"}
           </DropdownMenuItem>
         </DropdownMenuGroup>
       </DropdownMenuContent>
@@ -220,7 +214,8 @@ export function NewMenu({ onOpen, size = "icon-lg" }: { onOpen: (dialog: ShellDi
 }
 
 export function BotRows({ rows, hits, query, setQuery, lookAs, onOpen, onAsk }: { rows: ThreadRow[]; hits: Message[]; query: string; setQuery: (q: string) => void; lookAs: "sheet" | "popover"; onOpen: (dialog: ShellDialog) => void; onAsk: (ask: Ask) => void }): ReactNode {
-  const { bots, threads, activity, loaded } = useStore();
+  const { bots, threads, loaded } = useStore();
+  const activity = useActivity();
   const pathname = usePathname();
   const drafts = useDrafts();
   const pinned = query.trim()
@@ -265,7 +260,7 @@ export function BotRows({ rows, hits, query, setQuery, lookAs, onOpen, onAsk }: 
           {query.trim() ? null : <WorthALook as={lookAs} className={cn("mx-1 mb-2 w-[calc(100%-8px)]", !pinned.length && "mt-1")} />}
         <SidebarMenu className="gap-0.5" aria-label="Bots">
           {(pinned.length ? rows.filter((t) => !pinned.some((p) => p.thread.id === t.id)) : rows).map((thread) => (
-            <Row key={thread.id} thread={thread} bot={thread.botId ? bots.find((b) => b.id === thread.botId) : undefined} active={pathname === `/app/t/${thread.id}`} bots={bots} activity={activity[thread.id] ?? {}} draft={drafts[thread.id]} onOpen={onOpen} onAsk={onAsk} />
+            <Row key={thread.id} thread={thread} bot={thread.botId ? bots.find((b) => b.id === thread.botId) : undefined} active={pathname === `/app/t/${thread.id}`} bots={bots} activity={activity[thread.id] ?? IDLE} draft={drafts[thread.id]} onOpen={onOpen} onAsk={onAsk} />
           ))}
         </SidebarMenu>
         </>
@@ -322,7 +317,6 @@ export function AppSidebar({ onOpen }: { onOpen: (dialog: ShellDialog) => void }
       </SidebarContent>
 
       <SidebarFooter className="border-t">
-        <CallBar />
         <SidebarMenu className="gap-0.5">
 
           <SidebarMenuItem>

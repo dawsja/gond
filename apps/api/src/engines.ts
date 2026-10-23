@@ -3,7 +3,6 @@ import type { BoxAccess } from "./box.ts";
 import { getProvider, planSession, providerBaseUrl, providerProxyToken } from "./data/providers.ts";
 import { apiInternalUrl } from "./mcp.ts";
 import type { NativeAccess } from "./native.ts";
-import { isAnthropicHost } from "./routes/llm.ts";
 
 export type EngineRun = { engine: Engine; model: string; access: BoxAccess; native?: NativeAccess };
 
@@ -32,7 +31,7 @@ export function engineRun(ai: AiSettings, userId: string): EngineRun {
     if (!getProvider(userId, kind) || !token) {
       if (kind === "chatgpt") throw new EngineSetupError("Your bots are set to run on your ChatGPT plan, but you haven't signed in. Use Continue with ChatGPT under Settings → AI.");
       if (kind === "grok") throw new EngineSetupError("Your bots are set to run on your Grok plan, but you haven't signed in. Use Sign in with Grok under Settings → AI.");
-      throw new EngineSetupError("Your bots are set to call an API directly, but no key is saved. Add one under Settings → AI → API keys and switch your bots onto it.");
+      throw new EngineSetupError("Your bots are set to run on an API key, but none is saved. Add one under Settings → AI: pick An API key, then add the key.");
     }
     if (isPlanProvider(kind) && !planSession(userId, kind)) throw new EngineSetupError(`Your ${PROVIDER_LABELS[kind].short} sign-in ended. Sign in again under Settings → AI → ${PROVIDER_LABELS[kind].name}.`);
     if (!model) throw new EngineSetupError(isPlanProvider(kind) ? `Pick a model for your ${PROVIDER_LABELS[kind].name} under Settings → AI.` : `Pick a model for the ${PROVIDER_LABELS[kind].short} API under Settings → AI. Calling an API directly needs one; there is no default.`);

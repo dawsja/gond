@@ -43,10 +43,6 @@ export function forgetHeldLogin(name: string, threadIds: Iterable<string>) {
   for (const threadId of threadIds) held().delete(keyOf(threadId, name));
 }
 
-export function forgetHeldLogins(threadId: string) {
-  for (const key of held().keys()) if (key.startsWith(`${threadId}\n`)) held().delete(key);
-}
-
 export function loginPrefix(site: string): string {
   const words = site
     .toUpperCase()
