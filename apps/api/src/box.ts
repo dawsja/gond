@@ -161,9 +161,10 @@ export function boxVersions(config: BoxConfig): Promise<BoxVersions> {
 }
 
 /** `env` carries stored secrets for run_with_secrets: in the body only, never in the command line or a log. */
-export function execOnBox(config: BoxConfig, command: string, options: { cwd?: string | null; timeoutMs?: number; env?: Record<string, string> } = {}): Promise<ExecResult> {
+/** Runs a command as the person; aborting `signal` hangs up, which kills it on the box. */
+export function execOnBox(config: BoxConfig, command: string, options: { cwd?: string | null; timeoutMs?: number; env?: Record<string, string>; signal?: AbortSignal } = {}): Promise<ExecResult> {
   const timeoutMs = options.timeoutMs ?? EXEC_TIMEOUT_MS;
-  return call(config, "POST", "/exec", { command, cwd: options.cwd ?? null, timeoutMs, ...(options.env ? { env: options.env } : {}) }, timeoutMs + 30_000);
+  return call(config, "POST", "/exec", { command, cwd: options.cwd ?? null, timeoutMs, ...(options.env ? { env: options.env } : {}) }, timeoutMs + 30_000, options.signal);
 }
 
 export function readBoxFile(config: BoxConfig, filePath: string): Promise<{ content?: string; directory?: string[]; entries?: BotFileEntry[]; binary?: boolean; size?: number }> {

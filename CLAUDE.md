@@ -374,10 +374,13 @@ what is here. The README says what Gond is; this says how it is made.
   `gond_messages`), and whom it wakes is `wokenBy`: the members it names,
   never one answering that same message, so an @mention of a co-answerer
   wakes nobody, enforced in the dispatcher and not left to the prompt. As
-  in a group chat, a line posted while the others are still answering
-  reaches their running turns (`roomLineText`, by steer), so they see it
-  arrive and don't repeat it. A member woken only to repeat what it said
-  since the person last wrote answers `NOTHING_NEW`.
+  in a group chat, a bot's line reaches every other bot still answering
+  the person there, whichever of their messages it is on (`roomLineText`,
+  by steer), so they see it arrive, don't repeat it and don't ask for it;
+  and a line naming a member that has spoken since starts no turn for it
+  (`spokeSince` in the dispatcher), since that member had it in front of
+  it already. A member woken only to repeat what it said since the person
+  last wrote answers `NOTHING_NEW`.
 - **A draft stays where it was typed.** What the person types in a
   conversation is kept per conversation in `localStorage` on that device
   (`lib/drafts.ts`), put back when they return, and shown in the list as
@@ -918,7 +921,12 @@ what is here. The README says what Gond is; this says how it is made.
   the turn that asked, and an approval a stopped turn waited on expires.
   A stop is never an incident, whatever the engine made of it: a CLI's
   stream just breaks, so `botTurn` asks the signal (`stopCauseOf`,
-  `unansweredEnding`), never the error. `stopAll` is `stopThread` over
+  `unansweredEnding`), never the error. A command a bot runs (`Bash`,
+  `run_with_secrets`) carries the turn's signal: the box's `/exec` kills it
+  and everything it started when the API hangs up, so a server or a watch
+  run in the foreground never outlives the turn, and `native.ts` stops
+  waiting on any tool once the turn is stopped (`unlessStopped`), so its
+  work line goes with it. `stopAll` is `stopThread` over
   every conversation of a person's, run when they are deleted. Anything new
   that can wake a bot later (a timer, a queued message, a handoff) has
   to be called off here too, or it will start stopped work again.
@@ -1008,7 +1016,10 @@ what is here. The README says what Gond is; this says how it is made.
   the computer (`src/computer.ts`: Bash, Read, LS, Write, Edit on the box,
   as the bot's owner). Those tools carry the CLI's own tool names on
   purpose, so `requestApproval`, the saved `Bash(git:*)` rules and
-  "never ask about its own folder" hold unchanged. It still goes out
+  "never ask about its own folder" hold unchanged. Its `Read` answers a
+  picture with the picture (the box's 1568 px preview as an image part),
+  as Claude Code's own does, so a bot can look again at what the person
+  sent or what it made instead of serving files to its browser. It still goes out
   through the LLM proxy with the provider's proxy token, so the key is
   decrypted in one place as before. It is its own MCP client
   (`nativeMcpTools` in `src/mcp-client.ts`): each turn it opens the
@@ -1348,7 +1359,13 @@ what is here. The README says what Gond is; this says how it is made.
   `GET /api/threads/:id/pictures/:pictureId`); the result passes
   `pictureType`, is posted as an attachment and is copied to
   `images/<name>-<stamp>.<ext>` in the bot's home so it can be changed
-  later. The request rides the turn's signal, so Stop ends it.
+  later. The request rides the turn's signal, so Stop ends it. A
+  profile picture is the same picture worn: `set_profile` (a bot's own)
+  and `update_bot` (a teammate's, so the primary bot can dress the team)
+  take `picture`, a path in the calling bot's home (`setBotPicture` in
+  `src/tools.ts`), checked by `pictureType` and stored like one from Edit
+  profile, a still picture over 2 MB sent as the box's JPEG of it, a GIF
+  as it is; `none` puts the mascot back.
 - **Bots edit profiles through tools, not SQL.** `set_profile` (a bot's
   own) and `update_bot` (a teammate's) go through `profilePatch()` in
   `src/tools.ts`, then `syncSoul` rewrites SOUL.md on the box. Add a field

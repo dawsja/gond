@@ -1306,7 +1306,7 @@ describe("the computer tool", () => {
     ];
     const chat = stepMessages("openai", answers, ["also check the footer"]) as { role: string; tool_call_id?: string; content: unknown }[];
     expect(chat).toHaveLength(3);
-    expect(chat[0]).toEqual({ role: "tool", tool_call_id: "c1", content: "Screenshot 1024x640 (screen 1024x640)\n(the screenshot follows as an image)" });
+    expect(chat[0]).toEqual({ role: "tool", tool_call_id: "c1", content: "Screenshot 1024x640 (screen 1024x640)\n(the picture follows as an image)" });
     expect(chat[1]).toEqual({ role: "tool", tool_call_id: "c2", content: "exit 0\nok" });
     expect(chat[2]!.role).toBe("user");
     expect(chat[2]!.content).toEqual([{ type: "image_url", image_url: { url: "data:image/png;base64,AAAA" } }, { type: "text", text: "also check the footer" }]);
@@ -1521,6 +1521,17 @@ describe("create_image", () => {
       globalThis.fetch = real;
     }
   });
+});
+
+test("a stopped turn stops waiting on a tool that ignores the stop", async () => {
+  const { unlessStopped } = await import("../src/native.ts");
+  const stop = new AbortController();
+  const forever = new Promise<string>(() => undefined);
+  const waiting = unlessStopped(forever, stop.signal);
+  stop.abort(new Error("stopped"));
+  await expect(waiting).rejects.toThrow("stopped");
+  expect(await unlessStopped(Promise.resolve("done"), new AbortController().signal)).toBe("done");
+  await expect(unlessStopped(Promise.resolve("late"), stop.signal)).rejects.toThrow("stopped");
 });
 
 describe("run_with_secrets", () => {

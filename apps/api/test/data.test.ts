@@ -4037,6 +4037,25 @@ describe("rooms and a bot's files", () => {
     const one = postMessage({ threadId: room.id, author: "you", body: "@net is the WiFi ok?" });
     expect(promptFor(net, thread, one, bots)).not.toContain("answering this same message");
 
+    // A bot answering another message of the person's hears it too, so it doesn't ask for what was just said;
+    // and once it has spoken since, the mention that named it starts no second turn to say it all again.
+    const { answerMessage } = await import("../src/responder.ts");
+    const elsewhere: string[] = [];
+    activeTurns().set("patch-elsewhere", { botId: patch.id, threadId: room.id, userId: "u-infra", messageId: both.id, route: "person", controller: new AbortController(), startedAt: Date.now(), steer: async (text) => (elsewhere.push(text), true) });
+    try {
+      deliverReply(net, thread, one, "WiFi is fine. @patch, the hosts are yours.");
+    } finally {
+      activeTurns().delete("patch-elsewhere");
+    }
+    expect(elsewhere).toHaveLength(1);
+    expect(elsewhere[0]).toContain("Net just said in the room, while you were working");
+    const handOff = getMessage((ensureDatabase().query("SELECT id FROM gond_messages WHERE thread_id = ? AND author = ? ORDER BY created_at DESC LIMIT 1").get(room.id, net.id) as { id: string }).id)!;
+    expect(waits(handOff.id)).toBe(true);
+    await Bun.sleep(2);
+    postMessage({ threadId: room.id, author: patch.id, body: "All three nodes are up.", answered: true });
+    await answerMessage(handOff);
+    expect(waits(handOff.id)).toBe(false);
+
     // A line sent while Patch and Sage are still answering reaches them mid-answer, and only Net, idle, needs a turn for it.
     const { postFromPerson } = await import("../src/responder.ts");
     const asked = postMessage({ threadId: room.id, author: "you", body: "Everyone, anything before the weekend?" });

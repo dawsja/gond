@@ -1,9 +1,10 @@
-import { IMAGE_ASPECTS, IMAGE_MODELS, MAX_IMAGE_REFERENCES, isImageAspect, ROOM_MAX_BOTS, draftIdOf, emailDraftOf, emailName, sendDraftAction, QUIET_REPLY, REACTIONS, isReaction, BOT_COLORS, BOT_EXPRESSIONS, BOT_SHAPES, LOGIN_FIELD_KINDS, MAX_SENT_FILE_BYTES, SKILL_LIMITS, botInputSchema, composioCard, handleOf, joinCommandLine, mentionsIn, mediaTypeFor, mcpServerInputSchema, hasKeyHeader, pickBotName, plainMarkdown, skillFilePath, type Bot, type BotExpression, type BotShape, type McpServer, type McpServerInput, type Message, type SkillInput, type Thread } from "@gond/shared";
+import { AVATAR_MAX_BYTES, IMAGE_ASPECTS, IMAGE_MODELS, MAX_IMAGE_REFERENCES, isImageAspect, ROOM_MAX_BOTS, draftIdOf, emailDraftOf, emailName, sendDraftAction, QUIET_REPLY, REACTIONS, isReaction, BOT_COLORS, BOT_EXPRESSIONS, BOT_SHAPES, LOGIN_FIELD_KINDS, MAX_SENT_FILE_BYTES, SKILL_LIMITS, botInputSchema, composioCard, handleOf, joinCommandLine, mentionsIn, mediaTypeFor, mcpServerInputSchema, hasKeyHeader, pickBotName, plainMarkdown, skillFilePath, type Bot, type BotExpression, type BotShape, type McpServer, type McpServerInput, type Message, type SkillInput, type Thread } from "@gond/shared";
 import { askApproval, ENGINE_FILES_TEXT, expiredText, requestApproval, SCRIPTED_SCREEN_TEXT, scriptsTheScreen, summarize, touchesEngine } from "./approvals.ts";
 import { boxHome, previewBoxImage, readBoxFileBytes, uploadBoxFile, writeBoxFile, type BoxConfig } from "./box.ts";
 import { exactApp, searchIndex } from "./catalog.ts";
 import { catalogIndex, composioConfigured, executeAction, isReadOnlyAction, toolsFor, type ComposioTool } from "./composio.ts";
-import { createBot, findBot, getBot, listBots, updateBot } from "./data/bots.ts";
+import { clearBotAvatar, createBot, findBot, getBot, listBots, setBotAvatar, updateBot } from "./data/bots.ts";
+import { pictureType } from "./images.ts";
 import { emit } from "./events.ts";
 import { createImage, imageAccess, keepPreview, type ImageReference } from "./pictures.ts";
 import { sendPush } from "./push.ts";
@@ -77,10 +78,10 @@ export function plainText(value: string): string {
 const SIGNIN_CARD_FRESH_MS = 30 * 60_000;
 
 export const TOOL_NOTES = [
-  "set_profile changes your own name, job title, how you work (your SOUL), mascot colour, expression or shape. When the person tells you who you are or what you do from now on, update your instructions (the description field; the app calls it Instructions) so your SOUL.md carries it. Use it too when the person gives you a lasting new job. Which bot is their primary one is set in the app, not here.",
+  "set_profile changes your own name, job title, how you work (your SOUL), mascot colour, expression or shape, or your picture. When the person tells you who you are or what you do from now on, update your instructions (the description field; the app calls it Instructions) so your SOUL.md carries it. Use it too when the person gives you a lasting new job. Which bot is their primary one is set in the app, not here.",
   `memory_update replaces MEMORY.md, the notes that load into every turn, up to ${kb(MAX_MEMORY_BYTES)} (its heading says how full it is). Keep it to stable preferences, how the person works and what you learned; detail goes in memory/<topic>.md. You can also edit it, and memory/<topic>.md, with your own file tools; they live in your home folder.`,
   "send_file hands the person a file from the computer as a download in this conversation (a document, an HTML page, an image, a spreadsheet, up to 100 MB). When the person asks for a file, or a teammate made one for them, send it; don't only say where it is on the computer. To show them the screen (a cart before they buy, a confirmation, or whenever they ask to see it), call send_screenshot; never save a screenshot to a file.",
-  "create_image makes a picture with the person's own image model and posts it here: a drawing, poster, logo, illustration or photo-like scene, or a change to a picture they sent or you made (from, by path). Write the prompt as a brief to an illustrator: subject, style, colours, composition and any words on it. Use it whenever they ask for a picture; never draw one by writing code or with the screen. The person watches it being made and sees it, so your reply is a line at most, never a description of it.",
+  "create_image makes a picture with the person's own image model and posts it here: a drawing, poster, logo, illustration or photo-like scene, or a change to a picture they sent or you made (from, by path). Write the prompt as a brief to an illustrator: subject, style, colours, composition and any words on it. Use it whenever they ask for a picture; never draw one by writing code or with the screen. The person watches it being made and sees it, so your reply is a line at most, never a description of it. A profile picture (a pfp, an avatar, a new look) for you or a teammate is a square create_image, then picture: its images/… path on set_profile or update_bot; it shows in a circle, so keep the subject centred with room around it. picture: none puts the mascot back.",
   "Your reply is what you write after your last tool call. Make your calls first (handoffs included), then write the whole answer; don't end a turn on a tool call with the answer half written before it.",
   `react puts an emoji on the person's message you are answering, as a person taps one in a chat: 👍 or ❤️ when they thank you, agree or close ("thanks!", "perfect", "that will be all"), the others when they fit. When the reaction says it all, react and answer with exactly ${QUIET_REPLY}: nothing more is posted and nobody is notified. Otherwise react and reply as usual. Most messages need no reaction.`,
   "post_message adds a line to the conversation you are in before your final answer, e.g. to say what you are starting on. Your final answer is posted for you; don't repeat it. Both only ever reach the person: a teammate hears from you through message_bot, ask_bot or delegate_bot, or through your final answer when its own message woke you.",
@@ -93,7 +94,7 @@ export const TOOL_NOTES = [
   "ask_bot asks a teammate a short question and waits for the answer. Only for a consultation you need before you can reply; never for assigned work.",
   "create_room opens a group chat with teammates (and you and the person) when the person asks for one or a discussion needs several of you at once; its first message @mentions who should answer. For assigned work, delegate_bot is still the way: its result comes back to you, a room's talk doesn't.",
   "create_bot adds a new teammate when the person asks for one: a name, a job title, its instructions in the description field (what it owns, sources, boundaries, what it returns; the app shows them as Instructions and they become its SOUL), and optionally a mascot colour, expression, shape and connected apps. Then brief it with delegate_bot if there is work for it.",
-  "update_bot changes a teammate's profile when the person asks you to: its name, title, instructions (the description field, its SOUL), mascot colour, expression or shape. 'Make @Web Designer a Coder' means title: Coder and matching instructions.",
+  "update_bot changes a teammate's profile when the person asks you to: its name, title, instructions (the description field, its SOUL), mascot colour, expression, shape or picture. 'Make @Web Designer a Coder' means title: Coder and matching instructions.",
   "Those are every bot's, not only the primary bot's: who adds teammates and hands out work is a matter of the job, not of what you are allowed to call. Unless you are the primary bot, use them when the person asks you to, not on your own.",
   `Routines are yours to make and change: the person can only see them and switch them on or off, so when they want one made, changed, removed or run, you do it. create_routine schedules a prompt for yourself on a cron in the person's time zone, optionally with one of their skills, paused until they turn it on unless they asked for it in this conversation. list_routines shows yours; update_routine changes or pauses one, delete_routine removes it, run_routine runs it once now. When a routine fires (a message that starts [Routine: …] or [Watch: …]) and there is nothing new worth telling the person since its last run, answer with exactly ${QUIET_REPLY} and nothing else: the run then leaves no trace in the chat and nobody is notified. Anything they would want to know, say as usual.`,
   `Speak up before you're asked. A watch is a routine with watch: true that checks something for a change (a calendar clash, a flight, a price, a reply they're waiting on, a status page, a charge on an account) and speaks only when the change matters to the person; its run shows them "<your name> noticed". When the person asks about the same thing a second time, or about anything that will change later, offer once to keep an eye on it, in one line ending with ::choices (like "Want me to watch your calendar for clashes like this?" ::choices[Yes, always | Work only | No thanks]); on a yes, create_routine with watch: true and enabled: true, a cron no more often than the thing changes, and a prompt that says exactly what counts as worth telling. Don't offer again for something they turned down. When a watch speaks, lead with what changed and what it means for them, in a line or two, then the one thing you can do about it (draft the reply and ask_approval to send it, say). A morning briefing is a plain routine, not a watch. "Less like this" on something you noticed means it wasn't worth it: tighten that watch's prompt with update_routine so it won't come up again.`,
@@ -237,6 +238,42 @@ function inlineSkillFiles(given: unknown): BundleFile[] | { error: string } {
   return files;
 }
 
+/**
+ * Puts a picture from the person's home on a bot as its profile picture, or the mascot back for "none".
+ * `from` is the bot whose home a relative path is in: the one calling, which may be dressing a teammate.
+ */
+async function setBotPicture(box: BoxConfig, from: Bot, target: Bot, given: string, signal?: AbortSignal): Promise<{ ok: string } | { error: string }> {
+  if (/^(none|mascot|remove|clear)$/i.test(given)) {
+    clearBotAvatar(target.id);
+    return { ok: "picture (back to the mascot)" };
+  }
+  const relative = sharePath(given, from.id, boxHome(from.userId));
+  if (!relative) return { error: `NOT changed: the picture must be inside the person's home on the computer (~), like images/… from create_image.` };
+  let data: Uint8Array;
+  try {
+    data = await readBoxFileBytes(box, relative);
+  } catch (error) {
+    return { error: `NOT changed: ${given} couldn't be read (${error instanceof Error ? error.message : "no detail"}).` };
+  }
+  const type = pictureType(data);
+  if (!type) return { error: `NOT changed: ${given} isn't a PNG, JPEG, WebP or GIF.` };
+  // A GIF goes as it is so it keeps moving; anything else too big goes as the box's JPEG of it.
+  if (type !== "image/gif" && data.byteLength > AVATAR_MAX_BYTES) {
+    try {
+      data = new Uint8Array(Buffer.from((await previewBoxImage(box, relative, type, signal)).data, "base64"));
+    } catch {
+      return { error: `NOT changed: ${given} is over ${AVATAR_MAX_BYTES / 1024 / 1024} MB and couldn't be made smaller.` };
+    }
+  }
+  if (data.byteLength > AVATAR_MAX_BYTES) return { error: `NOT changed: the picture must be under ${AVATAR_MAX_BYTES / 1024 / 1024} MB.` };
+  try {
+    setBotAvatar(target.id, data);
+  } catch (error) {
+    return { error: `NOT changed: ${error instanceof Error ? error.message : "the picture couldn't be saved"}.` };
+  }
+  return { ok: "picture" };
+}
+
 /** A file name from the first words of a picture's prompt. */
 export function pictureName(prompt: string): string {
   return (
@@ -362,7 +399,7 @@ export function baseTools(context: Context): Record<string, DriverTool> {
 
   return {
     set_profile: {
-      description: "Update your own profile: name, job title, how you work (your SOUL), and your mascot's colour, expression and shape.",
+      description: "Update your own profile: name, job title, how you work (your SOUL), your mascot's colour, expression and shape, or your profile picture.",
       inputSchema: schema({
         name: { type: "string", description: "A new name, when the person renames you." },
         title: { type: "string", description: "Your job, one line." },
@@ -370,16 +407,26 @@ export function baseTools(context: Context): Record<string, DriverTool> {
         color: { type: "string", description: `Mascot colour, one of: ${BOT_COLORS.join(", ")}.` },
         expression: { type: "string", description: `Mascot expression, one of: ${BOT_EXPRESSIONS.join(", ")}.` },
         shape: { type: "string", description: `Mascot shape, one of: ${BOT_SHAPES.join(", ")}. The cog is the Gond bot; change it only when the person asks.` },
+        picture: { type: "string", description: "A profile picture to wear instead of your mascot: a picture's path on the computer, like images/… from create_image. none puts the mascot back." },
       }),
       execute: async (input) => {
         const patch = profilePatch(input);
         if ("error" in patch) return patch.error;
-        if (Object.keys(patch).length === 0) return "Nothing to change.";
-        const updated = updateBot(bot.id, patch);
-        if (!updated) return "NOT changed: your profile is gone.";
-        await context.syncSoul(updated);
-        const changed = Object.keys(patch).join(", ");
-        return `Profile updated (${changed}).`;
+        const picture = typeof input.picture === "string" ? input.picture.trim() : "";
+        if (Object.keys(patch).length === 0 && !picture) return "Nothing to change.";
+        const changed: string[] = [];
+        if (picture) {
+          const worn = await setBotPicture(box, bot, bot, picture, context.signal);
+          if ("error" in worn) return worn.error;
+          changed.push(worn.ok);
+        }
+        if (Object.keys(patch).length) {
+          const updated = updateBot(bot.id, patch);
+          if (!updated) return "NOT changed: your profile is gone.";
+          await context.syncSoul(updated);
+          changed.push(...Object.keys(patch));
+        }
+        return `Profile updated (${changed.join(", ")}).`;
       },
     },
     memory_update: {
@@ -544,7 +591,7 @@ export function baseTools(context: Context): Record<string, DriverTool> {
           const file = storeAttachment({ name: `${name}.${extension}`, mediaType: picture.mediaType, data: picture.data });
           postMessage({ threadId: thread.id, author: bot.id, body: hideSecrets(String(input.note ?? "").trim().slice(0, 4000)), attachments: [file], depth, answered: true });
           tell("done", null, file.id);
-          return `Made with ${IMAGE_MODELS[picture.source].label} and posted; the person can see it${kept ? `. It's also at ${saved} in your home, to pass in from for changes` : ""}. Don't describe it.`;
+          return `Made with ${IMAGE_MODELS[picture.source].label} and posted; the person can see it${kept ? `. It's also at ${saved} in your home: Read it to look at it again, or pass it in from for changes` : ""}. Don't describe it.`;
         } catch (error) {
           tell("failed");
           if (context.signal?.aborted) return "NOT made: stopped.";
@@ -1193,7 +1240,7 @@ export function teamTools(context: Context): Record<string, DriverTool> {
       },
     },
     update_bot: {
-      description: "Change a teammate's profile when the person asks: name, job title, how it works (its SOUL), mascot colour, expression or shape.",
+      description: "Change a teammate's profile when the person asks: name, job title, how it works (its SOUL), mascot colour, expression, shape or profile picture.",
       inputSchema: schema({
         bot: { type: "string", description: "The teammate's id, name or @handle." },
         name: { type: "string" },
@@ -1202,6 +1249,7 @@ export function teamTools(context: Context): Record<string, DriverTool> {
         color: { type: "string", description: `One of: ${BOT_COLORS.join(", ")}.` },
         expression: { type: "string", description: `One of: ${BOT_EXPRESSIONS.join(", ")}.` },
         shape: { type: "string", description: `One of: ${BOT_SHAPES.join(", ")}; cog unless the person asks for another.` },
+        picture: { type: "string", description: "A profile picture for it to wear instead of its mascot: a picture's path in your home, like images/… from create_image. none puts the mascot back." },
       }, ["bot"]),
       execute: async (input) => {
         const target = findBot(String(input.bot ?? ""), listBots({ includeHidden: true, userId: bot.userId }));
@@ -1209,11 +1257,19 @@ export function teamTools(context: Context): Record<string, DriverTool> {
         if (target.id === bot.id) return "That's you: use set_profile.";
         const patch = profilePatch(input);
         if ("error" in patch) return patch.error;
-        if (Object.keys(patch).length === 0) return "Nothing to change.";
+        const picture = typeof input.picture === "string" ? input.picture.trim() : "";
+        if (Object.keys(patch).length === 0 && !picture) return "Nothing to change.";
+        const changed: string[] = [];
+        if (picture) {
+          const worn = await setBotPicture(context.box, bot, target, picture, context.signal);
+          if ("error" in worn) return worn.error;
+          changed.push(worn.ok);
+        }
+        if (Object.keys(patch).length === 0) return `${target.name}'s profile updated (${changed.join(", ")}).`;
         const updated = updateBot(target.id, patch);
         if (!updated) return "NOT changed: that bot is gone.";
         await context.syncSoul(updated);
-        return `${updated.name}'s profile updated (${Object.keys(patch).join(", ")}). It reads its new SOUL on its next turn.`;
+        return `${updated.name}'s profile updated (${[...changed, ...Object.keys(patch)].join(", ")}). It reads its new SOUL on its next turn.`;
       },
     },
     ask_bot: {

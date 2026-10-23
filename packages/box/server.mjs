@@ -1759,6 +1759,12 @@ async function route(request, response, url) {
   }
 
   if (request.method === "POST" && parts.length === 1 && parts[0] === "exec") {
+    // An API that hangs up (a stop) kills the command and everything it started, so a server
+    // or a watch a bot ran in the foreground doesn't outlive the turn.
+    const hungUp = new AbortController();
+    response.on("close", () => {
+      if (!response.writableFinished) hungUp.abort();
+    });
     const body = await readJson(request);
     if (typeof body.command !== "string" || !body.command.trim()) {
       throw new HttpError(400, "Missing command");
@@ -1769,7 +1775,7 @@ async function route(request, response, url) {
     );
     const cwd = boxCwd(body.cwd, account.home, forbiddenIn(account));
     if (!fs.existsSync(cwd)) throw new HttpError(404, "No such directory");
-    return runAsUser(account, ["bash", "-lc", body.command], { cwd, timeoutMs, env: execEnv(body.env, agentEnv(account)) });
+    return runAsUser(account, ["bash", "-lc", body.command], { cwd, timeoutMs, env: execEnv(body.env, agentEnv(account)), signal: hungUp.signal });
   }
   if (request.method === "GET" && parts.length === 2 && parts[0] === "files" && parts[1] === "raw") return sendRawFile(response, account, url.searchParams.get("path"));
   if (request.method === "PUT" && parts.length === 2 && parts[0] === "files" && parts[1] === "raw") return uploadFile(request, account, url.searchParams.get("path"));

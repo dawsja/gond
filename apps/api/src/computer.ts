@@ -1,13 +1,18 @@
-import type { Bot, Thread } from "@gond/shared";
+import { mediaTypeFor, type Bot, type Thread } from "@gond/shared";
 import { ENGINE_FILES_TEXT, expiredText, requestApproval, SCRIPTED_SCREEN_TEXT, scriptsTheScreen, summarize, touchesEngine } from "./approvals.ts";
-import { execOnBox, readBoxFile, writeBoxFile, type BoxConfig } from "./box.ts";
-import type { DriverTool } from "./driver.ts";
+import { execOnBox, previewBoxImage, readBoxFile, writeBoxFile, type BoxConfig } from "./box.ts";
+import type { DriverTool, ToolPart } from "./driver.ts";
 import { hideSecrets, readSecret } from "./data/secrets.ts";
 import { botHome } from "./memory.ts";
 
 const COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
 
 const MAX_READ_BYTES = 200_000;
+
+const STOPPED = "Stopped: the command was ended.";
+
+// Pictures the box can make a preview of; Read shows them to the model instead of calling them binary.
+const PICTURES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "image/bmp"]);
 
 const SECRET_NAME = /^[A-Z_][A-Z0-9_]{0,63}$/;
 const MAX_COMMAND_SECRETS = 10;
@@ -40,6 +45,14 @@ async function allowed(context: Context, tool: string, input: Record<string, unk
   return `The person denied "${summarize(tool, input)}". Do something else, or say what you would need.`;
 }
 
+/** A stop hangs up on the box, which kills the command and whatever it started (a server, a watch); null then. */
+function runCommand(context: Context, command: string, options: { cwd: string; env?: Record<string, string> }) {
+  return execOnBox(context.box, command, { ...options, timeoutMs: COMMAND_TIMEOUT_MS, signal: context.signal }).catch((error: unknown) => {
+    if (context.signal?.aborted) return null;
+    throw error;
+  });
+}
+
 export function computerTools(context: Context): Record<string, DriverTool> {
   const { box, bot } = context;
   const home = botHome(bot.id);
@@ -54,17 +67,23 @@ export function computerTools(context: Context): Record<string, DriverTool> {
         const denied = await allowed(context, "Bash", { command });
         if (denied) return denied;
         const cwd = typeof input.cwd === "string" && input.cwd.trim() ? resolvePath(bot.id, input.cwd) : home;
-        const result = await execOnBox(box, command, { cwd, timeoutMs: COMMAND_TIMEOUT_MS });
+        const result = await runCommand(context, command, { cwd });
+        if (!result) return STOPPED;
         const head = `exit ${result.exitCode}${result.timedOut ? " (timed out)" : ""}${result.signal ? ` (${result.signal})` : ""}`;
         return `${head}\n${result.output || "(no output)"}`;
       },
     },
 
     Read: {
-      description: "Reads a file on your computer. A directory comes back as a listing. Paths are relative to your own folder.",
+      description: "Reads a file on your computer. A directory comes back as a listing, and a picture (PNG, JPEG, WebP, GIF) as the picture itself, so you can look at it. Paths are relative to your own folder.",
       inputSchema: schema({ file_path: { type: "string", description: "The file to read." } }, ["file_path"]),
-      execute: async (input) => {
+      execute: async (input): Promise<string | ToolPart[]> => {
         const file_path = resolvePath(bot.id, String(input.file_path ?? ""));
+        const type = mediaTypeFor(file_path);
+        if (PICTURES.has(type)) {
+          const shown = await previewBoxImage(box, file_path, type, context.signal).catch(() => null);
+          if (shown) return [{ type: "text", text: `${file_path}, a picture (shown at most 1568 px on its long edge):` }, { type: "image", data: shown.data, mimeType: shown.mediaType === "image/png" ? "image/png" : "image/jpeg" }];
+        }
         const file = await readBoxFile(box, file_path);
         if (file.directory) return `${file_path} is a folder:\n${file.directory.join("\n") || "(empty)"}`;
         if (file.binary) return `${file_path} is a binary file (${file.size ?? 0} bytes). Use Bash if you need to work with it.`;
@@ -162,7 +181,8 @@ export function secretCommandTool(context: Context): Record<string, DriverTool> 
         const denied = await allowed(context, "Bash", { command });
         if (denied) return denied;
         const cwd = typeof input.cwd === "string" && input.cwd.trim() ? resolvePath(bot.id, input.cwd) : botHome(bot.id);
-        const result = await execOnBox(box, command, { cwd, env, timeoutMs: COMMAND_TIMEOUT_MS });
+        const result = await runCommand(context, command, { cwd, env });
+        if (!result) return STOPPED;
         const head = `exit ${result.exitCode}${result.timedOut ? " (timed out)" : ""}${result.signal ? ` (${result.signal})` : ""}`;
         return `${head}\n${scrubbed(result.output, env) || "(no output)"}`;
       },

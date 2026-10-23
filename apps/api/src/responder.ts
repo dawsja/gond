@@ -718,8 +718,13 @@ export function wokenBy(line: Pick<Message, "author" | "body">, thread: Thread, 
   return named.filter((b) => !alongside.has(b.id));
 }
 
-export function roomLineText(name: string, line: string): string {
-  return `${name} just said in the room, answering the same message as you:\n\n${line}\n\nRead it as you would in a group chat: don't repeat what ${name} covered, and if it names you, that's about the part you're already answering, so cover it in your one answer. Don't answer this line on its own: if you already gave your answer, you're done, and never add ${QUIET_REPLY} to an answer.`;
+/** Who has written in the conversation since `message`. */
+export function spokeSince(threadId: string, message: Pick<Message, "createdAt">): Set<string> {
+  return new Set(recentMessages(threadId, CONTEXT_LINES).filter((m) => m.createdAt > message.createdAt && m.kind === "message").map((m) => m.author));
+}
+
+export function roomLineText(name: string, line: string, same = true): string {
+  return `${name} just said in the room, ${same ? "answering the same message as you" : "while you were working"}:\n\n${line}\n\nRead it as you would in a group chat: don't repeat what ${name} covered or ask ${name} for it, and if it names you, that's about the part you're already answering, so cover it in your one answer. Don't answer this line on its own: if you already gave your answer, you're done, and never add ${QUIET_REPLY} to an answer.`;
 }
 
 function postReply(bot: Bot, thread: Thread, message: Message, reply: string) {
@@ -732,9 +737,11 @@ function postReply(bot: Bot, thread: Thread, message: Message, reply: string) {
   const room = woken.length > 0 && botLinesSincePerson(thread.id) < MAX_ROOM_LINES;
   postMessage({ threadId: thread.id, author: bot.id, body: reply, depth: woken.length ? message.depth : message.depth + 1, answered: !room, wake: room, answering: message.id });
   if (woken.length && !room) postMessage({ threadId: thread.id, author: "system", kind: "event", body: `The bots have said ${MAX_ROOM_LINES} things since you last wrote here, so the room waits for you. Write to carry on.`, answered: true });
-  // The others still answering the same message see this line arrive, as they would in a group chat.
+  // Every other bot still answering the person here sees this line arrive, as in a group chat, whichever
+  // of their messages it answers: so none asks for what was just said, and one it names covers it in the
+  // answer it is writing (the dispatcher then skips the turn the mention would start, see `spokeSince`).
   for (const turn of activeTurns().values()) {
-    if (turn.threadId === thread.id && turn.messageId === message.id && turn.botId !== bot.id && turn.route === "person") void turn.steer(roomLineText(bot.name, reply)).catch(() => false);
+    if (turn.threadId === thread.id && turn.botId !== bot.id && turn.route === "person") void turn.steer(roomLineText(bot.name, reply, turn.messageId === message.id)).catch(() => false);
   }
 }
 
@@ -797,8 +804,10 @@ export async function answerMessage(message: Message): Promise<void> {
   const bots = listBots({ includeHidden: true, userId: thread.userId });
   const before = roomBefore(thread, message);
   // A room's message answered again after a cut skips the bots that had already answered it.
-  const answeredAlready = wasInterrupted(message.id) ? new Set(recentMessages(thread.id, CONTEXT_LINES).filter((m) => m.createdAt > message.createdAt && m.kind === "message").map((m) => m.author)) : new Set<string>();
   const answering = thread.kind === "room" && getBot(message.author) ? answeringOf(message.id) : null;
+  // A bot's room line that names a member who has spoken here since already reached it, by steer while
+  // it was working: waking it again would only repeat what it said.
+  const answeredAlready = wasInterrupted(message.id) || answering ? spokeSince(thread.id, message) : new Set<string>();
   const named = answering ? wokenBy(message, thread, answering, bots) : targetsFor(message, thread, bots, before, workingIn(thread.id));
   const owed = named.filter((b) => !answeredAlready.has(b.id));
   if (answeredAlready.size && !owed.length) {

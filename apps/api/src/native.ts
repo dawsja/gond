@@ -54,6 +54,18 @@ export type NativeTurn = {
   onText?: TextSink;
 };
 
+/** A tool's answer, or the stop's once the turn is stopped, so a tool that ignores the signal never holds a stopped turn open. */
+export function unlessStopped<T>(work: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return work;
+  const stopped = () => (signal.reason instanceof Error ? signal.reason : new Error("Stopped"));
+  if (signal.aborted) return Promise.reject(stopped());
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(stopped());
+    signal.addEventListener("abort", onAbort, { once: true });
+    work.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort));
+  });
+}
+
 export class SteerQueue {
   private items: string[] = [];
   private open = true;
@@ -489,7 +501,7 @@ export type ToolAnswer = { call: { id: string }; parts: ToolPart[]; isError: boo
 function toolAnswer(kind: ProviderKind, answer: ToolAnswer): unknown {
   const text = answer.parts.filter((part): part is Extract<ToolPart, { type: "text" }> => part.type === "text").map((part) => part.text);
   const images = answer.parts.filter((part): part is Extract<ToolPart, { type: "image" }> => part.type === "image");
-  if (isOpenAiShaped(kind)) return { role: "tool", tool_call_id: answer.call.id, content: [...text, ...(images.length ? ["(the screenshot follows as an image)"] : [])].join("\n") };
+  if (isOpenAiShaped(kind)) return { role: "tool", tool_call_id: answer.call.id, content: [...text, ...(images.length ? ["(the picture follows as an image)"] : [])].join("\n") };
   const content = images.length ? answer.parts.map((part) => (part.type === "text" ? { type: "text", text: part.text } : { type: "image", source: { type: "base64", media_type: part.mimeType, data: part.data } })) : text.join("\n");
   return { type: "tool_result", tool_use_id: answer.call.id, content, is_error: answer.isError };
 }
@@ -569,7 +581,7 @@ export async function nativeTurn(turn: NativeTurn): Promise<NativeResult> {
         const tool = turn.tools[call.name];
         try {
           if (!tool) throw new Error(`No such tool: ${call.name}`);
-          const value = await tool.execute(call.input, call.id);
+          const value = await unlessStopped(tool.execute(call.input, call.id), turn.signal);
           turn.onStep?.({ id: call.id, output: resultAsText(value), status: "done" });
           return { call, parts: partsOf(value), isError: false } satisfies ToolAnswer;
         } catch (error) {
