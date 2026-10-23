@@ -35,6 +35,7 @@ const mdastExtensions = [gfmFromMarkdown(), directiveFromMarkdown()];
 
 const TRAILING_CHOICES = /^(.*\S)[ \t]+(::choices\[[^\]\n]+\])[ \t]*$/;
 const FENCE = /^ {0,3}(`{3,}|~{3,})/;
+const CHOICES = /[ \t]*::choices\[[^\]\n]*\][ \t]*/g;
 
 /**
  * The text as it is parsed. A bot sometimes ends its question with the
@@ -54,6 +55,30 @@ export function prepareMarkdown(source: string): string {
       return split ? `${split[1]}\n\n${split[2]}` : line;
     })
     .join("\n");
+}
+
+/**
+ * A message as it is copied: its words without the choices, which are buttons under it on the page and
+ * only directive syntax on a clipboard, wherever in the text they sit. Code fences are left alone.
+ */
+export function copyText(source: string): string {
+  let fence: string | null = null;
+  return source
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) => {
+      const open = FENCE.exec(line)?.[1];
+      if (open && (!fence || open.startsWith(fence))) {
+        fence = fence ? null : open[0]!.repeat(3);
+        return line;
+      }
+      if (fence || !line.includes("::choices[")) return line;
+      const indent = /^[ \t]*/.exec(line)![0];
+      return indent + line.replace(CHOICES, " ").trim();
+    })
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 export function parseMarkdown(source: string): Root {

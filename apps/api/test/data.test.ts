@@ -224,6 +224,31 @@ describe("data", () => {
     expect(listRoutines("b1")[0]!.lastRunAt).toBeTruthy();
   });
 
+  test("a reminder runs once, switches off as it fires and is gone when it has said its piece", async () => {
+    const { createRoutine, claimDueRoutines, finishRoutineRun, getRoutine, recordRoutineRun } = await import("../src/data/routines.ts");
+    const later = new Date(Date.now() + 400 * 86_400_000);
+    const dentist = createRoutine("b-remind", { name: "Dentist", cron: "* * * * *", timezone: "UTC", prompt: "Remind them: dentist at 2.", enabled: true, once: true });
+    expect(dentist.once).toBe(true);
+    expect(claimDueRoutines(later).map((r) => r.id)).toContain(dentist.id);
+    expect(getRoutine(dentist.id)).toMatchObject({ enabled: false, nextRunAt: null });
+    expect(claimDueRoutines(new Date(later.getTime() + 120_000)).map((r) => r.id)).not.toContain(dentist.id);
+    recordRoutineRun(dentist.id, "m-dentist");
+    finishRoutineRun("m-dentist", true);
+    expect(getRoutine(dentist.id)).toBeNull();
+
+    const bill = createRoutine("b-remind", { name: "Bill", cron: "* * * * *", timezone: "UTC", prompt: "Remind them: the bill.", enabled: true, once: true });
+    claimDueRoutines(later);
+    recordRoutineRun(bill.id, "m-bill");
+    finishRoutineRun("m-bill", false);
+    expect(getRoutine(bill.id)).toMatchObject({ once: true, enabled: false });
+
+    const daily = createRoutine("b-remind", { name: "Daily", cron: "* * * * *", timezone: "UTC", prompt: "p", enabled: true });
+    claimDueRoutines(later);
+    recordRoutineRun(daily.id, "m-daily");
+    finishRoutineRun("m-daily", true);
+    expect(getRoutine(daily.id)).toMatchObject({ enabled: true, once: false });
+  });
+
   test("a watch keeps its flag and announces itself as a watch when it runs", async () => {
     const { createRoutine, getRoutine, routinePrompt, updateRoutine } = await import("../src/data/routines.ts");
     const { isWatchRun, routineName } = await import("@gond/shared");
@@ -265,6 +290,18 @@ describe("data", () => {
     expect(userAccent("u-other")).toBe("blue");
     setUserAccent("u-color", "blue");
     expect(userAccent("u-color")).toBe("blue");
+  });
+
+  test("how each person's bots talk to them is their own, the defaults until they pick", async () => {
+    const { setUserAccent, setUserTalk, userAccent, userTalk } = await import("../src/data/prefs.ts");
+    expect(userTalk("u-talk")).toEqual({ style: "default", emoji: "default" });
+    setUserAccent("u-talk", "green");
+    setUserTalk("u-talk", { style: "efficient", emoji: "less" });
+    expect(userTalk("u-talk")).toEqual({ style: "efficient", emoji: "less" });
+    expect(userAccent("u-talk")).toBe("green");
+    expect(userTalk("u-other")).toEqual({ style: "default", emoji: "default" });
+    setUserTalk("u-talk", { style: "default", emoji: "more" });
+    expect(userTalk("u-talk")).toEqual({ style: "default", emoji: "more" });
   });
 
   test("a patch keeps what it doesn't mention", async () => {
@@ -1041,7 +1078,7 @@ describe("data", () => {
       expect(servers.find((m) => m.name === "notion")?.note).toContain("sign in");
       expect(servers.find((m) => m.name === "local")?.note).toContain("not a plan or an API key");
 
-      const system = systemPromptFor(bot, { bots: [], thread, memory: null, memoryTruncated: false, teamMemory: null, connections: [], toolNotes: "", timezone: "UTC", skillsIndex: "", mcpServers: servers });
+      const system = systemPromptFor(bot, { bots: [], thread, memory: null, teamMemory: null, connections: [], toolNotes: "", timezone: "UTC", skillsIndex: "", mcpServers: servers, talk: { style: "default", emoji: "default" } });
       expect(system).toContain("- toad: tools named mcp__toad__…");
       expect(system).toContain("- notion: not attached yet");
     } finally {
@@ -1694,14 +1731,14 @@ describe("data", () => {
       expect(await toolsFor("u-other")).toEqual([]);
       await expect(executeAction("u-other", "GMAIL_SEND_EMAIL", {}, "gmail")).rejects.toThrow();
       const thread = getThread(comet.threadId)!;
-      const system = systemPromptFor(comet, { bots: listBots({ includeHidden: true, userId: "u-other" }), thread, memory: null, memoryTruncated: false, teamMemory: null, connections: listConnections("u-other"), toolNotes: "", timezone: "UTC", skillsIndex: "", mcpServers: [] });
+      const system = systemPromptFor(comet, { bots: listBots({ includeHidden: true, userId: "u-other" }), thread, memory: null, teamMemory: null, connections: listConnections("u-other"), toolNotes: "", timezone: "UTC", skillsIndex: "", mcpServers: [], talk: { style: "default", emoji: "default" } });
       expect(system.startsWith("## What you are\nYou are a personal assistant, not a coding agent.")).toBe(true);
       expect(system).toContain("Nobody else yet");
       expect(system).toContain("~/.team/u-other/MEMORY.md");
       expect(system).not.toContain("Dylan");
       expect(system).toContain("None connected to you yet");
       expect(system).not.toContain("- Gmail");
-      const withNotion = systemPromptFor(comet, { bots: [], thread, memory: null, memoryTruncated: false, teamMemory: null, connections: [{ toolkit: "notion", name: "Notion", accountId: "acc-n", status: "active" }] as never, toolNotes: "", timezone: "UTC", skillsIndex: "", mcpServers: [] });
+      const withNotion = systemPromptFor(comet, { bots: [], thread, memory: null, teamMemory: null, connections: [{ toolkit: "notion", name: "Notion", accountId: "acc-n", status: "active" }] as never, toolNotes: "", timezone: "UTC", skillsIndex: "", mcpServers: [], talk: { style: "default", emoji: "default" } });
       expect(withNotion).toContain("- Notion: tools named NOTION_…");
       expect(withNotion).toContain("mcp__gond__<NAME>");
 
@@ -2033,6 +2070,12 @@ describe("stop", () => {
       // The quiet word is never posted, whoever woke the bot.
       expect(listMessages(thread.id).at(-1)!.id).toBe(asked.id);
       expect(listMessages(thread.id).some((m) => m.body === "NOTHING_NEW")).toBe(false);
+
+      // An answer with the word tacked on (a line steered in mid-turn that had nothing for it) posts without it.
+      answer = "Start with backups.\n\nNOTHING_NEW";
+      const again = postMessage({ threadId: thread.id, author: "you", body: "Which first?" });
+      await botTurn(bot, thread, again);
+      expect(listMessages(thread.id).at(-1)!.body).toBe("Start with backups.");
     } finally {
       fake.stop(true);
       process.env.GOND_BOX_URL = boxUrl;
@@ -3672,6 +3715,7 @@ describe("bot templates", () => {
     setBotAvatar(patch.id, png);
     const skill = createSkill("u-tpl-a", { name: "Proxmox health", description: "Checks every node", instructions: "Run pvesh get /nodes and read it." });
     createRoutine(patch.id, { name: "Nightly backup check", cron: "0 2 * * *", timezone: "UTC", prompt: "Check last night's backups.", enabled: true, watch: false, skillId: skill.id });
+    createRoutine(patch.id, { name: "Dentist", cron: "0 8 24 10 *", timezone: "UTC", prompt: "Remind them: dentist at 2.", enabled: true, once: true });
     const mine = asPerson(new Hono(), "u-tpl-a").route("/api", botsRoutes());
     const theirs = asPerson(new Hono(), "u-tpl-b").route("/api", botsRoutes());
 
@@ -3681,6 +3725,7 @@ describe("bot templates", () => {
     const bundle = unpackBot(bytes);
     if ("error" in bundle) throw new Error(bundle.error);
     expect(bundle.bot).toMatchObject({ name: "Patch", title: "Servers", approval: "full", routines: [{ name: "Nightly backup check", skill: skill.slug }] });
+    expect(bundle.bot.routines).toHaveLength(1);
     expect([...bundle.skills.keys()]).toEqual([skill.slug]);
     expect(JSON.stringify(bundle.bot)).not.toContain(patch.id);
     expect((await theirs.request(`/api/bots/${patch.id}/template`)).status).toBe(404);

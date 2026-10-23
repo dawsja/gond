@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { addressedIn, newerVersion, BOT_TEMPLATES, draftIdOf, editedEmailInput, emailDraftOf, emailEditable, emailName, emailText, sendDraftAction, wordDiff, MOBILE_SIGN_IN_CALLBACK, SIGN_IN_APPS, approvalLine, botInputSchema, composioCard, composioCardToolkit, fromNativeAction, gerund, handleOf, isClosing, isQuietReply, isQuietTool, isStopRequest, routineName, joinCommandLine, mentionsIn, pickBotName, pickVoiceProvider, plainMarkdown, roomAnswerer, roomNameFor, roomTargets, ruleLabel, splitCommandLine, toolLabel, toolLine } from "../src/index.ts";
+import { addressedIn, newerVersion, BOT_TEMPLATES, draftIdOf, editedEmailInput, emailDraftOf, emailEditable, emailName, emailText, sendDraftAction, wordDiff, MOBILE_SIGN_IN_CALLBACK, SIGN_IN_APPS, approvalLine, botInputSchema, composioCard, composioCardToolkit, fromNativeAction, gerund, handleOf, isClosing, isQuietReply, isQuietTool, withoutQuietReply, isStopRequest, routineName, joinCommandLine, mentionsIn, pickBotName, pickVoiceProvider, plainMarkdown, roomAnswerer, roomNameFor, roomTargets, ruleLabel, splitCommandLine, toolLabel, toolLine } from "../src/index.ts";
 
 describe("shared", () => {
   test("pickBotName avoids taken names and numbers when exhausted", () => {
@@ -205,6 +205,14 @@ describe("quiet routine runs", () => {
     expect(routineName("[Routine: Morning briefing] Use /brief. Brief me.")).toBe("Morning briefing");
     expect(routineName("Use /brief.")).toBeNull();
     for (const text of ["Nothing new today.", "NOTHING_NEW, but the build broke", "", "Here's the brief: NOTHING_NEW"]) expect(isQuietReply(text)).toBe(false);
+  });
+
+  test("an answer that ends with the marker posts the answer without it", () => {
+    expect(withoutQuietReply("Start with backups.\n\n::choices[Backups | Nothing for now]\n\nNOTHING_NEW")).toBe("Start with backups.\n\n::choices[Backups | Nothing for now]");
+    expect(withoutQuietReply("All done. `NOTHING_NEW`")).toBe("All done.");
+    expect(withoutQuietReply("NOTHING_NEW\n\nThe build broke.")).toBe("The build broke.");
+    expect(withoutQuietReply(" **NOTHING_NEW** ")).toBe("");
+    expect(withoutQuietReply("NOTHING_NEW, but the build broke")).toBe("NOTHING_NEW, but the build broke");
   });
 });
 

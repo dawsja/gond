@@ -68,7 +68,7 @@ export function Choices({ options }: { options: string[] }) {
   const open = Boolean(pick) && picked === undefined;
   const chosen = (sending ?? picked)?.trim().toLowerCase() ?? null;
   return (
-    <div data-slot="choices" role="group" aria-label="Choices" className="flex flex-wrap gap-2 pt-1">
+    <div data-slot="choices" role="group" aria-label="Choices" className="flex flex-wrap gap-2 pt-1 select-none">
       {options.map((option) => {
         const on = chosen === option.toLowerCase();
         return (

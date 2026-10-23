@@ -1,10 +1,10 @@
-import { isAccent } from "@gond/shared";
+import { isAccent, isEmojiLevel, isReplyStyle } from "@gond/shared";
 import { Hono } from "hono";
 import type { Session } from "./auth.ts";
 import { requireAdmin, userId } from "./access.ts";
 import { countAccounts, getAuth, getSession, isSameOrigin, registerAccount } from "./auth.ts";
 import { AVATAR_MAX_BYTES, clearAvatar, getAvatar, getUser, setAvatar } from "./data/users.ts";
-import { setUserAccent } from "./data/prefs.ts";
+import { setUserAccent, setUserTalk, userTalk } from "./data/prefs.ts";
 import { approvalsRoutes } from "./routes/approvals.ts";
 import { botsRoutes } from "./routes/bots.ts";
 import { boxRoutes } from "./routes/box.ts";
@@ -107,6 +107,16 @@ export function createApp() {
     if (!isAccent(body?.accent)) return c.json({ error: "Pick one of the colors on offer" }, 400);
     setUserAccent(userId(c), body.accent);
     return c.json({ accent: body.accent });
+  });
+
+  app.put("/api/me/talk", async (c) => {
+    const body = (await c.req.json().catch(() => null)) as { style?: unknown; emoji?: unknown } | null;
+    const talk = userTalk(userId(c));
+    if (body?.style !== undefined && !isReplyStyle(body.style)) return c.json({ error: "Pick one of the styles on offer" }, 400);
+    if (body?.emoji !== undefined && !isEmojiLevel(body.emoji)) return c.json({ error: "Pick more, default or less emoji" }, 400);
+    const next = { style: isReplyStyle(body?.style) ? body.style : talk.style, emoji: isEmojiLevel(body?.emoji) ? body.emoji : talk.emoji };
+    setUserTalk(userId(c), next);
+    return c.json(next);
   });
 
   app.route("/api", botsRoutes());

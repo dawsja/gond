@@ -18,7 +18,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { api } from "@/lib/api";
-import { describeSchedule } from "@/lib/schedule";
+import { describeRoutine } from "@/lib/schedule";
 import { cn } from "@/lib/utils";
 
 /** The bot's screen in the panel: live while a bot or the person uses it and for a while after, asleep otherwise. */
@@ -49,7 +49,7 @@ function RoutineRow({ routine, onOpen, onChange }: { routine: Routine; onOpen: (
       <Clock className={cn("mt-0.5 size-3.5 shrink-0", routine.enabled ? "text-muted-foreground" : "text-ash")} aria-hidden="true" />
       <button type="button" onClick={onOpen} className="min-w-0 flex-1 text-left outline-none focus-visible:underline">
         <span className={cn("block truncate text-[13px] font-medium", !routine.enabled && "text-muted-foreground")}>{routine.name}</span>
-        <span className="block text-[12px] text-muted-foreground">{routine.enabled ? describeSchedule(routine.cron) : "Paused"}</span>
+        <span className="block text-[12px] text-muted-foreground">{routine.enabled ? describeRoutine(routine) : "Paused"}</span>
       </button>
       <Switch size="sm" checked={routine.enabled} onCheckedChange={(on) => void setRoutineEnabled(routine, on).then(onChange).catch(failed(on ? "Couldn't switch the routine on." : "Couldn't switch the routine off."))} aria-label={`${routine.name} on or off`} className="ml-1 shrink-0" />
     </li>

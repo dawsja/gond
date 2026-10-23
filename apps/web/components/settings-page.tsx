@@ -9,6 +9,7 @@ import { AboutCard } from "@/components/about-card";
 import { ServerUpdateCard } from "@/components/server-update-card";
 import { AccountSection } from "@/components/account-section";
 import { AppearanceCard } from "@/components/appearance-card";
+import { PersonalizationCard } from "@/components/personalization-card";
 import { AppsCard } from "@/components/apps-card";
 import { ComposioCard } from "@/components/composio-card";
 import { ComputerCard } from "@/components/computer-card";
@@ -154,6 +155,9 @@ export function SettingsPage({ user, section, index = false }: { user: SessionUs
       break;
     case "appearance":
       body = <AppearanceCard />;
+      break;
+    case "personalization":
+      body = <PersonalizationCard />;
       break;
     case "shared-computer":
       body = <ComputerCard status={status} admin={admin} onCheck={() => load(true)} />;

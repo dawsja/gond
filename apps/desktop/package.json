@@ -16,6 +16,6 @@
     "test": "node scripts/cargo.mjs test --manifest-path src-tauri/Cargo.toml -p server-url"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "2.12.1"
+    "@tauri-apps/cli": "2.12.4"
   }
 }

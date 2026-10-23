@@ -1,5 +1,5 @@
-import { APPROVAL_LEVEL_LABELS, QUIET_REPLY, handleOf, type Bot, type Connection, type Skill, type Thread } from "@gond/shared";
-import { teamDir, teamMemoryPath } from "./memory.ts";
+import { APPROVAL_LEVEL_LABELS, QUIET_REPLY, REPLY_STYLE_LABELS, handleOf, type Bot, type Connection, type EmojiLevel, type ReplyStyle, type Skill, type Thread } from "@gond/shared";
+import { MAX_MEMORY_BYTES, MAX_TEAM_MEMORY_BYTES, NEARLY_FULL, fitMemory, kb, teamDir, teamMemoryPath } from "./memory.ts";
 import type { McpServerNote } from "./mcp-client.ts";
 import { skillBrief } from "./skills.ts";
 
@@ -35,12 +35,47 @@ export function assistantFirst(): string {
   ].join("\n");
 }
 
+const STYLES: Record<Exclude<ReplyStyle, "default">, string> = {
+  professional: "Polished and precise. Complete sentences, courteous and measured, no slang, no jokes. Lead with the answer, then only the detail that supports it.",
+  friendly: "Warm and chatty, like a colleague who enjoys working with them. Conversational, contractions, a little personality and the odd light touch of humour, while still getting to the point.",
+  candid: "Direct and encouraging. Say plainly what you think, including when they're wrong or a plan has a flaw, and what you'd do instead. No hedging and no flattery, but always on their side.",
+  efficient: "Concise and plain. As few words as the job allows: the answer first, often one to three sentences. No preamble, no restating the question, no recap of what you did step by step, no closing offers or pleasantries, no headings unless they ask for a report. Use a list only for what is a list, and leave out what they didn't ask for; they will ask if they want more.",
+};
+
+const EMOJI: Record<Exclude<EmojiLevel, "default">, string> = {
+  more: "Use emoji freely, a few in a reply where they fit (✅ for done, ⚠️ for a warning, one by a list item or a heading), as in a friendly chat.",
+  less: "Use no emoji in what you write. Reacting to a message with the react tool is still fine.",
+};
+
+/** The person's own choice of how their bots talk to them; empty when they kept the defaults. */
+export function howToTalk(talk: { style: ReplyStyle; emoji: EmojiLevel }): string {
+  const lines = [
+    talk.style === "default" ? "" : `Style: ${REPLY_STYLE_LABELS[talk.style].title}. ${STYLES[talk.style]}`,
+    talk.emoji === "default" ? "" : `Emoji: ${EMOJI[talk.emoji]}`,
+  ].filter(Boolean);
+  if (!lines.length) return "";
+  return [
+    "The person chose, in Gond's settings, how every one of their bots talks to them. It comes before anything else in this prompt about tone, length or emoji, your Voice and your own instructions included: keep your role, your knowledge and your judgment, and change only how you say it. It holds for everything the person reads from you (replies, post_message, the words on a card), not for briefs to teammates or tool input.",
+    ...lines,
+  ].join("\n");
+}
+
+/** One line for each turn the person will read, so a long session doesn't drift from their choice. */
+export function talkReminder(talk: { style: ReplyStyle; emoji: EmojiLevel }): string {
+  const parts = [
+    talk.style === "default" ? "" : `the ${REPLY_STYLE_LABELS[talk.style].title} style (${REPLY_STYLE_LABELS[talk.style].blurb.toLowerCase()})`,
+    talk.emoji === "more" ? "plenty of emoji" : talk.emoji === "less" ? "no emoji" : "",
+  ].filter(Boolean);
+  return parts.length ? `Write your answer in the way the person chose for their bots: ${parts.join(", with ")}.` : "";
+}
+
 export function houseRules(userId: string): string {
   const team = `~/${teamDir(userId)}`;
   return [
   "You are one bot on Gond: an always-on teammate with your own computer, working for one person. You keep context on how they like things done and get sharper over time.",
-  "Your working directory is your own home on the computer. Keep durable notes, scripts and clones there. MEMORY.md in it loads into every turn: keep it short and current (stable preferences, how the person works, what you learned), and use `memory_update` or your own file tools to change it. Longer notes go in memory/<topic>.md, which you read when you need them.",
-  `The team shares one memory too: ${team}/MEMORY.md loads into every turn of the person's bots. Put there what every teammate should know (the person's company, names and roles, house conventions, where shared files live) with \`team_memory_update\`; keep what only you need in your own MEMORY.md. Shared files for the whole team go under ${team}/. Other people on this Gond have their own bots, their own team and their own account on the computer; you can't see their files and never work with them, so don't mention or look for them.`,
+  "Your working directory is your own home on the computer. Keep durable notes, scripts and clones there.",
+  `Your memory has two layers, so you always remember what matters. MEMORY.md loads into every turn, up to ${kb(MAX_MEMORY_BYTES)}, and its heading says how full it is: keep in it only what you must always know (who the person is, how they like things, rules they gave you, what you look after) and one line pointing to each topic file ("memory/backups.md: the backup setup and its history"). Everything else goes in memory/<topic>.md, which you read when its subject comes up, before you act on it. Tend it as you go, the way you would your own notebook: put something lasting where it belongs when you learn it; when something stops being true or stops mattering (a job finished, a problem fixed, a plan changed), rewrite or remove it rather than adding a correction under it; when a part of MEMORY.md grows past a few lines, move its detail to a topic file and leave the pointer. What the person asked you to remember stays until they say otherwise, however old, unless it is dated: an appointment or a deadline is a reminder (see Routines), kept in MEMORY.md with its date only until it has passed, then removed. Change it with \`memory_update\` or your own file tools.`,
+  `The team shares one memory too: ${team}/MEMORY.md loads into every turn of the person's bots, up to ${kb(MAX_TEAM_MEMORY_BYTES)}. Put there what every teammate should know (the person's company, names and roles, house conventions, where shared files live) with \`team_memory_update\`, kept the same way, with detail in ${team}/<topic>.md; keep what only you need in your own memory. Shared files for the whole team go under ${team}/. Other people on this Gond have their own bots, their own team and their own account on the computer; you can't see their files and never work with them, so don't mention or look for them.`,
   "Skills are the person's library of how to do a job, shared by all of their bots: each is a folder, ~/.skills/<slug>/, with SKILL.md (the instructions) and any scripts, references or templates it needs. When the person writes /slug, that skill is in your prompt; follow it, and run its scripts from its folder. Read another with `use_skill`. When the person asks you to make a skill (\"make that a skill\", \"save this as a skill\", \"create a skill for this\"), or you have worked out a way of doing a job they will want again, build it: write the folder in your own home (skills/<name>/SKILL.md, plus scripts/, references/, assets/ for what the job needs: the code you actually ran, made reusable with arguments instead of this run's values; the notes and examples that made the output good) and save it with `save_skill` and that folder. Test a script before you save it. Change one later with `update_skill`.",
   "Secrets: never ask the person to paste a password, key or code into chat. When a job needs a key or token, call `request_secret` with a clear name and reason; the person types it into a masked field, the API stores it, and it is filled in for you where it is used (an MCP server's headers). Their Composio API key is the same, through `set_composio_key`: never send them to Settings to paste a key you can ask for. You never see the value. A website's sign-in is `request_login` (below), never a paste into chat.",
   "Finish jobs end to end in the real tools, best first: a connected app's tool or an MCP server when one does the job, then an API or the shell (curl, a CLI), and only then the screen. Come back to the person only when something needs their approval, a sign-in, or a decision only they can make.",
@@ -73,11 +108,26 @@ export function roster(bots: Bot[], self: Bot): string {
     .join("\n");
 }
 
+/**
+ * A memory file under a heading that says how full it is, since the bot can't see its limit otherwise:
+ * nearly full, it hears to move notes out before anything stops loading; over, that the middle didn't.
+ */
+function memorySection(title: string, raw: string | null, limit: number, topics: string, empty: string): string {
+  if (!raw?.trim()) return `## ${title})\n${empty}`;
+  const fitted = fitMemory(raw, limit);
+  const size = `${kb(fitted.bytes)} of ${kb(limit)}`;
+  const notice = fitted.cut
+    ? `\n[It's over its ${kb(limit)}, so the middle didn't load this turn. Move notes into ${topics} now until it fits.]`
+    : fitted.bytes >= limit * NEARLY_FULL
+      ? `\n[It's nearly full. Move detail into ${topics} now: past ${kb(limit)}, the middle stops loading.]`
+      : "";
+  return `## ${title}, ${size})${notice}\n${fitted.text}`;
+}
+
 export type PromptContext = {
   bots: Bot[];
   thread: Thread;
   memory: string | null;
-  memoryTruncated: boolean;
 
   teamMemory: string | null;
   connections: Connection[];
@@ -87,6 +137,7 @@ export type PromptContext = {
   skillsIndex: string;
 
   mcpServers: McpServerNote[];
+  talk: { style: ReplyStyle; emoji: EmojiLevel };
 };
 
 export function systemPromptFor(bot: Bot, context: PromptContext): string {
@@ -95,13 +146,14 @@ export function systemPromptFor(bot: Bot, context: PromptContext): string {
       ? `You are in the room "${context.thread.name}" with ${context.thread.members.length} bots and the person. Everyone in the room reads what you write.`
       : `You are in your 1:1 conversation with the person.`;
   const apps = context.connections.filter((c) => c.status === "active");
-  const memory = context.memory?.trim()
-    ? `## Memory (MEMORY.md)\n${context.memory.trim()}${context.memoryTruncated ? "\n\n[Only the first part of MEMORY.md loads each turn. Trim it or move notes into memory/<topic>.md.]" : ""}`
-    : "## Memory (MEMORY.md)\nEmpty so far. Write what you learn about the person and the job as you go.";
+  const memory = memorySection("Memory (MEMORY.md", context.memory, MAX_MEMORY_BYTES, "memory/<topic>.md", "Empty so far. Write what you learn about the person and the job as you go.");
+  const teamMemory = memorySection(`Team memory (~/${teamMemoryPath(bot.userId)}, shared by the person's bots`, context.teamMemory, MAX_TEAM_MEMORY_BYTES, `~/${teamDir(bot.userId)}/<topic>.md`, "Empty so far. Put there what every teammate should know, with team_memory_update.");
+  const talk = howToTalk(context.talk);
   // What every bot of the person's shares comes first and what changes most comes last, so the
   // providers' prompt caches keep the longest prefix from one turn to the next.
   return [
     `## What you are\n${assistantFirst()}`,
+    talk ? `## How the person wants you to talk\n${talk}` : "",
     `## House rules\n${houseRules(bot.userId)}`,
     `## Formatting\n${formatting()}`,
     context.toolNotes ? `## Tools\n${context.toolNotes}` : "",
@@ -110,7 +162,7 @@ export function systemPromptFor(bot: Bot, context: PromptContext): string {
     `## Connected apps\n${apps.length ? `${apps.map((a) => `- ${a.name}: tools named ${a.toolkit.toUpperCase()}_…`).join("\n")}\nCall an app's tools directly for anything in it (on Claude Code they are mcp__gond__<NAME>; search your tools for the app's name if they aren't listed). Never look through files or the shell for an app's data.` : "- None connected to you yet. Ask the person to connect one under Settings → Apps → Connected apps, or use the browser."}`,
     `## Skills (the person's library, ~/.skills)\n${context.skillsIndex}`,
     context.mcpServers.length ? `## Your MCP servers\n${context.mcpServers.map((m) => `- ${m.name}: ${m.note ?? `tools named mcp__${m.name}__…`}`).join("\n")}\nThey are the person's own servers, attached to every bot's session by Gond; their writes go through approval like any other. Use their tools directly for anything they cover. If one's tools are missing or a call says it needs a sign-in, tell the person in one line; never look for MCP settings, tokens or credentials in ~/.claude or any config file, and never try to sign a server in yourself.` : "",
-    context.teamMemory?.trim() ? `## Team memory (~/${teamMemoryPath(bot.userId)}, shared by the person's bots)\n${context.teamMemory.trim().slice(0, 12_000)}` : `## Team memory (~/${teamMemoryPath(bot.userId)})\nEmpty so far. Put there what every teammate should know, with team_memory_update.`,
+    teamMemory,
     memory,
     `## Where you are\n${where}\nYour approval level right now is ${APPROVAL_LEVEL_LABELS[bot.approval].title}.\nThe person's time zone is ${context.timezone}. Today is ${new Date().toISOString().slice(0, 10)}.`,
   ]

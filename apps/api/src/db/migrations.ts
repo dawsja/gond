@@ -663,6 +663,11 @@ const MIGRATIONS: Array<string | ((db: Database) => void)> = [
   `,
   // A bot's line in a room keeps the message it answered, so naming a bot that answered it too wakes nobody.
   `ALTER TABLE gond_messages ADD COLUMN answering TEXT;`,
+  `
+  ALTER TABLE gond_user_prefs ADD COLUMN reply_style TEXT;
+  ALTER TABLE gond_user_prefs ADD COLUMN emoji TEXT;
+  `,
+  `ALTER TABLE gond_routines ADD COLUMN once INTEGER NOT NULL DEFAULT 0;`,
 ];
 
 export const RENAME_VERSION = MIGRATIONS.indexOf(renameLegacyObjects) + 1;

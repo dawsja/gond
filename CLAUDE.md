@@ -317,8 +317,8 @@ what is here. The README says what Gond is; this says how it is made.
   picked, the name is optional (left empty, it is its bots' names,
   `roomNameFor` in shared, the one that answers first in front, and the
   API fills it in), and the bots are a grid of faces, each a `Toggle` with
-  the `tile` variant (pressed rings the face in the person's color and
-  shows a check), with the count and who answers when nobody is named
+  the `tile` variant (pressed shows a check in the person's color on the
+  face, and no ring), with the count and who answers when nobody is named
   under it. Past `SEARCH_FROM` bots a search narrows them by name or job,
   and it and the count move into the dialog's sticky header so neither
   scrolls away; a room's own bots come first, in the order they had when
@@ -470,7 +470,9 @@ what is here. The README says what Gond is; this says how it is made.
   sends that option as the person's message, and once the person has said
   anything after it the row closes, the pick shown pressed
   (`ChoicesContext`, which only the conversation provides, so anywhere
-  else it is inert). A leaf directive can't start mid-line, so a
+  else it is inert). Copy text and Select text leave the choices out
+  wherever they sit (`copyText` in `lib/markdown.ts`), and a selection
+  skips the row. A leaf directive can't start mid-line, so a
   `::choices[…]` a bot puts at the end of its sentence is moved onto a
   line of its own before parsing (`prepareMarkdown`, outside code
   fences), and the prompt asks for its own line too. `badgeOf` / `meterOf` / `choicesOf` say when one is well formed; any other
@@ -541,7 +543,8 @@ what is here. The README says what Gond is; this says how it is made.
   nothing. A card still open when the API starts expires with no line
   (see "A restart never strands a bot").
 - **Settings is sections, not a scroll.** `SETTINGS_SECTIONS` in
-  `lib/settings-sections.ts` is the list (account, appearance, team, ai,
+  `lib/settings-sections.ts` is the list (account, appearance,
+  personalization, team, ai,
   voice, computer, skills, apps, secrets, auth, about), each marked `admin`
   or not; the route
   `/app/settings/[[...section]]` maps to it and 404s a user on an admin
@@ -708,6 +711,20 @@ what is here. The README says what Gond is; this says how it is made.
   tool-less call on the person's own engine after a reply, redacted
   before it is kept; the full prompt carries it as "Earlier in this
   conversation, summarized".
+- **A bot keeps its own memory in check.** `MEMORY.md` in its home loads
+  into every turn up to `MAX_MEMORY_BYTES` (24 KB), the team's up to
+  `MAX_TEAM_MEMORY_BYTES` (12 KB), and the house rules say how to tend it:
+  only what it must always know there, a pointer line to each
+  `memory/<topic>.md` it reads when that subject comes up, and what stops
+  being true or mattering rewritten or removed, never corrected underneath,
+  except what the person asked it to remember, which stays until they say
+  otherwise; something dated is a reminder instead, and leaves memory once
+  it has passed.
+  Each heading says how full it is ("18 KB of 24 KB"), from 80%
+  (`NEARLY_FULL`) with a line to move detail out; past the limit
+  `fitMemory` (`src/memory.ts`) drops the middle, never the newest notes at
+  the bottom, and says so. `memory_update` and `team_memory_update` refuse
+  anything over the limit and answer with the size they saved.
 - **Routines are the bots'.** A routine is made, changed, run or removed
   only by asking its bot (`create_routine`, `update_routine`,
   `run_routine`, `delete_routine` in `src/tools.ts`, with an optional
@@ -721,6 +738,17 @@ what is here. The README says what Gond is; this says how it is made.
   with nothing new to say answers a run with exactly `NOTHING_NEW`
   (`QUIET_REPLY`, `isQuietReply`): the responder posts nothing, pushes
   nothing and drops the run's message, so a quiet run leaves no trace.
+  The word never shows anywhere: an answer that ends with it on a line of
+  its own (a line steered in mid-turn that had nothing for the bot) posts
+  and streams without it (`withoutQuietReply`).
+- **A reminder is a routine that runs once.** `once` on a routine
+  (`create_routine` with `once: true`) runs the next time its cron matches;
+  `claimDueRoutines` switches it off as it fires and `finishRoutineRun`
+  removes it once the run is done (a failed one stays, off, for the person
+  to see). The house rules turn anything dated the person mentions (an
+  appointment, a deadline) into one, on, at a sensible time before it, and
+  never into a note that outlives it. A reminder never goes into a
+  template, and its run is never `NOTHING_NEW`.
 - **Bots speak up through watches.** A watch is a routine with `watch`
   set: it checks for a change and speaks only when one is worth telling,
   so most runs are quiet. Its run posts `[Watch: name]` (`isWatchRun`)
@@ -793,6 +821,18 @@ what is here. The README says what Gond is; this says how it is made.
   first words came, its model rounds and its tool calls, the screen's
   apart, so `docker compose logs api | grep took` says where a slow turn
   went.
+- **The person picks how their bots talk to them** (Settings →
+  Personalization, `personalization-card.tsx`): a style (`REPLY_STYLES` in
+  shared: Default, Professional, Friendly, Candid,
+  Efficient) and how many emoji (More, Default, Less), on `gond_user_prefs`
+  (`userTalk`, `PUT /api/me/talk`) and on `Me`. Anything but the default
+  is a section of the system prompt right after "What you are"
+  (`howToTalk` in `souls.ts`), which says it wins over every other line
+  about tone, length or emoji, the bot's Voice and instructions included,
+  and a line in the turn prompt of every turn the person will read
+  (`talkReminder`), since a rule only in the system prompt drifts over a
+  long session. It changes how a bot says things, never its job, and not
+  what it writes to teammates.
 - **The system prompt holds still.** `systemPromptFor` puts what every bot
   of a person's shares first (what it is, the house rules, formatting,
   the tools' notes), then the bot, its team, apps, skills index and

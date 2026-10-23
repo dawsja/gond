@@ -1,24 +1,13 @@
 import { replyLine, type Bot, type Message, type Thread } from "@gond/shared";
 import { readBoxFile, type BoxConfig } from "./box.ts";
 import { recentMessages } from "./data/threads.ts";
-import { LEGACY_TEAM_MEMORY_PATH, MAX_MEMORY_BYTES, memoryPath, teamMemoryPath } from "./memory.ts";
+import { LEGACY_TEAM_MEMORY_PATH, memoryPath, teamMemoryPath } from "./memory.ts";
 import { ownerIsAdmin } from "./toolkits.ts";
 
-export async function loadMemory(box: BoxConfig, botId: string): Promise<{ text: string | null; truncated: boolean }> {
-  try {
-    const file = await readBoxFile(box, memoryPath(botId));
-    const text = file.content ?? "";
-    const lines = text.split("\n");
-    let out = lines.slice(0, 200).join("\n");
-    let truncated = lines.length > 200;
-    if (Buffer.byteLength(out, "utf8") > MAX_MEMORY_BYTES) {
-      out = Buffer.from(out, "utf8").subarray(0, MAX_MEMORY_BYTES).toString("utf8");
-      truncated = true;
-    }
-    return { text: out, truncated };
-  } catch {
-    return { text: null, truncated: false };
-  }
+export async function loadMemory(box: BoxConfig, botId: string): Promise<string | null> {
+  return readBoxFile(box, memoryPath(botId))
+    .then((file) => file.content ?? null)
+    .catch(() => null);
 }
 
 export async function loadTeamMemory(box: BoxConfig, userId: string): Promise<string | null> {

@@ -244,6 +244,8 @@ export type Routine = {
   enabled: boolean;
   /** A watch checks for a change and speaks up only when there is one worth telling; its runs show as "<bot> noticed". */
   watch: boolean;
+  /** A reminder: it runs the next time its cron matches, then removes itself. */
+  once: boolean;
   skillId: string | null;
   lastRunAt: string | null;
   nextRunAt: string | null;
@@ -347,7 +349,32 @@ export type Me = {
 
   avatar: string | null;
   accent: Accent;
+  style: ReplyStyle;
+  emoji: EmojiLevel;
 };
+
+/** How every bot of a person's talks to them (Settings → Personalization), read into each bot's prompt. */
+export const REPLY_STYLES = ["default", "professional", "friendly", "candid", "efficient"] as const;
+export type ReplyStyle = (typeof REPLY_STYLES)[number];
+export const REPLY_STYLE_LABELS: Record<ReplyStyle, { title: string; blurb: string }> = {
+  default: { title: "Default", blurb: "Each bot's own voice" },
+  professional: { title: "Professional", blurb: "Polished and precise" },
+  friendly: { title: "Friendly", blurb: "Warm and chatty" },
+  candid: { title: "Candid", blurb: "Direct and encouraging" },
+  efficient: { title: "Efficient", blurb: "Concise and plain" },
+};
+
+export function isReplyStyle(value: unknown): value is ReplyStyle {
+  return typeof value === "string" && (REPLY_STYLES as readonly string[]).includes(value);
+}
+
+export const EMOJI_LEVELS = ["more", "default", "less"] as const;
+export type EmojiLevel = (typeof EMOJI_LEVELS)[number];
+export const EMOJI_LEVEL_LABELS: Record<EmojiLevel, string> = { more: "More", default: "Default", less: "Less" };
+
+export function isEmojiLevel(value: unknown): value is EmojiLevel {
+  return typeof value === "string" && (EMOJI_LEVELS as readonly string[]).includes(value);
+}
 
 /** The color a person picks for their chats (Settings → Appearance): their bubbles, cards and main buttons. */
 export const ACCENTS = ["blue", "purple", "pink", "red", "orange", "amber", "green"] as const;
@@ -1342,6 +1369,21 @@ export function isWatchRun(body: string): boolean {
 
 export function isQuietReply(text: string): boolean {
   return /^[\s`*_]*nothing_new[\s`*_.]*$/i.test(text);
+}
+
+/**
+ * A reply with the marker taken out wherever it stands alone, on a line of its own or ending the text: a
+ * model that answers and then adds it (for a line steered in mid-turn that had nothing for it) still posts
+ * its answer, never the marker. Empty when the reply was only the marker.
+ */
+export function withoutQuietReply(text: string): string {
+  return text
+    .split("\n")
+    .filter((line) => !isQuietReply(line))
+    .join("\n")
+    .replace(/[ \t`*_]*\bnothing_new[\s`*_.]*$/i, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 export function plainMarkdown(text: string): string {

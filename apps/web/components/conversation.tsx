@@ -10,6 +10,7 @@ import { ApprovalCard } from "@/components/approval-card";
 import { QuoteInBubble, ReplyingTo } from "@/components/reply-quote";
 import { BotAvatar, RoomAvatar, roomMembers } from "@/components/bot-avatar";
 import { copyToClipboard } from "@/components/hq/clipboard";
+import { copyText } from "@/lib/markdown";
 import { canReact, react, ReactionBadges, ReactionPicker } from "@/components/reactions";
 import { pollInterval, useLiveEvents } from "@/components/hq/live-events";
 import { ChoicesContext } from "@/components/chat-blocks";
@@ -355,7 +356,7 @@ const Line = memo(function Line({ message, threadId, bots, threads, bot, approva
                 {message.body ? (
                   <ContextMenuItem
                     onClick={() =>
-                      void copyToClipboard(message.body).then((ok) => toast.add(ok ? { title: "Copied." } : { type: "error", title: "Couldn't copy it." }))
+                      void copyToClipboard(copyText(message.body)).then((ok) => toast.add(ok ? { title: "Copied." } : { type: "error", title: "Couldn't copy it." }))
                     }
                   >
                     <Copy aria-hidden="true" />
@@ -363,7 +364,7 @@ const Line = memo(function Line({ message, threadId, bots, threads, bot, approva
                   </ContextMenuItem>
                 ) : null}
                 {message.body && touch ? (
-                  <ContextMenuItem onClick={() => onSelectText(message.body)}>
+                  <ContextMenuItem onClick={() => onSelectText(copyText(message.body))}>
                     <TextSelect aria-hidden="true" />
                     Select text
                   </ContextMenuItem>

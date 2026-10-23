@@ -18,7 +18,7 @@ import { clipToolResult as clip, type DriverTool } from "./driver.ts";
 import { holdLogin, loginFields, loginPrefix, rememberable } from "./logins.ts";
 import { checkMcpHeaders, secretNamesIn } from "./mcp.ts";
 import { probeMcpServer } from "./mcp-oauth.ts";
-import { botHome, memoryPath, MAX_MEMORY_BYTES, teamDir, teamMemoryPath } from "./memory.ts";
+import { botHome, kb, memoryPath, MAX_MEMORY_BYTES, MAX_TEAM_MEMORY_BYTES, NEARLY_FULL, teamDir, teamMemoryPath } from "./memory.ts";
 import { requestSecret } from "./secret-requests.ts";
 import { looksExecutable, nameFromFolder, parseSkillMd, type BundleFile } from "./skill-bundle.ts";
 import { readSkillFromBox, skillBrief, skillsReady, syncSkills } from "./skills.ts";
@@ -78,7 +78,7 @@ const SIGNIN_CARD_FRESH_MS = 30 * 60_000;
 
 export const TOOL_NOTES = [
   "set_profile changes your own name, job title, how you work (your SOUL), mascot colour, expression or shape. When the person tells you who you are or what you do from now on, update your instructions (the description field; the app calls it Instructions) so your SOUL.md carries it. Use it too when the person gives you a lasting new job. Which bot is their primary one is set in the app, not here.",
-  "memory_update replaces MEMORY.md, the notes that load into every turn. Keep it under a few hundred lines: stable preferences, how the person works, what you learned. You can also edit it, and memory/<topic>.md, with your own file tools; they live in your home folder.",
+  `memory_update replaces MEMORY.md, the notes that load into every turn, up to ${kb(MAX_MEMORY_BYTES)} (its heading says how full it is). Keep it to stable preferences, how the person works and what you learned; detail goes in memory/<topic>.md. You can also edit it, and memory/<topic>.md, with your own file tools; they live in your home folder.`,
   "send_file hands the person a file from the computer as a download in this conversation (a document, an HTML page, an image, a spreadsheet, up to 100 MB). When the person asks for a file, or a teammate made one for them, send it; don't only say where it is on the computer. To show them the screen (a cart before they buy, a confirmation, or whenever they ask to see it), call send_screenshot; never save a screenshot to a file.",
   "Your reply is what you write after your last tool call. Make your calls first (handoffs included), then write the whole answer; don't end a turn on a tool call with the answer half written before it.",
   `react puts an emoji on the person's message you are answering, as a person taps one in a chat: 👍 or ❤️ when they thank you, agree or close ("thanks!", "perfect", "that will be all"), the others when they fit. When the reaction says it all, react and answer with exactly ${QUIET_REPLY}: nothing more is posted and nobody is notified. Otherwise react and reply as usual. Most messages need no reaction.`,
@@ -96,6 +96,7 @@ export const TOOL_NOTES = [
   "Those are every bot's, not only the primary bot's: who adds teammates and hands out work is a matter of the job, not of what you are allowed to call. Unless you are the primary bot, use them when the person asks you to, not on your own.",
   `Routines are yours to make and change: the person can only see them and switch them on or off, so when they want one made, changed, removed or run, you do it. create_routine schedules a prompt for yourself on a cron in the person's time zone, optionally with one of their skills, paused until they turn it on unless they asked for it in this conversation. list_routines shows yours; update_routine changes or pauses one, delete_routine removes it, run_routine runs it once now. When a routine fires (a message that starts [Routine: …] or [Watch: …]) and there is nothing new worth telling the person since its last run, answer with exactly ${QUIET_REPLY} and nothing else: the run then leaves no trace in the chat and nobody is notified. Anything they would want to know, say as usual.`,
   `Speak up before you're asked. A watch is a routine with watch: true that checks something for a change (a calendar clash, a flight, a price, a reply they're waiting on, a status page, a charge on an account) and speaks only when the change matters to the person; its run shows them "<your name> noticed". When the person asks about the same thing a second time, or about anything that will change later, offer once to keep an eye on it, in one line ending with ::choices (like "Want me to watch your calendar for clashes like this?" ::choices[Yes, always | Work only | No thanks]); on a yes, create_routine with watch: true and enabled: true, a cron no more often than the thing changes, and a prompt that says exactly what counts as worth telling. Don't offer again for something they turned down. When a watch speaks, lead with what changed and what it means for them, in a line or two, then the one thing you can do about it (draft the reply and ask_approval to send it, say). A morning briefing is a plain routine, not a watch. "Less like this" on something you noticed means it wasn't worth it: tighten that watch's prompt with update_routine so it won't come up again.`,
+  `Something with a date and time is a reminder, not just a note: when the person mentions an appointment, a deadline, a bill, a flight or anything they mustn't miss ("I have the dentist tomorrow at 2"), create_routine with once: true and enabled: true at a sensible time before it (the morning of, or an hour ahead for something later today; earlier for what needs getting ready), a prompt that says what to tell them, and say in a line when you'll remind them. If you can't tell when it is, ask. When it runs, tell them plainly, in a line or two, with anything useful (when to leave, what to bring); it then removes itself. A run of a reminder is never ${QUIET_REPLY}.`,
   "ask_approval posts a decision card and waits for the person. Whenever you need a yes or no before you act, use it rather than asking in a sentence and ending your turn: the question as summary, where and what as why, the rows that matter as details (items and prices, with total; recipients; files), and buttons named for the act (allow \"Place order\", deny \"Not yet\"). Both buttons are about one act: allow does it, deny doesn't, and deny tells you to stop. It is never a way to pick between options (A or B, this host or every host): for that, end your reply with ::choices[A | B], wait for the pick, and only then ask_approval for the act it settled on, if it still needs a yes. On Auto, call it before anything you can't undo or that leaves the computer: sending a message or email as the person, deleting or overwriting files outside your home, a payment or purchase, a forced push, changing settings for other people, typing a password you weren't given, anything they would want to know first. On Always ask the broker already asks; on Always allow it answers at once.",
   "Connected-app tools (names starting with the app, like GMAIL_SEND_EMAIL) act on the person's real accounts. Reads go through; writes may wait for the person's approval. Say what you sent, created or changed.",
   "team_memory_update replaces the team memory (its path is in the Team memory section), shared by every bot of the person. Keep it to what the whole team needs.",
@@ -369,9 +370,10 @@ export function baseTools(context: Context): Record<string, DriverTool> {
       inputSchema: schema({ content: { type: "string", description: "The whole new file." } }, ["content"]),
       execute: async (input) => {
         const content = String(input.content ?? "");
-        if (Buffer.byteLength(content, "utf8") > MAX_MEMORY_BYTES * 4) return `MEMORY.md would be too long (${Buffer.byteLength(content, "utf8")} bytes). Move notes into memory/<topic>.md and keep this file short.`;
+        const size = Buffer.byteLength(content.trim(), "utf8");
+        if (size > MAX_MEMORY_BYTES) return `NOT saved: that's ${kb(size)} and MEMORY.md loads only ${kb(MAX_MEMORY_BYTES)}. Move detail into memory/<topic>.md and keep this file to what every turn needs.`;
         await writeBoxFile(box, memoryPath(bot.id), content);
-        return "MEMORY.md saved.";
+        return `MEMORY.md saved, ${kb(size)} of ${kb(MAX_MEMORY_BYTES)}.${size >= MAX_MEMORY_BYTES * NEARLY_FULL ? " It's nearly full: move detail into memory/<topic>.md." : ""}`;
       },
     },
     ask_approval: {
@@ -498,9 +500,10 @@ export function baseTools(context: Context): Record<string, DriverTool> {
       inputSchema: schema({ content: { type: "string", description: "The whole new file." } }, ["content"]),
       execute: async (input) => {
         const content = String(input.content ?? "");
-        if (Buffer.byteLength(content, "utf8") > MAX_MEMORY_BYTES * 2) return `The team memory would be too long (${Buffer.byteLength(content, "utf8")} bytes). Keep it to what everyone needs; longer notes go in ~/${teamDir(bot.userId)}/<topic>.md.`;
+        const size = Buffer.byteLength(content.trim(), "utf8");
+        if (size > MAX_TEAM_MEMORY_BYTES) return `NOT saved: that's ${kb(size)} and the team memory loads only ${kb(MAX_TEAM_MEMORY_BYTES)}. Keep it to what everyone needs; longer notes go in ~/${teamDir(bot.userId)}/<topic>.md.`;
         await writeBoxFile(box, teamMemoryPath(bot.userId), content);
-        return `${teamMemoryPath(bot.userId)} saved for the whole team.`;
+        return `${teamMemoryPath(bot.userId)} saved for the whole team, ${kb(size)} of ${kb(MAX_TEAM_MEMORY_BYTES)}.${size >= MAX_TEAM_MEMORY_BYTES * NEARLY_FULL ? ` It's nearly full: move detail into ~/${teamDir(bot.userId)}/<topic>.md.` : ""}`;
       },
     },
     use_skill: {
@@ -756,6 +759,7 @@ export function baseTools(context: Context): Record<string, DriverTool> {
           prompt: { type: "string", description: "What to do each time." },
           enabled: { type: "boolean", description: "True only when the person asked for it now." },
           watch: { type: "boolean", description: `True for a watch: it checks for a change and answers ${QUIET_REPLY} unless there is one worth telling.` },
+          once: { type: "boolean", description: 'True for a reminder: it runs the next time the cron matches (minute, hour, day and month set, like "0 8 24 10 *"), then removes itself.' },
           skill: { type: "string", description: "Optional: the slug of one of the person's skills to use each time; the prompt then carries its inputs." },
         },
         ["name", "cron", "prompt"],
@@ -771,8 +775,11 @@ export function baseTools(context: Context): Record<string, DriverTool> {
         }
         const skill = routineSkill(input.skill);
         if (skill === undefined) return `NOT created: the person has no skill "${String(input.skill)}".`;
-        const routine = createRoutine(bot.id, { name: String(input.name ?? "Routine").slice(0, 80), cron, timezone, prompt: String(input.prompt ?? "").slice(0, 4000), enabled: input.enabled === true, watch: input.watch === true, skillId: skill });
-        return `Created ${routine.watch ? "the watch " : ""}"${routine.name}" (${routine.enabled ? "on" : "paused; the person can turn it on under Routines"}). Next runs: ${preview.join(", ")}.`;
+        const once = input.once === true;
+        const routine = createRoutine(bot.id, { name: String(input.name ?? "Routine").slice(0, 80), cron, timezone, prompt: String(input.prompt ?? "").slice(0, 4000), enabled: input.enabled === true, watch: input.watch === true && !once, once, skillId: skill });
+        const status = routine.enabled ? "on" : "paused; the person can turn it on under Routines";
+        if (once) return `Created the reminder "${routine.name}" (${status}). It runs once, at ${preview[0]}, then removes itself.`;
+        return `Created ${routine.watch ? "the watch " : ""}"${routine.name}" (${status}). Next runs: ${preview.join(", ")}.`;
       },
     },
     update_routine: {

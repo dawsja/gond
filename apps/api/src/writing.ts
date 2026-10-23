@@ -1,4 +1,4 @@
-import { QUIET_REPLY } from "@gond/shared";
+import { QUIET_REPLY, withoutQuietReply } from "@gond/shared";
 
 /** True while the text so far could still turn out to be `NOTHING_NEW` (see `isQuietReply`). */
 export function couldBeQuiet(text: string): boolean {
@@ -49,7 +49,10 @@ export function createWriting(send: (text: string | null) => void, redact: (text
       if (text === null) return stop();
       const trimmed = text.trim();
       if (couldBeQuiet(trimmed)) return;
-      latest = trimmed;
+      // A last line on its way to being the marker never shows, nor does the marker itself (see `withoutQuietReply`).
+      const lines = trimmed.split("\n");
+      if (lines.length > 1 && couldBeQuiet(lines.at(-1) ?? "")) lines.pop();
+      latest = withoutQuietReply(lines.join("\n"));
       if (cancel) return;
       const wait = sentAt + WRITING_INTERVAL_MS - timers.now();
       if (wait <= 0) flush();

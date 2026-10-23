@@ -1,4 +1,4 @@
-import { QUIET_REPLY, handleOf, isClosing, isQuietReply, isStopRequest, mentionsIn, plainMarkdown, replyLine, roomTargets, type Bot, type ChatAttachment, type DesktopDriver, type Message, type Thread, type ToolLabelContext } from "@gond/shared";
+import { QUIET_REPLY, handleOf, isClosing, isStopRequest, mentionsIn, plainMarkdown, replyLine, roomTargets, withoutQuietReply, type Bot, type ChatAttachment, type DesktopDriver, type Message, type Thread, type ToolLabelContext } from "@gond/shared";
 import { BoxError, boxConfig, boxHome, ensureBotHome, health, interruptAgent, steerAgent, writeBoxFile, type BoxConfig } from "./box.ts";
 import { isUpdating } from "./updater.ts";
 import { getAi } from "./data/ai.ts";
@@ -7,7 +7,7 @@ import { type Delegation, finishDelegation, handoffWorkedOn, isDelegationResult,
 import { cancelFollowUpsIn } from "./data/follow-ups.ts";
 import { finishRoutineRun } from "./data/routines.ts";
 import { allSecretValues } from "./data/secrets.ts";
-import { userTimezone } from "./data/prefs.ts";
+import { userTalk, userTimezone } from "./data/prefs.ts";
 import { listConnections } from "./data/settings.ts";
 import { listSkills } from "./data/skills.ts";
 import { answeringOf, botLinesSincePerson, closePending, closeSentFrom, dropMessage, getAttachment, getMessage, getThread, markAnswered, postMessage, reactionsOf, recentMessages, releaseClaim, threadBusy, threadRefs, unsteer } from "./data/threads.ts";
@@ -28,7 +28,7 @@ import { botHome, soulPath } from "./memory.ts";
 import { sendPush } from "./push.ts";
 import { createRedactor } from "./redact.ts";
 import { skillsFor, skillsIndex, skillsReady } from "./skills.ts";
-import { renderSoul, skillsInUse, systemPromptFor } from "./souls.ts";
+import { renderSoul, skillsInUse, systemPromptFor, talkReminder } from "./souls.ts";
 import { clearWork, clipOutput, createTurnClock, labelStep, recordStep, timingLine, type StepUpdate } from "./work.ts";
 import { boxPermission, endTurnOnExpiry } from "./approvals.ts";
 import { noteInterrupted, takeInterrupted, wasInterrupted } from "./resume.ts";
@@ -413,9 +413,10 @@ export function promptFor(bot: Bot, thread: Thread, message: Message, bots: Bot[
     ? ` ${alongside.join(" and ")} ${alongside.length > 1 ? "are" : "is"} answering this same message at the same time and can't see your answer yet, nor you theirs. Cover your own part only, and don't @mention them for theirs: they're already on it.`
     : "";
   const room = thread.kind === "room" ? `\n\n${ROOM_TURN}${together}` : "";
+  const talk = route === "person" ? talkReminder(userTalk(thread.userId)) : "";
 
   if (message.kind === "prompt") {
-    return [earlier, `${heading}\n${history || (since ? "(nothing new)" : "(nothing yet)")}`, `Gond, not the person, asks you this; nobody else sees it. Do it, and address your answer to the person:\n${message.body}${toPerson}`].filter(Boolean).join("\n\n");
+    return [earlier, `${heading}\n${history || (since ? "(nothing new)" : "(nothing yet)")}`, `Gond, not the person, asks you this; nobody else sees it. Do it, and address your answer to the person:\n${message.body}${toPerson}`, talk].filter(Boolean).join("\n\n");
   }
   const sender = names.get(message.author) ?? "a teammate";
   const result = message.fromThreadId && !PEOPLE_AND_GOND.has(message.author) && isDelegationResult(message.id);
@@ -432,6 +433,7 @@ export function promptFor(bot: Bot, thread: Thread, message: Message, bots: Bot[
     files,
     `Now answer the last message, which is from ${who}.${from}${toPerson}${room}\n${message.author === "routine" ? "This is a scheduled routine: do the job and report, addressing the person." : ""}`,
     message.author === "you" && isClosing(message.body) ? `It reads as the person closing the exchange (a thanks, an "I will", a goodbye). Unless it answers a question you asked, react to it with the react tool (👍 or ❤️) and answer with exactly ${QUIET_REPLY}, so nothing more is posted.` : "",
+    talk,
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -553,14 +555,13 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
     const instructions = systemPromptFor(bot, {
       bots,
       thread,
-      memory: memory.text,
-      memoryTruncated: memory.truncated,
+      memory,
       teamMemory,
       connections: listConnections(bot.userId),
       toolNotes: TOOL_NOTES,
       timezone: userTimezone(thread.userId),
       skillsIndex: skillsIndex(skills),
-
+      talk: userTalk(thread.userId),
       mcpServers: nativeMcp?.servers ?? mcpServersFor(bot).map((m) => ({ name: m.name, note: m.authStatus === "needed" ? `not attached yet: it waits for the person to sign in, from its card or Settings → Apps → MCP servers → ${m.name} → Sign in, and its tools arrive on your next reply after that` : m.authStatus === "error" ? `sign-in problem (${m.authError ?? "unknown"}); its tools may fail` : undefined })),
     });
 
@@ -611,14 +612,16 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
     });
     if (result.ok) seenBy().set(agentId, message.createdAt);
     else seenBy().delete(agentId);
-    if (result.ok && message.author === "routine" && isQuietReply(result.text)) {
+    const said = result.ok ? withoutQuietReply(result.text) : "";
+    const silent = result.ok && !said && Boolean(result.text.trim());
+    if (silent && message.author === "routine") {
       quiet = true;
-    } else if (result.ok && reactedOnly(bot, message, result.text)) {
+    } else if (result.ok && !said && reactedOnly(bot, message)) {
       // The reaction was the whole answer, as a thumbs up is between people.
-    } else if (result.ok && isQuietReply(result.text) && active.route === "person") {
+    } else if (silent && active.route === "person") {
       // Nothing for the person (in a room, often a line meant for another bot): nothing is posted.
-    } else if (result.ok && result.text.trim()) {
-      reply = scrub(result.text.trim());
+    } else if (said) {
+      reply = scrub(said);
       deliverReply(bot, thread, message, reply);
 
       if (bot.notify && (message.author === "you" || message.author === "routine")) {
@@ -660,8 +663,8 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
   return reply;
 }
 
-function reactedOnly(bot: Bot, message: Message, text: string): boolean {
-  return message.author === "you" && (!text.trim() || isQuietReply(text)) && reactionsOf(message.id).some((r) => r.author === bot.id);
+function reactedOnly(bot: Bot, message: Message): boolean {
+  return message.author === "you" && reactionsOf(message.id).some((r) => r.author === bot.id);
 }
 
 const PEOPLE_AND_GOND = new Set(["you", "system", "routine"]);
@@ -716,7 +719,7 @@ export function wokenBy(line: Pick<Message, "author" | "body">, thread: Thread, 
 }
 
 export function roomLineText(name: string, line: string): string {
-  return `${name} just said in the room, answering the same message as you:\n\n${line}\n\nRead it as you would in a group chat: don't repeat what ${name} covered, and if it names you, that's about the part you're already answering, so cover it in your one answer.`;
+  return `${name} just said in the room, answering the same message as you:\n\n${line}\n\nRead it as you would in a group chat: don't repeat what ${name} covered, and if it names you, that's about the part you're already answering, so cover it in your one answer. Don't answer this line on its own: if you already gave your answer, you're done, and never add ${QUIET_REPLY} to an answer.`;
 }
 
 function postReply(bot: Bot, thread: Thread, message: Message, reply: string) {

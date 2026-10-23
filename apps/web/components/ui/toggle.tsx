@@ -13,8 +13,8 @@ const toggleVariants = cva(
         outline: "border border-primary-edge bg-transparent hover:border-primary-edge-focus hover:bg-primary",
 
         pill: "rounded-full border border-primary-edge bg-transparent hover:border-primary-edge-focus hover:bg-primary data-pressed:border-control data-pressed:bg-control data-pressed:text-control-foreground aria-pressed:border-control aria-pressed:bg-control aria-pressed:text-control-foreground",
-        // A face to pick (a bot for a room): pressed rings its `tile-face` in the person's color and shows its `tile-check`.
-        tile: "flex-col rounded-2xl bg-transparent hover:bg-muted aria-pressed:bg-transparent data-pressed:bg-transparent aria-pressed:hover:bg-muted [&_[data-slot=tile-face]]:relative [&_[data-slot=tile-face]]:rounded-full [&_[data-slot=tile-face]]:ring-2 [&_[data-slot=tile-face]]:ring-transparent aria-pressed:[&_[data-slot=tile-face]]:ring-offset-2 aria-pressed:[&_[data-slot=tile-face]]:ring-offset-(--surface) aria-pressed:[&_[data-slot=tile-face]]:ring-tint-solid [&_[data-slot=tile-check]]:hidden aria-pressed:[&_[data-slot=tile-check]]:flex",
+        // A face to pick (a bot for a room): pressed shows its `tile-check`, nothing more.
+        tile: "flex-col rounded-2xl bg-transparent hover:bg-muted aria-pressed:bg-transparent data-pressed:bg-transparent aria-pressed:hover:bg-muted [&_[data-slot=tile-face]]:relative [&_[data-slot=tile-check]]:hidden aria-pressed:[&_[data-slot=tile-check]]:flex",
       },
       size: {
         default:

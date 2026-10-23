@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Blockquote, Code, Link, List, Table } from "mdast";
-import { badgeOf, calloutOf, choicesOf, meterOf, parseInline, parseMarkdown, plainText, safeHref, sourceOf } from "../lib/markdown";
+import { badgeOf, calloutOf, choicesOf, copyText, meterOf, parseInline, parseMarkdown, plainText, safeHref, sourceOf } from "../lib/markdown";
 
 const types = (nodes: { type: string }[]) => nodes.map((n) => n.type);
 
@@ -196,4 +196,14 @@ test("choices written at the end of the question's line still become pills, and 
   expect(code.map((n) => n.type)).toEqual(["code"]);
   expect((code[0] as Code).value).toBe("ask ::choices[A | B]");
   expect(choicesOf(parseMarkdown("Pick one\n::choices[A | B]").children.at(-1)!)).toEqual(["A", "B"]);
+});
+
+describe("copying a message", () => {
+  test("copies the words and never the choices, wherever they sit", () => {
+    expect(copyText("Start with backups?\n\n::choices[Start with backups | Nothing for now]")).toBe("Start with backups?");
+    expect(copyText("1 TB or 2? ::choices[1 TB | 2 TB]\nThen I order it.")).toBe("1 TB or 2?\nThen I order it.");
+    expect(copyText("Pick one ::choices[A | B] and I'll go.")).toBe("Pick one and I'll go.");
+    expect(copyText("```md\n::choices[A | B]\n```")).toBe("```md\n::choices[A | B]\n```");
+    expect(copyText("No choices here.")).toBe("No choices here.");
+  });
 });

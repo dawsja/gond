@@ -5,7 +5,7 @@ import { now } from "../ids.ts";
 import { adoptLegacyAi } from "./ai.ts";
 import { ensurePrimary } from "./bots.ts";
 import { pictureType } from "../images.ts";
-import { userAccent } from "./prefs.ts";
+import { userAccent, userTalk } from "./prefs.ts";
 
 type UserRow = { id: string; name: string; email: string; role: string | null; createdAt: string | number };
 
@@ -26,7 +26,7 @@ function toIso(value: string | number): string {
 export function getUser(id: string): Me | null {
   const row = ensureDatabase().query('SELECT id, name, email, role, createdAt FROM "user" WHERE id = ?').get(id) as UserRow | null;
   if (!row) return null;
-  return { id: row.id, name: row.name, email: row.email, role: toRole(row.role), provider: providerOf(row.id), avatar: avatarUrl(row.id), accent: userAccent(row.id) };
+  return { id: row.id, name: row.name, email: row.email, role: toRole(row.role), provider: providerOf(row.id), avatar: avatarUrl(row.id), accent: userAccent(row.id), ...userTalk(row.id) };
 }
 
 export function isAdmin(user: object | null | undefined): boolean {
@@ -38,7 +38,7 @@ export function listUsers(): UserSummary[] {
   const rows = db.query('SELECT id, name, email, role, createdAt FROM "user" ORDER BY createdAt ASC').all() as UserRow[];
   return rows.map((row) => {
     const bots = db.query("SELECT COUNT(*) AS n FROM gond_bots WHERE user_id = ? AND hidden = 0").get(row.id) as { n: number };
-    return { id: row.id, name: row.name, email: row.email, role: toRole(row.role), provider: providerOf(row.id), avatar: avatarUrl(row.id), accent: userAccent(row.id), createdAt: toIso(row.createdAt), bots: Number(bots.n) };
+    return { id: row.id, name: row.name, email: row.email, role: toRole(row.role), provider: providerOf(row.id), avatar: avatarUrl(row.id), accent: userAccent(row.id), ...userTalk(row.id), createdAt: toIso(row.createdAt), bots: Number(bots.n) };
   });
 }
 

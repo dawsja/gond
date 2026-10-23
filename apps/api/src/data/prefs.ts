@@ -1,4 +1,4 @@
-import { DEFAULT_ACCENT, isAccent, type Accent } from "@gond/shared";
+import { DEFAULT_ACCENT, isAccent, isEmojiLevel, isReplyStyle, type Accent, type EmojiLevel, type ReplyStyle } from "@gond/shared";
 import { ensureDatabase } from "../db/init.ts";
 import { emit, settingsChanged } from "../events.ts";
 import { now } from "../ids.ts";
@@ -58,6 +58,21 @@ export function setUserAccent(userId: string, accent: Accent) {
   ensureDatabase()
     .query("INSERT INTO gond_user_prefs (user_id, accent, updated_at) VALUES (?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET accent = excluded.accent, updated_at = excluded.updated_at")
     .run(userId, accent === DEFAULT_ACCENT ? null : accent, now());
+  emit({ topic: "me", userId });
+}
+
+export type Talk = { style: ReplyStyle; emoji: EmojiLevel };
+
+/** How the person wants every one of their bots to talk to them. */
+export function userTalk(userId: string): Talk {
+  const row = ensureDatabase().query("SELECT reply_style, emoji FROM gond_user_prefs WHERE user_id = ?").get(userId) as { reply_style: string | null; emoji: string | null } | null;
+  return { style: isReplyStyle(row?.reply_style) ? row.reply_style : "default", emoji: isEmojiLevel(row?.emoji) ? row.emoji : "default" };
+}
+
+export function setUserTalk(userId: string, talk: Talk) {
+  ensureDatabase()
+    .query("INSERT INTO gond_user_prefs (user_id, reply_style, emoji, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET reply_style = excluded.reply_style, emoji = excluded.emoji, updated_at = excluded.updated_at")
+    .run(userId, talk.style === "default" ? null : talk.style, talk.emoji === "default" ? null : talk.emoji, now());
   emit({ topic: "me", userId });
 }
 

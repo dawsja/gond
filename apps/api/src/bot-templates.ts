@@ -16,7 +16,8 @@ import { syncSoul } from "./responder.ts";
 /** A bot as a `.bot` bundle: its job, look, approval level and routines, with the skills those use and its picture. */
 export function bundleOf(bot: Bot): BotBundle {
   const skills = new Map<string, Uint8Array>();
-  const routines = listRoutines(bot.id).map((routine) => {
+  // A reminder is about the person's own day, not the bot's job.
+  const routines = listRoutines(bot.id).filter((routine) => !routine.once).map((routine) => {
     const skill = routine.skillId ? getSkill(routine.skillId, bot.userId) : null;
     if (skill && !skills.has(skill.slug)) skills.set(skill.slug, packSkill(skill, skillFiles(skill.id)));
     return { name: routine.name, cron: routine.cron, prompt: routine.prompt, watch: routine.watch, skill: skill?.slug ?? null };

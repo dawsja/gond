@@ -1039,6 +1039,12 @@ describe("a reply as it is written", () => {
     t = WRITING_INTERVAL_MS;
     (pending as (() => void) | null)?.();
     expect(sent.at(-1)).toBe("Done, the password [secret] is set.");
+    t = 2 * WRITING_INTERVAL_MS;
+    writing.text("Done, the password hunter2 is set.\n\nNOTH");
+    expect(sent.at(-1)).toBe("Done, the password [secret] is set.");
+    t = 3 * WRITING_INTERVAL_MS;
+    writing.text("Done, the password hunter2 is set.\n\nNOTHING_NEW");
+    expect(sent.at(-1)).toBe("Done, the password [secret] is set.");
     writing.close();
     expect(sent.at(-1)).toBeNull();
     writing.close();
@@ -1051,12 +1057,63 @@ describe("a reply as it is written", () => {
     const { systemPromptFor, skillsInUse } = await import("../src/souls.ts");
     const bot = { id: "b1", userId: "u1", name: "Scout", title: "", description: "", approval: "auto", primary: true } as never;
     const thread = { id: "t1", kind: "bot", name: "", members: [] } as never;
-    const context = { bots: [], thread, memory: null, memoryTruncated: false, teamMemory: null, connections: [], toolNotes: "notes", timezone: "UTC", skillsIndex: "- /tidy: Tidy", mcpServers: [] };
+    const context = { bots: [], thread, memory: null, teamMemory: null, connections: [], toolNotes: "notes", timezone: "UTC", skillsIndex: "- /tidy: Tidy", mcpServers: [], talk: { style: "default" as const, emoji: "default" as const } };
     const system = systemPromptFor(bot, context);
     expect(system.indexOf("## House rules")).toBeLessThan(system.indexOf("## Memory"));
     expect(system.indexOf("## Tools")).toBeLessThan(system.indexOf("## Where you are"));
     expect(system).not.toContain("Skill in use");
     expect(skillsInUse([{ slug: "tidy", name: "Tidy", description: "", instructions: "Sort it.", files: [] } as never])).toContain("## Skill in use: /tidy (Tidy)");
+  });
+
+  test("a memory says how full it is, warns before its limit, and past it loses the middle, never the newest notes", async () => {
+    const { fitMemory, MAX_MEMORY_BYTES, MAX_TEAM_MEMORY_BYTES } = await import("../src/memory.ts");
+    const { systemPromptFor } = await import("../src/souls.ts");
+    const bot = { id: "b1", userId: "u1", name: "Scout", title: "", description: "", approval: "auto", primary: true } as never;
+    const thread = { id: "t1", kind: "bot", name: "", members: [] } as never;
+    const base = { bots: [], thread, memory: null, teamMemory: null, connections: [], toolNotes: "", timezone: "UTC", skillsIndex: "", mcpServers: [], talk: { style: "default" as const, emoji: "default" as const } };
+    const notes = (count: number, last: string) => [...Array.from({ length: count }, (_, i) => `- note ${i} ${"x".repeat(90)}`), last].join("\n");
+
+    const small = systemPromptFor(bot, { ...base, memory: "- Likes short answers." });
+    expect(small).toContain("## Memory (MEMORY.md, 0.1 KB of 24 KB)\n- Likes short answers.");
+    expect(small).toContain("memory/<topic>.md, which you read when its subject comes up");
+
+    const near = notes(Math.ceil((MAX_MEMORY_BYTES * 0.85) / 100), "- Backups now follow Notion.");
+    expect(systemPromptFor(bot, { ...base, memory: near })).toContain("It's nearly full");
+    expect(fitMemory(near, MAX_MEMORY_BYTES).cut).toBe(0);
+
+    const over = notes(Math.ceil((MAX_MEMORY_BYTES * 1.1) / 100), "- Backups now follow Notion.");
+    const fitted = fitMemory(over, MAX_MEMORY_BYTES);
+    expect(fitted.cut).toBeGreaterThan(0);
+    expect(Buffer.byteLength(fitted.text, "utf8")).toBeLessThanOrEqual(MAX_MEMORY_BYTES + 100);
+    expect(fitted.text.startsWith("- note 0 ")).toBe(true);
+    expect(fitted.text.endsWith("- Backups now follow Notion.")).toBe(true);
+    expect(fitted.text).toContain("here didn't load");
+    const prompt = systemPromptFor(bot, { ...base, memory: over });
+    expect(prompt).toContain("the middle didn't load this turn");
+    expect(prompt).toContain("- Backups now follow Notion.");
+
+    const team = systemPromptFor(bot, { ...base, teamMemory: notes(Math.ceil((MAX_TEAM_MEMORY_BYTES * 1.2) / 100), "- The office moved.") });
+    expect(team).toContain("of 12 KB)\n[It's over its 12 KB");
+    expect(team).toContain("- The office moved.");
+    expect(fitMemory("x".repeat(100), 40).text).toContain("x".repeat(40));
+  });
+
+  test("how the person wants their bots to talk comes ahead of every other rule, and only when they chose", async () => {
+    const { howToTalk, systemPromptFor, talkReminder } = await import("../src/souls.ts");
+    const bot = { id: "b1", userId: "u1", name: "Scout", title: "", description: "", approval: "auto", primary: true } as never;
+    const thread = { id: "t1", kind: "bot", name: "", members: [] } as never;
+    const base = { bots: [], thread, memory: null, teamMemory: null, connections: [], toolNotes: "", timezone: "UTC", skillsIndex: "", mcpServers: [] };
+    expect(systemPromptFor(bot, { ...base, talk: { style: "default", emoji: "default" } })).not.toContain("How the person wants you to talk");
+    expect(talkReminder({ style: "default", emoji: "default" })).toBe("");
+
+    const system = systemPromptFor(bot, { ...base, talk: { style: "efficient", emoji: "less" } });
+    expect(system.indexOf("## How the person wants you to talk")).toBeGreaterThan(system.indexOf("## What you are"));
+    expect(system.indexOf("## How the person wants you to talk")).toBeLessThan(system.indexOf("## House rules"));
+    expect(system.indexOf("## How the person wants you to talk")).toBeLessThan(system.indexOf("## Voice"));
+    expect(system).toContain("Style: Efficient. Concise and plain.");
+    expect(system).toContain("Use no emoji");
+    expect(howToTalk({ style: "default", emoji: "more" })).not.toContain("Style:");
+    expect(talkReminder({ style: "efficient", emoji: "less" })).toBe("Write your answer in the way the person chose for their bots: the Efficient style (concise and plain), with no emoji.");
   });
 });
 

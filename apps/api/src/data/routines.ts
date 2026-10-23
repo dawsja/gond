@@ -13,6 +13,7 @@ type Row = {
   prompt: string;
   enabled: number;
   watch: number;
+  once: number;
   skill_id: string | null;
   last_run_at: string | null;
   next_run_at: string | null;
@@ -30,6 +31,7 @@ function toRoutine(row: Row): Routine {
     prompt: row.prompt,
     enabled: row.enabled === 1,
     watch: row.watch === 1,
+    once: row.once === 1,
     skillId: row.skill_id,
     lastRunAt: row.last_run_at,
     nextRunAt: row.next_run_at,
@@ -64,13 +66,13 @@ export function getRoutine(id: string): Routine | null {
   return row ? toRoutine(row) : null;
 }
 
-export function createRoutine(botId: string, input: Omit<RoutineInput, "skillId" | "watch"> & { skillId?: string | null; watch?: boolean }): Routine {
+export function createRoutine(botId: string, input: Omit<RoutineInput, "skillId" | "watch"> & { skillId?: string | null; watch?: boolean; once?: boolean }): Routine {
   const id = newId("r");
   const at = now();
   const next = input.enabled ? nextRun(input.cron, input.timezone)?.toISOString() ?? null : null;
   ensureDatabase()
-    .query("INSERT INTO gond_routines (id, bot_id, name, cron, timezone, prompt, enabled, watch, skill_id, next_run_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-    .run(id, botId, input.name, input.cron, input.timezone, input.prompt, input.enabled ? 1 : 0, input.watch ? 1 : 0, input.skillId ?? null, next, at, at);
+    .query("INSERT INTO gond_routines (id, bot_id, name, cron, timezone, prompt, enabled, watch, once, skill_id, next_run_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    .run(id, botId, input.name, input.cron, input.timezone, input.prompt, input.enabled ? 1 : 0, input.watch ? 1 : 0, input.once ? 1 : 0, input.skillId ?? null, next, at, at);
   settingsChanged();
   return getRoutine(id)!;
 }
@@ -100,12 +102,13 @@ export function claimDueRoutines(at = new Date()): Routine[] {
   for (const row of rows) {
     let next: string | null = null;
     try {
-      next = nextRun(row.cron, row.timezone, at)?.toISOString() ?? null;
+      next = row.once ? null : (nextRun(row.cron, row.timezone, at)?.toISOString() ?? null);
     } catch {
       next = null;
     }
-    db.query("UPDATE gond_routines SET last_run_at = ?, next_run_at = ? WHERE id = ?").run(at.toISOString(), next, row.id);
-    due.push(toRoutine({ ...row, last_run_at: at.toISOString(), next_run_at: next }));
+    const enabled = row.once ? 0 : row.enabled;
+    db.query("UPDATE gond_routines SET last_run_at = ?, next_run_at = ?, enabled = ? WHERE id = ?").run(at.toISOString(), next, enabled, row.id);
+    due.push(toRoutine({ ...row, enabled, last_run_at: at.toISOString(), next_run_at: next }));
   }
   if (due.length) settingsChanged();
   return due;
@@ -118,6 +121,8 @@ export function recordRoutineRun(routineId: string, messageId: string | null) {
 export function finishRoutineRun(messageId: string, ok: boolean) {
   const db = ensureDatabase();
   db.query("UPDATE gond_routine_runs SET status = ?, finished_at = ? WHERE message_id = ? AND status = 'started'").run(ok ? "done" : "failed", now(), messageId);
+  // A reminder that has said its piece is done with; one that failed stays, switched off, for the person to see.
+  if (ok && db.query("DELETE FROM gond_routines WHERE once = 1 AND enabled = 0 AND id IN (SELECT routine_id FROM gond_routine_runs WHERE message_id = ?)").run(messageId).changes) settingsChanged();
 }
 
 function routineOwner(routineId: string): string | null {

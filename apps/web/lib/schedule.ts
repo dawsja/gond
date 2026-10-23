@@ -65,3 +65,9 @@ export function describeSchedule(cron: string): string {
   if (dates && dow === "*") return `Monthly on the ${list(dates.map(ordinal))} ${at}`;
   return "On a custom schedule";
 }
+
+/** When a routine runs, in words: a reminder's one time ("Once, Thu, Oct 24, 8:00 AM"), else its schedule. */
+export function describeRoutine(routine: { cron: string; once: boolean; nextRunAt: string | null }): string {
+  if (!routine.once) return describeSchedule(routine.cron);
+  return routine.nextRunAt ? `Once, ${new Date(routine.nextRunAt).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}` : "Once";
+}

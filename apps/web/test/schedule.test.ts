@@ -1,5 +1,5 @@
-import { expect, test } from "bun:test";
-import { describeSchedule } from "../lib/schedule";
+import { describe, expect, test } from "bun:test";
+import { describeRoutine, describeSchedule } from "../lib/schedule";
 
 test("a routine's schedule reads as words, never as its cron", () => {
   expect(describeSchedule("0 8 * * 1-5")).toBe("Weekdays at 8:00 AM");
@@ -16,4 +16,12 @@ test("a routine's schedule reads as words, never as its cron", () => {
   expect(describeSchedule("*/15 * * * *")).toBe("Every 15 minutes");
   expect(describeSchedule("0 */4 * * *")).toBe("Every 4 hours");
   for (const odd of ["0 9 * 1 *", "*/5 9-17 * * 1-5", "nonsense", "0 9 1 * 1"]) expect(describeSchedule(odd)).toBe("On a custom schedule");
+});
+
+describe("a reminder", () => {
+  test("says once and when, not the yearly schedule its cron would read as", () => {
+    expect(describeRoutine({ cron: "0 9 * * 1-5", once: false, nextRunAt: null })).toBe("Weekdays at 9:00 AM");
+    expect(describeRoutine({ cron: "0 8 24 10 *", once: true, nextRunAt: null })).toBe("Once");
+    expect(describeRoutine({ cron: "0 8 24 10 *", once: true, nextRunAt: "2026-10-24T08:00:00Z" })).toMatch(/^Once, .*24/);
+  });
 });

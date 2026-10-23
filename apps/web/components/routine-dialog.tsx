@@ -47,8 +47,8 @@ export function RoutineDetails({ bot, routine, onClose, onChange }: { bot: Bot; 
         <FieldGroup className="gap-4">
           <Field>
             <FieldTitle>When</FieldTitle>
-            <p className="text-sm">{describeSchedule(routine.cron)}</p>
-            {routine.enabled && routine.nextRunAt ? <FieldDescription>Next {when(routine.nextRunAt)}</FieldDescription> : null}
+            <p className="text-sm">{routine.once ? "Once, then it removes itself" : describeSchedule(routine.cron)}</p>
+            {routine.enabled && routine.nextRunAt ? <FieldDescription>{routine.once ? "On" : "Next"} {when(routine.nextRunAt)}</FieldDescription> : null}
           </Field>
           {routine.skillId ? (
             <Field>
