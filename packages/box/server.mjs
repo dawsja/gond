@@ -1521,7 +1521,7 @@ const agents = new Map();
 const sessions = createSessionStore(path.join(STATE_DIR, "sessions.json"));
 
 function rememberSession(agent) {
-  sessions.remember(agent.id, agent.sessionId ? { user: agent.user, engine: agent.engine, sessionId: agent.sessionId } : null);
+  sessions.remember(agent.id, agent.sessionId ? { user: agent.user, engine: agent.engine, sessionId: agent.sessionId, backend: agent.backend } : null);
 }
 
 async function agentFor(account, id, bot, engine = "claude") {
@@ -1549,6 +1549,7 @@ async function agentFor(account, id, bot, engine = "claude") {
     });
     agent.user = account.id;
     agent.sessionId = sessions.get(id, account.id, engine);
+    agent.backend = sessions.backendOf(id);
     agents.set(id, agent);
   }
   return agent;

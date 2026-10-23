@@ -170,6 +170,20 @@ export function keyRefusal(event) {
   return null;
 }
 
+/**
+ * The model service a session's history was made on. A session never resumes on another: Claude can't
+ * read another's thinking, and a model that doesn't know its context size would compact the lot first.
+ */
+export function backendOf(access) {
+  if (access?.kind !== "api") return "plan";
+  return `api:${createHash("sha256").update(`${access.baseUrl}\n${access.token}`).digest("hex").slice(0, 16)}`;
+}
+
+/** What Claude Code is busy with that it doesn't otherwise say, as the turn's activity line. */
+export function statusLine(event) {
+  return event?.type === "system" && event.subtype === "status" && event.status === "compacting" ? "Summarizing the conversation so far" : null;
+}
+
 /** A retry Claude Code would otherwise keep to itself, as the turn's activity line. */
 export function retryLine(event) {
   if (event?.type !== "system" || event.subtype !== "api_retry") return null;
@@ -268,6 +282,12 @@ export class AgentSession extends BridgedSession {
     const mcpRevs = (Array.isArray(mcpServers) ? mcpServers : []).map((server) => (typeof server?.rev === "string" ? server.rev : null));
     const argsKey = argsKeyFor({ model, maxTurns, toolNames, permission, mcpServers: mcpServersConfig(mcpServers), mcpRevs, access });
     this.tools = tools;
+    const backend = backendOf(access);
+    if (this.backend && this.backend !== backend) {
+      if (this.running) await this.close({ keepSession: false });
+      this.sessionId = null;
+    }
+    this.backend = backend;
     if (this.running && this.argsKey === argsKey) return { launched: false };
     if (this.running) await this.close({ keepSession: true });
     this.launchEnv = { ...this.env, ...claudeAccessEnv(access) };
@@ -405,9 +425,9 @@ export class AgentSession extends BridgedSession {
       this.kill();
       return;
     }
-    const retrying = retryLine(event);
-    if (retrying) {
-      this.turn.onEvent({ type: "activity", line: retrying });
+    const busy = retryLine(event) ?? statusLine(event);
+    if (busy) {
+      this.turn.onEvent({ type: "activity", line: busy });
       return;
     }
     if (event.parent_tool_use_id) return;

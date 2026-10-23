@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { claudeAccessEnv, keyRefusal, parseAccess, retryLine } from "../agents.mjs";
+import { backendOf, claudeAccessEnv, keyRefusal, parseAccess, retryLine, statusLine } from "../agents.mjs";
 import { permissionDecision } from "../bridge.mjs";
 import { insideHome, HttpError } from "../server.mjs";
 
@@ -34,6 +34,21 @@ test("a key the provider turns down ends the turn instead of ten silent retries"
   assert.equal(keyRefusal(retry(429)), null);
   assert.equal(keyRefusal(retry(529)), null);
   assert.equal(keyRefusal({ type: "system", subtype: "init" }), null);
+});
+
+test("a session's model service is the plan, or the key behind the proxy without the token in it", () => {
+  assert.equal(backendOf({ kind: "plan" }), "plan");
+  assert.equal(backendOf(undefined), "plan");
+  const keyed = backendOf(API);
+  assert.match(keyed, /^api:[0-9a-f]{16}$/);
+  assert.equal(keyed.includes(API.token), false);
+  assert.equal(backendOf({ ...API }), keyed);
+  assert.notEqual(backendOf({ ...API, token: "tok_zyxwvutsrqponmlk" }), keyed);
+});
+
+test("compacting shows as the turn's activity", () => {
+  assert.equal(statusLine({ type: "system", subtype: "status", status: "compacting" }), "Summarizing the conversation so far");
+  assert.equal(statusLine({ type: "system", subtype: "status", status: "requesting" }), null);
 });
 
 test("a retry the CLI keeps to itself shows as the turn's activity", () => {

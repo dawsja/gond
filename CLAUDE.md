@@ -746,7 +746,12 @@ what is here. The README says what Gond is; this says how it is made.
   `src/transcript.ts`. Session
   ids survive a restart in `/state/sessions.json` (`createSessionStore`),
   per agent, person and engine, forgotten with the bot, the person or a
-  reset. What drops out of the window is folded, `SUMMARY_BATCH` at a
+  reset. Each keeps the model service it was made on (`backendOf`: the
+  plan, or which key), and a session never resumes on another: Claude
+  can't read another model's thinking, and a model whose context size
+  Claude Code doesn't know would first compact the whole history, for
+  minutes, before reading the new line. Compacting shows as the work line
+  (`statusLine`). What drops out of the window is folded, `SUMMARY_BATCH` at a
   time, into `gond_thread_summaries` (`src/summaries.ts`) by a one-turn,
   tool-less call on the person's own engine after a reply, redacted
   before it is kept; the full prompt carries it as "Earlier in this

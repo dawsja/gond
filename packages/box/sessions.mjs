@@ -38,9 +38,13 @@ export function createSessionStore(file, { fs = nodeFs } = {}) {
     },
     remember(id, entry) {
       const before = JSON.stringify(saved.get(id) ?? null);
-      if (entry && valid(entry)) saved.set(id, { user: entry.user, engine: entry.engine, sessionId: entry.sessionId });
+      if (entry && valid(entry)) saved.set(id, { user: entry.user, engine: entry.engine, sessionId: entry.sessionId, ...(typeof entry.backend === "string" && entry.backend.length <= 100 ? { backend: entry.backend } : {}) });
       else saved.delete(id);
       if (JSON.stringify(saved.get(id) ?? null) !== before) write();
+    },
+    /** The model service the agent's session was made on; every session from before this was kept was on the plan. */
+    backendOf(id) {
+      return saved.get(id)?.backend ?? "plan";
     },
     /** Forgets an agent's session; with a user, only if it was theirs. */
     forget(id, user) {

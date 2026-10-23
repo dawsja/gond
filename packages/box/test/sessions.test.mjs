@@ -20,6 +20,17 @@ test("a saved session comes back after a restart, only for its person and engine
   assert.equal((fs.statSync(file).mode & 0o777).toString(8), "600");
 });
 
+test("a session remembers the model service it was made on, and one from before was the plan's", () => {
+  const file = tempFile();
+  const store = createSessionStore(file);
+  store.remember("old", { user: "u-1", engine: "claude", sessionId: "s-old" });
+  store.remember("keyed", { user: "u-1", engine: "claude", sessionId: "s-key", backend: "api:0123456789abcdef" });
+  const again = createSessionStore(file);
+  assert.equal(again.backendOf("old"), "plan");
+  assert.equal(again.backendOf("keyed"), "api:0123456789abcdef");
+  assert.equal(again.backendOf("missing"), "plan");
+});
+
 test("sessions are forgotten with the agent, the person, or a reset", () => {
   const file = tempFile();
   const store = createSessionStore(file);

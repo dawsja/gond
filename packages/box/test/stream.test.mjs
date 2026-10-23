@@ -66,3 +66,27 @@ test("on an API key, a refused key ends the turn at once with words instead of m
   assert.ok(Date.now() - started < 10_000);
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test("moving between the plan and a key starts a fresh session instead of resuming one the new model can't hold", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "gond-backend-"));
+  const bin = path.join(dir, "claude");
+  const calls = path.join(dir, "calls.txt");
+  fs.writeFileSync(bin, `#!/bin/sh\nif [ "$1" = "--version" ]; then echo "2.1.309 (Claude Code)"; exit 0; fi\necho "$*" >> ${calls}\nsleep 30\n`, { mode: 0o755 });
+  const session = new AgentSession({ id: "backend-test", cwd: dir, env: {}, socketDir: dir, mcpScript: "/dev/null", bin });
+  session.sessionId = "s-from-the-plan";
+  session.backend = "plan";
+  const settings = { model: "k3.1-pro", systemPrompt: "", tools: [] };
+  const onPlan = await session.ensure({ ...settings, model: "opus" });
+  assert.equal(onPlan.resumed, true);
+  const onKey = await session.ensure({ ...settings, access: { kind: "api", baseUrl: "http://api:8790/api/llm/anthropic", token: "tok_abcdefghijklmnop", smallModel: "k3.1-pro" } });
+  assert.equal(onKey.resumed, false);
+  assert.notEqual(session.sessionId, "s-from-the-plan");
+  assert.match(session.backend, /^api:/);
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  const launches = fs.readFileSync(calls, "utf8").trim().split("\n");
+  assert.match(launches[0], /--resume s-from-the-plan/);
+  assert.match(launches[1], /--session-id /);
+  assert.doesNotMatch(launches[1], /s-from-the-plan/);
+  await session.close({ keepSession: false });
+  fs.rmSync(dir, { recursive: true, force: true });
+});
