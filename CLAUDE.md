@@ -1301,7 +1301,15 @@ what is here. The README says what Gond is; this says how it is made.
   secret with a `site`, encrypted like every other; a code is never
   stored, and nothing on the card is ever written in plain text. A later
   `request_login` for saved details asks first (`mustAsk`, Always allow
-  saves `request_login`), then holds them the same way. `readLogin` only
+  saves `request_login`), then holds them the same way. A bot names one
+  site several ways ("Nginx Proxy Manager", "… (npm.zerd.cc)"), so saved
+  details are found loosely (`savedLoginFor` in `src/logins.ts`: the same
+  name, the same host in a "(host)" note, an email for a username;
+  `coverLogin` in shared), the system prompt lists the saved sites
+  ("Saved sign-ins"), and `fresh` asks the person again when they were
+  turned down. Anything the match misses, the card's "Use a saved
+  sign-in" picks by hand: the API fills those fields from the saved
+  secrets and the web never sees a value. `readLogin` only
   reads secrets with a site, so an API key can never be typed into a
   page.
 - **Skills are each person's own library of folders**

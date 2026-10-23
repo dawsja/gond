@@ -1060,11 +1060,13 @@ describe("a reply as it is written", () => {
     const { systemPromptFor, skillsInUse } = await import("../src/souls.ts");
     const bot = { id: "b1", userId: "u1", name: "Scout", title: "", description: "", approval: "auto", primary: true } as never;
     const thread = { id: "t1", kind: "bot", name: "", members: [] } as never;
-    const context = { bots: [], thread, memory: null, teamMemory: null, connections: [], toolNotes: "notes", timezone: "UTC", skillsIndex: "- /tidy: Tidy", mcpServers: [], talk: { style: "default" as const, emoji: "default" as const } };
+    const context = { bots: [], thread, memory: null, teamMemory: null, connections: [], toolNotes: "notes", timezone: "UTC", skillsIndex: "- /tidy: Tidy", mcpServers: [], logins: [], talk: { style: "default" as const, emoji: "default" as const } };
     const system = systemPromptFor(bot, context);
     expect(system.indexOf("## House rules")).toBeLessThan(system.indexOf("## Memory"));
     expect(system.indexOf("## Tools")).toBeLessThan(system.indexOf("## Where you are"));
     expect(system).not.toContain("Skill in use");
+    expect(system).not.toContain("## Saved sign-ins");
+    expect(systemPromptFor(bot, { ...context, logins: ["AdGuard Home"] })).toContain("## Saved sign-ins\n- AdGuard Home\n");
     expect(skillsInUse([{ slug: "tidy", name: "Tidy", description: "", instructions: "Sort it.", files: [] } as never])).toContain("## Skill in use: /tidy (Tidy)");
   });
 
@@ -1073,7 +1075,7 @@ describe("a reply as it is written", () => {
     const { systemPromptFor } = await import("../src/souls.ts");
     const bot = { id: "b1", userId: "u1", name: "Scout", title: "", description: "", approval: "auto", primary: true } as never;
     const thread = { id: "t1", kind: "bot", name: "", members: [] } as never;
-    const base = { bots: [], thread, memory: null, teamMemory: null, connections: [], toolNotes: "", timezone: "UTC", skillsIndex: "", mcpServers: [], talk: { style: "default" as const, emoji: "default" as const } };
+    const base = { bots: [], thread, memory: null, teamMemory: null, connections: [], toolNotes: "", timezone: "UTC", skillsIndex: "", mcpServers: [], logins: [], talk: { style: "default" as const, emoji: "default" as const } };
     const notes = (count: number, last: string) => [...Array.from({ length: count }, (_, i) => `- note ${i} ${"x".repeat(90)}`), last].join("\n");
 
     const small = systemPromptFor(bot, { ...base, memory: "- Likes short answers." });
@@ -1105,7 +1107,7 @@ describe("a reply as it is written", () => {
     const { howToTalk, systemPromptFor, talkReminder } = await import("../src/souls.ts");
     const bot = { id: "b1", userId: "u1", name: "Scout", title: "", description: "", approval: "auto", primary: true } as never;
     const thread = { id: "t1", kind: "bot", name: "", members: [] } as never;
-    const base = { bots: [], thread, memory: null, teamMemory: null, connections: [], toolNotes: "", timezone: "UTC", skillsIndex: "", mcpServers: [] };
+    const base = { bots: [], thread, memory: null, teamMemory: null, connections: [], toolNotes: "", timezone: "UTC", skillsIndex: "", mcpServers: [], logins: [] };
     expect(systemPromptFor(bot, { ...base, talk: { style: "default", emoji: "default" } })).not.toContain("How the person wants you to talk");
     expect(talkReminder({ style: "default", emoji: "default" })).toBe("");
 
@@ -1405,6 +1407,26 @@ describe("login fields", () => {
     expect((fields as { kind: string }[]).map((f) => rememberable(f as never))).toEqual([true, true, false, false]);
     expect(loginFields("X", [])).toHaveProperty("error");
     expect(loginFields("X", [{ kind: "ssn" }])).toHaveProperty("error");
+  });
+
+  test("a site named another way finds its saved details", async () => {
+    const { loginFields, loginPrefix, savedLoginFor, siteKeys } = await import("../src/logins.ts");
+    expect(siteKeys("Nginx Proxy Manager (https://npm.zerd.cc/login)")).toEqual(["nginxproxymanager", "npmzerdcc"]);
+    const saved = [
+      { name: "NGINX_PROXY_MANAGER_192_168_6_128_81_EMAIL", site: "Nginx Proxy Manager (192.168.6.128:81)", updatedAt: "2026-10-21T00:00:00Z" },
+      { name: "NGINX_PROXY_MANAGER_192_168_6_128_81_PASSWORD", site: "Nginx Proxy Manager (192.168.6.128:81)", updatedAt: "2026-10-21T00:00:00Z" },
+      { name: "NGINX_PROXY_MANAGER_NPM_ZERD_CC_EMAIL", site: "Nginx Proxy Manager (npm.zerd.cc)", updatedAt: "2026-10-22T00:00:00Z" },
+      { name: "NGINX_PROXY_MANAGER_NPM_ZERD_CC_PASSWORD", site: "Nginx Proxy Manager (npm.zerd.cc)", updatedAt: "2026-10-22T00:00:00Z" },
+      { name: "ADGUARD_HOME_USERNAME", site: "AdGuard Home", updatedAt: "2026-10-20T00:00:00Z" },
+      { name: "ADGUARD_HOME_PASSWORD", site: "AdGuard Home", updatedAt: "2026-10-20T00:00:00Z" },
+    ];
+    const ask = (site: string, kinds: string[]) => savedLoginFor(site, loginFields(loginPrefix(site), kinds) as never, saved);
+    expect(ask("Nginx Proxy Manager", ["email", "password"])).toEqual(new Map([["NGINX_PROXY_MANAGER_EMAIL", "NGINX_PROXY_MANAGER_NPM_ZERD_CC_EMAIL"], ["NGINX_PROXY_MANAGER_PASSWORD", "NGINX_PROXY_MANAGER_NPM_ZERD_CC_PASSWORD"]]));
+    expect(ask("NPM (192.168.6.128:81)", ["email", "password"])?.get("NPM_192_168_6_128_81_EMAIL")).toBe("NGINX_PROXY_MANAGER_192_168_6_128_81_EMAIL");
+    expect(ask("adguard home (10.0.0.2)", ["email", "password"])?.get("ADGUARD_HOME_10_0_0_2_EMAIL")).toBe("ADGUARD_HOME_USERNAME");
+    expect(ask("AdGuard Home", ["username", "password", "code"])).toBeNull();
+    expect(ask("AdGuard Home", ["phone", "password"])).toBeNull();
+    expect(ask("Uptime Kuma", ["username", "password"])).toBeNull();
   });
 });
 

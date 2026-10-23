@@ -6,7 +6,7 @@ import { getBot, getPrimary, listBots } from "./data/bots.ts";
 import { type Delegation, finishDelegation, handoffWorkedOn, isDelegationResult, openChildren, openDelegationsFrom, openDelegationsTo } from "./data/delegations.ts";
 import { cancelFollowUpsIn } from "./data/follow-ups.ts";
 import { finishRoutineRun } from "./data/routines.ts";
-import { allSecretValues } from "./data/secrets.ts";
+import { allSecretValues, listSecrets } from "./data/secrets.ts";
 import { userTalk, userTimezone } from "./data/prefs.ts";
 import { listConnections } from "./data/settings.ts";
 import { listSkills } from "./data/skills.ts";
@@ -562,6 +562,7 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
       timezone: userTimezone(thread.userId),
       skillsIndex: skillsIndex(skills),
       talk: userTalk(thread.userId),
+      logins: [...new Set(listSecrets(bot.userId).flatMap((s) => (s.site ? [s.site] : [])))],
       mcpServers: nativeMcp?.servers ?? mcpServersFor(bot).map((m) => ({ name: m.name, note: m.authStatus === "needed" ? `not attached yet: it waits for the person to sign in, from its card or Settings → Apps → MCP servers → ${m.name} → Sign in, and its tools arrive on your next reply after that` : m.authStatus === "error" ? `sign-in problem (${m.authError ?? "unknown"}); its tools may fail` : undefined })),
     });
 

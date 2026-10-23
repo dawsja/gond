@@ -137,6 +137,7 @@ export type PromptContext = {
   skillsIndex: string;
 
   mcpServers: McpServerNote[];
+  logins: string[];
   talk: { style: ReplyStyle; emoji: EmojiLevel };
 };
 
@@ -160,6 +161,7 @@ export function systemPromptFor(bot: Bot, context: PromptContext): string {
     renderSoul(bot).trim(),
     `## Team\n${roster(context.bots, bot)}`,
     `## Connected apps\n${apps.length ? `${apps.map((a) => `- ${a.name}: tools named ${a.toolkit.toUpperCase()}_…`).join("\n")}\nCall an app's tools directly for anything in it (on Claude Code they are mcp__gond__<NAME>; search your tools for the app's name if they aren't listed). Never look through files or the shell for an app's data.` : "- None connected to you yet. Ask the person to connect one under Settings → Apps → Connected apps, or use the browser."}`,
+    context.logins.length ? `## Saved sign-ins\n${context.logins.map((site) => `- ${site}`).join("\n")}\nThe person saved their details for these sites. When one of them asks you to sign in, call request_login with the site named as it is here: the saved details are used after one tap, with no form to fill in.` : "",
     `## Skills (the person's library, ~/.skills)\n${context.skillsIndex}`,
     context.mcpServers.length ? `## Your MCP servers\n${context.mcpServers.map((m) => `- ${m.name}: ${m.note ?? `tools named mcp__${m.name}__…`}`).join("\n")}\nThey are the person's own servers, attached to every bot's session by Gond; their writes go through approval like any other. Use their tools directly for anything they cover. If one's tools are missing or a call says it needs a sign-in, tell the person in one line; never look for MCP settings, tokens or credentials in ~/.claude or any config file, and never try to sign a server in yourself.` : "",
     teamMemory,

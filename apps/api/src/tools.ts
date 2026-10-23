@@ -18,7 +18,7 @@ import { createSkill, getSkill, getSkillBySlug, listSkills, skillFiles, updateSk
 import { createRoutine, deleteRoutine, listRoutines, previewRuns, recordRoutineRun, routinePrompt, updateRoutine } from "./data/routines.ts";
 import { botLinesSincePerson, createRoom, listMessages, markAnswered, postMessage, recentMessages, searchMessages, setReaction, storeAttachment, threadRefs } from "./data/threads.ts";
 import { clipToolResult as clip, type DriverTool } from "./driver.ts";
-import { holdLogin, loginFields, loginPrefix, rememberable } from "./logins.ts";
+import { holdLogin, loginFields, loginPrefix, savedLoginFor } from "./logins.ts";
 import { checkMcpHeaders, secretNamesIn } from "./mcp.ts";
 import { probeMcpServer } from "./mcp-oauth.ts";
 import { botHome, kb, memoryPath, MAX_MEMORY_BYTES, MAX_TEAM_MEMORY_BYTES, NEARLY_FULL, teamDir, teamMemoryPath } from "./memory.ts";
@@ -738,7 +738,7 @@ export function baseTools(context: Context): Record<string, DriverTool> {
     },
     request_login: {
       description:
-        "Sign in to a website you have open on the computer. Call it when the page asks for an email, username, phone number, password or a code: it posts one card with those fields, the person fills it in, and you never see what they typed. Then click into each field and send a type_login action (to the browser or computer tool) with the name this returns. When the person saved their details for the site, they're used without a card once the person allows it.",
+        "Sign in to a website you have open on the computer. Call it when the page asks for an email, username, phone number, password or a code: it posts one card with those fields, the person fills it in, and you never see what they typed. Then click into each field and send a type_login action (to the browser or computer tool) with the name this returns. When the person saved their details for the site, they're used without a card once the person allows it: name the site as it is in your saved sign-ins. Set fresh only when the saved details just failed on the page.",
       inputSchema: schema(
         {
           site: { type: "string", description: "The site as the person knows it, like Uber Eats or amazon.com." },
@@ -748,6 +748,7 @@ export function baseTools(context: Context): Record<string, DriverTool> {
             items: { type: "object", properties: { kind: { type: "string", enum: [...LOGIN_FIELD_KINDS] }, label: { type: "string", description: "The page's own words for it when they differ, like 'Mobile number or email'." } }, required: ["kind"], additionalProperties: false },
           },
           reason: { type: "string", description: "What it's for, in one line, like 'to order your Dr Pepper'." },
+          fresh: { type: "boolean", description: "True when the saved details were refused by the page, to ask the person for new ones." },
         },
         ["site", "fields"],
       ),
@@ -758,11 +759,15 @@ export function baseTools(context: Context): Record<string, DriverTool> {
         const fields = loginFields(prefix, input.fields);
         if ("error" in fields) return `NOT asked: ${fields.error}.`;
         const next = `Click into each field and send a type_login action with its name: ${fields.map((f) => f.name).join(", ")}. Never read what you typed back off the screen.`;
-        if (fields.every((f) => rememberable(f) && readLogin(bot.userId, f.name) !== null)) {
+        const saved = input.fresh === true ? null : savedLoginFor(site, fields, listSecrets(bot.userId).flatMap((s) => (s.site ? [{ name: s.name, site: s.site, updatedAt: s.updatedAt }] : [])));
+        if (saved) {
           const decision = await requestApproval({ bot, threadId: thread.id, tool: "request_login", input: { site }, summary: `Sign in to ${site} with your saved details`, signal: context.signal });
           if (decision === "allow" || decision === "always") {
-            for (const f of fields) holdLogin(thread.id, f.name, readLogin(bot.userId, f.name)!);
-            return `The saved details for ${site} are ready. ${next}`;
+            for (const f of fields) {
+              const value = readLogin(bot.userId, saved.get(f.name)!);
+              if (value !== null) holdLogin(thread.id, f.name, value);
+            }
+            return `The saved details for ${site} are ready. ${next} If the page turns them down, call request_login again with fresh: true.`;
           }
           if (decision === "expired") return expiredText(`to sign in to ${site}`);
         }
@@ -785,7 +790,7 @@ export function baseTools(context: Context): Record<string, DriverTool> {
     list_secrets: {
       description: "The names of the stored secrets (never their values).",
       inputSchema: schema({}),
-      execute: async () => listSecrets(bot.userId).map((s) => `- ${s.name}${s.site ? ` (saved sign-in for ${s.site}; use it through request_login)` : ""}`).join("\n") || "No secrets stored.",
+      execute: async () => listSecrets(bot.userId).map((s) => `- ${s.name}${s.site ? ` (saved sign-in for ${s.site}; use it through request_login with that site)` : ""}`).join("\n") || "No secrets stored.",
     },
     connect_app: {
       description: "Connect one of the person's apps: looks it up among the apps Gond can connect (Composio); starts the connection and returns the sign-in link, or says how to attach it as an MCP server when it isn't there.",

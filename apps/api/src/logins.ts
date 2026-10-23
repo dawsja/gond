@@ -1,4 +1,4 @@
-import { LOGIN_FIELD_KINDS, type LoginField, type LoginFieldKind } from "@gond/shared";
+import { coverLogin, LOGIN_FIELD_KINDS, type LoginField, type LoginFieldKind } from "@gond/shared";
 
 // A sign-in detail is held here, for the conversation that asked, until it goes stale: the bot
 // types it with type_login and never sees it. Codes and anything the person didn't ask to
@@ -74,3 +74,56 @@ export function loginFields(prefix: string, raw: unknown): LoginField[] | { erro
 }
 
 export const rememberable = (field: LoginField) => field.kind !== "code";
+
+/**
+ * What a site goes by, squashed: its name without a "(host)" note, and the note as a host. A bot
+ * names one site three ways ("Nginx Proxy Manager", "… (npm.zerd.cc)", "… (192.168.6.128:81)"),
+ * and each would otherwise be a sign-in of its own that is never found again.
+ */
+export function siteKeys(site: string): string[] {
+  const squash = (part: string) =>
+    part
+      .toLowerCase()
+      .replace(/^[a-z]+:\/\//, "")
+      .replace(/^www\./, "")
+      .replace(/\/.*$/, "")
+      .replace(/[^a-z0-9]+/g, "");
+  const note = /\(([^)]*)\)/.exec(site)?.[1] ?? "";
+  const keys = [squash(site.replace(/\([^)]*\)/g, " ")), squash(note)].filter(Boolean);
+  return [...new Set(keys)];
+}
+
+export type SavedLogin = { name: string; site: string; updatedAt: string };
+
+/**
+ * The saved details that sign in to this site, as the field's name for this request to the saved
+ * secret's name, or null when nothing saved covers every field. The same site written the same
+ * way wins, then the same host, then the same name; among equals, the newest.
+ */
+export function savedLoginFor(site: string, fields: LoginField[], saved: SavedLogin[]): Map<string, string> | null {
+  if (!fields.length || !fields.every(rememberable)) return null;
+  const prefix = loginPrefix(site);
+  const keys = siteKeys(site);
+  const host = keys[1];
+  const rank = (other: string) => {
+    if (loginPrefix(other) === prefix) return 3;
+    const theirs = siteKeys(other);
+    if (host && theirs.includes(host)) return 2;
+    return theirs.some((key) => keys.includes(key)) ? 1 : 0;
+  };
+  const sites = new Map<string, { rank: number; newest: string; names: string[] }>();
+  for (const row of saved) {
+    const score = rank(row.site);
+    if (!score) continue;
+    const entry = sites.get(row.site) ?? { rank: score, newest: "", names: [] };
+    entry.names.push(row.name);
+    if (row.updatedAt > entry.newest) entry.newest = row.updatedAt;
+    sites.set(row.site, entry);
+  }
+  const ordered = [...sites.values()].sort((a, b) => b.rank - a.rank || b.newest.localeCompare(a.newest));
+  for (const { names } of ordered) {
+    const found = coverLogin(fields, names);
+    if (found.size === fields.length) return found;
+  }
+  return null;
+}

@@ -1119,7 +1119,7 @@ describe("data", () => {
       expect(servers.find((m) => m.name === "notion")?.note).toContain("sign in");
       expect(servers.find((m) => m.name === "local")?.note).toContain("not a plan or an API key");
 
-      const system = systemPromptFor(bot, { bots: [], thread, memory: null, teamMemory: null, connections: [], toolNotes: "", timezone: "UTC", skillsIndex: "", mcpServers: servers, talk: { style: "default", emoji: "default" } });
+      const system = systemPromptFor(bot, { bots: [], thread, memory: null, teamMemory: null, connections: [], toolNotes: "", timezone: "UTC", skillsIndex: "", mcpServers: servers, logins: [], talk: { style: "default", emoji: "default" } });
       expect(system).toContain("- toad: tools named mcp__toad__…");
       expect(system).toContain("- notion: not attached yet");
     } finally {
@@ -1772,14 +1772,14 @@ describe("data", () => {
       expect(await toolsFor("u-other")).toEqual([]);
       await expect(executeAction("u-other", "GMAIL_SEND_EMAIL", {}, "gmail")).rejects.toThrow();
       const thread = getThread(comet.threadId)!;
-      const system = systemPromptFor(comet, { bots: listBots({ includeHidden: true, userId: "u-other" }), thread, memory: null, teamMemory: null, connections: listConnections("u-other"), toolNotes: "", timezone: "UTC", skillsIndex: "", mcpServers: [], talk: { style: "default", emoji: "default" } });
+      const system = systemPromptFor(comet, { bots: listBots({ includeHidden: true, userId: "u-other" }), thread, memory: null, teamMemory: null, connections: listConnections("u-other"), toolNotes: "", timezone: "UTC", skillsIndex: "", mcpServers: [], logins: [], talk: { style: "default", emoji: "default" } });
       expect(system.startsWith("## What you are\nYou are a personal assistant, not a coding agent.")).toBe(true);
       expect(system).toContain("Nobody else yet");
       expect(system).toContain("~/.team/u-other/MEMORY.md");
       expect(system).not.toContain("Dylan");
       expect(system).toContain("None connected to you yet");
       expect(system).not.toContain("- Gmail");
-      const withNotion = systemPromptFor(comet, { bots: [], thread, memory: null, teamMemory: null, connections: [{ toolkit: "notion", name: "Notion", accountId: "acc-n", status: "active" }] as never, toolNotes: "", timezone: "UTC", skillsIndex: "", mcpServers: [], talk: { style: "default", emoji: "default" } });
+      const withNotion = systemPromptFor(comet, { bots: [], thread, memory: null, teamMemory: null, connections: [{ toolkit: "notion", name: "Notion", accountId: "acc-n", status: "active" }] as never, toolNotes: "", timezone: "UTC", skillsIndex: "", mcpServers: [], logins: [], talk: { style: "default", emoji: "default" } });
       expect(withNotion).toContain("- Notion: tools named NOTION_…");
       expect(withNotion).toContain("mcp__gond__<NAME>");
 
@@ -3160,6 +3160,18 @@ describe("the computer", () => {
       expect(String(await again)).toContain("saved details for Uber Eats are ready");
       await computerTool({ box, bot: other, thread: otherThread }).browser.execute({ actions: [{ type: "type_login", name: "UBER_EATS_EMAIL" }] }, "t3");
       expect(state.actions.at(-1)).toEqual({ type: "type", text: "me@example.com", secret: true });
+
+      const picked = baseTools({ ...context, bot: other, thread: otherThread }).request_login!.execute({ site: "Grubhub", fields: ["username", "password", "code"] }, "c3");
+      await until(() => listMessages(otherThread.id).at(-1)?.kind === "secret");
+      const pickCard = listMessages(otherThread.id).at(-1)!;
+      const pick = (body: object) => routes.request(`/api/secret-requests/${pickCard.approvalId}`, { method: "POST", body: JSON.stringify(body) });
+      expect((await pick({ saved: "Doordash", values: { GRUBHUB_CODE: "1111" } })).status).toBe(404);
+      expect((await pick({ saved: "Uber Eats", values: {} })).status).toBe(400);
+      expect((await pick({ saved: "Uber Eats", values: { GRUBHUB_CODE: "1111" }, remember: true })).status).toBe(200);
+      expect(String(await picked)).toContain("GRUBHUB_USERNAME");
+      expect(listSecrets("u-admin").some((s) => s.name.startsWith("GRUBHUB"))).toBe(false);
+      await computerTool({ box, bot: other, thread: otherThread }).browser.execute({ actions: [{ type: "type_login", name: "GRUBHUB_USERNAME" }, { type: "type_login", name: "GRUBHUB_PASSWORD" }] }, "t4");
+      expect(state.batches.at(-1)?.steps).toEqual([{ type: "type", text: "me@example.com", secret: true }, { type: "type", text: "pw-plain-1234", secret: true }]);
 
       expect((await routes.request("/api/secrets/UBER_EATS_PASSWORD", { method: "DELETE" })).status).toBe(200);
       expect(readLogin("u-admin", "UBER_EATS_PASSWORD")).toBeNull();

@@ -1,8 +1,9 @@
+import { coverLogin } from "@gond/shared";
 import { Hono } from "hono";
 import { ownsThread, userId } from "../access.ts";
 import { applyComposioKey } from "../composio.ts";
 import type { Env } from "../app.ts";
-import { changeSecret, deleteSecret, getSecretRequest, listSecrets, resolveSecretRequest, setSecret } from "../data/secrets.ts";
+import { changeSecret, deleteSecret, getSecretRequest, listSecrets, readLogin, resolveSecretRequest, setSecret } from "../data/secrets.ts";
 import { threadRefs } from "../data/threads.ts";
 import { forgetHeldLogin, holdLogin, rememberable } from "../logins.ts";
 import { answerSecretRequest } from "../secret-requests.ts";
@@ -19,17 +20,26 @@ export function secretsRoutes() {
     const request = getSecretRequest(c.req.param("id"));
     if (!request || !ownsThread(c, request.threadId)) return c.json({ error: "Couldn't find that request" }, 404);
     if (request.status !== "pending") return c.json({ request });
-    const body = (await c.req.json().catch(() => ({}))) as { value?: string; values?: Record<string, unknown>; remember?: boolean; decline?: boolean };
+    const body = (await c.req.json().catch(() => ({}))) as { value?: string; values?: Record<string, unknown>; saved?: unknown; remember?: boolean; decline?: boolean };
     if (body.decline) return c.json({ request: answerSecretRequest(request.id, "declined") });
     try {
       if (request.target === "login") {
         const values = body.values && typeof body.values === "object" ? body.values : {};
-        const given = request.fields.map((field) => ({ field, value: typeof values[field.name] === "string" ? (values[field.name] as string) : "" }));
+        // A saved sign-in the person picked fills what it covers; its values never leave the API.
+        const site = typeof body.saved === "string" ? body.saved : null;
+        const savedNames = site ? listSecrets(userId(c)).filter((s) => s.site === site).map((s) => s.name) : [];
+        if (site && !savedNames.length) return c.json({ error: "Couldn't find that saved sign-in" }, 404);
+        const fromSaved = coverLogin(request.fields, savedNames);
+        const given = request.fields.map((field) => {
+          const saved = fromSaved.get(field.name);
+          if (saved) return { field, value: readLogin(userId(c), saved) ?? "", saved: true };
+          return { field, value: typeof values[field.name] === "string" ? (values[field.name] as string) : "", saved: false };
+        });
         if (given.some(({ value }) => !value)) return c.json({ error: "Fill in every field" }, 400);
         if (given.some(({ value }) => value.length > 1_000)) return c.json({ error: "That's too long" }, 400);
-        for (const { field, value } of given) {
+        for (const { field, value, saved } of given) {
           holdLogin(request.threadId, field.name, value);
-          if (body.remember === true && rememberable(field)) setSecret(userId(c), field.name, value, request.botId, request.site ?? request.name);
+          if (!saved && body.remember === true && rememberable(field)) setSecret(userId(c), field.name, value, request.botId, request.site ?? request.name);
         }
       } else if (request.target === "composio") applyComposioKey(userId(c), String(body.value ?? ""));
       else setSecret(userId(c), request.name, String(body.value ?? ""), request.botId);

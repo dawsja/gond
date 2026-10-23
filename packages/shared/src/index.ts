@@ -1168,6 +1168,40 @@ export const LOGIN_FIELD_LABELS: Record<LoginFieldKind, string> = {
   code: "Code",
 };
 
+/** What a saved sign-in detail is, from the end of its name: "UBER_EATS_PASSWORD" is PASSWORD, a second code CODE_2. */
+export function loginDetailOf(name: string): string | null {
+  return /_((?:EMAIL|USERNAME|PHONE|PASSWORD|CODE)(?:_\d+)?)$/.exec(name)?.[1] ?? null;
+}
+
+/**
+ * Which of one site's saved details fills each field, by its kind and count; an email and a
+ * username stand in for each other, since a page's "Email or username" is either. A code is never
+ * saved, so it is never covered. Fields left out are for the person to type.
+ */
+export function coverLogin(fields: LoginField[], saved: string[]): Map<string, string> {
+  const details = new Map<string, string>();
+  for (const name of saved) {
+    const detail = loginDetailOf(name);
+    if (detail && !details.has(detail)) details.set(detail, name);
+  }
+  const swap: Partial<Record<string, string>> = { EMAIL: "USERNAME", USERNAME: "EMAIL" };
+  const counts = new Map<LoginFieldKind, number>();
+  const used = new Set<string>();
+  const found = new Map<string, string>();
+  for (const field of fields) {
+    const count = (counts.get(field.kind) ?? 0) + 1;
+    counts.set(field.kind, count);
+    if (field.kind === "code") continue;
+    const kind = field.kind.toUpperCase();
+    const suffix = count > 1 ? `_${count}` : "";
+    const name = [kind, swap[kind]].map((k) => (k ? details.get(`${k}${suffix}`) : undefined)).find((n) => n && !used.has(n));
+    if (!name) continue;
+    used.add(name);
+    found.set(field.name, name);
+  }
+  return found;
+}
+
 export type PushSubscriptionInput = {
   endpoint: string;
   keys: { p256dh: string; auth: string };
