@@ -185,10 +185,10 @@ export function llmProxyRoutes() {
       upstream = await fetch(target, {
         method: c.req.method,
         headers,
-        body: c.req.method === "GET" || c.req.method === "HEAD" ? undefined : c.req.raw.body,
+        // Whole, with its length: a gateway that waits on a chunked upload would leave the turn hanging.
+        body: c.req.method === "GET" || c.req.method === "HEAD" ? undefined : await c.req.raw.arrayBuffer(),
         redirect: "manual",
         signal: c.req.raw.signal,
-        ...({ duplex: "half" } as object),
       });
     } catch (error) {
       return c.json({ error: { type: "api_error", message: `The provider didn't answer: ${error instanceof Error ? error.message : "unknown error"}` } }, 502);

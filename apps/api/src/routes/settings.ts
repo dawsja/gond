@@ -50,7 +50,7 @@ export function settingsRoutes() {
         }
         if (given.model !== undefined) {
           const model = String(given.model).trim();
-          if (!MODEL_ID_PATTERN.test(model)) return c.json({ error: "A model id is letters, digits and . _ : / -, up to 120 characters" }, 400);
+          if (!MODEL_ID_PATTERN.test(model)) return c.json({ error: "A model id is letters, digits and . _ : / -, up to 120 characters, and may end in [1m]" }, 400);
           next.model = model;
         }
         if (given.provider !== undefined) {

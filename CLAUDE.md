@@ -992,7 +992,14 @@ what is here. The README says what Gond is; this says how it is made.
   runs on their plan, or on their Anthropic-compatible key
   (`engines.claude.access` `api`): `engineRun` hands the box the LLM
   proxy's address and the key's proxy token (`claudeAccessEnv`), with the
-  key's model for Claude Code's background calls too. It is for a coding
+  key's model for every tier and sub-agent too, since such a key knows
+  none of Claude's names (a model id may end in Claude Code's `[1m]`). A
+  provider that turns the key down or doesn't know the model would have
+  Claude Code retry for minutes in silence, so on a key the box ends the
+  turn at its first such retry with a line saying which (`keyRefusal`);
+  any other retry shows as the work line (`retryLine`), never a silent
+  "Thinking…". The proxy sends a request's body whole, with its length.
+  It is for a coding
   plan that serves its key only to coding agents it knows, like Kimi Code,
   which refuses Gond's own `api` engine (`coderOnlyRefusal` says so in
   words). The proxy passes Claude Code's own headers on, and Gond never

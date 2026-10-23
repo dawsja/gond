@@ -49,3 +49,20 @@ test("a CLI that refuses an optional flag ends the turn so the route can launch 
   assert.equal(session.withoutOptional, true);
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test("on an API key, a refused key ends the turn at once with words instead of minutes of retries", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "gond-refused-"));
+  const bin = path.join(dir, "claude");
+  const retry = JSON.stringify({ type: "system", subtype: "api_retry", attempt: 1, max_retries: 10, retry_delay_ms: 1000, error_status: 401, error: "authentication_failed" });
+  fs.writeFileSync(bin, `#!/bin/sh\nread line\necho '${retry}'\nsleep 30\n`, { mode: 0o755 });
+  const session = new AgentSession({ id: "refused-test", cwd: dir, env: {}, socketDir: dir, mcpScript: "/dev/null", bin });
+  session.access = { kind: "api", baseUrl: "http://api:8790/api/llm/anthropic", token: "tok_abcdefghijklmnop" };
+  await session.spawn(["-p"], { resume: false });
+  const started = Date.now();
+  const done = await session.turnWith({ prompt: "hi", timeoutMs: 20_000, onEvent: () => undefined, systemPrompt: "" });
+  assert.equal(done.ok, false);
+  assert.equal(done.stopReason, "refused");
+  assert.match(done.error, /turned down your API key/);
+  assert.ok(Date.now() - started < 10_000);
+  fs.rmSync(dir, { recursive: true, force: true });
+});

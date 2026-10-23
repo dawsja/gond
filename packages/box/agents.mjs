@@ -83,7 +83,7 @@ export function parseAccess(value) {
   const baseUrl = typeof value.baseUrl === "string" ? value.baseUrl : "";
   const token = typeof value.token === "string" ? value.token : "";
   if (!/^https?:\/\/[^\s]+$/.test(baseUrl) || !/^[A-Za-z0-9_-]{16,200}$/.test(token)) return { kind: "plan" };
-  const smallModel = typeof value.smallModel === "string" && /^[A-Za-z0-9._:/-]{1,120}$/.test(value.smallModel) ? value.smallModel : null;
+  const smallModel = typeof value.smallModel === "string" && /^[A-Za-z0-9._:/-]{1,120}(?:\[1m\])?$/.test(value.smallModel) ? value.smallModel : null;
   return { kind: "api", baseUrl, token, smallModel };
 }
 
@@ -94,7 +94,10 @@ export function claudeAccessEnv(access) {
     ANTHROPIC_AUTH_TOKEN: access.token,
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
 
-    ...(access.smallModel ? { ANTHROPIC_DEFAULT_HAIKU_MODEL: access.smallModel, ANTHROPIC_SMALL_FAST_MODEL: access.smallModel } : {}),
+    // Every tier and sub-agent, since a key that isn't Anthropic's knows none of Claude's names.
+    ...(access.smallModel
+      ? Object.fromEntries(["ANTHROPIC_DEFAULT_FABLE_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL", "ANTHROPIC_SMALL_FAST_MODEL", "CLAUDE_CODE_SUBAGENT_MODEL"].map((name) => [name, access.smallModel]))
+      : {}),
   };
 }
 
@@ -154,6 +157,25 @@ export function settle(event) {
     text: typeof event.result === "string" ? event.result : "",
     stopReason: event.stop_reason ?? event.terminal_reason ?? null,
   };
+}
+
+/**
+ * A provider's refusal on an API key, which Claude Code would otherwise retry for minutes in silence:
+ * a refused key or an unknown model or address won't heal by asking again.
+ */
+export function keyRefusal(event) {
+  if (event?.type !== "system" || event.subtype !== "api_retry") return null;
+  if (event.error_status === 401 || event.error_status === 403) return "The provider turned down your API key. Check the key and its address under Settings → AI.";
+  if (event.error_status === 404) return "The provider doesn't know that model or address. Check both under Settings → AI.";
+  return null;
+}
+
+/** A retry Claude Code would otherwise keep to itself, as the turn's activity line. */
+export function retryLine(event) {
+  if (event?.type !== "system" || event.subtype !== "api_retry") return null;
+  const count = Number.isFinite(event.attempt) && Number.isFinite(event.max_retries) ? ` (${event.attempt} of ${event.max_retries})` : "";
+  const why = event.error_status === 429 ? "The model's API is busy or the plan's limit is reached" : "The model's API didn't answer";
+  return `${why}, trying again${count}`;
 }
 
 /**
@@ -249,6 +271,7 @@ export class AgentSession extends BridgedSession {
     if (this.running && this.argsKey === argsKey) return { launched: false };
     if (this.running) await this.close({ keepSession: true });
     this.launchEnv = { ...this.env, ...claudeAccessEnv(access) };
+    this.access = access;
 
     const version = claudeVersion({ bin: this.bin, env: this.env, uid: this.uid, gid: this.gid });
     const allowed = flagsFor(version);
@@ -327,8 +350,8 @@ export class AgentSession extends BridgedSession {
         turn.finish({
           ok: false,
           text: "",
-          stopReason: turn.interrupted ? "interrupted" : "exited",
-          error: turn.interrupted ? "The turn was interrupted" : this.stderr.trim().slice(0, 500) || `Claude Code exited (${signal ?? code})`,
+          stopReason: turn.refused ? "refused" : turn.interrupted ? "interrupted" : "exited",
+          error: turn.refused ?? (turn.interrupted ? "The turn was interrupted" : this.stderr.trim().slice(0, 500) || `Claude Code exited (${signal ?? code})`),
           resumeFailed: isResumeFailure({ resume: this.resume, sawInit: this.sawInit, stderr: this.stderr, exitCode: code }),
           flagRejected,
         });
@@ -375,6 +398,18 @@ export class AgentSession extends BridgedSession {
     }
     if (!this.turn) return;
 
+    // On the plan a 401 can be a sign-in being renewed, so only a key's refusal ends the turn here.
+    const refused = this.access?.kind === "api" ? keyRefusal(event) : null;
+    if (refused) {
+      this.turn.refused = refused;
+      this.kill();
+      return;
+    }
+    const retrying = retryLine(event);
+    if (retrying) {
+      this.turn.onEvent({ type: "activity", line: retrying });
+      return;
+    }
     if (event.parent_tool_use_id) return;
     if (isReplay(event)) {
       if (!this.turn.promptRead) this.turn.promptRead = true;

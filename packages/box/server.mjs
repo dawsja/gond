@@ -1515,7 +1515,7 @@ const STREAMED = Symbol("streamed");
 export const ENGINES = { claude: AgentSession };
 const ENGINE_BINS = { claude: CLAUDE_BIN };
 
-export const MODEL_ID = /^[A-Za-z0-9._:/-]{0,120}$/;
+export const MODEL_ID = /^(?:[A-Za-z0-9._:/-]{1,120}(?:\[1m\])?)?$/;
 
 const agents = new Map();
 const sessions = createSessionStore(path.join(STATE_DIR, "sessions.json"));

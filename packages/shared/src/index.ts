@@ -664,7 +664,8 @@ export type ModelList = { groups: ModelGroup[] };
 
 export type EngineSettings = { access: EngineAccess; model: string; provider?: ProviderKind | null };
 
-export const MODEL_ID_PATTERN = /^[A-Za-z0-9._:/-]{0,120}$/;
+/** A model id, or none; `[1m]` at the end is Claude Code's own mark for a model's 1M-token context. */
+export const MODEL_ID_PATTERN = /^(?:[A-Za-z0-9._:/-]{1,120}(?:\[1m\])?)?$/;
 
 export const DEFAULT_ENGINES: Record<Engine, EngineSettings> = {
   claude: { access: "plan", model: DEFAULT_MODEL },
