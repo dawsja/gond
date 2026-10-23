@@ -646,6 +646,8 @@ const MIGRATIONS: Array<string | ((db: Database) => void)> = [
   `,
   // Said out loud on a call rather than typed.
   `ALTER TABLE gond_messages ADD COLUMN spoken INTEGER NOT NULL DEFAULT 0;`,
+  // The voice a call speaks in, per provider, as JSON.
+  `ALTER TABLE gond_user_prefs ADD COLUMN call_voice TEXT;`,
 ];
 
 export const RENAME_VERSION = MIGRATIONS.indexOf(renameLegacyObjects) + 1;

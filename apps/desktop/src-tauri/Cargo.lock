@@ -1532,6 +1532,7 @@ dependencies = [
  "tauri-plugin-updater",
  "tiny_http",
  "url",
+ "webkit2gtk",
 ]
 
 [[package]]

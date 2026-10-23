@@ -25,7 +25,9 @@ what is here. The README says what Gond is; this says how it is made.
   and every command it reaches in `bridge.rs` checks the page's current
   origin against the saved server before doing anything, the way Android's
   `fromTrustedPage` does. `on_permission_request` in `lib.rs` allows
-  notifications, clipboard reads and the microphone to that origin only. The address rules live in the `server-url` crate
+  notifications, clipboard reads and the microphone to that origin only;
+  on Linux `allow_media` first turns WebKitGTK's media stream on, which
+  it ships off. The address rules live in the `server-url` crate
   with the same tests Android's `ServerUrl.kt` has. The menu bar is hidden
   unless the person turns it on (`menu_bar` in `config.json`, the switch in
   Settings → Appearance, applied to every window). The package scripts go
@@ -368,14 +370,18 @@ what is here. The README says what Gond is; this says how it is made.
   Voice picks; without one a tap says where to add one. The call lives in
   `CallProvider` (`call-provider.tsx`, inside the shell, so it outlives
   every screen): the microphone goes up as 24 kHz PCM from an AudioWorklet
-  (`public/call-capture.js`, `lib/call-audio.ts`) in short POSTs, and the
+  (`public/call-capture.js`, `lib/call-audio.ts`; a ScriptProcessor where
+  there is none, and either wired to the speakers through a silent gain,
+  since some engines only run what reaches them) in short POSTs, a
+  microphone that won't start says why (`MicError`), and the
   voice comes down the call's SSE stream and plays in order
   (`CallPlayer`), the same SSE-and-POST shape as the screen, since the
   API is reached through Next's proxy. In the call's own chat the
   composer is the call (`CallComposer`: mute, what is happening and the
-  clock, `CallWave`, hang up); what each side says shows faded as it is
-  said and then lands as a bubble with a small mic or speaker
-  (`SpokenMark`, `Message.spoken`). Anywhere else the call shrinks: on a
+  clock, `CallWave`, hang up). A call is heard, never read: the chat shows
+  only "Call started" and "Call ended", and what was said is kept for the
+  bot (`Message.spoken`) but left out of the chat, the list's preview,
+  unread counts and search. Anywhere else the call shrinks: on a
   phone to an ink pill under the header (`CallPill`, which sets
   `--call-pill-space` so screens leave room for it), on a wide screen to
   a card in the sidebar above the profile (`CallBar`, with mute, the
@@ -383,7 +389,16 @@ what is here. The README says what Gond is; this says how it is made.
   bot waits on a card either one shows the card's question with "Needs
   you". Leaving the chat never hangs up, and one call runs at a time
   (calling another bot asks first). Hang-up is the one solid red,
-  `variant="hangup"` on `--hangup`, in both themes.
+  `variant="hangup"` on `--hangup`, in both themes. Settings → Voice also
+  picks the call's voice (`call-voice-card.tsx`: xAI's own list from its
+  `/tts/voices`, OpenAI's `OPENAI_CALL_VOICES` from its docs since it has
+  no list, a sample through `/api/voice/sample` on the person's key, the
+  pick kept per provider as `call_voice`), and the microphone and speaker
+  (`audio-devices-card.tsx`, `lib/audio-devices.ts`: kept on that device,
+  since devices are, with a live level meter and a test sound; calls and
+  the composer's mic open the picked one through `microphone()` and fall
+  back to the system's when it's gone). A desktop app's webview takes the
+  system default, which is often not the headset the person talks into.
 - **Steps are recorded, never shown.** While a bot works the conversation
   shows one line of what it is doing (`WorkLine`); the work log behind it
   is kept by the API but the web never lists it. When several work at once
@@ -1054,7 +1069,11 @@ what is here. The README says what Gond is; this says how it is made.
   `POST /api/threads/:id/call` opens a WebSocket to the person's voice
   model with their key (`CALL_MODELS`: OpenAI's GPT-Live with client
   delegation, or xAI's realtime voice with `ask_bot`, `bot_status` and
-  `end_call` tools), so the key never reaches the page, and the page
+  `end_call` tools; xAI speaks one response at a time and drops a
+  `response.create` sent while one runs, so its asks go through
+  `SpeakQueue`, which waits its turn and asks again when one never
+  starts, and an answer is said through that response's own
+  instructions), so the key never reaches the page, and the page
   hears it on `/api/calls/:id/stream` and sends audio to
   `/api/calls/:id/audio`. Each provider's events read as the same
   signals (`readLiveEvent`, `readXaiEvent`, pure and tested). The voice
@@ -1063,10 +1082,10 @@ what is here. The README says what Gond is; this says how it is made.
   the bot's, on its own engine, with its memory, tools, cards and
   approvals; `botTurn` gives that answer to the voice instead of the chat
   (`answerOnCall`, and `closeCallTurn` when it ended with nothing), and
-  posts it as usual if the call has ended. What each side says is posted
-  as it settles (a pause of `SETTLE_MS`), answered and `spoken`, and the
-  bot's transcript marks its voice's lines, which its own session never
-  heard. The voice learns the bot's progress from the work line
+  posts it as usual if the call has ended. What each side says is kept
+  as it settles (a pause of `SETTLE_MS`), answered and `spoken`, so the
+  bot's transcript carries the call (its voice's lines marked, since its
+  own session never heard them), and no page is ever sent the words. The voice learns the bot's progress from the work line
   (`session.thinking.append` for GPT-Live, `bot_status` for xAI) and is
   told when a card comes up, which is still only answered by a tap. A
   spoken "stop" is Stop (`stopFromMessage`), and a line that only closes

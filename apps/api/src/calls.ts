@@ -17,6 +17,7 @@ const PROGRESS_EVERY_MS = 5_000;
 const HISTORY_LINES = 12;
 const GOODBYE_WAIT_MS = 6_000;
 const GOODBYE_TAIL_MS = 800;
+const SAID_BYE = /\b(bye|goodbye|take care|talk soon|see you|have a good)\b/i;
 
 type Listener = (event: CallEvent) => void;
 
@@ -42,6 +43,8 @@ type Call = {
   orphan: ReturnType<typeof setTimeout> | null;
   // Set once the person has said goodbye: the call ends after the voice's own goodbye.
   closing: ReturnType<typeof setTimeout> | null;
+  // The voice's last settled line, so a goodbye it already said isn't waited for again.
+  lastSaid: { text: string; at: number } | null;
   limit: ReturnType<typeof setTimeout>;
   unsubscribe: () => void;
 };
@@ -58,6 +61,11 @@ export function callOf(userId: string): CallInfo | null {
 export function ownCall(userId: string, id: string): CallInfo | null {
   const call = calls().get(id);
   return call && call.userId === userId && !call.ended ? call.info : null;
+}
+
+/** Fragments of speech, joined: two sentences said apart still read as two ("Hang on. I'm looking"). */
+export function joinSpeech(sofar: string, next: string): string {
+  return /[.!?]$/.test(sofar) && /^[^\s.,!?]/.test(next) ? `${sofar} ${next}` : sofar + next;
 }
 
 /** How a call reads in the chat once it's over. */
@@ -122,7 +130,8 @@ export type StartCall = { ok: true; call: CallInfo } | { ok: false; status: 400 
 export function startCall(thread: Thread, userId: string): StartCall {
   const bot = thread.kind === "bot" && thread.botId ? getBot(thread.botId) : null;
   if (!bot) return { ok: false, status: 400, error: "Calls are with one bot, from its own chat" };
-  const provider = getVoice(userId).using;
+  const voiceSettings = getVoice(userId);
+  const provider = voiceSettings.using;
   const baseUrl = provider ? providerBaseUrl(userId, provider) : null;
   const key = provider ? providerKey(userId, provider) : null;
   if (!provider || !baseUrl || !key) return { ok: false, status: 409, error: "A call needs an xAI or OpenAI key. Add one in Settings → AI." };
@@ -151,6 +160,7 @@ export function startCall(thread: Thread, userId: string): StartCall {
     cardsAfter: info.startedAt,
     orphan: null,
     closing: null,
+    lastSaid: null,
     limit: setTimeout(() => endCall(info.id, `Calls end after ${CALL_MAX_MINUTES} minutes.`), CALL_MAX_MINUTES * 60_000),
     unsubscribe: () => {},
   };
@@ -166,6 +176,7 @@ export function startCall(thread: Thread, userId: string): StartCall {
     history: historyOf(thread, bot),
     greeting: greetingFor(bot),
     botName: bot.name,
+    voice: voiceSettings.callVoice[provider],
     on: (signal) => onSignal(call, provider, signal),
   });
   call.orphan = setTimeout(() => endCall(info.id, null), ORPHAN_MS);
@@ -189,16 +200,14 @@ function onSignal(call: Call, provider: VoiceProvider, signal: VoiceSignal) {
       return;
     case "heard":
       if (call.said) settleSaid(call);
-      call.heard += signal.text;
-      emitTo(call, { type: "heard", text: call.heard.trim() });
+      call.heard = joinSpeech(call.heard, signal.text);
       if (call.heardTimer) clearTimeout(call.heardTimer);
       if (signal.final) settleHeard(call);
       else call.heardTimer = setTimeout(() => settleHeard(call), SETTLE_MS);
       return;
     case "said":
       if (call.heard) settleHeard(call);
-      call.said += signal.text;
-      emitTo(call, { type: "said", text: call.said.trim() });
+      call.said = joinSpeech(call.said, signal.text);
       if (call.saidTimer) clearTimeout(call.saidTimer);
       call.saidTimer = setTimeout(() => settleSaid(call), SETTLE_MS);
       return;
@@ -228,14 +237,14 @@ function onSignal(call: Call, provider: VoiceProvider, signal: VoiceSignal) {
 function settleHeard(call: Call) {
   if (call.heardTimer) clearTimeout(call.heardTimer);
   call.heardTimer = null;
-  const text = call.heard.replace(/\s+/g, " ").trim();
+  // Full duplex: the voice can answer before the person finishes, and the rest of their line starts at a stop.
+  const text = call.heard.replace(/\s+/g, " ").trim().replace(/^[.,!?\s]+/, "");
   call.heard = "";
   if (!text) return;
   const thread = getThread(call.info.threadId);
   if (!thread) return;
   if (endsCall(text, call.bot.name)) {
     postMessage({ threadId: thread.id, author: "you", body: text, answered: true, spoken: true });
-    emitTo(call, { type: "settled", who: "you" });
     wrapUp(call);
     return;
   }
@@ -245,17 +254,16 @@ function settleHeard(call: Call) {
     postMessage({ threadId: thread.id, author: "you", body: text, answered: true, spoken: true });
     call.asked.push(text);
   }
-  emitTo(call, { type: "settled", who: "you" });
 }
 
 function settleSaid(call: Call) {
   if (call.saidTimer) clearTimeout(call.saidTimer);
   call.saidTimer = null;
-  const text = call.said.replace(/\s+/g, " ").trim();
+  const text = call.said.replace(/\s+/g, " ").trim().replace(/^[.,!?\s]+/, "");
   call.said = "";
   if (!text) return;
   postMessage({ threadId: call.info.threadId, author: call.bot.id, body: text, answered: true, spoken: true });
-  emitTo(call, { type: "settled", who: "bot" });
+  call.lastSaid = { text, at: Date.now() };
   if (call.closing) {
     clearTimeout(call.closing);
     call.closing = setTimeout(() => endCall(call.info.id, null), GOODBYE_TAIL_MS);
@@ -265,7 +273,8 @@ function settleSaid(call: Call) {
 /** The person said goodbye: give the voice a moment to say its own, then hang up. */
 function wrapUp(call: Call) {
   if (call.closing) return;
-  call.closing = setTimeout(() => endCall(call.info.id, null), GOODBYE_WAIT_MS);
+  const saidBye = call.lastSaid && Date.now() - call.lastSaid.at < GOODBYE_WAIT_MS && SAID_BYE.test(call.lastSaid.text);
+  call.closing = setTimeout(() => endCall(call.info.id, null), saidBye && !call.said ? GOODBYE_TAIL_MS : GOODBYE_WAIT_MS);
 }
 
 function handOver(call: Call, provider: VoiceProvider, id: string, request: string | null) {

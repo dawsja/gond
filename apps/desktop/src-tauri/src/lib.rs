@@ -257,7 +257,24 @@ pub fn apply_menu_bar(window: &WebviewWindow) {
     };
 }
 
+// WebKitGTK ships with media capture off, so getUserMedia isn't there for the composer's mic or a
+// call until it is turned on; who may use it is still on_permission_request's to say.
+#[cfg(target_os = "linux")]
+fn allow_media(window: &WebviewWindow) {
+    let _ = window.with_webview(|webview| {
+        use webkit2gtk::{SettingsExt, WebViewExt};
+        if let Some(settings) = WebViewExt::settings(&webview.inner()) {
+            settings.set_enable_media_stream(true);
+            settings.set_enable_webrtc(true);
+        }
+    });
+}
+
+#[cfg(not(target_os = "linux"))]
+fn allow_media(_window: &WebviewWindow) {}
+
 fn present(window: &WebviewWindow) {
+    allow_media(window);
     apply_menu_bar(window);
     let dark = matches!(window.theme(), Ok(Theme::Dark));
     let _ = window.set_background_color(Some(if dark { DARK } else { LIGHT }));

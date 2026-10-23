@@ -32,3 +32,6 @@ sha2 = "=0.11.0"
 base64 = "=0.23.1"
 url = "=2.5.8"
 server-url = { path = "server-url" }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+webkit2gtk = { version = "=2.0.2", features = ["v2_38"] }

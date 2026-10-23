@@ -143,7 +143,7 @@ export type Message = {
   fromThreadId: string | null;
 
   steered: boolean;
-  /** Said out loud on a call: the person's words as heard, or what the bot's voice said. */
+  /** Said out loud on a call: the person's words as heard, or what the bot's voice said. Kept for the bot, never shown. */
   spoken: boolean;
 
   reactions: Reaction[];
@@ -504,7 +504,16 @@ export const VOICE_MODELS: Record<VoiceProvider, { path: string; model: string; 
 export const VOICE_PREFERENCES = ["auto", ...VOICE_PROVIDERS] as const;
 export type VoicePreference = (typeof VOICE_PREFERENCES)[number];
 /** `openaiModel` is for an OpenAI-compatible server that names its own models, like a local Whisper. */
-export type VoiceSettings = { preference: VoicePreference; using: VoiceProvider | null; available: VoiceProvider[]; openaiModel: string };
+export type VoiceSettings = {
+  preference: VoicePreference;
+  using: VoiceProvider | null;
+  available: VoiceProvider[];
+  openaiModel: string;
+  /** The voice a call speaks in, per provider, since each has its own; missing is the provider's default. */
+  callVoice: Partial<Record<VoiceProvider, string>>;
+};
+export const CALL_VOICE_ID = /^[a-z0-9_-]{1,64}$/i;
+export type CallVoice = { id: string; name: string; detail: string | null };
 export const VOICE_MODEL_ID = /^[\w.:/@+-]{1,120}$/;
 export const TRANSCRIBE_MAX_BYTES = 10 * 1024 * 1024;
 export const TRANSCRIBE_MAX_SECONDS = 120;
@@ -527,19 +536,47 @@ export const CALL_MODELS: Record<VoiceProvider, { model: string; voice: string; 
   xai: { model: "grok-voice-latest", voice: "eve", label: "xAI Grok" },
   openai: { model: "gpt-live-1", voice: "marin", label: "OpenAI" },
 };
+/**
+ * GPT-Live's voices, from OpenAI's docs, since its API has no list to ask (xAI's does: `GET /v1/tts/voices`).
+ * Marin and Cedar first: OpenAI's best, and Marin its default.
+ */
+export const OPENAI_CALL_VOICES: CallVoice[] = [
+  { id: "marin", name: "Marin", detail: null },
+  { id: "cedar", name: "Cedar", detail: null },
+  ...["alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse"].map((id) => ({ id, name: id[0]!.toUpperCase() + id.slice(1), detail: null })),
+  ...(
+    [
+      ["quartz", "Australian, feminine"],
+      ["ripple", "Australian, masculine"],
+      ["vesper", "British, masculine"],
+      ["willow", "Irish, feminine"],
+      ["stone", "Irish, masculine"],
+      ["gleam", "North American, feminine"],
+      ["meridian", "North American, masculine"],
+      ["delta", "Southern U.S., feminine"],
+      ["cinder", "Southern U.S., masculine"],
+      ["beacon", "Filipino, masculine"],
+      ["bossa", "Portuguese, feminine"],
+      ["tempo", "Portuguese, masculine"],
+      ["nuri", "German, feminine"],
+      ["juni", "German, feminine"],
+      ["flitz", "German, masculine"],
+      ["brise", "French, feminine"],
+      ["sillage", "French, masculine"],
+      ["nira", "Hindi, feminine"],
+      ["harema", "Japanese, feminine"],
+      ["shida", "Japanese, masculine"],
+      ["noeul", "Korean, feminine"],
+    ] as const
+  ).map(([id, detail]) => ({ id, name: id[0]!.toUpperCase() + id.slice(1), detail })),
+];
+
 /** Both sides of a call are mono 16-bit PCM at this rate. */
 export const CALL_SAMPLE_RATE = 24_000;
 export const CALL_MAX_MINUTES = 60;
 export type CallInfo = { id: string; threadId: string; botId: string; provider: VoiceProvider; startedAt: string };
-/** What a call's stream tells the page: its audio, what is being said before it settles into the chat, and how it ends. */
-export type CallEvent =
-  | { type: "ready" }
-  | { type: "audio"; data: string }
-  | { type: "heard"; text: string }
-  | { type: "said"; text: string }
-  | { type: "settled"; who: "you" | "bot" }
-  | { type: "interrupt" }
-  | { type: "ended"; reason: string | null };
+/** What a call's stream tells the page: its audio and how it ends. The words are never shown; a call is heard. */
+export type CallEvent = { type: "ready" } | { type: "audio"; data: string } | { type: "interrupt" } | { type: "ended"; reason: string | null };
 
 export const CLI_ENGINES = ["claude"] as const;
 export type CliEngine = (typeof CLI_ENGINES)[number];

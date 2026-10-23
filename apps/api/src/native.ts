@@ -1,7 +1,7 @@
 import { CHATGPT_USAGE_URL, PROVIDER_LABELS, isOpenAiShaped, isPlanProvider, toolLabel, toolLine, type ProviderKind } from "@gond/shared";
 import { clipParts, isToolParts, resultAsText, type DriverTool, type ToolPart } from "./driver.ts";
 import { labelStep, type StepUpdate } from "./work.ts";
-import { authHeaders, isAnthropicHost, isMiniMaxHost, upstreamUrl } from "./routes/llm.ts";
+import { authHeaders, isAnthropicHost, isMiniMaxHost, isOpenAiHost, upstreamUrl } from "./routes/llm.ts";
 
 const MAX_STEPS = 80;
 
@@ -279,13 +279,21 @@ async function sendResponses(turn: NativeTurn, input: unknown[]): Promise<Step> 
   return readResponses(sseEvents(await res.text()), turn.access.kind);
 }
 
+/**
+ * OpenAI's own API refuses `max_tokens` from its reasoning models on (GPT-5, o-series) and wants
+ * `max_completion_tokens`; servers that copy its API (OpenRouter, a local model) mostly know only the old name.
+ */
+export function outputLimit(access: Pick<NativeAccess, "upstream">): { max_tokens: number } | { max_completion_tokens: number } {
+  return access.upstream && isOpenAiHost(access.upstream) ? { max_completion_tokens: MAX_OUTPUT_TOKENS } : { max_tokens: MAX_OUTPUT_TOKENS };
+}
+
 async function send(turn: NativeTurn, messages: unknown[]): Promise<Step> {
   if (isPlanProvider(turn.access.kind)) return sendResponses(turn, messages);
   const { kind, baseUrl, token } = turn.access;
   const openai = isOpenAiShaped(kind);
   const url = upstreamUrl(baseUrl, openai ? "chat/completions" : "v1/messages", "");
   const body = openai
-    ? { model: turn.model, messages: [{ role: "system", content: turn.instructions }, ...messages], tools: toolList(turn.access, turn.tools, turn.model), max_tokens: MAX_OUTPUT_TOKENS }
+    ? { model: turn.model, messages: [{ role: "system", content: turn.instructions }, ...messages], tools: toolList(turn.access, turn.tools, turn.model), ...outputLimit(turn.access) }
     : { model: turn.model, system: turn.instructions, messages, tools: toolList(turn.access, turn.tools, turn.model), max_tokens: MAX_OUTPUT_TOKENS };
   const res = await fetch(url, {
     method: "POST",

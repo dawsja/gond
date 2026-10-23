@@ -1,10 +1,10 @@
-import { TRANSCRIBE_MAX_BYTES, VOICE_MODEL_ID, VOICE_MODELS, isVoicePreference } from "@gond/shared";
+import { CALL_MODELS, CALL_VOICE_ID, OPENAI_CALL_VOICES, TRANSCRIBE_MAX_BYTES, VOICE_MODEL_ID, VOICE_MODELS, isVoicePreference, type CallVoice, type VoiceProvider } from "@gond/shared";
 import { Hono } from "hono";
 import type { Env } from "../app.ts";
 import { ownThread, userId } from "../access.ts";
 import { getBot } from "../data/bots.ts";
 import { providerBaseUrl, providerKey } from "../data/providers.ts";
-import { getVoice, setVoice } from "../data/voice.ts";
+import { getVoice, setCallVoice, setVoice } from "../data/voice.ts";
 import { authHeaders, upstreamUrl } from "./llm.ts";
 
 // Both APIs read the format from the file name, and Bun's multipart parser drops a part's own
@@ -14,6 +14,26 @@ const EXTENSIONS = new Set(["webm", "mp4", "m4a", "mp3", "mpeg", "wav", "ogg"]);
 export function audioExtension(name: string): string | null {
   const extension = /\.([a-z0-9]+)$/i.exec(name)?.[1]?.toLowerCase();
   return extension && EXTENSIONS.has(extension) ? extension : null;
+}
+
+const VOICE_LIST_MS = 10 * 60_000;
+const SAMPLE_TEXT = "Hi, it's your bot. This is how I'll sound when you call me.";
+const voiceLists = new Map<string, { at: number; voices: CallVoice[] }>();
+
+/** xAI says which voices it has; OpenAI has no list to ask, so its are written down in shared. */
+async function voicesFor(provider: VoiceProvider, baseUrl: string, key: string): Promise<CallVoice[] | null> {
+  if (provider === "openai") return OPENAI_CALL_VOICES;
+  const cacheKey = `${baseUrl}\n${key}`;
+  const cached = voiceLists.get(cacheKey);
+  if (cached && Date.now() - cached.at < VOICE_LIST_MS) return cached.voices;
+  const res = await fetch(upstreamUrl(baseUrl, "tts/voices", ""), { headers: authHeaders(provider, baseUrl, key), redirect: "manual", signal: AbortSignal.timeout(15_000) }).catch(() => null);
+  if (!res?.ok) return null;
+  const payload = (await res.json().catch(() => null)) as { voices?: { voice_id?: unknown; name?: unknown; language?: unknown }[] } | null;
+  const voices = (payload?.voices ?? [])
+    .filter((v) => typeof v.voice_id === "string" && CALL_VOICE_ID.test(v.voice_id))
+    .map((v) => ({ id: v.voice_id as string, name: typeof v.name === "string" && v.name ? v.name : (v.voice_id as string), detail: null }));
+  voiceLists.set(cacheKey, { at: Date.now(), voices });
+  return voices;
 }
 
 export function voiceRoutes() {
@@ -28,6 +48,51 @@ export function voiceRoutes() {
     if (preference !== undefined && !isVoicePreference(preference)) return c.json({ error: "Pick Automatic, xAI or OpenAI" }, 400);
     if (openaiModel !== undefined && (typeof openaiModel !== "string" || (openaiModel.trim() && !VOICE_MODEL_ID.test(openaiModel.trim())))) return c.json({ error: "That isn't a model id" }, 400);
     return c.json(setVoice(userId(c), { preference, openaiModel }));
+  });
+
+  app.get("/voice/voices", async (c) => {
+    const who = userId(c);
+    const voice = getVoice(who);
+    const provider = voice.using;
+    const baseUrl = provider ? providerBaseUrl(who, provider) : null;
+    const key = provider ? providerKey(who, provider) : null;
+    if (!provider || !baseUrl || !key) return c.json({ provider: null, voices: [], chosen: null });
+    const voices = await voicesFor(provider, baseUrl, key);
+    if (!voices) return c.json({ error: `${VOICE_MODELS[provider].label} didn't list its voices. Try again.` }, 502);
+    return c.json({ provider, voices, chosen: voice.callVoice[provider] ?? CALL_MODELS[provider].voice });
+  });
+
+  app.put("/voice/call-voice", async (c) => {
+    const who = userId(c);
+    const body = (await c.req.json().catch(() => null)) as { voice?: unknown } | null;
+    const provider = getVoice(who).using;
+    if (!provider) return c.json({ error: "Add an xAI or OpenAI key first" }, 409);
+    if (body?.voice !== null && (typeof body?.voice !== "string" || !CALL_VOICE_ID.test(body.voice))) return c.json({ error: "That isn't a voice" }, 400);
+    return c.json(setCallVoice(who, provider, body.voice === CALL_MODELS[provider].voice ? null : body.voice));
+  });
+
+  // A short sample of a voice, said by the provider's own speech with the person's key, so a pick isn't blind.
+  app.get("/voice/sample", async (c) => {
+    const who = userId(c);
+    const id = c.req.query("voice") ?? "";
+    if (!CALL_VOICE_ID.test(id)) return c.json({ error: "That isn't a voice" }, 400);
+    const provider = getVoice(who).using;
+    const baseUrl = provider ? providerBaseUrl(who, provider) : null;
+    const key = provider ? providerKey(who, provider) : null;
+    if (!provider || !baseUrl || !key) return c.json({ error: "Add an xAI or OpenAI key first" }, 409);
+    const request =
+      provider === "xai"
+        ? { path: "tts", body: { text: SAMPLE_TEXT, voice_id: id, language: "en" } }
+        : { path: "audio/speech", body: { model: "gpt-4o-mini-tts", voice: id, input: SAMPLE_TEXT, response_format: "mp3" } };
+    const res = await fetch(upstreamUrl(baseUrl, request.path, ""), {
+      method: "POST",
+      headers: { ...authHeaders(provider, baseUrl, key), "content-type": "application/json" },
+      body: JSON.stringify(request.body),
+      redirect: "manual",
+      signal: AbortSignal.timeout(30_000),
+    }).catch(() => null);
+    if (!res?.ok) return c.json({ error: "There's no sample of that voice." }, 502);
+    return new Response(await res.arrayBuffer(), { headers: { "content-type": "audio/mpeg", "cache-control": "private, max-age=86400" } });
   });
 
   app.post("/transcribe", async (c) => {

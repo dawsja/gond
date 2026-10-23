@@ -665,6 +665,52 @@ describe("data", () => {
     deleteProvider("u-admin", "xai");
   });
 
+  test("a call's voice is picked from the provider's own list, sampled with the person's key, and kept per provider", async () => {
+    const { saveProvider } = await import("../src/data/providers.ts");
+    const { getVoice, setVoice } = await import("../src/data/voice.ts");
+    const { voiceRoutes } = await import("../src/routes/voice.ts");
+    const { Hono } = await import("hono");
+    const said: { path: string; body: unknown }[] = [];
+    const upstream = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        const path = new URL(request.url).pathname;
+        if (path === "/x/v1/tts/voices") return Response.json({ voices: [{ voice_id: "eve", name: "Eve", language: "en" }, { voice_id: "ara", name: "Ara", language: "en" }, { voice_id: "../bad", name: "Bad" }] });
+        said.push({ path, body: await request.json() });
+        return new Response(new Uint8Array([0xff, 0xfb, 1, 2]), { headers: { "content-type": "audio/mpeg" } });
+      },
+    });
+    const app = asPerson(new Hono(), "u-voices");
+    app.route("/api", voiceRoutes());
+    try {
+      expect(await (await app.request("/api/voice/voices")).json()).toEqual({ provider: null, voices: [], chosen: null });
+      saveProvider("u-voices", "xai", { baseUrl: `http://127.0.0.1:${upstream.port}/x/v1`, apiKey: "xai-voices-key-123456" });
+      saveProvider("u-voices", "openai", { baseUrl: `http://127.0.0.1:${upstream.port}/v1`, apiKey: "sk-voices-key-123456" });
+
+      expect(await (await app.request("/api/voice/voices")).json()).toEqual({ provider: "xai", voices: [{ id: "eve", name: "Eve", detail: null }, { id: "ara", name: "Ara", detail: null }], chosen: "eve" });
+      expect((await app.request("/api/voice/call-voice", { method: "PUT", body: JSON.stringify({ voice: "ara" }) })).status).toBe(200);
+      expect(getVoice("u-voices").callVoice).toEqual({ xai: "ara" });
+      expect((await app.request("/api/voice/call-voice", { method: "PUT", body: JSON.stringify({ voice: "../etc" }) })).status).toBe(400);
+
+      const sample = await app.request("/api/voice/sample?voice=ara");
+      expect(sample.headers.get("content-type")).toBe("audio/mpeg");
+      expect(said[0]).toMatchObject({ path: "/x/v1/tts", body: { voice_id: "ara", language: "en" } });
+
+      setVoice("u-voices", { preference: "openai" });
+      const openai = (await (await app.request("/api/voice/voices")).json()) as { provider: string; voices: { id: string }[]; chosen: string };
+      expect(openai.provider).toBe("openai");
+      expect(openai.chosen).toBe("marin");
+      expect(openai.voices.map((v) => v.id)).toContain("cedar");
+      await app.request("/api/voice/sample?voice=cedar");
+      expect(said[1]).toMatchObject({ path: "/v1/audio/speech", body: { voice: "cedar", model: "gpt-4o-mini-tts" } });
+      // Picking the default forgets the choice, so a provider's new default follows.
+      await app.request("/api/voice/call-voice", { method: "PUT", body: JSON.stringify({ voice: "marin" }) });
+      expect(getVoice("u-voices").callVoice).toEqual({ xai: "ara" });
+    } finally {
+      upstream.stop(true);
+    }
+  });
+
   test("voice picks the cheapest key unless one is chosen, and transcribes through it", async () => {
     const { saveProvider, deleteProvider } = await import("../src/data/providers.ts");
     const { getVoice, setVoice } = await import("../src/data/voice.ts");
@@ -688,7 +734,7 @@ describe("data", () => {
       return app.request("/api/transcribe", { method: "POST", body: form });
     };
     try {
-      expect(getVoice("u-voice")).toEqual({ preference: "auto", using: null, available: [], openaiModel: "gpt-transcribe" });
+      expect(getVoice("u-voice")).toEqual({ preference: "auto", using: null, available: [], openaiModel: "gpt-transcribe", callVoice: {} });
       expect((await send()).status).toBe(409);
 
       saveProvider("u-voice", "openai", { baseUrl: `http://127.0.0.1:${upstream.port}/v1`, apiKey: "sk-voice-key-123456" });
@@ -3942,7 +3988,6 @@ describe("calls", () => {
       expect(auth).toBe("Bearer xai-test-key-1234567890");
       const session = received.find((e) => e.type === "session.update") as unknown as { session: { tools: { name: string }[] } };
       expect(session.session.tools.map((t) => t.name)).toEqual(["ask_bot", "bot_status", "end_call"]);
-      expect(listMessages(thread.id).some((m) => m.kind === "event" && m.body === "Call started")).toBe(true);
 
       say({ type: "conversation.item.input_audio_transcription.completed", transcript: "Find me a flight to Denver on Friday" });
       await until(() => listMessages(thread.id).some((m) => m.author === "you" && m.spoken));
@@ -3970,6 +4015,8 @@ describe("calls", () => {
       const lines = listMessages(thread.id);
       expect(lines.some((m) => m.author === bot.id && m.spoken && m.body === "Bye, safe travels.")).toBe(true);
       expect(lines.at(-1)!.body).toBe("Call ended · under a minute");
+      expect(lines.some((m) => m.kind === "event" && m.body === "Call started")).toBe(true);
+      expect(getThread(thread.id)!.lastMessage).toBeNull();
       expect(callOf("u-caller")).toBeNull();
     } finally {
       fake.stop(true);

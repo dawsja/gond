@@ -4,7 +4,8 @@ import type { CallEvent, CallInfo } from "@gond/shared";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "@/components/ui/toast";
 import { api, del, post } from "@/lib/api";
-import { CallPlayer, levelOf, startCapture, type Capture } from "@/lib/call-audio";
+import { routeToSpeaker } from "@/lib/audio-devices";
+import { CallPlayer, levelOf, MicError, startCapture, type Capture } from "@/lib/call-audio";
 
 export type CallPhase = "connecting" | "live";
 
@@ -12,10 +13,6 @@ export type CallView = {
   info: CallInfo;
   phase: CallPhase;
   muted: boolean;
-  /** What the person is saying, before it settles into the chat. */
-  heard: string;
-  /** What the bot's voice is saying, before it settles into the chat. */
-  said: string;
   speaking: boolean;
 };
 
@@ -69,7 +66,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const live = useRef<Live | null>(null);
   const levels = useRef<Levels>(SILENT);
 
-  const teardown = useCallback(async (drain: boolean, reason: string | null) => {
+  const teardown = useCallback(async (drain: boolean, reason: string | { title: string; description: string | null } | null) => {
     const current = live.current;
     if (!current || current.closed) return;
     current.closed = true;
@@ -80,7 +77,8 @@ export function CallProvider({ children }: { children: ReactNode }) {
     setCall(null);
     if (drain) await current.player.drained(DRAIN_MS);
     void current.context.close().catch(() => undefined);
-    if (reason) toast.add({ type: "error", title: reason });
+    if (typeof reason === "string") toast.add({ type: "error", title: reason });
+    else if (reason) toast.add({ type: "error", title: reason.title, description: reason.description ?? undefined });
   }, []);
 
   const onEvent = useCallback(
@@ -95,15 +93,6 @@ export function CallProvider({ children }: { children: ReactNode }) {
         case "interrupt":
           current.player.clear();
           return;
-        case "heard":
-          setCall((c) => (c && c.info.id === current.info.id ? { ...c, heard: event.text } : c));
-          return;
-        case "said":
-          setCall((c) => (c && c.info.id === current.info.id ? { ...c, said: event.text } : c));
-          return;
-        case "settled":
-          setCall((c) => (c && c.info.id === current.info.id ? { ...c, ...(event.who === "you" ? { heard: "" } : { said: "" }) } : c));
-          return;
         case "ended":
           void teardown(true, event.reason);
           return;
@@ -117,6 +106,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       if (live.current) await teardown(false, null);
       // Made inside the tap, or the browser keeps it silent.
       const context = new AudioContext();
+      void routeToSpeaker(context);
       let info: CallInfo;
       try {
         info = (await post<{ call: CallInfo }>(`/api/threads/${threadId}/call`)).call;
@@ -127,7 +117,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       }
       const current: Live = { info, context, player: new CallPlayer(context), capture: null, source: null, queue: [], sending: false, closed: false, muted: false };
       live.current = current;
-      setCall({ info, phase: "connecting", muted: false, heard: "", said: "", speaking: false });
+      setCall({ info, phase: "connecting", muted: false, speaking: false });
 
       const source = new EventSource(`/api/calls/${info.id}/stream`);
       current.source = source;
@@ -147,9 +137,10 @@ export function CallProvider({ children }: { children: ReactNode }) {
           current.queue.push(pcm);
           void flush(current);
         });
-      } catch {
+      } catch (failure) {
         void del(`/api/calls/${info.id}`).catch(() => undefined);
-        void teardown(false, "The microphone is blocked. Allow it for this site, then call again.");
+        const mic = failure instanceof MicError ? failure : new MicError("The microphone didn't start.");
+        void teardown(false, { title: mic.message, description: mic.detail });
         return;
       }
       if (current.closed) {

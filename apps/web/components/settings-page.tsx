@@ -18,6 +18,8 @@ import { McpCard } from "@/components/mcp-card";
 import { NotificationsCard } from "@/components/notifications-card";
 import { OidcCard } from "@/components/oidc-card";
 import { VoiceCard } from "@/components/voice-card";
+import { AudioDevicesCard } from "@/components/audio-devices-card";
+import { CallVoiceCard } from "@/components/call-voice-card";
 import { SecretsCard } from "@/components/secrets-card";
 import { ServerCard } from "@/components/server-card";
 import { SkillsCard } from "@/components/skills-card";
@@ -161,7 +163,13 @@ export function SettingsPage({ user, section, index = false }: { user: SessionUs
       );
       break;
     case "voice":
-      body = <VoiceCard />;
+      body = (
+        <>
+          <VoiceCard />
+          <CallVoiceCard />
+          <AudioDevicesCard />
+        </>
+      );
       break;
     case "computer":
       body = <HomeResetCard />;

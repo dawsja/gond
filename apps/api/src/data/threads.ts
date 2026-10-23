@@ -99,7 +99,7 @@ function noticedIn(row: ThreadRow): Thread["noticed"] {
   const run = db.query("SELECT body, created_at FROM gond_messages WHERE thread_id = ? AND author = 'routine' ORDER BY created_at DESC LIMIT 1").get(row.id) as { body: string; created_at: string } | null;
   if (!run || !isWatchRun(run.body)) return null;
   const said = db
-    .query("SELECT body, created_at FROM gond_messages WHERE thread_id = ? AND kind = 'message' AND author NOT IN ('you', 'system', 'routine') AND created_at > ? AND created_at > ? ORDER BY created_at LIMIT 1")
+    .query("SELECT body, created_at FROM gond_messages WHERE thread_id = ? AND kind = 'message' AND spoken = 0 AND author NOT IN ('you', 'system', 'routine') AND created_at > ? AND created_at > ? ORDER BY created_at LIMIT 1")
     .get(row.id, run.created_at, row.last_read_at ?? "") as { body: string; created_at: string } | null;
   return said ? { watch: routineName(run.body) ?? "", body: said.body, at: said.created_at } : null;
 }
@@ -107,10 +107,10 @@ function noticedIn(row: ThreadRow): Thread["noticed"] {
 function toThread(row: ThreadRow): Thread {
   const db = ensureDatabase();
   const last = db
-    .query("SELECT author, body, created_at FROM gond_messages WHERE thread_id = ? AND kind IN ('message', 'approval', 'signin') ORDER BY created_at DESC LIMIT 1")
+    .query("SELECT author, body, created_at FROM gond_messages WHERE thread_id = ? AND kind IN ('message', 'approval', 'signin') AND spoken = 0 ORDER BY created_at DESC LIMIT 1")
     .get(row.id) as { author: string; body: string; created_at: string } | null;
   const unread = db
-    .query("SELECT COUNT(*) AS n FROM gond_messages WHERE thread_id = ? AND author NOT IN ('you') AND kind IN ('message', 'approval', 'signin') AND created_at > ?")
+    .query("SELECT COUNT(*) AS n FROM gond_messages WHERE thread_id = ? AND author NOT IN ('you') AND kind IN ('message', 'approval', 'signin') AND spoken = 0 AND created_at > ?")
     .get(row.id, row.last_read_at ?? "") as { n: number };
   return {
     id: row.id,
@@ -300,10 +300,10 @@ export function searchMessages(query: string, userId: string, limit = 50): Messa
         .query(
           `SELECT m.* FROM (SELECT rowid AS r FROM gond_messages_fts WHERE gond_messages_fts MATCH ? ORDER BY rowid DESC) f
            JOIN gond_messages m ON m.rowid = f.r JOIN gond_threads t ON t.id = m.thread_id
-           WHERE t.user_id = ? AND m.kind = 'message' ${short} LIMIT ?`,
+           WHERE t.user_id = ? AND m.kind = 'message' AND m.spoken = 0 ${short} LIMIT ?`,
         )
         .all(indexed.map((term) => `"${term.replaceAll('"', '""')}"`).join(" AND "), userId, ...likes, limit)
-    : db.query(`SELECT m.* FROM gond_messages m JOIN gond_threads t ON t.id = m.thread_id WHERE t.user_id = ? AND m.kind = 'message' ${short} ORDER BY m.created_at DESC LIMIT ?`).all(userId, ...likes, limit);
+    : db.query(`SELECT m.* FROM gond_messages m JOIN gond_threads t ON t.id = m.thread_id WHERE t.user_id = ? AND m.kind = 'message' AND m.spoken = 0 ${short} ORDER BY m.created_at DESC LIMIT ?`).all(userId, ...likes, limit);
   return (rows as MessageRow[]).map(toMessage);
 }
 

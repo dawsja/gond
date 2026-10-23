@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type CSSProperties, type DragEvent, type FormEvent, type KeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { ApprovalCard } from "@/components/approval-card";
-import { CallButton, CallComposer, SpokenMark } from "@/components/call/call-controls";
+import { CallButton, CallComposer } from "@/components/call/call-controls";
 import { useCall } from "@/components/call/call-provider";
 import { QuoteInBubble, ReplyingTo } from "@/components/reply-quote";
 import { BotAvatar, RoomAvatar, roomMembers } from "@/components/bot-avatar";
@@ -270,7 +270,6 @@ function Line({ message, threadId, bots, threads, bot, approvals, isRoom, editin
             </span>
           ) : null}
           <BubbleContent className="rounded-2xl px-3.5 py-2">
-            {message.spoken ? <SpokenMark mine={mine} /> : null}
             {message.replyTo ? <QuoteInBubble quote={message.replyTo} name={nameOf(message.replyTo.author, bots)} color={colorOf(message.replyTo.author, bots)} onJump={onJump} /> : null}
             {message.body ? (
               <ChoicesContext.Provider value={mine ? {} : { pick: (option) => onPick(option, message.author), picked: answer }}>
@@ -962,41 +961,13 @@ export function Conversation({ threadId }: { threadId: string }) {
                   </MessageScrollerItem>
                 ) : null}
                 <WatchesContext.Provider value={watches}>
-                {messages.map((m) => (
+                {messages.filter((m) => !m.spoken).map((m) => (
                   <MessageScrollerItem key={m.id} messageId={m.id} className={cn((m.id === jumpTo || m.id === flash) && "rounded-2xl ring-2 ring-ring/40")}>
                     <Line message={m} threadId={threadId} bots={bots} threads={threads} bot={bot} approvals={approvalMap} isRoom={Boolean(isRoom)} editing={editing === m.id} stops={Boolean(info?.answering?.includes(m.id))} touch={touch} answer={answers.get(m.id)} sentTo={sentTo.get(m.id)} noticed={runs.get(m.id)} onPick={pick} onView={setViewing} onDecide={decide} onOpenExchange={setExchange} onEdit={edit} onSelectText={setSelectText} onReacted={replaceMessage} onReply={replyTo} onJump={(id) => setJump((j) => ({ id, n: (j?.n ?? 0) + 1 }))} />
                   </MessageScrollerItem>
                 ))}
                 </WatchesContext.Provider>
 
-                {onCall?.heard ? (
-                  <MessageScrollerItem key="call-heard">
-                    <MessageRow align="end">
-                      <MessageContent>
-                        <Bubble variant="default" align="end" className="max-w-[86%] opacity-70 sm:max-w-[78%]">
-                          <BubbleContent className="rounded-2xl px-3.5 py-2 text-[14px] leading-6">
-                            <SpokenMark mine />
-                            {onCall.heard}
-                          </BubbleContent>
-                        </Bubble>
-                      </MessageContent>
-                    </MessageRow>
-                  </MessageScrollerItem>
-                ) : null}
-                {onCall?.said ? (
-                  <MessageScrollerItem key="call-said">
-                    <MessageRow align="start">
-                      <MessageContent>
-                        <Bubble variant="outline" align="start" className="max-w-[86%] opacity-70 sm:max-w-[78%]">
-                          <BubbleContent className="rounded-2xl px-3.5 py-2 text-[14px] leading-6">
-                            <SpokenMark mine={false} />
-                            {onCall.said}
-                          </BubbleContent>
-                        </Bubble>
-                      </MessageContent>
-                    </MessageRow>
-                  </MessageScrollerItem>
-                ) : null}
 
                 {workingBots.length > 1 ? (
                   <MessageScrollerItem key="working">

@@ -23,6 +23,8 @@ export type VoiceLink = {
   /** Something the voice should tell the person now, like a card on their screen. */
   tell(text: string): void;
   status(id: string, text: string): void;
+  /** The quiet answer to a hand-over itself, for a voice whose hand-over is a function call. */
+  handed(id: string, text: string): void;
   mute(muted: boolean): void;
   close(): void;
 };
@@ -35,6 +37,8 @@ export type LinkOptions = {
   history: string;
   greeting: string;
   botName: string;
+  /** The person's pick for this provider, else its default. */
+  voice: string | undefined;
   on: (signal: VoiceSignal) => void;
 };
 
@@ -156,7 +160,8 @@ function connect(url: URL, key: string, options: LinkOptions, read: (event: Even
 }
 
 function liveLink(options: LinkOptions): VoiceLink {
-  const { model, voice } = CALL_MODELS.openai;
+  const { model } = CALL_MODELS.openai;
+  const voice = options.voice ?? CALL_MODELS.openai.voice;
   let started = false;
   const { socket, send } = connect(
     socketUrl(options.baseUrl, "live/sessions"),
@@ -194,6 +199,7 @@ function liveLink(options: LinkOptions): VoiceLink {
     progress: (id, content) => append("session.thinking.append", id, content),
     tell: (content) => append("session.commentary.append", null, content),
     status: () => {},
+    handed: () => {},
     mute: (muted) => send({ type: muted ? "session.input_audio.mute" : "session.input_audio.unmute", event_id: `gond_${++n}` }),
     close: () => {
       if (socket.readyState !== WebSocket.OPEN) return socket.close();
@@ -204,20 +210,86 @@ function liveLink(options: LinkOptions): VoiceLink {
   };
 }
 
+type Ask = { instructions?: string } | undefined;
+const SPEAK_RETRY_MS = 1500;
+const SPEAK_TRIES = 4;
+
+/**
+ * xAI speaks one response at a time and refuses a response.create while one runs, and a refused one is
+ * simply gone. So asks wait their turn, and one that never starts (refused, or lost in a race with a
+ * reply the person's own words set off) is asked again, a few times.
+ */
+export class SpeakQueue {
+  private active = false;
+  private waiting: { ask: Ask; tries: number } | null = null;
+  private queue: { ask: Ask; tries: number }[] = [];
+  private timer: ReturnType<typeof setTimeout> | null = null;
+
+  constructor(
+    private readonly create: (ask: Ask) => void,
+    private readonly retryMs = SPEAK_RETRY_MS,
+  ) {}
+
+  ask(ask: Ask) {
+    this.queue.push({ ask, tries: 0 });
+    this.pump();
+  }
+
+  started() {
+    this.active = true;
+    this.settle();
+  }
+
+  finished() {
+    this.active = false;
+    this.pump();
+  }
+
+  /** An error came back: if an ask was waiting to start, it was the one refused. */
+  refused() {
+    const refused = this.waiting;
+    if (!refused) return;
+    this.settle();
+    if (refused.tries < SPEAK_TRIES) this.queue.unshift(refused);
+    this.timer = setTimeout(() => this.pump(), this.retryMs);
+  }
+
+  stop() {
+    this.settle();
+    this.queue = [];
+  }
+
+  private settle() {
+    this.waiting = null;
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = null;
+  }
+
+  private pump() {
+    if (this.active || this.waiting || this.timer || !this.queue.length) return;
+    const next = this.queue.shift()!;
+    next.tries += 1;
+    this.waiting = next;
+    this.create(next.ask);
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      if (this.waiting !== next) return;
+      this.waiting = null;
+      if (next.tries < SPEAK_TRIES) this.queue.unshift(next);
+      this.pump();
+    }, this.retryMs);
+  }
+}
+
 function xaiLink(options: LinkOptions): VoiceLink {
-  const { model, voice } = CALL_MODELS.xai;
+  const { model } = CALL_MODELS.xai;
+  const voice = options.voice ?? CALL_MODELS.xai.voice;
   const url = socketUrl(options.baseUrl, "realtime");
   url.searchParams.set("model", model);
   let ready = false;
-  let responding = false;
-  let owed = false;
-  const respond = () => {
-    if (responding) owed = true;
-    else {
-      responding = true;
-      send({ type: "response.create" });
-    }
-  };
+  const speak = new SpeakQueue((ask) => send(ask ? { type: "response.create", response: ask } : { type: "response.create" }));
+  // Said now, with what to say in this one response's own instructions, so the voice says it rather than filling.
+  const sayNow = (what: string) => speak.ask({ instructions: `${options.instructions}\n\n${what}` });
   const system = (content: string) => send({ type: "conversation.item.create", item: { type: "message", role: "system", content: [{ type: "input_text", text: clip(content, 4000) }] } });
   const { socket, send } = connect(
     url,
@@ -236,7 +308,7 @@ function xaiLink(options: LinkOptions): VoiceLink {
             {
               type: "function",
               name: ASK_TOOL,
-              description: `Hand what the person wants to ${options.botName}'s work: anything past small talk, any question that needs facts, memory or a look-up, and any task. The answer comes back later as a system message.`,
+              description: `Hand what the person wants to ${options.botName}'s work: anything past small talk, any question that needs facts, memory or a look-up, and any task. Say in a few words that you're on it as you call this. The answer arrives on its own later, and you'll be asked to tell it then.`,
               parameters: { type: "object", properties: { request: { type: "string", description: "What the person wants, in full, with every detail they gave." } }, required: ["request"] },
             },
             { type: "function", name: STATUS_TOOL, description: `Where ${options.botName}'s work stands right now, for when the person asks how it's going.`, parameters: { type: "object", properties: {} } },
@@ -245,44 +317,42 @@ function xaiLink(options: LinkOptions): VoiceLink {
         },
       }),
     (event) => {
-      if (event.type === "response.created") responding = true;
-      if (event.type === "response.done") {
-        responding = false;
-        if (owed) {
-          owed = false;
-          respond();
-        }
-      }
+      if (event.type === "response.created") speak.started();
+      if (event.type === "response.done") speak.finished();
+      if (event.type === "error") speak.refused();
       if (event.type !== "session.updated" || ready) return;
       ready = true;
       if (options.history) system(options.history);
-      responding = true;
-      send({ type: "response.create", response: { instructions: `${options.instructions}\n\n${options.greeting}` } });
+      sayNow(options.greeting);
     },
   );
   return {
     sendAudio: (audio) => ready && send({ type: "input_audio_buffer.append", audio }),
     result: (_id, content) => {
       system(`${options.botName}'s answer to what the person asked: ${content}`);
-      respond();
+      sayNow(`${options.botName}'s answer just came in: "${content}". Tell the person now, plainly and briefly, in your own words, keeping names, numbers and codes exact. Don't say you're still working on it.`);
     },
     progress: () => {},
     tell: (content) => {
       system(content);
-      respond();
+      sayNow(content);
     },
     status: (id, content) => {
       send({ type: "conversation.item.create", item: { type: "function_call_output", call_id: id, output: JSON.stringify({ status: content }) } });
-      respond();
+      speak.ask(undefined);
     },
+    handed: (id, content) => send({ type: "conversation.item.create", item: { type: "function_call_output", call_id: id, output: JSON.stringify({ status: content }) } }),
     mute: () => {},
-    close: () => socket.close(),
+    close: () => {
+      speak.stop();
+      socket.close();
+    },
   };
 }
 
-/** Called when the voice hands a request over: xAI's function call gets its answer at once, so the voice can say it's on it. */
+/** Called when the voice hands a request over: xAI's function call is answered at once, quietly, since the voice said it's on it as it called. */
 export function acknowledge(link: VoiceLink, provider: VoiceProvider, id: string, botName: string) {
-  if (provider === "xai") link.status(id, `${botName} is on it. The answer comes as a system message when it's ready; tell the person you're on it, in a few words.`);
+  if (provider === "xai") link.handed(id, `Handed to ${botName}. Its answer comes on its own when it's ready; don't say anything more about it until then.`);
 }
 
 export function openVoiceLink(provider: VoiceProvider, options: LinkOptions): VoiceLink {

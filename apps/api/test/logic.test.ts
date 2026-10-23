@@ -1304,10 +1304,54 @@ describe("calls", () => {
     expect(readXaiEvent({ type: "error", error: { message: "bad key" } })).toEqual([{ kind: "error", message: "bad key" }]);
   });
 
+  test("speech said apart is joined as sentences, and a word split across fragments stays whole", async () => {
+    const { joinSpeech } = await import("../src/calls.ts");
+    expect(joinSpeech("Hang on.", "I'm looking")).toBe("Hang on. I'm looking");
+    expect(joinSpeech("Fridays out", " of town")).toBe("Fridays out of town");
+    expect(joinSpeech("Net", "'s your bot")).toBe("Net's your bot");
+    expect(joinSpeech("Done.", " Next")).toBe("Done. Next");
+  });
+
   test("a call's length reads in minutes", async () => {
     const { callLength } = await import("../src/calls.ts");
     expect(callLength(20_000)).toBe("under a minute");
     expect(callLength(70_000)).toBe("1 min");
     expect(callLength(5 * 60_000)).toBe("5 min");
+  });
+});
+
+describe("speaking on xAI", () => {
+  test("asks wait for the reply in progress, and one refused or never started is asked again", async () => {
+    const { SpeakQueue } = await import("../src/voice-link.ts");
+    const sent: string[] = [];
+    const queue = new SpeakQueue((ask) => sent.push(ask?.instructions ?? "plain"), 20);
+    queue.started();
+    queue.ask({ instructions: "answer" });
+    expect(sent).toEqual([]);
+    queue.finished();
+    expect(sent).toEqual(["answer"]);
+    // Refused (another reply had just begun): asked again once that one is done.
+    queue.refused();
+    queue.started();
+    queue.finished();
+    expect(sent).toEqual(["answer", "answer"]);
+    queue.started();
+    queue.finished();
+    await Bun.sleep(30);
+    expect(sent).toEqual(["answer", "answer"]);
+    // Never started at all: asked again after a moment, and not for ever.
+    queue.ask({ instructions: "lost" });
+    await Bun.sleep(150);
+    expect(sent.filter((s) => s === "lost")).toHaveLength(4);
+    queue.stop();
+  });
+});
+
+describe("OpenAI's output limit", () => {
+  test("OpenAI's own API gets max_completion_tokens, a server copying it the old max_tokens", async () => {
+    const { outputLimit } = await import("../src/native.ts");
+    expect(Object.keys(outputLimit({ upstream: "https://api.openai.com/v1" }))).toEqual(["max_completion_tokens"]);
+    expect(Object.keys(outputLimit({ upstream: "https://openrouter.ai/api/v1" }))).toEqual(["max_tokens"]);
+    expect(Object.keys(outputLimit({ upstream: undefined }))).toEqual(["max_tokens"]);
   });
 });

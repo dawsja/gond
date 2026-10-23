@@ -10,6 +10,14 @@ import { GROK_PLAN_HEADERS, grokAccessToken, grokSignIn, signOutGrok, startGrokL
 
 const HOP = new Set(["host", "connection", "content-length", "transfer-encoding", "keep-alive", "cookie", "authorization", "x-api-key", "x-gond-llm-token", "x-kru-llm-token", "accept-encoding"]);
 
+export function isOpenAiHost(baseUrl: string): boolean {
+  try {
+    return /(^|\.)openai\.com$/i.test(new URL(baseUrl).hostname);
+  } catch {
+    return false;
+  }
+}
+
 export function isAnthropicHost(baseUrl: string): boolean {
   try {
     return /(^|\.)anthropic\.com$/i.test(new URL(baseUrl).hostname);

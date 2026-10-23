@@ -1,7 +1,7 @@
 "use client";
 
 import type { Approval, Bot } from "@gond/shared";
-import { Mic, MicOff, Monitor, Phone, PhoneOff, Volume2 } from "lucide-react";
+import { Mic, MicOff, Monitor, Phone, PhoneOff } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -159,12 +159,6 @@ export function CallComposer({ call, bot }: { call: CallView; bot: Bot | undefin
       </Tooltip>
     </div>
   );
-}
-
-/** A line said on a call carries a small mark: a mic for the person's, a speaker for the bot's. */
-export function SpokenMark({ mine }: { mine: boolean }) {
-  const Icon = mine ? Mic : Volume2;
-  return <Icon aria-label={mine ? "Said on a call" : "Said aloud on a call"} className="float-left mt-[5px] mr-1.5 size-3.5 text-muted-foreground" />;
 }
 
 /** On a phone, away from the call's chat: the call as a pill under the header, a tap back to it. */

@@ -14,6 +14,7 @@ class CallCapture extends AudioWorkletProcessor {
 
   process(inputs) {
     const data = inputs[0] && inputs[0][0];
+    // Its output stays silent; it is connected only so the engine keeps running it.
     if (!data || data.length === 0) return true;
     // Linear interpolation across the block boundary: index -1 is the last sample of the block before.
     while (this.at < data.length - 1) {
