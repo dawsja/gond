@@ -720,6 +720,27 @@ describe("data", () => {
     deleteProvider("u-admin", "xai");
   });
 
+  test("Claude Code runs on a key through the proxy, with the key's model for its background calls too", async () => {
+    const { saveProvider, deleteProvider, providerProxyToken } = await import("../src/data/providers.ts");
+    const { engineRun, EngineSetupError } = await import("../src/engines.ts");
+    const { getAi } = await import("../src/data/ai.ts");
+    const base = getAi("u-kimi");
+    const ai = { ...base, engine: "claude" as const, enabled: ["claude" as const], engines: { ...base.engines, claude: { access: "api" as const, model: "kimi-for-coding" } } };
+
+    expect(engineRun({ ...ai, engines: { ...ai.engines, claude: { access: "plan" as const, model: "" } } }, "u-kimi").access).toEqual({ kind: "plan" });
+    expect(() => engineRun(ai, "u-kimi")).toThrow(EngineSetupError);
+    saveProvider("u-kimi", "anthropic", { baseUrl: "https://api.kimi.com/coding/", apiKey: "sk-kimi-1234567890" });
+    const run = engineRun(ai, "u-kimi");
+    expect(run.native).toBeUndefined();
+    expect(run.model).toBe("kimi-for-coding");
+    expect(run.access).toMatchObject({ kind: "api", token: providerProxyToken("u-kimi", "anthropic")!, smallModel: "kimi-for-coding" });
+    expect(run.access.kind === "api" && run.access.baseUrl).toEndWith("/api/llm/anthropic");
+    expect(JSON.stringify(run)).not.toContain("sk-kimi");
+
+    expect(() => engineRun({ ...ai, engines: { ...ai.engines, claude: { access: "api" as const, model: "" } } }, "u-kimi")).toThrow("Pick a model");
+    deleteProvider("u-kimi", "anthropic");
+  });
+
   test("voice picks the cheapest key unless one is chosen, and transcribes through it", async () => {
     const { saveProvider, deleteProvider } = await import("../src/data/providers.ts");
     const { getVoice, setVoice } = await import("../src/data/voice.ts");

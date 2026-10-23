@@ -14,6 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldDescription, FieldError } from "@/components/ui/field";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { patch } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -30,9 +31,10 @@ export function providerFor(engine: Engine, providers: Record<ProviderKind, Prov
   return info.providers.find((kind) => providers?.[kind]) ?? info.provider;
 }
 
-export function readiness(engine: Engine, status: BoxStatus | null, providers: Record<ProviderKind, ProviderMeta | null> | null, chosen?: ProviderKind | null): Readiness {
-  if (!isCliEngine(engine)) {
-    const kind = providerFor(engine, providers, chosen);
+export function readiness(engine: Engine, status: BoxStatus | null, providers: Record<ProviderKind, ProviderMeta | null> | null, config?: EngineSettings): Readiness {
+  const keyed = engine === "claude" && config?.access === "api";
+  if (!isCliEngine(engine) || keyed) {
+    const kind = keyed ? "anthropic" : providerFor(engine, providers, config?.provider);
     const provider = providers?.[kind];
     if (!providers) return { state: "waiting", text: "Checking…" };
     if (isPlanProvider(kind) && !provider?.account) return { state: "problem", text: provider?.check?.detail ?? `Not signed in yet. Sign in under ${PROVIDER_LABELS[kind].name}.` };
@@ -52,7 +54,7 @@ export function readiness(engine: Engine, status: BoxStatus | null, providers: R
 const PLACES: Record<Engine, { label: string; detail: string; tail: string; note: string; step: string }> = {
   claude: {
     label: "Claude Code",
-    detail: "On your Claude plan. Best at long, multi-step work.",
+    detail: "On your Claude plan or a key. Best at long, multi-step work.",
     tail: ", on your Claude plan.",
     note: "Anthropic's agent, run on the computer. Best at long, multi-step work, and the only one that runs MCP servers that start a command.",
     step: "Sign in to your Claude plan",
@@ -105,6 +107,8 @@ function Step({ n, state, title, children }: { n: number; state: "done" | "activ
   );
 }
 
+const CLAUDE_ON_KEY = { tail: ", on your API key.", step: "Pick the API key" };
+
 function ClaudeAccount({ ready, onRefresh }: { ready: Readiness; onRefresh: () => Promise<void> }) {
   const [checking, setChecking] = useState(false);
   const [signingIn, setSigningIn] = useState(false);
@@ -153,10 +157,15 @@ export function AiSteps({ ai, status, onChange, onRefresh }: { ai: AiSettings; s
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
+  const [wantsKey, setWantsKey] = useState(false);
+
   const engine = choice ?? ai.engine;
   const pending = engine !== ai.engine;
-  const ready = readiness(engine, status, providers, ai.engines[engine].provider);
+  const claudeKeyed = ai.engines.claude.access === "api" || wantsKey;
+  const keyed = engine === "claude" && claudeKeyed;
+  const ready = readiness(engine, status, providers, engine === "claude" ? { ...ai.engines.claude, access: claudeKeyed ? "api" : "plan" } : ai.engines[engine]);
   const keyKind = providerFor("api", providers, ai.engines.api.provider);
+  const place = keyed ? { ...PLACES.claude, ...CLAUDE_ON_KEY } : PLACES[engine];
 
   const save = useCallback(
     async (next: AiPatch) => {
@@ -190,9 +199,16 @@ export function AiSteps({ ai, status, onChange, onRefresh }: { ai: AiSettings; s
 
   const stepTwoDone = ready.state === "ready";
   const modelReady = !pending && stepTwoDone;
+  // A key has no model in common with the plan, so a move either way starts the model afresh.
+  const claudeOn = async (access: "plan" | "api", hasKey = Boolean(providers?.anthropic)) => {
+    setWantsKey(access === "api" && !hasKey);
+    if (access === ai.engines.claude.access || (access === "api" && !hasKey)) return;
+    await save({ engines: { claude: { access, model: "" } } });
+  };
+
   const stayingOn = ai.engine === "api" ? "your API key" : ENGINE_LABELS[ai.engine].name;
   const waitText =
-    ready.state === "waiting" && !ready.signIn ? "Checking…" : engine === "api" ? "Add a key first, then pick from its models" : "Sign in first, then pick from your plan's models";
+    ready.state === "waiting" && !ready.signIn ? "Checking…" : engine === "api" || keyed ? "Add a key first, then pick from its models" : "Sign in first, then pick from your plan's models";
 
   return (
     <div className="flex flex-col gap-4">
@@ -225,15 +241,31 @@ export function AiSteps({ ai, status, onChange, onRefresh }: { ai: AiSettings; s
               </SelectGroup>
             </SelectContent>
           </Select>
-          {PLACES[engine].tail}
+          {place.tail}
         </div>
-        <p className="text-[13px] text-muted-foreground">{PLACES[engine].note}</p>
+        <p className="text-[13px] text-muted-foreground">{place.note}</p>
         {pending ? <p className="text-[13px] font-medium">Your bots stay on {stayingOn} until this is set up.</p> : null}
         {error ? <FieldError>{error}</FieldError> : null}
       </Step>
 
-      <Step n={2} state={stepTwoDone ? "done" : "active"} title={PLACES[engine].step}>
-        {engine === "claude" ? <ClaudeAccount ready={ready} onRefresh={onRefresh} /> : null}
+      <Step n={2} state={stepTwoDone ? "done" : "active"} title={place.step}>
+        {engine === "claude" ? (
+          <ToggleGroup aria-label="What Claude Code runs on" variant="pill" value={[keyed ? "api" : "plan"]} disabled={saving} onValueChange={(next) => (next[0] === "plan" || next[0] === "api") && void claudeOn(next[0])}>
+            <ToggleGroupItem value="plan">My Claude plan</ToggleGroupItem>
+            <ToggleGroupItem value="api">API key</ToggleGroupItem>
+          </ToggleGroup>
+        ) : null}
+        {engine === "claude" && !keyed ? <ClaudeAccount ready={ready} onRefresh={onRefresh} /> : null}
+        {keyed ? (
+          providers ? (
+            <>
+              <p className="text-[14px]">Claude Code runs on the computer and calls your Anthropic-compatible key through Gond. For a coding plan like Kimi Code, use the address it gives for Claude Code and the model it names.</p>
+              <KeyList providers={providers} only={["anthropic"]} chosen="anthropic" onPick={() => void claudeOn("api", true)} onChange={() => void reload()} />
+            </>
+          ) : (
+            <Spinner />
+          )
+        ) : null}
         {engine === "chatgpt" ? <ChatGptAccount providers={providers} reload={() => void reload()} /> : null}
         {engine === "grok" ? <GrokAccount providers={providers} reload={() => void reload()} /> : null}
         {engine === "api" ? (

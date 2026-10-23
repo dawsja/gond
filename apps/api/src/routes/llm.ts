@@ -6,7 +6,7 @@ import { getAi, releaseEngines } from "../data/ai.ts";
 import { boxConfig, engineModels } from "../box.ts";
 import { deleteProvider, getProvider, isProviderKind, listProviders, providerBaseUrl, providerByToken, providerKey, recordProviderCheck, saveProvider } from "../data/providers.ts";
 import { chatGptAccessToken, signOutChatGpt, startChatGptLogin } from "../chatgpt.ts";
-import { ANTHROPIC_VERSION, authHeaders, proxiedUrl, upstreamUrl } from "../providers.ts";
+import { ANTHROPIC_VERSION, authHeaders, coderOnlyRefusal, proxiedUrl, upstreamUrl } from "../providers.ts";
 import { grokAccessToken, grokSignIn, signOutGrok, startGrokLogin } from "../grok.ts";
 
 const HOP = new Set(["host", "connection", "content-length", "transfer-encoding", "keep-alive", "cookie", "authorization", "x-api-key", "x-gond-llm-token", "accept-encoding"]);
@@ -61,7 +61,9 @@ async function checkProvider(owner: string, kind: ProviderKind): Promise<{ ok: b
   const { url, headers } = modelsRequest(kind, baseUrl, key);
   try {
     const res = await fetch(url, { headers, redirect: "manual", signal: AbortSignal.timeout(15_000) });
+    const refusal = res.status === 403 ? await res.text().catch(() => "") : "";
     await res.body?.cancel().catch(() => undefined);
+    if (coderOnlyRefusal(refusal)) return { ok: true, detail: "Saved. This key works only through a coding agent, so run Claude Code on it." };
     if (res.ok) return { ok: true, detail: isPlanProvider(kind) ? "Signed in. Your plan works." : "The key works." };
     if (res.status === 403 && kind === "grok") return { ok: false, detail: "Signed in, but Grok says this account's plan can't be used here. It needs SuperGrok or X Premium+." };
     if (res.status === 401 || res.status === 403) return { ok: false, detail: isPlanProvider(kind) ? `${PROVIDER_LABELS[kind].short} refused the sign-in. Sign in again.` : "The provider refused the key." };
@@ -132,14 +134,15 @@ export function providerRoutes() {
 }
 
 async function modelsFor(userId: string, engine: Engine): Promise<ModelGroup> {
-  if (isCliEngine(engine)) {
+  const keyed = engine === "claude" && getAi(userId).engines.claude.access === "api";
+  if (isCliEngine(engine) && !keyed) {
     const box = boxConfig(userId);
     if (!box) return { engine, models: [], source: "none", detail: "The computer isn't reachable." };
     const { models } = await engineModels(box, engine).catch(() => ({ models: [] as ModelChoice[] }));
     return models.length ? { engine, models, source: "engine", detail: null } : { engine, models: [], source: "none", detail: `${ENGINE_LABELS[engine].name} didn't list its models. Type the model id you want.` };
   }
   const info = ENGINE_LABELS[engine];
-  const kind = getAi(userId).engines[engine].provider ?? info.providers.find((p) => getProvider(userId, p)) ?? info.provider;
+  const kind = keyed ? "anthropic" : (getAi(userId).engines[engine].provider ?? info.providers.find((p) => getProvider(userId, p)) ?? info.provider);
   const baseUrl = providerBaseUrl(userId, kind);
   const key = await keyFor(userId, kind);
   if (!baseUrl || !key) return { engine, models: [], source: "none", detail: isPlanProvider(kind) ? `Sign in with ${PROVIDER_LABELS[kind].short} again to see your plan's models.` : "No API key saved yet." };

@@ -2,7 +2,7 @@ import { CHATGPT_USAGE_URL, PROVIDER_LABELS, isOpenAiShaped, isPlanProvider, too
 import { clipParts, clipToolResult, isToolParts, resultAsText, type DriverTool, type ToolPart } from "./driver.ts";
 import { sseStream } from "./sse.ts";
 import { labelStep, type StepUpdate } from "./work.ts";
-import { ANTHROPIC_VERSION, authHeaders, isAnthropicHost, isMiniMaxHost, isOpenAiHost, upstreamUrl } from "./providers.ts";
+import { ANTHROPIC_VERSION, CODER_ONLY_TEXT, authHeaders, coderOnlyRefusal, isAnthropicHost, isMiniMaxHost, isOpenAiHost, upstreamUrl } from "./providers.ts";
 
 const MAX_STEPS = 80;
 
@@ -162,6 +162,7 @@ export function providerError(status: number, body: unknown): string {
   const error = (body as { error?: unknown })?.error;
   const message = typeof error === "string" ? error : ((error as { message?: unknown })?.message ?? (body as { message?: unknown })?.message);
   const detail = typeof message === "string" && message.trim() ? message.trim() : typeof body === "string" && body.trim() ? body.trim() : "";
+  if (status === 403 && coderOnlyRefusal(body)) return CODER_ONLY_TEXT;
   if (status === 401 || status === 403) return `The API refused the key${detail ? `: ${detail}` : "."}`;
   if (status === 404) return `The API has no such endpoint or model${detail ? `: ${detail}` : ". Check the base URL and the model id."}`;
   if (!status) return `The API stopped partway${detail ? `: ${detail}` : "."}`;

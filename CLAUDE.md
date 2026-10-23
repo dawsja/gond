@@ -988,13 +988,22 @@ what is here. The README says what Gond is; this says how it is made.
   can't take it answers false, never guesses.
 - **The AI is each person's own** (`src/data/ai.ts`, Settings → AI for
   everyone). `enabled` is the engines they turned on, `engine` the one in
-  use (always one of them), and `engines[engine]` its model. A CLI always
-  runs on their plan; a key is the `api` engine's, so nothing can be left
+  use (always one of them), and `engines[engine]` its model. Claude Code
+  runs on their plan, or on their Anthropic-compatible key
+  (`engines.claude.access` `api`): `engineRun` hands the box the LLM
+  proxy's address and the key's proxy token (`claudeAccessEnv`), with the
+  key's model for Claude Code's background calls too. It is for a coding
+  plan that serves its key only to coding agents it knows, like Kimi Code,
+  which refuses Gond's own `api` engine (`coderOnlyRefusal` says so in
+  words). The proxy passes Claude Code's own headers on, and Gond never
+  changes a client's User-Agent: Kimi's terms forbid it. Removing the key
+  puts Claude Code back on the plan (`releaseEngines`), so nothing is left
   pointing at a key with no way back. How hard a model thinks is the
   model's own business: nothing sets it, and there is no setting for it.
   Settings → AI is three steps (`ai-steps.tsx`): where the bots run (one
   engine, picked in a sentence), the account behind it (Claude Code's
-  sign-in on the computer with a circle that checks it again, the ChatGPT
+  sign-in on the computer with a circle that checks it again, or its key
+  under "API key", the ChatGPT
   or Grok sign-in, or which saved key), and the model, from that engine's
   own list (`ModelPicker` with `only`). A pick moves the bots only once
   its account works (`readiness`), so they never sit on an engine that

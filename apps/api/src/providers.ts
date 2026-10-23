@@ -27,6 +27,14 @@ export function isMiniMaxHost(baseUrl: string): boolean {
   }
 }
 
+/** A coding plan's key (Kimi Code) that its provider serves only to coding agents it knows, Claude Code among them. */
+export function coderOnlyRefusal(body: unknown): boolean {
+  const text = typeof body === "string" ? body : JSON.stringify(body ?? "");
+  return /access_terminated_error|only available for coding agents/i.test(text);
+}
+
+export const CODER_ONLY_TEXT = "This key works only through a coding agent. Put Claude Code on it under Settings → AI instead.";
+
 export function authHeaders(kind: ProviderKind, baseUrl: string, key: string): Record<string, string> {
   if (kind === "grok") return { authorization: `Bearer ${key}`, ...GROK_PLAN_HEADERS };
   if (isOpenAiShaped(kind)) return { authorization: `Bearer ${key}` };

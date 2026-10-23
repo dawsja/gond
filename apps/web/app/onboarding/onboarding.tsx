@@ -226,7 +226,7 @@ function AiStep({
       </Field>
       {ai.enabled.map((engine) => {
         const info = ENGINE_LABELS[engine];
-        const ready = readiness(engine, status, providers, ai.engines[engine].provider);
+        const ready = readiness(engine, status, providers, ai.engines[engine]);
         return (
           <Alert key={engine}>
             {ready.state === "ready" ? <Check className="text-mint" /> : ready.state === "waiting" ? <Spinner /> : null}

@@ -5,6 +5,7 @@ import type { Env } from "../app.ts";
 import { pageOf, searchIndex } from "../catalog.ts";
 import { catalogEntry, catalogIndex } from "../composio.ts";
 import { getAi, updateAi } from "../data/ai.ts";
+import { getProvider } from "../data/providers.ts";
 import { setUserTimezone } from "../data/prefs.ts";
 import { getSettings, listConnections, updateSettings } from "../data/settings.ts";
 import { boxStatus, forgetClaudeCheck } from "../status.ts";
@@ -45,6 +46,7 @@ export function settingsRoutes() {
         if (given.access !== undefined) {
           if (!(ENGINE_ACCESS as readonly string[]).includes(String(given.access))) return c.json({ error: "Run it on a plan or an API key" }, 400);
           next.access = given.access as EngineAccess;
+          if (name === "claude" && next.access === "api" && !getProvider(userId(c), "anthropic")) return c.json({ error: "Add an Anthropic-compatible key first, then run Claude Code on it" }, 400);
         }
         if (given.model !== undefined) {
           const model = String(given.model).trim();

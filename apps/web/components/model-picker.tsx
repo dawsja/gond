@@ -96,7 +96,7 @@ export function ModelPicker({
   const known = groups.some((group) => group.engine === engine && group.models.some((choice) => choice.id === model));
 
   const plan = isPlanProvider(ENGINE_LABELS[engine].provider);
-  const useInput = typing || (model !== "" && !known && !plan);
+  const useInput = typing || (!known && !plan && (model !== "" || !groups.length));
   const save = (next: { engine: Engine; model: string }) => {
     if (next.engine === engine && next.model.trim() === model) return;
     onChange({ engine: next.engine, model: next.model.trim() });

@@ -359,6 +359,9 @@ describe("calling an API directly", () => {
     expect(readOpenAi({ choices: [{ message: { tool_calls: [{ id: "c", function: { name: "Bash", arguments: "{oops" } }] } }] }).calls[0]).toEqual({ id: "c", name: "Bash", input: {} });
     expect(providerError(401, { error: { message: "no credit" } })).toBe("The API refused the key: no credit");
     expect(providerError(404, {})).toContain("no such endpoint or model");
+    const kimi = { error: { type: "access_terminated_error", message: "Kimi For Coding is currently only available for Coding Agents such as Kimi CLI, Claude Code, Roo Code, Kilo Code, etc." } };
+    expect(providerError(403, kimi)).toContain("Put Claude Code on it");
+    expect(providerError(403, { error: { message: "forbidden" } })).toBe("The API refused the key: forbidden");
   });
 
   test("a ChatGPT plan streams the Responses API and reads back as the same step", async () => {

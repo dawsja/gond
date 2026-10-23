@@ -39,5 +39,13 @@ export function engineRun(ai: AiSettings, userId: string): EngineRun {
     return { engine, model, access: { kind: "plan" }, native: { kind, baseUrl: `${apiInternalUrl()}/api/llm/${kind}`, token, upstream: providerBaseUrl(userId, kind) ?? undefined } };
   }
 
+  if (engine === "claude" && config.access === "api") {
+    const token = providerProxyToken(userId, "anthropic");
+    if (!getProvider(userId, "anthropic") || !token) throw new EngineSetupError("Your bots are set to run Claude Code on a key, but none is saved. Add an Anthropic-compatible key under Settings → AI, or put Claude Code back on your Claude plan.");
+    if (!config.model) throw new EngineSetupError("Pick a model for Claude Code on your key under Settings → AI. A key has no default.");
+    // Claude Code's background calls go to the same model: a coding plan's key often serves only one.
+    return { engine, model: config.model, access: { kind: "api", baseUrl: `${apiInternalUrl()}/api/llm/anthropic`, token, smallModel: config.model } };
+  }
+
   return { engine, model, access: { kind: "plan" } };
 }

@@ -159,14 +159,28 @@ function ManageKey({ kind, provider, onChange }: { kind: KeyProviderKind; provid
 }
 
 /** Step 2 for the API engine: one row per API, the saved ones to pick between, the rest to add. */
-export function KeyList({ providers, chosen, onPick, onChange }: { providers: Record<ProviderKind, ProviderMeta | null>; chosen: ProviderKind; onPick: (kind: KeyProviderKind) => void; onChange: () => void }) {
+export function KeyList({
+  providers,
+  only,
+  chosen,
+  onPick,
+  onChange,
+}: {
+  providers: Record<ProviderKind, ProviderMeta | null>;
+  /** The APIs the engine can run on, when it is fewer than all of them. */
+  only?: readonly KeyProviderKind[];
+  chosen: ProviderKind;
+  onPick: (kind: KeyProviderKind) => void;
+  onChange: () => void;
+}) {
   const [open, setOpen] = useState<KeyProviderKind | null>(null);
-  const saved = KEY_PROVIDER_KINDS.filter((kind) => providers[kind]);
+  const kinds = only ?? KEY_PROVIDER_KINDS;
+  const saved = kinds.filter((kind) => providers[kind]);
 
   return (
     <div className="flex flex-col gap-3">
       <RadioGroup aria-label="Which key" value={saved.includes(chosen as KeyProviderKind) ? chosen : null} onValueChange={(value) => typeof value === "string" && onPick(value as KeyProviderKind)} className="gap-0 overflow-hidden rounded-2xl border">
-        {KEY_PROVIDER_KINDS.map((kind, index) => {
+        {kinds.map((kind, index) => {
           const provider = providers[kind];
           const label = PROVIDER_LABELS[kind];
           const expanded = open === kind;

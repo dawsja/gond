@@ -35,6 +35,8 @@ affiliated with xAI, Meta or Anthropic.
   Continue with ChatGPT, or your SuperGrok or X Premium+ plan with Sign
   in with Grok. Or bring an API key (Anthropic, OpenAI, xAI or
   anything compatible). Without a CLI, Gond drives the model itself.
+  Claude Code can run on an Anthropic-compatible key too, which is how
+  a coding plan like Kimi Code works.
 - **Connected apps.** Anything Composio supports: Gmail, Slack, GitHub,
   Notion, Linear and hundreds more. You choose which bots can use each one.
 - **MCP servers.** Add your own, OAuth sign-in included.
