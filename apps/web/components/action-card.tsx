@@ -106,21 +106,29 @@ export type ActionRow = { label: string; value: string; items?: ActionItem[] };
 const FIGURE_CHARS = 24;
 
 function ItemsRow({ row }: { row: ActionRow & { items: ActionItem[] } }) {
+  const long = row.value.length > FIGURE_CHARS;
   return (
     <Collapsible className="border-b border-primary-edge/70 last:border-b-0">
       <CollapsibleTrigger className="flex w-full items-baseline gap-2 px-3.5 py-2 text-left outline-none focus-visible:bg-primary-hover [&[data-panel-open]_svg]:rotate-180">
-        <span className="min-w-0 flex-1 wrap-anywhere">
-          {row.label} <span className="font-semibold text-tint-ink">{row.items.length === 1 ? "1 item" : `${row.items.length} items`}</span>
+        {/* A value too long to sit beside its label goes under it, as in a plain row, or it squeezes the label to a letter a line. */}
+        <span className={cn("min-w-0 flex-1", long && "flex flex-col gap-0.5")}>
+          <span className="wrap-anywhere">
+            {row.label} <span className="font-semibold text-tint-ink">{row.items.length === 1 ? "1 item" : `${row.items.length} items`}</span>
+          </span>
+          {long ? <span className="wrap-anywhere text-muted-foreground">{row.value}</span> : null}
         </span>
-        {row.value ? <span className="shrink-0 text-right text-muted-foreground tabular-nums">{row.value}</span> : null}
+        {row.value && !long ? <span className="shrink-0 text-right text-muted-foreground tabular-nums">{row.value}</span> : null}
         <ChevronDown className="size-4 shrink-0 self-center text-muted-foreground transition-transform" aria-hidden="true" />
       </CollapsibleTrigger>
       <CollapsibleContent className="max-h-56 overflow-y-auto bg-background/60 py-1">
         {row.items.map((item, i) => (
           <div key={i} className="flex items-center gap-2 py-1.5 pr-3.5 pl-5 text-[13px] leading-5">
-            <span className="min-w-0 flex-1 wrap-anywhere">{item.label}</span>
+            <span className={cn("min-w-0 flex-1", item.value.length > FIGURE_CHARS && "flex flex-col")}>
+              <span className="wrap-anywhere">{item.label}</span>
+              {item.value.length > FIGURE_CHARS ? <span className="wrap-anywhere text-muted-foreground">{item.value}</span> : null}
+            </span>
             {item.note ? <Badge tone="warn">{item.note}</Badge> : null}
-            {item.value ? <span className="shrink-0 text-muted-foreground tabular-nums">{item.value}</span> : null}
+            {item.value && item.value.length <= FIGURE_CHARS ? <span className="shrink-0 text-muted-foreground tabular-nums">{item.value}</span> : null}
           </div>
         ))}
       </CollapsibleContent>

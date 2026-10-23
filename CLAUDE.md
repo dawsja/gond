@@ -739,7 +739,9 @@ what is here. The README says what Gond is; this says how it is made.
   under the pinned bots (`worth-a-look.tsx`, drawn by `BotRows`): a sheet
   on a phone, a popover in the sidebar, the approvals as their full cards
   and each noticed thing a row to its conversation, with Mark all seen
-  marking those conversations read.
+  marking those conversations read. Nothing from the conversation on
+  screen is repeated there: its cards and what it noticed are already in
+  front of the person.
 - **Gond updates itself from Settings → About** (`src/release.ts`,
   `server-update-card.tsx`). The API image knows its release
   (`GOND_VERSION`, a build arg CI sets from the tag; "dev" otherwise, and a

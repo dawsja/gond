@@ -35,10 +35,13 @@ const messageOf = (approval: Approval): Message => ({
 
 const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
+// The conversation on screen already shows its own cards and what was noticed there, so neither is repeated here.
 function useWorthALook() {
-  const { approvals, threads, botById } = useStore();
+  const { approvals: pending, threads, botById } = useStore();
   const pathname = usePathname();
-  const noticed = threads.filter((t) => t.noticed && pathname !== `/app/t/${t.id}`);
+  const onScreen = (threadId: string) => pathname === `/app/t/${threadId}`;
+  const approvals = pending.filter((a) => !onScreen(a.threadId));
+  const noticed = threads.filter((t) => t.noticed && !onScreen(t.id));
   const faces: Bot[] = [];
   for (const id of [...approvals.map((a) => a.botId), ...noticed.map((t) => t.botId)]) {
     const bot = id ? botById(id) : undefined;
