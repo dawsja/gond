@@ -163,6 +163,11 @@ what is here. The README says what Gond is; this says how it is made.
   `rounded-2xl` card with the same edge and `h-9` rows on every pointer,
   kept off the screen's edges (`collisionPadding`); a `Select`'s list is
   at least as wide as its box and as wide as its longest option allows.
+  Layers are fixed: dialogs and sheets at `z-50`, the computer's window at
+  `z-[70]`, a confirm at `z-[90]`, and everything that floats from a
+  control (a `Select`'s list, menus, popovers, tooltips) and the toasts at
+  `z-[100]`, so a list opened inside a confirm or the computer's window is
+  never behind it. A new layer takes a place in that order.
   Every `Button` under a coarse pointer has a 44px hit area even when it
   is drawn smaller, and a toggle is 44px tall. All of it lives in
   `components/ui`; a call site only sets its width. The one exception is
@@ -307,6 +312,17 @@ what is here. The README says what Gond is; this says how it is made.
   SVG named `.png` is refused) and keeps it in `gond_bot_avatars`;
   `Bot.avatar` is its URL with a version, or null. `BotAvatar` draws the
   picture when there is one, crown and all.
+- **A room is picked by faces.** New room and Edit room are one dialog
+  (`room-dialog.tsx`): the room's picture builds itself from the bots
+  picked, the name is optional (left empty, it is its bots' names,
+  `roomNameFor` in shared, the one that answers first in front, and the
+  API fills it in), and the bots are a grid of faces, each a `Toggle` with
+  the `tile` variant (pressed rings the face in the person's color and
+  shows a check), with the count and who answers when nobody is named
+  under it. Past `SEARCH_FROM` bots a search narrows them by name or job,
+  and it and the count move into the dialog's sticky header so neither
+  scrolls away; a room's own bots come first, in the order they had when
+  it opened, so a tap never moves a face.
 - **A room is edited like a bot.** Edit room (`room-dialog.tsx` with a
   `threadId`, `PATCH /api/rooms/:id`) renames it and changes its bots,
   from the room's ⋯ and long-press menu, its pill (on a wide screen; the
@@ -322,11 +338,14 @@ what is here. The README says what Gond is; this says how it is made.
   (`roomTargets` in shared, used by `targetsFor` and by the composer, so
   they never disagree): the person's line goes to whom it names (an
   @handle, a bot's name as a word in any case since voice types no @, "everyone", or "both" in a room of
-  two, `addressedIn`), else to the bots that answered them since they last
-  wrote, else to whoever their last line went to, else to `roomAnswerer`
+  two, `addressedIn`), else to everyone in the conversation with them: the
+  bots that answered since they last wrote and those still answering
+  (`working`, `workingIn`), else to whoever their last line went to, else to `roomAnswerer`
   (the primary if it is there, else the first bot). The opening line and
   any change to the room name that bot; the placeholder says who answers
-  next ("Patch answers next"); a steered line says whom it
+  next ("Patch answers next", counting the bots still working); the
+  @mention chips above the composer are one row a thumb swipes along on a
+  phone and wrap on a wide screen; a steered line says whom it
   went to; and a `::choices` tap in a room is sent as `@handle option` to the
   bot that offered it. A bot's own line still wakes only those it
   @mentions, and a room is a group chat for the bots too: `message_bot`
@@ -334,7 +353,17 @@ what is here. The README says what Gond is; this says how it is made.
   @mention, waking them there, never as a private note. A room turn's prompt says to answer exactly `NOTHING_NEW` when
   the line isn't for it, to cover an earlier question of the person's that
   was for it, and to @mention a member whose part a question is rather than
-  telling the person to ask them.
+  telling the person to ask them. Bots a line wakes together answer it side
+  by side and can't see each other's answer, so each one's prompt names the
+  others (`answeringAlongside`) and says to cover its own part only. A
+  bot's line keeps the message it answered (`answering` on
+  `gond_messages`), and whom it wakes is `wokenBy`: the members it names,
+  never one answering that same message, so an @mention of a co-answerer
+  wakes nobody, enforced in the dispatcher and not left to the prompt. As
+  in a group chat, a line posted while the others are still answering
+  reaches their running turns (`roomLineText`, by steer), so they see it
+  arrive and don't repeat it. A member woken only to repeat what it said
+  since the person last wrote answers `NOTHING_NEW`.
 - **A draft stays where it was typed.** What the person types in a
   conversation is kept per conversation in `localStorage` on that device
   (`lib/drafts.ts`), put back when they return, and shown in the list as
@@ -441,7 +470,10 @@ what is here. The README says what Gond is; this says how it is made.
   sends that option as the person's message, and once the person has said
   anything after it the row closes, the pick shown pressed
   (`ChoicesContext`, which only the conversation provides, so anywhere
-  else it is inert). `badgeOf` / `meterOf` / `choicesOf` say when one is well formed; any other
+  else it is inert). A leaf directive can't start mid-line, so a
+  `::choices[…]` a bot puts at the end of its sentence is moved onto a
+  line of its own before parsing (`prepareMarkdown`, outside code
+  fences), and the prompt asks for its own line too. `badgeOf` / `meterOf` / `choicesOf` say when one is well formed; any other
   directive, a container, or a malformed one renders as its raw source, so
   `Note:this` and `:smile:` survive. The `## Formatting` section of the
   system prompt (`souls.ts`) tells a bot to use them, with figures in a
@@ -850,7 +882,10 @@ what is here. The README says what Gond is; this says how it is made.
   `postFromPerson` (`src/responder.ts`) hands it to their running turns
   instead of queueing it: the model works it in at its next step and the
   turn's one reply covers it. The message is posted `steered` (the web
-  says "Sent while working") and put back to wait if no turn took it.
+  says "Sent while working") and put back to wait if no turn took it. In a
+  room where only some of them are working, those get it in their running
+  answers and the idle ones answer it as a new turn, so nobody misses a
+  line and nobody answers it twice.
   "Send after it finishes" in the composer, and anything with files,
   waits as before. Only a person steers; routines, teammates and hidden
   prompts always queue. Each driver steers its own way (`steer` on the

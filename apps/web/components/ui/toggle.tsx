@@ -13,12 +13,15 @@ const toggleVariants = cva(
         outline: "border border-primary-edge bg-transparent hover:border-primary-edge-focus hover:bg-primary",
 
         pill: "rounded-full border border-primary-edge bg-transparent hover:border-primary-edge-focus hover:bg-primary data-pressed:border-control data-pressed:bg-control data-pressed:text-control-foreground aria-pressed:border-control aria-pressed:bg-control aria-pressed:text-control-foreground",
+        // A face to pick (a bot for a room): pressed rings its `tile-face` in the person's color and shows its `tile-check`.
+        tile: "flex-col rounded-2xl bg-transparent hover:bg-muted aria-pressed:bg-transparent data-pressed:bg-transparent aria-pressed:hover:bg-muted [&_[data-slot=tile-face]]:relative [&_[data-slot=tile-face]]:rounded-full [&_[data-slot=tile-face]]:ring-2 [&_[data-slot=tile-face]]:ring-transparent aria-pressed:[&_[data-slot=tile-face]]:ring-offset-2 aria-pressed:[&_[data-slot=tile-face]]:ring-offset-(--surface) aria-pressed:[&_[data-slot=tile-face]]:ring-tint-solid [&_[data-slot=tile-check]]:hidden aria-pressed:[&_[data-slot=tile-check]]:flex",
       },
       size: {
         default:
           "h-8 min-w-8 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
         sm: "h-7 min-w-7 rounded-[min(var(--radius-md),12px)] px-2.5 text-[0.8rem] has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3.5",
         lg: "h-9 min-w-9 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
+        tile: "h-auto w-full min-w-0 gap-1.5 px-1 py-2 whitespace-normal",
       },
     },
     defaultVariants: {

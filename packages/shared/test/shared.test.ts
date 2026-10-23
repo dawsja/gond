@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { addressedIn, newerVersion, BOT_TEMPLATES, draftIdOf, editedEmailInput, emailDraftOf, emailEditable, emailName, emailText, sendDraftAction, wordDiff, MOBILE_SIGN_IN_CALLBACK, SIGN_IN_APPS, approvalLine, botInputSchema, composioCard, composioCardToolkit, fromNativeAction, gerund, handleOf, isClosing, isQuietReply, isQuietTool, isStopRequest, routineName, joinCommandLine, mentionsIn, pickBotName, pickVoiceProvider, plainMarkdown, roomAnswerer, roomTargets, ruleLabel, splitCommandLine, toolLabel, toolLine } from "../src/index.ts";
+import { addressedIn, newerVersion, BOT_TEMPLATES, draftIdOf, editedEmailInput, emailDraftOf, emailEditable, emailName, emailText, sendDraftAction, wordDiff, MOBILE_SIGN_IN_CALLBACK, SIGN_IN_APPS, approvalLine, botInputSchema, composioCard, composioCardToolkit, fromNativeAction, gerund, handleOf, isClosing, isQuietReply, isQuietTool, isStopRequest, routineName, joinCommandLine, mentionsIn, pickBotName, pickVoiceProvider, plainMarkdown, roomAnswerer, roomNameFor, roomTargets, ruleLabel, splitCommandLine, toolLabel, toolLine } from "../src/index.ts";
 
 describe("shared", () => {
   test("pickBotName avoids taken names and numbers when exhausted", () => {
@@ -360,5 +360,21 @@ describe("rooms", () => {
     expect(ids(roomTargets("and the backups?", members, [line("you", "@patch check the nodes")]))).toEqual(["patch"]);
     expect(ids(roomTargets("@net you check too", members, afterPatch))).toEqual(["net"]);
     expect(ids(roomTargets("thanks", members, [...afterPatch, line("system", "Patch left.", "event")]))).toEqual(["patch"]);
+  });
+
+  test("a room with no name is named after its bots, the one that answers first in front", () => {
+    const bot = (name: string, primary = false) => ({ id: name.toLowerCase(), name, primary });
+    expect(roomNameFor([bot("Net"), bot("Pip", true)])).toBe("Pip and Net");
+    expect(roomNameFor([bot("Net"), bot("Patch"), bot("Pip", true)])).toBe("Pip, Net and Patch");
+    expect(roomNameFor(["A", "B", "C", "D", "E"].map((n) => bot(n)))).toBe("A, B, C and 2 more");
+    expect(roomNameFor([bot("Solo")])).toBe("Solo");
+  });
+
+  test("a line sent while some are still answering goes to them too, as in a group chat", () => {
+    const netDone = [line("you", "everyone, anything before the weekend?"), line("net", "Nothing from the network.")];
+    expect(ids(roomTargets("and the backups?", members, netDone))).toEqual(["net"]);
+    expect(ids(roomTargets("and the backups?", members, netDone, ["patch"]))).toEqual(["net", "patch"]);
+    expect(ids(roomTargets("skip the backups part", members, [line("you", "status, both of you")], ["net", "patch"]))).toEqual(["net", "patch"]);
+    expect(ids(roomTargets("@net just you", members, netDone, ["patch"]))).toEqual(["net"]);
   });
 });

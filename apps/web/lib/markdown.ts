@@ -33,16 +33,40 @@ export type Definitions = Map<string, { url: string; title: string | null }>;
 const extensions = [gfm({ singleTilde: false }), directive()];
 const mdastExtensions = [gfmFromMarkdown(), directiveFromMarkdown()];
 
+const TRAILING_CHOICES = /^(.*\S)[ \t]+(::choices\[[^\]\n]+\])[ \t]*$/;
+const FENCE = /^ {0,3}(`{3,}|~{3,})/;
+
+/**
+ * The text as it is parsed. A bot sometimes ends its question with the
+ * choices on the same line ("1 TB or 2? ::choices[1 TB | 2 TB]"), where a
+ * leaf directive can't start, so they would show as raw text: such a line
+ * is split so the choices stand on their own. Code fences are left alone.
+ */
+export function prepareMarkdown(source: string): string {
+  let fence: string | null = null;
+  return source
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) => {
+      const open = FENCE.exec(line)?.[1];
+      if (open && (!fence || open.startsWith(fence))) fence = fence ? null : open[0]!.repeat(3);
+      const split = fence ? null : TRAILING_CHOICES.exec(line);
+      return split ? `${split[1]}\n\n${split[2]}` : line;
+    })
+    .join("\n");
+}
+
 export function parseMarkdown(source: string): Root {
-  return fromMarkdown(source.replace(/\r\n?/g, "\n"), { extensions, mdastExtensions });
+  return fromMarkdown(prepareMarkdown(source), { extensions, mdastExtensions });
 }
 
 export function parseInline(source: string): PhrasingContent[] {
   const out: PhrasingContent[] = [];
-  for (const block of parseMarkdown(source).children) {
+  const text = prepareMarkdown(source);
+  for (const block of parseMarkdown(text).children) {
     if (out.length) out.push({ type: "text", value: "\n" });
     if (block.type === "paragraph" || block.type === "heading") out.push(...block.children);
-    else out.push({ type: "text", value: sourceOf(block, source) });
+    else out.push({ type: "text", value: sourceOf(block, text) });
   }
   return out;
 }

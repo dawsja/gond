@@ -3784,7 +3784,12 @@ describe("rooms and a bot's files", () => {
     const change = (app: typeof mine, body: unknown) => app.request(`/api/rooms/${room.id}`, { method: "PATCH", headers: json, body: JSON.stringify(body) });
 
     expect((await change(theirs, { name: "Mine" })).status).toBe(404);
-    expect((await change(mine, { name: "  " })).status).toBe(400);
+    // A room left without a name is named after its bots, the one that answers first in front.
+    expect((await change(mine, { name: "  " })).status).toBe(200);
+    expect(getThread(room.id)!.name).toBe("Ada and Bo");
+    const unnamed = await mine.request("/api/rooms", { method: "POST", headers: json, body: JSON.stringify({ name: "", members: [bo.id, cy.id, ada.id] }) });
+    expect(unnamed.status).toBe(201);
+    expect(((await unnamed.json()) as { thread: { name: string } }).thread.name).toBe("Ada, Bo and Cy");
     expect((await change(mine, { members: [stranger.id] })).status).toBe(400);
     expect((await change(mine, { pinned: "yes" })).status).toBe(400);
 
@@ -3899,5 +3904,80 @@ describe("rooms and a bot's files", () => {
       stop();
     }
     expect(heard).toEqual([{ topic: "thread", threadId: bot.threadId }, { topic: "bots", userId: "u-admin" }]);
+  });
+
+  test("bots answering the same line in a room know of each other and don't wake each other again", async () => {
+    await seedUsers(["u-infra", "user"]);
+    const { createBot } = await import("../src/data/bots.ts");
+    const { createRoom, getThread, postMessage } = await import("../src/data/threads.ts");
+    const { ensureDatabase } = await import("../src/db/init.ts");
+    const { deliverReply, promptFor } = await import("../src/responder.ts");
+    const { botInputSchema } = await import("@gond/shared");
+    const net = createBot(botInputSchema.parse({ name: "Net", title: "Network" }), "u-infra");
+    const patch = createBot(botInputSchema.parse({ name: "Patch", title: "Servers" }), "u-infra");
+    const sage = createBot(botInputSchema.parse({ name: "Sage", title: "Research" }), "u-infra");
+    const room = createRoom("Infra", [net.id, patch.id, sage.id], "u-infra");
+    const thread = getThread(room.id)!;
+    const bots = [net, patch, sage];
+    const waits = (id: string) => (ensureDatabase().query("SELECT answered_at FROM gond_messages WHERE id = ?").get(id) as { answered_at: string | null }).answered_at === null;
+
+    const both = postMessage({ threadId: room.id, author: "you", body: "@net @patch how's the infra looking?" });
+    expect(promptFor(net, thread, both, bots)).toContain("Patch is answering this same message at the same time");
+    expect(promptFor(patch, thread, both, bots)).toContain("Net is answering this same message at the same time");
+
+    deliverReply(net, thread, both, "UniFi is healthy. @patch please report on the Proxmox nodes.");
+    const netLine = ensureDatabase().query("SELECT id FROM gond_messages WHERE thread_id = ? AND author = ? ORDER BY created_at DESC LIMIT 1").get(room.id, net.id) as { id: string };
+    expect(waits(netLine.id)).toBe(false);
+
+    deliverReply(patch, thread, both, "Proxmox is healthy. @sage can you look into backups?");
+    const patchLine = ensureDatabase().query("SELECT id FROM gond_messages WHERE thread_id = ? AND author = ? ORDER BY created_at DESC LIMIT 1").get(room.id, patch.id) as { id: string };
+    expect(waits(patchLine.id)).toBe(true);
+
+    // A line naming a co-answerer and someone else wakes only the someone else.
+    const { answeringOf, getMessage } = await import("../src/data/threads.ts");
+    const { activeTurns, wokenBy } = await import("../src/responder.ts");
+    const patchMessage = getMessage(patchLine.id)!;
+    expect(answeringOf(patchLine.id)?.id).toBe(both.id);
+    deliverReply(net, thread, both, "@patch thanks, and @sage can you check the backups?");
+    const mixed = getMessage((ensureDatabase().query("SELECT id FROM gond_messages WHERE thread_id = ? AND author = ? ORDER BY created_at DESC LIMIT 1").get(room.id, net.id) as { id: string }).id)!;
+    expect(wokenBy(mixed, thread, answeringOf(mixed.id), bots).map((b) => b.name)).toEqual(["Sage"]);
+    expect(wokenBy(patchMessage, thread, answeringOf(patchMessage.id), bots).map((b) => b.name)).toEqual(["Sage"]);
+
+    // A bot still answering the same message hears the other's line arrive.
+    const heard: string[] = [];
+    activeTurns().set("patch-turn", { botId: patch.id, threadId: room.id, userId: "u-infra", messageId: both.id, route: "person", controller: new AbortController(), startedAt: Date.now(), steer: async (text) => (heard.push(text), true) });
+    try {
+      deliverReply(net, thread, both, "WiFi has 15 clients and the gateway is at 79 °C.");
+    } finally {
+      activeTurns().delete("patch-turn");
+    }
+    expect(heard).toHaveLength(1);
+    expect(heard[0]).toContain("Net just said in the room, answering the same message as you");
+    expect(heard[0]).toContain("gateway is at 79 °C");
+
+    const one = postMessage({ threadId: room.id, author: "you", body: "@net is the WiFi ok?" });
+    expect(promptFor(net, thread, one, bots)).not.toContain("answering this same message");
+
+    // A line sent while Patch and Sage are still answering reaches them mid-answer, and only Net, idle, needs a turn for it.
+    const { postFromPerson } = await import("../src/responder.ts");
+    const asked = postMessage({ threadId: room.id, author: "you", body: "Everyone, anything before the weekend?" });
+    postMessage({ threadId: room.id, author: net.id, body: "Nothing from the network.", answered: true });
+    const got: Record<string, string[]> = { patch: [], sage: [] };
+    const fake = (botId: string, key: "patch" | "sage") => ({ botId, threadId: room.id, userId: "u-infra", messageId: asked.id, route: "person" as const, controller: new AbortController(), startedAt: Date.now(), steer: async (text: string) => (got[key]!.push(text), true) });
+    activeTurns().set("patch-busy", fake(patch.id, "patch"));
+    activeTurns().set("sage-busy", fake(sage.id, "sage"));
+    try {
+      const followUp = await postFromPerson(thread, { body: "and are the backups ok?" });
+      expect(got.patch).toHaveLength(1);
+      expect(got.sage).toHaveLength(1);
+      expect(followUp.steered).toBe(false);
+      expect(waits(followUp.id)).toBe(true);
+      const onlyBusy = await postFromPerson(thread, { body: "@patch @sage skip the old snapshots" });
+      expect(onlyBusy.steered).toBe(true);
+      expect(waits(onlyBusy.id)).toBe(false);
+    } finally {
+      activeTurns().delete("patch-busy");
+      activeTurns().delete("sage-busy");
+    }
   });
 });

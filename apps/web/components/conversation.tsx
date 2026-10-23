@@ -707,7 +707,7 @@ export function Conversation({ threadId }: { threadId: string }) {
     });
     return map;
   }, [messages, roomBots]);
-  const answersNext = roomBots.length ? roomTargets("", roomBots, messages).map((b) => b.name) : [];
+  const answersNext = roomBots.length ? roomTargets("", roomBots, messages, [...new Set([...Object.keys(working), ...(info?.busy ?? [])])]).map((b) => b.name) : [];
   const waitingOnYou = approvals.some((a) => a.threadId === threadId && a.status === "pending");
 
   async function send(event?: FormEvent, after = false) {
@@ -1086,9 +1086,10 @@ export function Conversation({ threadId }: { threadId: string }) {
 
         <form onSubmit={send} ref={composer} className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-3 pt-2.5 pb-[max(12px,var(--safe-bottom))] sm:px-4 sm:pt-3 [&>*]:pointer-events-auto">
           {members.length ? (
-            <div className="mb-2 flex w-fit max-w-full flex-wrap gap-1 rounded-2xl bg-background p-1">
+            // One row a thumb swipes along on a phone, however many bots; on a wide screen they wrap.
+            <div className="-mx-3 mb-2 flex max-w-[calc(100%+1.5rem)] gap-1 overflow-x-auto overscroll-x-contain px-3 py-1 sm:-mx-4 sm:max-w-[calc(100%+2rem)] sm:px-4 wide:mx-0 wide:w-fit wide:max-w-full wide:flex-wrap wide:overflow-visible wide:rounded-2xl wide:bg-background wide:p-1">
               {members.map((b) => (
-                <Button key={b.id} type="button" variant="outline" size="xs" onClick={() => mention(b)}>
+                <Button key={b.id} type="button" variant="outline" size="xs" onClick={() => mention(b)} className="shrink-0 bg-background">
                   <BotAvatar bot={b} size={14} />@{handleOf(b.name)}
                 </Button>
               ))}

@@ -35,7 +35,7 @@ function DropdownMenuContent({
     <MenuPrimitive.Portal container={container}>
       <MenuPrimitive.Positioner
         collisionPadding={8}
-        className="isolate z-50 outline-none"
+        className="isolate z-[100] outline-none"
         align={align}
         alignOffset={alignOffset}
         side={side}
@@ -43,7 +43,7 @@ function DropdownMenuContent({
       >
         <MenuPrimitive.Popup
           data-slot="dropdown-menu-content"
-          className={cn("z-50 max-h-(--available-height) w-(--anchor-width) max-w-[calc(100vw-1rem)] min-w-32 origin-(--transform-origin) overflow-x-hidden overflow-y-auto rounded-2xl border border-primary-edge bg-popover p-1.5 text-popover-foreground shadow-subtle-3 duration-100 outline-none pointer-coarse:min-w-64 pointer-coarse:rounded-3xl pointer-coarse:p-2.5 pointer-coarse:shadow-subtle-3 data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:overflow-hidden data-closed:fade-out-0 data-closed:zoom-out-95", className )}
+          className={cn("z-[100] max-h-(--available-height) w-(--anchor-width) max-w-[calc(100vw-1rem)] min-w-32 origin-(--transform-origin) overflow-x-hidden overflow-y-auto rounded-2xl border border-primary-edge bg-popover p-1.5 text-popover-foreground shadow-subtle-3 duration-100 outline-none pointer-coarse:min-w-64 pointer-coarse:rounded-3xl pointer-coarse:p-2.5 pointer-coarse:shadow-subtle-3 data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:overflow-hidden data-closed:fade-out-0 data-closed:zoom-out-95", className )}
           {...props}
         />
       </MenuPrimitive.Positioner>

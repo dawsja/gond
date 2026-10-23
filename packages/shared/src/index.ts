@@ -1248,6 +1248,15 @@ export function roomAnswerer<B extends RoomMember>(members: B[]): B | null {
   return members.find((b) => b.primary) ?? members[0] ?? null;
 }
 
+/** A room's name when the person gives it none: its bots, the one that answers first in front ("Pip, Net and Patch", "Pip, Net, Patch and 4 more"). */
+export function roomNameFor(members: RoomMember[]): string {
+  const first = roomAnswerer(members);
+  const names = (first ? [first, ...members.filter((b) => b !== first)] : members).map((b) => b.name);
+  if (names.length <= 1) return names[0] ?? "Room";
+  if (names.length <= 3) return `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+  return `${names.slice(0, 3).join(", ")} and ${names.length - 3} more`;
+}
+
 const EVERYONE = /\b(?:everyone|everybody|all of you|y'?all|you all|you guys)\b/i;
 const BOTH = /\b(?:both|you two)\b/i;
 
@@ -1265,14 +1274,16 @@ export function addressedIn<B extends RoomMember>(text: string, members: B[]): B
 
 /**
  * Who a person's message in a room is for, the way a group chat goes: whoever
- * it names; else the bots that answered the person since they last wrote; else
- * whoever their last message went to; else `roomAnswerer`. `before` is the
- * room's messages before this one, oldest first.
+ * it names; else everyone in the conversation with them, the bots that
+ * answered since they last wrote and those still answering (`working`, bot
+ * ids); else whoever their last message went to; else `roomAnswerer`.
+ * `before` is the room's messages before this one, oldest first.
  */
-export function roomTargets<B extends RoomMember>(body: string, members: B[], before: RoomLine[]): B[] {
+export function roomTargets<B extends RoomMember>(body: string, members: B[], before: RoomLine[], working: readonly string[] = []): B[] {
   const named = addressedIn(body, members);
   if (named.length) return named;
   const answered: B[] = [];
+  const talking = () => [...answered, ...members.filter((b) => working.includes(b.id) && !answered.includes(b))];
   for (let i = before.length - 1; i >= 0; i -= 1) {
     const line = before[i]!;
     if (line.kind !== "message") continue;
@@ -1282,11 +1293,11 @@ export function roomTargets<B extends RoomMember>(body: string, members: B[], be
       continue;
     }
     if (line.author !== "you") continue;
-    if (answered.length) return answered;
+    if (talking().length) return talking();
     const earlier = addressedIn(line.body, members);
     if (earlier.length) return earlier;
   }
-  if (answered.length) return answered;
+  if (talking().length) return talking();
   const answerer = roomAnswerer(members);
   return answerer ? [answerer] : [];
 }

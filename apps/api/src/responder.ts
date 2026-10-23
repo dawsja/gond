@@ -10,7 +10,7 @@ import { allSecretValues } from "./data/secrets.ts";
 import { userTimezone } from "./data/prefs.ts";
 import { listConnections } from "./data/settings.ts";
 import { listSkills } from "./data/skills.ts";
-import { botLinesSincePerson, closePending, closeSentFrom, dropMessage, getAttachment, getMessage, getThread, markAnswered, postMessage, reactionsOf, recentMessages, releaseClaim, threadBusy, threadRefs, unsteer } from "./data/threads.ts";
+import { answeringOf, botLinesSincePerson, closePending, closeSentFrom, dropMessage, getAttachment, getMessage, getThread, markAnswered, postMessage, reactionsOf, recentMessages, releaseClaim, threadBusy, threadRefs, unsteer } from "./data/threads.ts";
 import { computerTools, secretCommandTool } from "./computer.ts";
 import { computerTool } from "./computer-tool.ts";
 import { attachmentNote, deliverAttachments, type Delivered } from "./inbox.ts";
@@ -267,23 +267,36 @@ export function steerText(body: string): string {
   return `The person sent this while you were working:\n\n${body}\n\nIf it changes what you're doing, adjust course; otherwise keep it in mind and carry on. Don't start over: this is part of the same piece of work, and your answer at the end covers it.`;
 }
 
-export function steerableTurns(thread: Thread, message: Pick<Message, "author" | "body">): Active[] {
-  const targets = targetsFor(message, thread, listBots({ includeHidden: true, userId: thread.userId }), roomBefore(thread));
-  const running = [...activeTurns().values()].filter((turn) => turn.threadId === thread.id);
-  const turns = targets.map((bot) => running.find((turn) => turn.botId === bot.id));
-  return targets.length && turns.every((turn) => turn?.route === "person") ? (turns as Active[]) : [];
+/** The bots answering in a conversation right now. */
+export function workingIn(threadId: string): string[] {
+  return [...activeTurns().values()].filter((turn) => turn.threadId === threadId).map((turn) => turn.botId);
 }
 
-export async function steer(turns: Active[], body: string): Promise<boolean> {
-  const taken = await Promise.all(turns.map((turn) => turn.steer(steerText(body)).catch(() => false)));
-  return taken.some(Boolean);
+/**
+ * The person's line goes into the running answers of the bots it is for, as a
+ * message in a group chat reaches those mid-reply; `all` when every one of
+ * them is answering the person, so nobody needs a new turn for it.
+ */
+export function steerableTurns(thread: Thread, message: Pick<Message, "author" | "body">): { turns: Active[]; all: boolean } {
+  const targets = targetsFor(message, thread, listBots({ includeHidden: true, userId: thread.userId }), roomBefore(thread), workingIn(thread.id));
+  const running = [...activeTurns().values()].filter((turn) => turn.threadId === thread.id && turn.route === "person");
+  const turns = targets.flatMap((bot) => running.find((turn) => turn.botId === bot.id) ?? []);
+  return { turns, all: targets.length > 0 && turns.length === targets.length };
+}
+
+export async function steer(turns: Active[], body: string): Promise<boolean[]> {
+  return Promise.all(turns.map((turn) => turn.steer(steerText(body)).catch(() => false)));
 }
 
 export async function postFromPerson(thread: Thread, input: { body: string; attachments?: ChatAttachment[]; after?: boolean; replyTo?: string | null }): Promise<Message> {
   if (!input.attachments?.length && !input.replyTo && isStopRequest(input.body) && hasWork(thread.id)) return stopFromMessage(thread, input.body);
-  const turns = !input.after && !input.attachments?.length ? steerableTurns(thread, { author: "you", body: input.body }) : [];
-  const message = postMessage({ threadId: thread.id, author: "you", body: input.body, attachments: input.attachments, steered: turns.length > 0, replyTo: input.replyTo });
-  if (turns.length && !(await steer(turns, `${replyLine(message.replyTo, (author) => (author === "you" ? "you" : (getBot(author)?.name ?? author)))}${input.body}`))) unsteer(message.id);
+  const { turns, all } = !input.after && !input.attachments?.length ? steerableTurns(thread, { author: "you", body: input.body }) : { turns: [], all: false };
+  // Taken by every bot it is for, the line needs no turn of its own; else the idle ones answer it as usual, while those mid-answer already have it.
+  const message = postMessage({ threadId: thread.id, author: "you", body: input.body, attachments: input.attachments, steered: all, replyTo: input.replyTo });
+  if (turns.length) {
+    const taken = await steer(turns, `${replyLine(message.replyTo, (author) => (author === "you" ? "you" : (getBot(author)?.name ?? author)))}${input.body}`);
+    if (all && !taken.some(Boolean)) unsteer(message.id);
+  }
   return getMessage(message.id) ?? message;
 }
 
@@ -306,13 +319,21 @@ async function stopFromMessage(thread: Thread, body: string): Promise<Message> {
  * line wakes only the teammates it @mentions, since bots name each other in
  * passing. `before` is the room's messages ahead of this one (`roomBefore`).
  */
-export function targetsFor(message: Pick<Message, "author" | "body">, thread: Thread, bots: Bot[], before: Pick<Message, "author" | "kind" | "body">[] = []): Bot[] {
+export function targetsFor(message: Pick<Message, "author" | "body">, thread: Thread, bots: Bot[], before: Pick<Message, "author" | "kind" | "body">[] = [], working: readonly string[] = []): Bot[] {
   const members = thread.members.map((id) => bots.find((b) => b.id === id)).filter((b): b is Bot => Boolean(b) && !b!.hidden);
   if (thread.kind === "bot") return members.filter((b) => b.id !== message.author);
-  if (message.author === "you") return roomTargets(message.body, members, before);
+  if (message.author === "you") return roomTargets(message.body, members, before, working);
   const mentioned = mentionsIn(message.body);
   if (mentioned.includes("everyone") || mentioned.includes("all")) return members.filter((b) => b.id !== message.author);
   return members.filter((b) => mentioned.includes(handleOf(b.name)) && b.id !== message.author);
+}
+
+/** The other bots a room's message wakes along with `bot`: their turns run beside its own, so neither sees the other's answer yet. */
+export function answeringAlongside(bot: Pick<Bot, "id">, thread: Thread, message: Message, bots: Bot[]): Bot[] {
+  if (thread.kind !== "room") return [];
+  const answering = getBot(message.author) ? answeringOf(message.id) : null;
+  const woken = answering ? wokenBy(message, thread, answering, bots) : targetsFor(message, thread, bots, roomBefore(thread, message));
+  return woken.filter((b) => b.id !== bot.id);
 }
 
 /** A room's recent messages ahead of `message` (all of them for one not posted yet), oldest first; nothing for a 1:1. */
@@ -362,7 +383,7 @@ export type PromptOptions = {
   summary?: string | null;
 };
 
-const ROOM_TURN = `This is a room. If the last message isn't for you (another member's question, or an option from their message), answer exactly ${QUIET_REPLY}, and nothing is posted. Otherwise also read what the person asked the room since you last spoke here: if an earlier question was meant for everyone or for you and your part isn't answered yet, answer it too. When part of a question is another member's (by their job), @mention them in your answer with what to look at, so they answer too; never tell the person to ask them.`;
+const ROOM_TURN = `This is a room. If the last message isn't for you (another member's question, or an option from their message), answer exactly ${QUIET_REPLY}, and nothing is posted. A line of the person's that names nobody reaches everyone they were talking with, as in a group chat: when it is plainly about another member's area (by their job) and nothing of yours, answer exactly ${QUIET_REPLY} and leave it to them. Otherwise also read what the person asked the room since you last spoke here: if an earlier question was meant for everyone or for you and your part isn't answered yet, answer it too. When part of a question is another member's (by their job), @mention them in your answer with what to look at, so they answer too; never tell the person to ask them. If a member's line only asks you for what you already said here since the person last wrote, answer exactly ${QUIET_REPLY}.`;
 
 export function promptFor(bot: Bot, thread: Thread, message: Message, bots: Bot[], delivered: Delivered[] = [], options: PromptOptions = {}): string {
   const names = new Map(bots.map((b) => [b.id, b.name]));
@@ -387,7 +408,11 @@ export function promptFor(bot: Bot, thread: Thread, message: Message, bots: Bot[
   const toPerson = teammates.length
     ? `\n\nYour answer goes to the person only, in this chat, like anything you post with post_message. ${teammates.join(" and ")} wrote here as a teammate and was answered already; to tell a teammate something now (a result, a reply), call message_bot, or delegate_bot for new work, then answer the person.`
     : "";
-  const room = thread.kind === "room" ? `\n\n${ROOM_TURN}` : "";
+  const alongside = answeringAlongside(bot, thread, message, bots).map((b) => b.name);
+  const together = alongside.length
+    ? ` ${alongside.join(" and ")} ${alongside.length > 1 ? "are" : "is"} answering this same message at the same time and can't see your answer yet, nor you theirs. Cover your own part only, and don't @mention them for theirs: they're already on it.`
+    : "";
+  const room = thread.kind === "room" ? `\n\n${ROOM_TURN}${together}` : "";
 
   if (message.kind === "prompt") {
     return [earlier, `${heading}\n${history || (since ? "(nothing new)" : "(nothing yet)")}`, `Gond, not the person, asks you this; nobody else sees it. Do it, and address your answer to the person:\n${message.body}${toPerson}`].filter(Boolean).join("\n\n");
@@ -678,21 +703,36 @@ export function deliverReply(bot: Bot, thread: Thread, message: Message, reply: 
   postReply(bot, thread, message, reply);
 }
 
+/**
+ * Whom a bot's line in a room wakes: the members it names, less those
+ * answering the same message beside it, as in a group chat where everyone
+ * asked is already on it.
+ */
+export function wokenBy(line: Pick<Message, "author" | "body">, thread: Thread, answering: Message | null, bots: Bot[]): Bot[] {
+  const named = targetsFor(line, thread, bots).filter((b) => !b.hidden);
+  if (!answering) return named;
+  const alongside = new Set(answeringAlongside({ id: line.author }, thread, answering, bots).map((b) => b.id));
+  return named.filter((b) => !alongside.has(b.id));
+}
+
+export function roomLineText(name: string, line: string): string {
+  return `${name} just said in the room, answering the same message as you:\n\n${line}\n\nRead it as you would in a group chat: don't repeat what ${name} covered, and if it names you, that's about the part you're already answering, so cover it in your one answer.`;
+}
+
 function postReply(bot: Bot, thread: Thread, message: Message, reply: string) {
-  const mentioned = thread.kind === "room" ? mentionsIn(reply) : [];
-  const members = thread.kind === "room" ? thread.members.filter((id) => id !== bot.id) : [];
-  const names = mentioned.includes("everyone") || mentioned.includes("all");
-  const wakes = members.some((id) => {
-    const member = getBot(id);
-    return member && !member.hidden && (names || mentioned.includes(handleOf(member.name)));
-  });
-  if (!wakes) {
+  if (thread.kind !== "room") {
     postMessage({ threadId: thread.id, author: bot.id, body: reply, depth: message.depth + 1, answered: true });
     return;
   }
-  const room = botLinesSincePerson(thread.id) < MAX_ROOM_LINES;
-  postMessage({ threadId: thread.id, author: bot.id, body: reply, depth: message.depth, answered: !room, wake: room });
-  if (!room) postMessage({ threadId: thread.id, author: "system", kind: "event", body: `The bots have said ${MAX_ROOM_LINES} things since you last wrote here, so the room waits for you. Write to carry on.`, answered: true });
+  const bots = listBots({ includeHidden: true, userId: thread.userId });
+  const woken = wokenBy({ author: bot.id, body: reply }, thread, message, bots);
+  const room = woken.length > 0 && botLinesSincePerson(thread.id) < MAX_ROOM_LINES;
+  postMessage({ threadId: thread.id, author: bot.id, body: reply, depth: woken.length ? message.depth : message.depth + 1, answered: !room, wake: room, answering: message.id });
+  if (woken.length && !room) postMessage({ threadId: thread.id, author: "system", kind: "event", body: `The bots have said ${MAX_ROOM_LINES} things since you last wrote here, so the room waits for you. Write to carry on.`, answered: true });
+  // The others still answering the same message see this line arrive, as they would in a group chat.
+  for (const turn of activeTurns().values()) {
+    if (turn.threadId === thread.id && turn.messageId === message.id && turn.botId !== bot.id && turn.route === "person") void turn.steer(roomLineText(bot.name, reply)).catch(() => false);
+  }
 }
 
 export async function reportBack(bot: Bot, message: Message, reply: string, stopped: boolean, broke: string | null = null) {
@@ -755,14 +795,16 @@ export async function answerMessage(message: Message): Promise<void> {
   const before = roomBefore(thread, message);
   // A room's message answered again after a cut skips the bots that had already answered it.
   const answeredAlready = wasInterrupted(message.id) ? new Set(recentMessages(thread.id, CONTEXT_LINES).filter((m) => m.createdAt > message.createdAt && m.kind === "message").map((m) => m.author)) : new Set<string>();
-  const owed = targetsFor(message, thread, bots, before).filter((b) => !answeredAlready.has(b.id));
+  const answering = thread.kind === "room" && getBot(message.author) ? answeringOf(message.id) : null;
+  const named = answering ? wokenBy(message, thread, answering, bots) : targetsFor(message, thread, bots, before, workingIn(thread.id));
+  const owed = named.filter((b) => !answeredAlready.has(b.id));
   if (answeredAlready.size && !owed.length) {
     markAnswered(message.id);
     return;
   }
   const targets = owed.filter((b) => !isBusy(b.id, thread.id));
   if (targets.length === 0) {
-    const anyTarget = targetsFor(message, thread, bots, before);
+    const anyTarget = named;
     if (anyTarget.length === 0) {
       markAnswered(message.id);
       return;

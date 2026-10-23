@@ -1,4 +1,4 @@
-import { ATTACHMENT_TYPES, MAX_ATTACHMENTS, MAX_ATTACHMENT_BYTES, isReaction, plainMarkdown, roomAnswerer, type Bot, type ChatAttachment, type Thread } from "@gond/shared";
+import { ATTACHMENT_TYPES, MAX_ATTACHMENTS, MAX_ATTACHMENT_BYTES, isReaction, plainMarkdown, roomAnswerer, roomNameFor, type Bot, type ChatAttachment, type Thread } from "@gond/shared";
 import { Hono } from "hono";
 import { ownThread, ownsThread, userId } from "../access.ts";
 import type { Env } from "../app.ts";
@@ -146,11 +146,10 @@ export function threadsRoutes() {
 
   app.post("/rooms", async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as { name?: string; members?: string[] };
-    const name = String(body.name ?? "").trim().slice(0, 80);
-    const known = new Set(listBots({ includeHidden: true, userId: userId(c) }).map((b) => b.id));
-    const members = (Array.isArray(body.members) ? body.members.map(String) : []).filter((id) => known.has(id));
-    if (!name) return c.json({ error: "Give the room a name" }, 400);
+    const mine = listBots({ includeHidden: true, userId: userId(c) });
+    const members = [...new Set(Array.isArray(body.members) ? body.members.map(String) : [])].filter((id) => mine.some((b) => b.id === id));
     if (members.length === 0) return c.json({ error: "Add at least one bot" }, 400);
+    const name = (String(body.name ?? "").trim() || roomNameFor(mine.filter((b) => members.includes(b.id)))).slice(0, 80);
     const thread = createRoom(name, members, userId(c));
     const answerer = answererOf(members, listBots({ includeHidden: true, userId: userId(c) }));
     const who = members.length > 1 && answerer ? ` With nobody named, ${answerer} answers; mention a bot with @, or by name, to address it.` : "";
@@ -164,10 +163,10 @@ export function threadsRoutes() {
     if (!before || before.kind !== "room") return c.json({ error: "Couldn't find that room" }, 404);
     const bots = listBots({ includeHidden: true, userId: userId(c) });
     const known = new Set(bots.map((b) => b.id));
-    const name = body.name === undefined ? undefined : String(body.name).trim().slice(0, 80);
-    if (name === "") return c.json({ error: "Give the room a name" }, 400);
     const members = Array.isArray(body.members) ? [...new Set(body.members.map(String).filter((id) => known.has(id)))] : undefined;
     if (members && members.length === 0) return c.json({ error: "Keep at least one bot in the room" }, 400);
+    const given = body.name === undefined ? undefined : String(body.name).trim().slice(0, 80);
+    const name = given === "" ? roomNameFor(bots.filter((b) => (members ?? before.members).includes(b.id))).slice(0, 80) : given;
     if (body.pinned !== undefined && typeof body.pinned !== "boolean") return c.json({ error: "Pinned must be on or off" }, 400);
     const thread = updateRoom(before.id, { name, members, pinned: body.pinned as boolean | undefined });
     if (!thread) return c.json({ error: "Couldn't find that room" }, 404);

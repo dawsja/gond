@@ -245,6 +245,7 @@ export type NewMessage = {
 
   replyTo?: string | null;
 
+  answering?: string | null;
 };
 
 export function postMessage(input: NewMessage): Message {
@@ -254,15 +255,21 @@ export function postMessage(input: NewMessage): Message {
   const needsAnswer = !input.answered && !input.steered && ((kind === "message" && (input.author === "you" || input.author === "routine" || Boolean(input.fromThreadId) || Boolean(input.wake))) || kind === "prompt");
   transaction((db) => {
     db.query(
-      `INSERT INTO gond_messages (id, thread_id, author, kind, body, attachments, depth, approval_id, from_thread_id, answered_at, steered, reply_to, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(id, input.threadId, input.author, kind, input.body, JSON.stringify(input.attachments ?? []), input.depth ?? 0, input.approvalId ?? null, input.fromThreadId ?? null, needsAnswer ? null : at, input.steered ? 1 : 0, input.replyTo ?? null, at);
+      `INSERT INTO gond_messages (id, thread_id, author, kind, body, attachments, depth, approval_id, from_thread_id, answered_at, steered, reply_to, answering, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(id, input.threadId, input.author, kind, input.body, JSON.stringify(input.attachments ?? []), input.depth ?? 0, input.approvalId ?? null, input.fromThreadId ?? null, needsAnswer ? null : at, input.steered ? 1 : 0, input.replyTo ?? null, input.answering ?? null, at);
     db.query("UPDATE gond_threads SET updated_at = ? WHERE id = ?").run(at, input.threadId);
     if (input.author === "you") db.query("UPDATE gond_threads SET last_read_at = ? WHERE id = ?").run(at, input.threadId);
     for (const file of input.attachments ?? []) db.query("UPDATE gond_attachments SET message_id = ? WHERE id = ?").run(id, file.id);
   });
   threadChanged(input.threadId);
   return getMessage(id)!;
+}
+
+/** The message a bot's line in a room was answering, if it was one. */
+export function answeringOf(id: string): Message | null {
+  const row = ensureDatabase().query("SELECT answering FROM gond_messages WHERE id = ?").get(id) as { answering: string | null } | null;
+  return row?.answering ? getMessage(row.answering) : null;
 }
 
 /** Takes a message out of its conversation, as a routine run with nothing to say does. */

@@ -187,3 +187,13 @@ describe("chat blocks", () => {
     expect(plainText(parseMarkdown("::choices[Pickup | Delivery]"))).toBe("Pickup or Delivery?");
   });
 });
+
+test("choices written at the end of the question's line still become pills, and code keeps them as typed", () => {
+  const [question, choices] = parseMarkdown("1 TB or 2 TB for the rig? ::choices[1 TB | 2 TB | Not sure]").children;
+  expect(question!.type).toBe("paragraph");
+  expect(choicesOf(choices!)).toEqual(["1 TB", "2 TB", "Not sure"]);
+  const code = parseMarkdown("```\nask ::choices[A | B]\n```").children;
+  expect(code.map((n) => n.type)).toEqual(["code"]);
+  expect((code[0] as Code).value).toBe("ask ::choices[A | B]");
+  expect(choicesOf(parseMarkdown("Pick one\n::choices[A | B]").children.at(-1)!)).toEqual(["A", "B"]);
+});

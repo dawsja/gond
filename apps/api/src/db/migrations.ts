@@ -661,6 +661,8 @@ const MIGRATIONS: Array<string | ((db: Database) => void)> = [
   CREATE INDEX gond_messages_open ON gond_messages (created_at) WHERE answered_at IS NULL AND claimed_by IS NULL;
   CREATE INDEX gond_messages_from ON gond_messages (from_thread_id, created_at) WHERE from_thread_id IS NOT NULL;
   `,
+  // A bot's line in a room keeps the message it answered, so naming a bot that answered it too wakes nobody.
+  `ALTER TABLE gond_messages ADD COLUMN answering TEXT;`,
 ];
 
 export const RENAME_VERSION = MIGRATIONS.indexOf(renameLegacyObjects) + 1;

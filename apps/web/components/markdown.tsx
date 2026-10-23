@@ -8,7 +8,7 @@ import { CopyButton } from "@/components/copy-button";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Toggle } from "@/components/ui/toggle";
-import { badgeOf, calloutOf, choicesOf, definitionsOf, isLineBreak, meterOf, parseMarkdown, plainText, safeHref, sourceOf, type CalloutKind, type Definitions } from "@/lib/markdown";
+import { badgeOf, calloutOf, choicesOf, definitionsOf, isLineBreak, meterOf, parseMarkdown, plainText, prepareMarkdown, safeHref, sourceOf, type CalloutKind, type Definitions } from "@/lib/markdown";
 import { cn } from "@/lib/utils";
 
 type Doc = { source: string; definitions: Definitions };
@@ -350,7 +350,7 @@ function NodeView({ node, doc, depth }: { node: Nodes; doc: Doc; depth: number }
 export const Markdown = memo(function Markdown({ text, className }: { text: string; className?: string }) {
   const { root, doc } = useMemo(() => {
     const root = parseMarkdown(text);
-    return { root, doc: { source: text.replace(/\r\n?/g, "\n"), definitions: definitionsOf(root) } };
+    return { root, doc: { source: prepareMarkdown(text), definitions: definitionsOf(root) } };
   }, [text]);
   return (
     <div className={className ?? "flex flex-col gap-2 text-[14px] leading-6"}>
