@@ -64,9 +64,20 @@ what is here. The README says what Gond is; this says how it is made.
   publishes them to GHCR. Builds start alongside the checks and nothing is
   published or released unless they pass. When a release's tag lands with
   its main push, the tag's run builds and publishes it (`latest` too) and
-  the main run leaves it alone; the desktop and Android apps build for
-  every release and otherwise only when their files changed (the `changes`
-  job in `build.yml`).
+  the main run leaves it alone.
+- **The desktop and Android apps are built only when they change, never
+  just because Gond ships.** They are shells around the server's web app,
+  so a web or API change reaches them without a new build. The `changes`
+  job in `build.yml` compares a push with the commit before and a release
+  tag with the release before it, against `APP_FILES` (`apps/desktop/`,
+  `apps/android/`, `assets/`, the workflows). A release whose apps didn't
+  change carries the last release's installers, APK and `latest.json`
+  (`carry`, `gh release download`) instead of building them again, so the
+  latest release always has what the updater and the downloads read, and
+  no desktop app is told to update to an identical build. The apps' version
+  is then the release they were last built for, which can be older than the
+  server's. Anything an app build starts to read from outside those folders
+  goes into `APP_FILES`, or a change to it won't reach the apps.
 
 ## Web
 
