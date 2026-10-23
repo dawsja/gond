@@ -165,5 +165,5 @@ export function ActionRows({ rows, total }: { rows: ActionRow[]; total?: { label
 }
 
 export function ActionCode({ children }: { children: ReactNode }) {
-  return <pre className="max-h-48 overflow-auto rounded-2xl border border-primary-edge bg-background/50 px-3.5 py-2.5 font-mono text-[12.5px] leading-5 break-words whitespace-pre-wrap">{children}</pre>;
+  return <pre data-select-all className="max-h-48 overflow-auto rounded-2xl border border-primary-edge bg-background/50 px-3.5 py-2.5 font-mono text-[12.5px] leading-5 break-words whitespace-pre-wrap">{children}</pre>;
 }

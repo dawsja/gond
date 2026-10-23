@@ -215,7 +215,11 @@ what is here. The README says what Gond is; this says how it is made.
   at its left edge, on every screen (`alignItemWithTrigger` off in
   `ui/select.tsx`), drawn like a `DropdownMenu`, with the same large
   rounded card and rows a thumb can hit under `pointer-coarse:`; touch
-  targets are 44px;
+  targets are 44px; a long press opens a menu after `HOLD_MS` (700 ms,
+  timed in `ui/context-menu.tsx` rather than Base UI's 500 ms, so a scroll
+  that starts slowly never opens one); selecting in a box of text
+  (`data-select-all`) or a pop-up stays in it, Ctrl+A or a mouse drag
+  alike (`ScopedSelection` in `shell.tsx`);
   anything revealed on hover is always shown under `pointer-coarse:`; on a
   touch keyboard Enter is a new line and the send button sends
   (`useCoarsePointer`). Nothing takes focus on its own when a screen
@@ -312,6 +316,12 @@ what is here. The README says what Gond is; this says how it is made.
   SVG named `.png` is refused) and keeps it in `gond_bot_avatars`;
   `Bot.avatar` is its URL with a version, or null. `BotAvatar` draws the
   picture when there is one, crown and all.
+- **A room holds two to six bots** (`ROOM_MIN_BOTS`, `ROOM_MAX_BOTS` in
+  shared): one is a 1:1, and past six a room is slow (three of a person's
+  bots answer at once) and too noisy to follow. The room routes, the
+  dialog (the count says "4 of 6 bots", and the other faces can't be
+  picked once six are) and `create_room` all hold to it; a room from
+  before the limits keeps its size and can only move toward them.
 - **A room is picked by faces.** New room and Edit room are one dialog
   (`room-dialog.tsx`): the room's picture builds itself from the bots
   picked, the name is optional (left empty, it is its bots' names,
@@ -338,14 +348,18 @@ what is here. The README says what Gond is; this says how it is made.
   (`roomTargets` in shared, used by `targetsFor` and by the composer, so
   they never disagree): the person's line goes to whom it names (an
   @handle, a bot's name as a word in any case since voice types no @, "everyone", or "both" in a room of
-  two, `addressedIn`), else to everyone in the conversation with them: the
-  bots that answered since they last wrote and those still answering
-  (`working`, `workingIn`), else to whoever their last line went to, else to `roomAnswerer`
-  (the primary if it is there, else the first bot). The opening line and
+  two, `addressedIn`); else, while bots are still answering (`working`,
+  `workingIn`), to them and those that answered since the person last
+  wrote; else to the one bot that spoke last; else to whom their last line
+  named; else to `roomAnswerer` (the primary if it is there, else the first
+  bot). With nobody named one bot answers, never the room, and the room
+  turn's prompt tells it to answer rather than go quiet, @mentioning a
+  member whose area it is. The opening line and
   any change to the room name that bot; the placeholder says who answers
   next ("Patch answers next", counting the bots still working); the
-  @mention chips above the composer are one row a thumb swipes along on a
-  phone and wrap on a wide screen; a steered line says whom it
+  @mention chips above the composer are each a filled pill with the bot's
+  face, nothing behind them, in one row a thumb swipes along on a phone
+  and wrapping on a wide screen; a steered line says whom it
   went to; and a `::choices` tap in a room is sent as `@handle option` to the
   bot that offered it. A bot's own line still wakes only those it
   @mentions, and a room is a group chat for the bots too: `message_bot`
@@ -381,7 +395,19 @@ what is here. The README says what Gond is; this says how it is made.
   bot above its message) and no time under it: a tap or click on the
   bubble shows when it was sent, and taps again hides it (`showsTime` in
   `conversation.tsx` leaves links, buttons, pictures and a selection
-  alone). "Sent while working" always shows.
+  alone). "Sent while working" always shows. A picture (any image but an
+  SVG, `isPicture`) is never in the bubble: it sits above it on its own,
+  `rounded-3xl`, at most 320 by 360 px, a tap opening the picture viewer
+  (which has Download), and a message that is only pictures has no bubble.
+- **A picture shows while it is made.** The `picture` live event (kept in
+  the conversation, not the store, like `writing`) draws `PictureMaking`
+  (`picture-making.tsx`) in place of that bot's work line: a frame the
+  picture's shape washed in the bot's colour, each square resting in one
+  shade of that colour and swelling into another, paler or deeper, in a
+  diagonal wave at slightly different speeds (`picture-light`),
+  and an OpenAI preview showing through them as it arrives. When the
+  picture is posted, the event names its attachment and the squares fall
+  away over the posted picture once (`PictureFall`, `picture-fall`).
 - **A message can be answered by quoting it.** Reply is in a bubble's
   menu (right-click or a long press), and on a touch screen a bubble
   dragged right is a reply (`use-swipe-to-reply.ts`, clear of the left
@@ -858,7 +884,12 @@ what is here. The README says what Gond is; this says how it is made.
   (`deliverReply` in `src/responder.ts`); a handoff's result goes up the
   chain from `reportBack`. Neither is ever a bubble in the person's chat
   with the bot that answered. Only a result coming back to the bot that
-  handed the task out is for the person, in its own conversation. A bot a
+  handed the task out is for the person, in its own conversation. In the
+  list of conversations none of it is the latest line: a line with
+  `fromThreadId` is never what a row previews, dates or sorts by, and
+  never counts as `unread`; new ones alone are `unreadTeam`, a grey dot
+  where something for the person is a dot in the bot's color
+  (`UnreadDot` in `sidebar.tsx`). A bot a
   teammate's message woke tells the person what is for them with
   `post_message`, which posts in its chat with them and, for a turn a
   teammate started, sends the push the final answer won't. The other way
@@ -1303,6 +1334,21 @@ what is here. The README says what Gond is; this says how it is made.
   holding a stored secret, and posts it as an attachment. Attachments that
   could run script (HTML, SVG, anything unknown) are served as downloads
   with a sandbox CSP, never inline on the app's origin.
+- **Bots make pictures with `create_image`** (`src/pictures.ts`), run in
+  the API on the bot owner's own plan or key, so every engine has it,
+  Claude Code included. `imageAccess` takes the first of `IMAGE_SOURCES`
+  the person has: a Grok plan (its token goes straight to api.x.ai's
+  images API with `GROK_MEDIA_HEADERS`, as the Grok CLI does it, and only
+  SuperGrok may), then an xAI key, then an OpenAI key, the only one that
+  streams previews. A ChatGPT plan can't: Sign in with ChatGPT leaves
+  image generation out, so the bot says so. `IMAGE_MODELS` names the
+  models; `from` changes pictures in the bot's home (the inbox, or its
+  own `images/`), sent as the box's 1568 px JPEG preview. Previews live in
+  memory only while the picture is made (`keepPreview`,
+  `GET /api/threads/:id/pictures/:pictureId`); the result passes
+  `pictureType`, is posted as an attachment and is copied to
+  `images/<name>-<stamp>.<ext>` in the bot's home so it can be changed
+  later. The request rides the turn's signal, so Stop ends it.
 - **Bots edit profiles through tools, not SQL.** `set_profile` (a bot's
   own) and `update_bot` (a teammate's) go through `profilePatch()` in
   `src/tools.ts`, then `syncSoul` rewrites SOUL.md on the box. Add a field

@@ -112,7 +112,7 @@ function CodeView({ code }: { code: Code }) {
         ) : null}
         <CopyButton text={text} label="Copy code" className="size-7 pointer-coarse:size-10" />
       </div>
-      <pre ref={ref} className={cn("overflow-x-auto overscroll-x-contain p-3 font-mono text-[12px] leading-5 text-foreground", wrap && "whitespace-pre-wrap [overflow-wrap:anywhere]")}>
+      <pre ref={ref} data-select-all className={cn("overflow-x-auto overscroll-x-contain p-3 font-mono text-[12px] leading-5 text-foreground", wrap && "whitespace-pre-wrap [overflow-wrap:anywhere]")}>
         <code className="bg-transparent p-0">{text}</code>
       </pre>
     </div>

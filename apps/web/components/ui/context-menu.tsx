@@ -15,14 +15,82 @@ function ContextMenuPortal({ ...props }: ContextMenuPrimitive.Portal.Props) {
   )
 }
 
+// How long a finger holds before the menu opens. Base UI's own is 500 ms, short enough that a scroll
+// starting slowly opened it, so the trigger times a touch itself and only then asks for the menu.
+const HOLD_MS = 700
+const HOLD_SLOP_PX = 10
+
 function ContextMenuTrigger({
   className,
+  onTouchStart,
+  onTouchMove,
+  onTouchEnd,
+  onTouchCancel,
+  onContextMenu,
   ...props
 }: ContextMenuPrimitive.Trigger.Props) {
+  const hold = React.useRef<{ x: number; y: number; timer: number } | null>(null)
+  const touching = React.useRef(false)
+  const opened = React.useRef(false)
+  const asking = React.useRef(false)
+  const letGo = () => {
+    if (hold.current) window.clearTimeout(hold.current.timer)
+    hold.current = null
+  }
+  React.useEffect(() => letGo, [])
+
   return (
     <ContextMenuPrimitive.Trigger
       data-slot="context-menu-trigger"
       className={cn("select-none", className)}
+      onTouchStart={(event) => {
+        onTouchStart?.(event)
+        event.preventBaseUIHandler()
+        letGo()
+        touching.current = true
+        opened.current = false
+        if (event.touches.length !== 1) return
+        const { clientX: x, clientY: y } = event.touches[0]!
+        const target = event.target
+        const timer = window.setTimeout(() => {
+          hold.current = null
+          opened.current = true
+          asking.current = true
+          target.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: x, clientY: y }))
+          asking.current = false
+        }, HOLD_MS)
+        hold.current = { x, y, timer }
+      }}
+      onTouchMove={(event) => {
+        onTouchMove?.(event)
+        event.preventBaseUIHandler()
+        const touch = event.touches[0]
+        if (!hold.current || !touch) return
+        if (event.touches.length !== 1 || Math.abs(touch.clientX - hold.current.x) > HOLD_SLOP_PX || Math.abs(touch.clientY - hold.current.y) > HOLD_SLOP_PX) letGo()
+      }}
+      onTouchEnd={(event) => {
+        onTouchEnd?.(event)
+        event.preventBaseUIHandler()
+        letGo()
+        touching.current = false
+        // Lifting the finger after the menu opened isn't a tap: no click or mouseup lands on what opened under it.
+        if (opened.current && event.cancelable) event.preventDefault()
+      }}
+      onTouchCancel={(event) => {
+        onTouchCancel?.(event)
+        event.preventBaseUIHandler()
+        letGo()
+        touching.current = false
+      }}
+      onContextMenu={(event) => {
+        // The phone's own long press (Android's comes at about half a second) waits for ours.
+        if (touching.current && !asking.current) {
+          event.preventDefault()
+          event.preventBaseUIHandler()
+          return
+        }
+        onContextMenu?.(event)
+      }}
       {...props}
     />
   )

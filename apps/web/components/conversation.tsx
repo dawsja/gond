@@ -1,6 +1,6 @@
 "use client";
 
-import { handleOf, plainMarkdown, roomTargets, type Approval, type ApprovalAnswer, type Bot, type Message, type ReactionEmoji, type Thread } from "@gond/shared";
+import { handleOf, plainMarkdown, roomTargets, type Approval, type ApprovalAnswer, type Bot, type ChatAttachment, type ImageAspect, type LiveEvent, type Message, type ReactionEmoji, type Thread } from "@gond/shared";
 import { ArrowUp, ChevronLeft, Copy, CornerUpLeft, Download, ListEnd, EllipsisVertical, FileText, Monitor, PanelRight, Paperclip, Pencil, Plus, TextSelect, X } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -16,6 +16,7 @@ import { pollInterval, useLiveEvents } from "@/components/hq/live-events";
 import { ChoicesContext } from "@/components/chat-blocks";
 import { ImageViewer } from "@/components/image-viewer";
 import { Markdown } from "@/components/markdown";
+import { PictureFall, PictureMaking, type PictureReveal } from "@/components/picture-making";
 import { NoticedLinks, noticedRuns, RunMarker, useWatches, WatchesContext, type Noticed } from "@/components/noticed";
 import { DetailsSheet, RightPanel } from "@/components/right-panel";
 import { ScreenPanel, useScreenDrivers } from "@/components/screen-panel";
@@ -54,6 +55,8 @@ import { cn } from "@/lib/utils";
 const ExchangeDialog = dynamic(() => import("@/components/exchange-dialog").then((m) => m.ExchangeDialog));
 
 const POLL_MS = 4_000;
+// Long enough for the last square of a landed picture to fall away.
+const REVEAL_MS = 1_500;
 
 const PAGE = 200;
 const MAX_FILES = 6;
@@ -176,7 +179,7 @@ function SelectTextDialog({ text, onClose }: { text: string | null; onClose: () 
           <DialogTitle>Select text</DialogTitle>
           <DialogDescription>Press and hold a word, then drag to pick the part you want.</DialogDescription>
         </DialogHeader>
-        <div className="max-h-[55dvh] overflow-y-auto rounded-2xl bg-muted px-3.5 py-3 select-text">
+        <div data-select-all className="max-h-[55dvh] overflow-y-auto rounded-2xl bg-muted px-3.5 py-3 select-text">
           <Markdown text={text ?? ""} className="flex flex-col gap-2 text-[15px] leading-6 wrap-break-word" />
         </div>
         <DialogFooter>
@@ -216,12 +219,22 @@ function colorOf(author: string, bots: Bot[]): string | null {
   return author === "you" ? null : (bots.find((b) => b.id === author)?.color ?? null);
 }
 
+/** A file shown as a picture, on its own outside the bubble: anything an image but an SVG, which could run script. */
+function isPicture(file: ChatAttachment): boolean {
+  return file.mediaType.startsWith("image/") && file.mediaType !== "image/svg+xml";
+}
+
+function revealIn(message: Message, reveals: Record<string, PictureReveal>): PictureReveal | undefined {
+  for (const file of message.attachments) if (reveals[file.id]) return reveals[file.id];
+  return undefined;
+}
+
 /** What a reply quotes from a message still being written: its words, or its first file. */
 function quoteText(message: Message): string {
   return plainMarkdown(message.body).slice(0, 280) || message.attachments[0]?.name || "";
 }
 
-const Line = memo(function Line({ message, threadId, bots, threads, bot, approvals, isRoom, editing, stops, touch, answer, sentTo, noticed, onPick, onView, onDecide, onOpenExchange, onEdit, onSelectText, onReacted, onReply, onJump }: { message: Message; threadId: string; bots: Bot[]; threads: ThreadRow[]; bot: Bot | null; approvals: Map<string, Approval>; isRoom: boolean; editing: boolean; stops: boolean; touch: boolean; answer: string | undefined; sentTo: string | undefined; noticed: Noticed | undefined; onPick: (option: string, from: string) => Promise<void>; onView: (attachmentId: string) => void; onDecide: (id: string, answer: ApprovalAnswer) => Promise<void>; onOpenExchange: (withThreadId: string) => void; onEdit: (message: Message | null, text?: string) => Promise<boolean>; onSelectText: (text: string) => void; onReacted: (message: Message) => void; onReply: (message: Message) => void; onJump: (id: string) => void }) {
+const Line = memo(function Line({ message, threadId, bots, threads, bot, approvals, isRoom, editing, stops, touch, answer, sentTo, noticed, reveal, onPick, onView, onDecide, onOpenExchange, onEdit, onSelectText, onReacted, onReply, onJump }: { message: Message; threadId: string; bots: Bot[]; threads: ThreadRow[]; bot: Bot | null; approvals: Map<string, Approval>; isRoom: boolean; editing: boolean; stops: boolean; touch: boolean; answer: string | undefined; sentTo: string | undefined; noticed: Noticed | undefined; reveal: PictureReveal | undefined; onPick: (option: string, from: string) => Promise<void>; onView: (attachmentId: string) => void; onDecide: (id: string, answer: ApprovalAnswer) => Promise<void>; onOpenExchange: (withThreadId: string) => void; onEdit: (message: Message | null, text?: string) => Promise<boolean>; onSelectText: (text: string) => void; onReacted: (message: Message) => void; onReply: (message: Message) => void; onJump: (id: string) => void }) {
   const mine = message.author === "you";
   const bubble = useRef<HTMLDivElement>(null);
 
@@ -253,6 +266,8 @@ const Line = memo(function Line({ message, threadId, bots, threads, bot, approva
     );
   }
   const showName = !mine && (isRoom || message.author === "routine" || message.author === "system");
+  const pictures = message.attachments.filter(isPicture);
+  const files = message.attachments.filter((file) => !isPicture(file));
   const editable = mine && Boolean(message.body.trim()) && message.attachments.length === 0;
   const reactable = canReact(message);
   const reactWith = (emoji: ReactionEmoji) => void react(message, emoji, onReacted);
@@ -293,6 +308,18 @@ const Line = memo(function Line({ message, threadId, bots, threads, bot, approva
               <CornerUpLeft className="size-4" />
             </span>
           ) : null}
+          {pictures.length ? (
+            <div className="flex max-w-80 flex-wrap gap-1.5 group-data-[align=end]/bubble:self-end">
+              {pictures.map((file) => (
+                <button key={file.id} type="button" onClick={() => onView(file.id)} aria-label={`View ${file.name}`} className="relative block max-w-full cursor-zoom-in overflow-hidden rounded-3xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={`/api/attachments/${file.id}`} alt={file.name} className="block max-h-90 w-auto max-w-full" />
+                  {reveal?.file === file.id ? <PictureFall reveal={reveal} /> : null}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          {message.replyTo || message.body || files.length ? (
           <BubbleContent className="rounded-2xl px-3.5 py-2">
             {message.replyTo ? <QuoteInBubble quote={message.replyTo} name={nameOf(message.replyTo.author, bots)} color={colorOf(message.replyTo.author, bots)} onJump={onJump} /> : null}
             {message.body ? (
@@ -300,40 +327,29 @@ const Line = memo(function Line({ message, threadId, bots, threads, bot, approva
                 <Markdown text={message.body} className="flex flex-col gap-2 text-[14px] leading-6" />
               </ChoicesContext.Provider>
             ) : null}
-            {message.attachments.length ? (
+            {files.length ? (
               <AttachmentGroup className={cn(message.body && "mt-2")}>
-                {message.attachments.map((file) =>
-                  file.mediaType.startsWith("image/") && file.mediaType !== "image/svg+xml" ? (
-                    <div key={file.id} className="relative shrink-0">
-                      <button type="button" onClick={() => onView(file.id)} aria-label={`View ${file.name}`} className="block cursor-zoom-in overflow-hidden rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={`/api/attachments/${file.id}`} alt={file.name} className="max-h-60 rounded-lg" />
-                      </button>
-                      <AttachmentAction variant="secondary" className="absolute top-2 right-2" aria-label={`Download ${file.name}`} render={<a href={`/api/attachments/${file.id}?download`} download={file.name} />} nativeButton={false}>
+                {files.map((file) => (
+                  <Attachment key={file.id} size="sm">
+                    <AttachmentTrigger render={<a href={`/api/attachments/${file.id}`} target="_blank" rel="noreferrer" aria-label={`Open ${file.name}`} />} />
+                    <AttachmentMedia variant="icon">
+                      <FileText />
+                    </AttachmentMedia>
+                    <AttachmentContent>
+                      <AttachmentTitle>{file.name}</AttachmentTitle>
+                      <AttachmentDescription>{formatBytes(file.size)}</AttachmentDescription>
+                    </AttachmentContent>
+                    <AttachmentActions>
+                      <AttachmentAction aria-label={`Download ${file.name}`} render={<a href={`/api/attachments/${file.id}?download`} download={file.name} />} nativeButton={false}>
                         <Download />
                       </AttachmentAction>
-                    </div>
-                  ) : (
-                    <Attachment key={file.id} size="sm">
-                      <AttachmentTrigger render={<a href={`/api/attachments/${file.id}`} target="_blank" rel="noreferrer" aria-label={`Open ${file.name}`} />} />
-                      <AttachmentMedia variant="icon">
-                        <FileText />
-                      </AttachmentMedia>
-                      <AttachmentContent>
-                        <AttachmentTitle>{file.name}</AttachmentTitle>
-                        <AttachmentDescription>{formatBytes(file.size)}</AttachmentDescription>
-                      </AttachmentContent>
-                      <AttachmentActions>
-                        <AttachmentAction aria-label={`Download ${file.name}`} render={<a href={`/api/attachments/${file.id}?download`} download={file.name} />} nativeButton={false}>
-                          <Download />
-                        </AttachmentAction>
-                      </AttachmentActions>
-                    </Attachment>
-                  ),
-                )}
+                    </AttachmentActions>
+                  </Attachment>
+                ))}
               </AttachmentGroup>
             ) : null}
           </BubbleContent>
+          ) : null}
           <ReactionBadges message={message} bots={bots} mine={mine} onReact={reactWith} />
         </ContextMenuTrigger>
           {message.body || editable || reactable || replyable ? (
@@ -527,7 +543,7 @@ export function Conversation({ threadId }: { threadId: string }) {
     return map;
   }, [messages]);
 
-  const pictures = useMemo(() => messages.flatMap((m) => (m.kind === "prompt" ? [] : m.attachments.filter((file) => file.mediaType.startsWith("image/") && file.mediaType !== "image/svg+xml").map((file) => ({ id: file.id, name: file.name })))), [messages]);
+  const pictures = useMemo(() => messages.flatMap((m) => (m.kind === "prompt" ? [] : m.attachments.filter(isPicture).map((file) => ({ id: file.id, name: file.name })))), [messages]);
 
   const append = useCallback((incoming: Message[]) => {
     if (!incoming.length) return;
@@ -643,13 +659,32 @@ export function Conversation({ threadId }: { threadId: string }) {
     });
   };
 
+  // Pictures bots are making here, by picture id, and those that just landed, by attachment, for their squares to fall away once.
+  const [making, setMaking] = useState<Record<string, { botId: string; aspect: ImageAspect; preview: string | null }>>({});
+  const [reveals, setReveals] = useState<Record<string, PictureReveal>>({});
+  const onPicture = (event: Extract<LiveEvent, { topic: "picture" }>) => {
+    const forget = () => setMaking((current) => Object.fromEntries(Object.entries(current).filter(([id]) => id !== event.id)));
+    if (event.state === "making" || event.state === "preview") {
+      setMaking((current) => ({ ...current, [event.id]: { botId: event.botId, aspect: event.aspect, preview: event.preview } }));
+      return;
+    }
+    if (event.state === "failed" || !event.file) return forget();
+    const file = event.file;
+    setReveals((current) => ({ ...current, [file]: { file, aspect: event.aspect, color: bots.find((b) => b.id === event.botId)?.color ?? "var(--muted-foreground)" } }));
+    window.setTimeout(() => setReveals((current) => Object.fromEntries(Object.entries(current).filter(([id]) => id !== file))), REVEAL_MS);
+    void catchUp().finally(forget);
+  };
+
   const live = useLiveEvents((event) => {
     if (event.topic === "open") {
       setWriting({});
+      setMaking({});
       void catchUp();
       void refreshInfo();
     } else if (event.topic === "writing" && event.threadId === threadId) {
       onWriting(event.botId, event.text);
+    } else if (event.topic === "picture" && event.threadId === threadId) {
+      onPicture(event);
     } else if (event.topic === "thread" && event.threadId === threadId) {
       void (event.cleared ? loadMessages(null) : catchUp());
       void refreshInfo();
@@ -686,8 +721,9 @@ export function Conversation({ threadId }: { threadId: string }) {
   }, [live]);
 
   const working = activity[threadId] ?? {};
+  const drawing = new Set(Object.values(making).map((m) => m.botId));
   const workingBots = Object.entries(working)
-    .filter(([botId]) => !(botId in writing))
+    .filter(([botId]) => !(botId in writing) && !drawing.has(botId))
     .flatMap(([botId, line]) => {
       const found = bots.find((b) => b.id === botId);
       return found ? [{ bot: found, line }] : [];
@@ -1055,13 +1091,18 @@ export function Conversation({ threadId }: { threadId: string }) {
                 <WatchesContext.Provider value={watches}>
                 {messages.map((m) => (
                   <MessageScrollerItem key={m.id} messageId={m.id} className={cn((m.id === jumpTo || m.id === flash) && "rounded-2xl ring-2 ring-ring/40")}>
-                    <Line message={m} threadId={threadId} bots={bots} threads={threads} bot={bot} approvals={approvalMap} isRoom={Boolean(isRoom)} editing={editing === m.id} stops={Boolean(info?.answering?.includes(m.id))} touch={touch} answer={answers.get(m.id)} sentTo={sentTo.get(m.id)} noticed={runs.get(m.id)} onPick={onPick} onView={setViewing} onDecide={onDecide} onOpenExchange={setExchange} onEdit={onEdit} onSelectText={setSelectText} onReacted={replaceMessage} onReply={onReply} onJump={onJump} />
+                    <Line message={m} threadId={threadId} bots={bots} threads={threads} bot={bot} approvals={approvalMap} isRoom={Boolean(isRoom)} editing={editing === m.id} stops={Boolean(info?.answering?.includes(m.id))} touch={touch} answer={answers.get(m.id)} sentTo={sentTo.get(m.id)} noticed={runs.get(m.id)} reveal={revealIn(m, reveals)} onPick={onPick} onView={setViewing} onDecide={onDecide} onOpenExchange={setExchange} onEdit={onEdit} onSelectText={setSelectText} onReacted={replaceMessage} onReply={onReply} onJump={onJump} />
                   </MessageScrollerItem>
                 ))}
                 </WatchesContext.Provider>
                 {Object.entries(writing).map(([botId, text]) => (
                   <MessageScrollerItem key={`writing-${botId}`}>
                     <Writing name={isRoom ? (bots.find((x) => x.id === botId)?.name ?? null) : null} text={text} />
+                  </MessageScrollerItem>
+                ))}
+                {Object.entries(making).map(([id, picture]) => (
+                  <MessageScrollerItem key={`picture-${id}`}>
+                    <PictureMaking bot={bots.find((x) => x.id === picture.botId)} aspect={picture.aspect} preview={picture.preview} />
                   </MessageScrollerItem>
                 ))}
 
@@ -1071,7 +1112,7 @@ export function Conversation({ threadId }: { threadId: string }) {
                   </MessageScrollerItem>
                 ) : (
                   Object.entries(working)
-                    .filter(([botId]) => !(botId in writing))
+                    .filter(([botId]) => !(botId in writing) && !drawing.has(botId))
                     .map(([botId, line]) => (
                       <MessageScrollerItem key={`working-${botId}`}>
                         <WorkLine bot={bots.find((x) => x.id === botId)} line={line} />
@@ -1088,10 +1129,10 @@ export function Conversation({ threadId }: { threadId: string }) {
         <form onSubmit={send} ref={composer} className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-3 pt-2.5 pb-[max(12px,var(--safe-bottom))] sm:px-4 sm:pt-3 [&>*]:pointer-events-auto">
           {members.length ? (
             // One row a thumb swipes along on a phone, however many bots; on a wide screen they wrap.
-            <div className="-mx-3 mb-2 flex max-w-[calc(100%+1.5rem)] gap-1 overflow-x-auto overscroll-x-contain px-3 py-1 sm:-mx-4 sm:max-w-[calc(100%+2rem)] sm:px-4 wide:mx-0 wide:w-fit wide:max-w-full wide:flex-wrap wide:overflow-visible wide:rounded-2xl wide:bg-background wide:p-1">
+            <div className="-mx-3 mb-2 flex max-w-[calc(100%+1.5rem)] gap-1.5 overflow-x-auto overscroll-x-contain px-3 py-1 sm:-mx-4 sm:max-w-[calc(100%+2rem)] sm:px-4 wide:mx-0 wide:max-w-full wide:flex-wrap wide:overflow-visible wide:px-0">
               {members.map((b) => (
-                <Button key={b.id} type="button" variant="outline" size="xs" onClick={() => mention(b)} className="shrink-0 bg-background">
-                  <BotAvatar bot={b} size={14} />@{handleOf(b.name)}
+                <Button key={b.id} type="button" size="sm" onClick={() => mention(b)} className="shrink-0 gap-1.5 pl-1 text-[13px]">
+                  <BotAvatar bot={b} size={20} />@{handleOf(b.name)}
                 </Button>
               ))}
             </div>

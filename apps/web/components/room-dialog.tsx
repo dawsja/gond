@@ -1,6 +1,6 @@
 "use client";
 
-import { roomAnswerer, roomNameFor, type Bot, type Thread } from "@gond/shared";
+import { ROOM_MAX_BOTS, ROOM_MIN_BOTS, roomAnswerer, roomNameFor, type Bot, type Thread } from "@gond/shared";
 import { Check, Search, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
@@ -24,9 +24,9 @@ function matches(bot: Bot, query: string): boolean {
   return !q || bot.name.toLowerCase().includes(q) || bot.title.toLowerCase().includes(q);
 }
 
-function BotTile({ bot, on, onChange }: { bot: Bot; on: boolean; onChange: (on: boolean) => void }) {
+function BotTile({ bot, on, full, onChange }: { bot: Bot; on: boolean; full: boolean; onChange: (on: boolean) => void }) {
   return (
-    <Toggle variant="tile" size="tile" pressed={on} onPressedChange={onChange} aria-label={bot.title ? `${bot.name}, ${bot.title}` : bot.name}>
+    <Toggle variant="tile" size="tile" pressed={on} disabled={full && !on} onPressedChange={onChange} aria-label={bot.title ? `${bot.name}, ${bot.title}` : bot.name}>
       <span data-slot="tile-face">
         <BotAvatar bot={bot} size={56} />
         <span data-slot="tile-check" aria-hidden="true" className="absolute -top-0.5 -right-0.5 size-5 items-center justify-center rounded-full bg-tint-solid text-tint-foreground ring-2 ring-(--surface)">
@@ -57,7 +57,16 @@ export function RoomDialog({ threadId = null, onClose }: { threadId?: string | n
   const answerer = picked.length > 1 ? roomAnswerer(picked) : null;
   const many = bots.length > SEARCH_FROM;
   const shown = [...bots.filter((b) => first.has(b.id)), ...bots.filter((b) => !first.has(b.id))].filter((b) => matches(b, query));
-  const summary = picked.length === 0 ? "Pick at least one bot." : `${picked.length} ${picked.length === 1 ? "bot" : "bots"}${answerer ? ` · ${answerer.name} answers when nobody is named` : ""}`;
+  const full = picked.length >= ROOM_MAX_BOTS;
+  // A room from before the limits keeps its size; a change only has to move it toward them.
+  const before = existing?.members.length ?? 0;
+  const fits = (picked.length >= ROOM_MIN_BOTS || (existing && picked.length >= before)) && (picked.length <= ROOM_MAX_BOTS || (existing && picked.length <= before));
+  const summary =
+    picked.length === 0
+      ? `Pick ${ROOM_MIN_BOTS} to ${ROOM_MAX_BOTS} bots.`
+      : picked.length < ROOM_MIN_BOTS
+        ? "Pick one more bot. A room needs at least two."
+        : `${picked.length} of ${ROOM_MAX_BOTS} bots${full ? ", the most a room holds" : ""}${answerer ? ` · ${answerer.name} answers when nobody is named` : ""}`;
   const search = (
     <InputGroup>
       <InputGroupAddon>
@@ -129,7 +138,7 @@ export function RoomDialog({ threadId = null, onClose }: { threadId?: string | n
               {shown.length ? (
                 <div role="group" aria-label="Bots" className="grid grid-cols-3 gap-x-1 gap-y-1 min-[360px]:grid-cols-4">
                   {shown.map((b) => (
-                    <BotTile key={b.id} bot={b} on={members.includes(b.id)} onChange={(on) => toggle(b.id, on)} />
+                    <BotTile key={b.id} bot={b} on={members.includes(b.id)} full={full} onChange={(on) => toggle(b.id, on)} />
                   ))}
                 </div>
               ) : (
@@ -151,7 +160,7 @@ export function RoomDialog({ threadId = null, onClose }: { threadId?: string | n
               <Button type="button" variant="outline" onClick={onClose}>
                 Cancel
               </Button>
-              <Button type="submit" variant="tint" disabled={busy || members.length === 0}>
+              <Button type="submit" variant="tint" disabled={busy || !fits}>
                 {busy ? <Spinner data-icon="inline-start" /> : null}
                 {existing ? (busy ? "Saving…" : "Save") : busy ? "Creating…" : "Create room"}
               </Button>

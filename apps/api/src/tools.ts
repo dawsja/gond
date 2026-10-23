@@ -1,9 +1,11 @@
-import { draftIdOf, emailDraftOf, emailName, sendDraftAction, QUIET_REPLY, REACTIONS, isReaction, BOT_COLORS, BOT_EXPRESSIONS, BOT_SHAPES, LOGIN_FIELD_KINDS, MAX_SENT_FILE_BYTES, SKILL_LIMITS, botInputSchema, composioCard, handleOf, joinCommandLine, mentionsIn, mediaTypeFor, mcpServerInputSchema, hasKeyHeader, pickBotName, plainMarkdown, skillFilePath, type Bot, type BotExpression, type BotShape, type McpServer, type McpServerInput, type Message, type SkillInput, type Thread } from "@gond/shared";
+import { IMAGE_ASPECTS, IMAGE_MODELS, MAX_IMAGE_REFERENCES, isImageAspect, ROOM_MAX_BOTS, draftIdOf, emailDraftOf, emailName, sendDraftAction, QUIET_REPLY, REACTIONS, isReaction, BOT_COLORS, BOT_EXPRESSIONS, BOT_SHAPES, LOGIN_FIELD_KINDS, MAX_SENT_FILE_BYTES, SKILL_LIMITS, botInputSchema, composioCard, handleOf, joinCommandLine, mentionsIn, mediaTypeFor, mcpServerInputSchema, hasKeyHeader, pickBotName, plainMarkdown, skillFilePath, type Bot, type BotExpression, type BotShape, type McpServer, type McpServerInput, type Message, type SkillInput, type Thread } from "@gond/shared";
 import { askApproval, ENGINE_FILES_TEXT, expiredText, requestApproval, SCRIPTED_SCREEN_TEXT, scriptsTheScreen, summarize, touchesEngine } from "./approvals.ts";
-import { boxHome, readBoxFileBytes, writeBoxFile, type BoxConfig } from "./box.ts";
+import { boxHome, previewBoxImage, readBoxFileBytes, uploadBoxFile, writeBoxFile, type BoxConfig } from "./box.ts";
 import { exactApp, searchIndex } from "./catalog.ts";
 import { catalogIndex, composioConfigured, executeAction, isReadOnlyAction, toolsFor, type ComposioTool } from "./composio.ts";
 import { createBot, findBot, getBot, listBots, updateBot } from "./data/bots.ts";
+import { emit } from "./events.ts";
+import { createImage, imageAccess, keepPreview, type ImageReference } from "./pictures.ts";
 import { sendPush } from "./push.ts";
 import { createDelegation, finishDelegation, getDelegation, handoffWorkedOn, listDelegationsForBot, openChildren, type Delegation } from "./data/delegations.ts";
 import { cancelFollowUp, createFollowUp, listFollowUps } from "./data/follow-ups.ts";
@@ -31,8 +33,6 @@ export function resultDepth(briefDepth: number): number {
 }
 
 export const MAX_ROOM_LINES = 20;
-
-const MAX_ROOM_MEMBERS = 12;
 
 export function roomOpener(text: string, invited: Bot[]): string {
   const named = new Set(mentionsIn(text));
@@ -80,6 +80,7 @@ export const TOOL_NOTES = [
   "set_profile changes your own name, job title, how you work (your SOUL), mascot colour, expression or shape. When the person tells you who you are or what you do from now on, update your instructions (the description field; the app calls it Instructions) so your SOUL.md carries it. Use it too when the person gives you a lasting new job. Which bot is their primary one is set in the app, not here.",
   `memory_update replaces MEMORY.md, the notes that load into every turn, up to ${kb(MAX_MEMORY_BYTES)} (its heading says how full it is). Keep it to stable preferences, how the person works and what you learned; detail goes in memory/<topic>.md. You can also edit it, and memory/<topic>.md, with your own file tools; they live in your home folder.`,
   "send_file hands the person a file from the computer as a download in this conversation (a document, an HTML page, an image, a spreadsheet, up to 100 MB). When the person asks for a file, or a teammate made one for them, send it; don't only say where it is on the computer. To show them the screen (a cart before they buy, a confirmation, or whenever they ask to see it), call send_screenshot; never save a screenshot to a file.",
+  "create_image makes a picture with the person's own image model and posts it here: a drawing, poster, logo, illustration or photo-like scene, or a change to a picture they sent or you made (from, by path). Write the prompt as a brief to an illustrator: subject, style, colours, composition and any words on it. Use it whenever they ask for a picture; never draw one by writing code or with the screen. The person watches it being made and sees it, so your reply is a line at most, never a description of it.",
   "Your reply is what you write after your last tool call. Make your calls first (handoffs included), then write the whole answer; don't end a turn on a tool call with the answer half written before it.",
   `react puts an emoji on the person's message you are answering, as a person taps one in a chat: 👍 or ❤️ when they thank you, agree or close ("thanks!", "perfect", "that will be all"), the others when they fit. When the reaction says it all, react and answer with exactly ${QUIET_REPLY}: nothing more is posted and nobody is notified. Otherwise react and reply as usual. Most messages need no reaction.`,
   "post_message adds a line to the conversation you are in before your final answer, e.g. to say what you are starting on. Your final answer is posted for you; don't repeat it. Both only ever reach the person: a teammate hears from you through message_bot, ask_bot or delegate_bot, or through your final answer when its own message woke you.",
@@ -234,6 +235,22 @@ function inlineSkillFiles(given: unknown): BundleFile[] | { error: string } {
     files.push({ path, data, executable: looksExecutable(data) });
   }
   return files;
+}
+
+/** A file name from the first words of a picture's prompt. */
+export function pictureName(prompt: string): string {
+  return (
+    prompt
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim()
+      .split(" ")
+      .filter(Boolean)
+      .slice(0, 6)
+      .join("-")
+      .slice(0, 60)
+      .replace(/-+$/, "") || "picture"
+  );
 }
 
 export function mcpServerName(value: string): string {
@@ -464,6 +481,77 @@ export function baseTools(context: Context): Record<string, DriverTool> {
         const note = hideSecrets(String(input.note ?? "").trim().slice(0, 4000));
         postMessage({ threadId: thread.id, author: bot.id, body: note, attachments: [file], depth, answered: true });
         return `Sent ${name} to the person; it's in the conversation with a download button. Don't repeat the path.`;
+      },
+    },
+    create_image: {
+      description: `Make a picture with the person's own image model and post it in this conversation: a drawing, poster, logo, illustration or photo-like scene, or a change to pictures you have. It takes up to a few minutes; the person watches it being made.`,
+      inputSchema: schema(
+        {
+          prompt: { type: "string", description: "What the picture shows, in detail: subject, style, colours, composition, any words on it. For a change, what to change." },
+          aspect: { type: "string", enum: [...IMAGE_ASPECTS], description: "square (the default), portrait or landscape. A change to one picture keeps its shape." },
+          from: { type: "array", items: { type: "string" }, description: `Pictures to change or work from, up to ${MAX_IMAGE_REFERENCES}: paths like inbox/… (what the person sent) or images/… (what you made).` },
+          note: { type: "string", description: "A line to go with it, optional." },
+        },
+        ["prompt"],
+      ),
+      execute: async (input) => {
+        const prompt = String(input.prompt ?? "").trim().slice(0, 4000);
+        if (!prompt) return "NOT made: what should the picture show?";
+        const aspect = isImageAspect(input.aspect) ? input.aspect : "square";
+        const given = Array.isArray(input.from) ? input.from.map((path) => String(path ?? "").trim()).filter(Boolean) : [];
+        if (given.length > MAX_IMAGE_REFERENCES) return `NOT made: at most ${MAX_IMAGE_REFERENCES} pictures in from.`;
+        const access = await imageAccess(bot.userId);
+        if (!access) return "NOT made: the person has no way to make pictures yet. Tell them to sign in to Grok with SuperGrok, or add an xAI or OpenAI key, in Settings → AI. A ChatGPT plan can't make pictures here.";
+
+        const references: ImageReference[] = [];
+        for (const path of given) {
+          const relative = sharePath(path, bot.id, boxHome(bot.userId));
+          if (!relative) return `NOT made: ${path} must be inside the person's home on the computer (~).`;
+          const name = relative.split("/").pop() || "picture";
+          const type = mediaTypeFor(name);
+          if (!type.startsWith("image/") || type === "image/svg+xml") return `NOT made: ${path} isn't a picture.`;
+          try {
+            const shrunk = await previewBoxImage(box, relative, type, context.signal);
+            references.push({ name: `${name.replace(/\.[^.]+$/, "")}.jpg`, mediaType: shrunk.mediaType, data: new Uint8Array(Buffer.from(shrunk.data, "base64")) });
+          } catch (error) {
+            return `NOT made: ${path} couldn't be read (${error instanceof Error ? error.message : "no detail"}).`;
+          }
+        }
+
+        const id = crypto.randomUUID();
+        const tell = (state: "making" | "preview" | "done" | "failed", preview: string | null = null, file: string | null = null) => emit({ topic: "picture", threadId: thread.id, botId: bot.id, id, aspect, state, preview, file });
+        tell("making");
+        let previews = 0;
+        try {
+          const picture = await createImage(access, {
+            prompt,
+            aspect,
+            references,
+            signal: context.signal,
+            onPreview: (rough) => {
+              keepPreview(id, { threadId: thread.id, data: rough.data, mediaType: rough.mediaType });
+              previews += 1;
+              tell("preview", `/api/threads/${thread.id}/pictures/${id}?v=${previews}`);
+            },
+          });
+          const extension = picture.mediaType === "image/png" ? "png" : picture.mediaType === "image/webp" ? "webp" : "jpg";
+          const name = pictureName(prompt);
+          const saved = `images/${name}-${Date.now().toString(36)}.${extension}`;
+          const kept = await uploadBoxFile(box, `${botHome(bot.id)}/${saved}`, picture.data, context.signal).then(
+            () => true,
+            () => false,
+          );
+          const file = storeAttachment({ name: `${name}.${extension}`, mediaType: picture.mediaType, data: picture.data });
+          postMessage({ threadId: thread.id, author: bot.id, body: hideSecrets(String(input.note ?? "").trim().slice(0, 4000)), attachments: [file], depth, answered: true });
+          tell("done", null, file.id);
+          return `Made with ${IMAGE_MODELS[picture.source].label} and posted; the person can see it${kept ? `. It's also at ${saved} in your home, to pass in from for changes` : ""}. Don't describe it.`;
+        } catch (error) {
+          tell("failed");
+          if (context.signal?.aborted) return "NOT made: stopped.";
+          return `NOT made: ${error instanceof Error ? error.message : "the picture couldn't be made."}`;
+        } finally {
+          keepPreview(id, null);
+        }
       },
     },
     list_bots: {
@@ -1044,7 +1132,7 @@ export function teamTools(context: Context): Record<string, DriverTool> {
       },
     },
     create_room: {
-      description: "Open a group chat (a room) with teammates and you in it. With a first message, the teammates it names answer there; in a room only an @mention wakes a bot.",
+      description: `Open a group chat (a room) with teammates and you in it, ${ROOM_MAX_BOTS} bots at most, you included. With a first message, the teammates it names answer there; in a room only an @mention wakes a bot.`,
       inputSchema: schema(
         {
           name: { type: "string", description: "The room's name, like Launch plan." },
@@ -1067,7 +1155,7 @@ export function teamTools(context: Context): Record<string, DriverTool> {
         }
         if (unknown.length) return `NOT created: no bot called ${unknown.map((r) => `"${r}"`).join(", ")}. Use list_bots.`;
         if (invited.length === 0) return "NOT created: name at least one teammate besides you.";
-        if (invited.length >= MAX_ROOM_MEMBERS) return `NOT created: a room holds at most ${MAX_ROOM_MEMBERS} bots.`;
+        if (invited.length + 1 > ROOM_MAX_BOTS) return `NOT created: a room holds at most ${ROOM_MAX_BOTS} bots, you included. Pick the teammates the job needs.`;
         const room = createRoom(name, [bot.id, ...invited.map((b) => b.id)], bot.userId);
         postMessage({ threadId: room.id, author: "system", kind: "event", body: `${bot.name} opened this room with ${invited.map((b) => b.name).join(", ")}. Mention a bot with @ to address it.`, answered: true });
         postMessage({ threadId: thread.id, author: "system", kind: "event", body: `${bot.name} opened the room "${name}".`, answered: true });

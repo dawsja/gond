@@ -132,12 +132,15 @@ function noticedIn(row: ThreadRow): Thread["noticed"] {
 
 function toThread(row: ThreadRow): Thread {
   const db = ensureDatabase();
+  // A line with `from_thread_id` is bots talking to each other (a teammate's message, a handoff, its
+  // result, an incident): it shows in the conversation as an exchange, so it is never the line the list
+  // previews, dates or sorts by, and only marks the conversation as quietly new.
   const last = db
-    .query("SELECT author, body, created_at FROM gond_messages WHERE thread_id = ? AND kind IN ('message', 'approval', 'signin') ORDER BY created_at DESC LIMIT 1")
+    .query("SELECT author, body, created_at FROM gond_messages WHERE thread_id = ? AND kind IN ('message', 'approval', 'signin') AND from_thread_id IS NULL ORDER BY created_at DESC LIMIT 1")
     .get(row.id) as { author: string; body: string; created_at: string } | null;
   const unread = db
-    .query("SELECT COUNT(*) AS n FROM gond_messages WHERE thread_id = ? AND author NOT IN ('you') AND kind IN ('message', 'approval', 'signin') AND created_at > ?")
-    .get(row.id, row.last_read_at ?? "") as { n: number };
+    .query("SELECT COUNT(*) AS n, COUNT(from_thread_id) AS team FROM gond_messages WHERE thread_id = ? AND author NOT IN ('you') AND kind IN ('message', 'approval', 'signin') AND created_at > ?")
+    .get(row.id, row.last_read_at ?? "") as { n: number; team: number };
   return {
     id: row.id,
     userId: row.user_id ?? "",
@@ -147,7 +150,8 @@ function toThread(row: ThreadRow): Thread {
     members: members(row.id),
     pinned: row.kind === "room" && Boolean(row.pinned),
     lastMessage: last ? { author: last.author, body: last.body, at: last.created_at } : null,
-    unread: Number(unread.n),
+    unread: Number(unread.n) - Number(unread.team),
+    unreadTeam: Number(unread.team) > 0 && Number(unread.n) === Number(unread.team),
     noticed: noticedIn(row),
     createdAt: row.created_at,
     updatedAt: row.updated_at,

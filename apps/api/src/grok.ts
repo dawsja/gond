@@ -21,6 +21,9 @@ const SIGN_IN_HEADERS = { "x-grok-client-version": CLI_VERSION, "x-grok-client-s
 /** What every call to a Grok plan carries besides the bearer token. */
 export const GROK_PLAN_HEADERS: Record<string, string> = { "X-XAI-Token-Auth": "xai-grok-cli", "x-grok-client-version": CLI_VERSION, "x-grok-client-mode": "interactive" };
 
+// The CLI's own picture calls go straight to api.x.ai with the plan's token and these (grok-build's media_tool_config.rs).
+export const GROK_MEDIA_HEADERS: Record<string, string> = { ...GROK_PLAN_HEADERS, "user-agent": `xai-grok-build/${CLI_VERSION}`, "x-authenticateresponse": "authenticate-response" };
+
 const RENEW_BEFORE_MS = 5 * 60_000;
 const ENDED = new Set(["invalid_grant", "invalid_refresh_token", "token_expired", "refresh_token_expired", "unauthorized_client", "invalid_client"]);
 

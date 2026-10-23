@@ -45,6 +45,7 @@ export function Shell({ user, children }: { user: SessionUser; children: ReactNo
       <ViewingReport />
       <VersionWatch />
       <StrayDrops />
+      <ScopedSelection />
     </StoreProvider>
   );
 }
@@ -53,6 +54,60 @@ export const OPEN_DIALOG_EVENT = "gond:open-dialog";
 
 export function openShellDialog(dialog: NonNullable<ShellDialog>) {
   window.dispatchEvent(new CustomEvent(OPEN_DIALOG_EVENT, { detail: dialog }));
+}
+
+const SELECTION_SCOPE = "[data-select-all], [data-slot=dialog-content], [data-slot=alert-dialog-content], [data-slot=sheet-content]";
+
+function isField(element: Element | null): boolean {
+  return element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || (element instanceof HTMLElement && element.isContentEditable);
+}
+
+/**
+ * Selecting text in a box of it (a routine's prompt, a file, a code block: `data-select-all`) or in a
+ * pop-up stays there, as in a field: Ctrl+A or ⌘A after a click in one selects it alone, and a mouse
+ * drag that starts in one can't spill onto the page around it, so it scrolls the box instead.
+ */
+function ScopedSelection() {
+  useEffect(() => {
+    const root = document.documentElement;
+    let last: Element | null = null;
+    let scope: Element | null = null;
+    const end = () => {
+      root.removeAttribute("data-selecting");
+      scope?.removeAttribute("data-selecting-in");
+      scope = null;
+    };
+    const down = (event: PointerEvent) => {
+      last = event.target instanceof Element ? event.target : null;
+      end();
+      if (event.pointerType !== "mouse" || event.button !== 0 || isField(last)) return;
+      scope = last?.closest(SELECTION_SCOPE) ?? null;
+      if (!scope) return;
+      scope.setAttribute("data-selecting-in", "");
+      root.setAttribute("data-selecting", "");
+    };
+    const key = (event: KeyboardEvent) => {
+      if (event.key.toLowerCase() !== "a" || !(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey || event.defaultPrevented) return;
+      if (isField(document.activeElement)) return;
+      const open = [...document.querySelectorAll(SELECTION_SCOPE)].filter((element) => !element.matches("[data-select-all]"));
+      const target = (last?.isConnected ? last.closest(SELECTION_SCOPE) : null) ?? open.at(-1);
+      if (!target) return;
+      event.preventDefault();
+      window.getSelection()?.selectAllChildren(target);
+    };
+    document.addEventListener("pointerdown", down, true);
+    document.addEventListener("pointerup", end, true);
+    document.addEventListener("pointercancel", end, true);
+    document.addEventListener("keydown", key);
+    return () => {
+      end();
+      document.removeEventListener("pointerdown", down, true);
+      document.removeEventListener("pointerup", end, true);
+      document.removeEventListener("pointercancel", end, true);
+      document.removeEventListener("keydown", key);
+    };
+  }, []);
+  return null;
 }
 
 // A file dropped where nothing takes it would replace the page with the file, in a browser and in the apps.

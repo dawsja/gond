@@ -315,7 +315,7 @@ async function stopFromMessage(thread: Thread, body: string): Promise<Message> {
 
 /**
  * Who a message wakes. In a room the person is read like a group chat
- * (`roomTargets`: whom they name, else whom they were talking with); a bot's
+ * (`roomTargets`: whom they name, else the bot that spoke last, else the primary); a bot's
  * line wakes only the teammates it @mentions, since bots name each other in
  * passing. `before` is the room's messages ahead of this one (`roomBefore`).
  */
@@ -383,7 +383,7 @@ export type PromptOptions = {
   summary?: string | null;
 };
 
-const ROOM_TURN = `This is a room. If the last message isn't for you (another member's question, or an option from their message), answer exactly ${QUIET_REPLY}, and nothing is posted. A line of the person's that names nobody reaches everyone they were talking with, as in a group chat: when it is plainly about another member's area (by their job) and nothing of yours, answer exactly ${QUIET_REPLY} and leave it to them. Otherwise also read what the person asked the room since you last spoke here: if an earlier question was meant for everyone or for you and your part isn't answered yet, answer it too. When part of a question is another member's (by their job), @mention them in your answer with what to look at, so they answer too; never tell the person to ask them. If a member's line only asks you for what you already said here since the person last wrote, answer exactly ${QUIET_REPLY}.`;
+const ROOM_TURN = `This is a room. If the last message isn't for you (another member's question, or an option from their message), answer exactly ${QUIET_REPLY}, and nothing is posted. A line of the person's that names nobody comes to one bot only: the one that spoke last, or the primary bot when none has. When it reaches you that way, answer it: never ${QUIET_REPLY}, since nobody else will. If it is plainly another member's area (by their job), say so in a line and @mention them with what to look at, so they answer. Also read what the person asked the room since you last spoke here: if an earlier question was meant for everyone or for you and your part isn't answered yet, answer it too. When part of a question is another member's (by their job), @mention them in your answer with what to look at, so they answer too; never tell the person to ask them. If a member's line only asks you for what you already said here since the person last wrote, answer exactly ${QUIET_REPLY}.`;
 
 export function promptFor(bot: Bot, thread: Thread, message: Message, bots: Bot[], delivered: Delivered[] = [], options: PromptOptions = {}): string {
   const names = new Map(bots.map((b) => [b.id, b.name]));

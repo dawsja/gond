@@ -234,7 +234,7 @@ describe("souls", () => {
 
 describe("targetsFor", () => {
   const other: Bot = { ...bot, id: "bot-2", name: "Pip", primary: false, threadId: "t-2" };
-  const room: Thread = { id: "room", kind: "room", name: "Room", botId: null, userId: "u-admin", members: [other.id, bot.id], pinned: false, lastMessage: null, unread: 0, noticed: null, createdAt: "", updatedAt: "" };
+  const room: Thread = { id: "room", kind: "room", name: "Room", botId: null, userId: "u-admin", members: [other.id, bot.id], pinned: false, lastMessage: null, unread: 0, unreadTeam: false, noticed: null, createdAt: "", updatedAt: "" };
 
   test("with nobody named, the primary bot answers", async () => {
     const { targetsFor } = await import("../src/responder.ts");
@@ -1433,6 +1433,94 @@ test("a picture's type comes from its bytes", async () => {
   expect(pictureType(new TextEncoder().encode("RIFF\0\0\0\0WEBPVP8 "))).toBe("image/webp");
   expect(pictureType(new TextEncoder().encode("RIFF\0\0\0\0WAVEfmt "))).toBeNull();
   expect(pictureType(new TextEncoder().encode("<svg xmlns='http://www.w3.org/2000/svg'/>"))).toBeNull();
+});
+
+describe("create_image", () => {
+  const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]).toString("base64");
+  const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2]).toString("base64");
+
+  test("an images API answer gives its picture as base64, or a link when the format was ignored", async () => {
+    const { imageFromBody } = await import("../src/pictures.ts");
+    expect(imageFromBody({ data: [{ b64_json: PNG }] })).toEqual({ b64: PNG });
+    expect(imageFromBody({ data: [{ url: "https://imgen.x.ai/a.jpg" }] })).toEqual({ url: "https://imgen.x.ai/a.jpg" });
+    expect(imageFromBody({ data: [{ url: "http://plain.example/a.jpg" }] })).toBeNull();
+    expect(imageFromBody({ data: [] })).toBeNull();
+    expect(imageFromBody(null)).toBeNull();
+  });
+
+  test("OpenAI's stream gives previews, then the picture, for a new picture and for an edit", async () => {
+    const { imageStreamEvent } = await import("../src/pictures.ts");
+    expect(imageStreamEvent({ type: "image_generation.partial_image", b64_json: PNG, partial_image_index: 0 })).toEqual({ kind: "partial", b64: PNG });
+    expect(imageStreamEvent({ type: "image_edit.partial_image", b64_json: PNG })).toEqual({ kind: "partial", b64: PNG });
+    expect(imageStreamEvent({ type: "image_generation.completed", b64_json: PNG })).toEqual({ kind: "final", b64: PNG });
+    expect(imageStreamEvent({ type: "error", error: { message: "Your request was rejected by the safety system." } })).toEqual({ kind: "error", message: "Your request was rejected by the safety system." });
+    expect(imageStreamEvent({ type: "image_generation.completed" })).toBeNull();
+    expect(imageStreamEvent("keep-alive")).toBeNull();
+  });
+
+  test("a refusal says what happened in words a bot can pass on", async () => {
+    const { imageRefusal } = await import("../src/pictures.ts");
+    expect(imageRefusal("grok", 403, { error: "forbidden" })).toContain("SuperGrok");
+    expect(imageRefusal("openai", 401, { error: { message: "Incorrect API key" } })).toContain("refused the person's key");
+    expect(imageRefusal("xai", 400, { error: "Generated image rejected by content moderation." })).toContain("content rules");
+    expect(imageRefusal("openai", 429, {})).toContain("usage limit");
+    expect(imageRefusal("openai", 500, "")).toContain("Try again");
+  });
+
+  test("a picture's file name comes from its prompt", async () => {
+    const { pictureName } = await import("../src/tools.ts");
+    expect(pictureName("A poster of a lighthouse at dusk, with stars!")).toBe("a-poster-of-a-lighthouse-at");
+    expect(pictureName("🎨🎨")).toBe("picture");
+  });
+
+  test("xAI is asked for base64 in the shape picked, and an edit sends the picture as a data URL", async () => {
+    const { createImage } = await import("../src/pictures.ts");
+    const real = globalThis.fetch;
+    const calls: { url: string; body: Record<string, unknown> }[] = [];
+    globalThis.fetch = (async (url: string | URL, init?: RequestInit) => {
+      calls.push({ url: String(url), body: JSON.parse(String(init?.body)) });
+      return Response.json({ data: [{ b64_json: JPEG }] });
+    }) as unknown as typeof fetch;
+    try {
+      const access = { source: "grok" as const, baseUrl: "https://api.x.ai/v1", headers: { authorization: "Bearer t" } };
+      const made = await createImage(access, { prompt: "a lighthouse", aspect: "portrait", references: [] });
+      expect(made.mediaType).toBe("image/jpeg");
+      expect(calls[0]!.url).toBe("https://api.x.ai/v1/images/generations");
+      expect(calls[0]!.body).toMatchObject({ model: "grok-imagine-image-quality", prompt: "a lighthouse", aspect_ratio: "2:3", response_format: "b64_json", n: 1 });
+      await createImage(access, { prompt: "make it night", aspect: "square", references: [{ name: "a.jpg", mediaType: "image/jpeg", data: new Uint8Array([1, 2]) }] });
+      expect(calls[1]!.url).toBe("https://api.x.ai/v1/images/edits");
+      expect(calls[1]!.body.image).toEqual({ url: "data:image/jpeg;base64,AQI=" });
+      expect(calls[1]!.body.aspect_ratio).toBeUndefined();
+    } finally {
+      globalThis.fetch = real;
+    }
+  });
+
+  test("OpenAI streams previews before the picture, and bytes that aren't a picture are never kept", async () => {
+    const { createImage } = await import("../src/pictures.ts");
+    const real = globalThis.fetch;
+    const stream = (events: unknown[]) => new Response(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(""), { headers: { "content-type": "text/event-stream" } });
+    let sent: Record<string, unknown> = {};
+    globalThis.fetch = (async (_url: string | URL, init?: RequestInit) => {
+      sent = JSON.parse(String(init?.body));
+      return stream([
+        { type: "image_generation.partial_image", b64_json: JPEG, partial_image_index: 0 },
+        { type: "image_generation.partial_image", b64_json: Buffer.from("<svg/>").toString("base64"), partial_image_index: 1 },
+        { type: "image_generation.completed", b64_json: PNG },
+      ]);
+    }) as unknown as typeof fetch;
+    try {
+      const previews: string[] = [];
+      const made = await createImage({ source: "openai", baseUrl: "https://api.openai.com/v1", headers: {} }, { prompt: "a cog", aspect: "landscape", references: [], onPreview: (p) => previews.push(p.mediaType) });
+      expect(sent).toMatchObject({ model: "gpt-image-2.5-flare", size: "1536x1024", stream: true, partial_images: 2 });
+      expect(previews).toEqual(["image/jpeg"]);
+      expect(made.mediaType).toBe("image/png");
+      globalThis.fetch = (async () => stream([{ type: "image_generation.completed", b64_json: Buffer.from("<svg/>").toString("base64") }])) as unknown as typeof fetch;
+      await expect(createImage({ source: "openai", baseUrl: "https://api.openai.com/v1", headers: {} }, { prompt: "a cog", aspect: "square", references: [] })).rejects.toThrow("without a picture");
+    } finally {
+      globalThis.fetch = real;
+    }
+  });
 });
 
 describe("run_with_secrets", () => {

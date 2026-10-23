@@ -93,8 +93,12 @@ export type Thread = {
   /** A room pinned to the top of the list; a bot's conversation follows its bot's own `pinned`. */
   pinned: boolean;
 
+  /** The latest line between the person and the bot or room; what bots said to each other here never counts. */
   lastMessage: { author: string; body: string; at: string } | null;
+  /** Unread lines for the person. */
   unread: number;
+  /** Bots wrote to each other here since the person last looked, and nothing new is for them. */
+  unreadTeam: boolean;
   /** What a watch's latest run said, while the person hasn't read it yet. */
   noticed: { watch: string; body: string; at: string } | null;
   createdAt: string;
@@ -539,6 +543,31 @@ export function pickVoiceProvider(preference: VoicePreference, has: (kind: Voice
   return VOICE_PROVIDERS.find(has) ?? null;
 }
 
+/**
+ * Where a bot's pictures are made, best first: a Grok plan is already paid for, then the cheaper key.
+ * A ChatGPT plan can't: OpenAI's Sign in with ChatGPT leaves image generation out.
+ */
+export const IMAGE_SOURCES = ["grok", "xai", "openai"] as const satisfies readonly ProviderKind[];
+export type ImageSource = (typeof IMAGE_SOURCES)[number];
+export const IMAGE_MODELS: Record<ImageSource, { model: string; editModel: string; label: string }> = {
+  grok: { model: "grok-imagine-image-quality", editModel: "grok-imagine-image-quality", label: "your Grok plan" },
+  xai: { model: "grok-imagine-image-2.0", editModel: "grok-imagine-image-2.0", label: "xAI" },
+  openai: { model: "gpt-image-2.5-flare", editModel: "gpt-image-2.5-sunburst", label: "OpenAI" },
+};
+export const IMAGE_ASPECTS = ["square", "portrait", "landscape"] as const;
+export type ImageAspect = (typeof IMAGE_ASPECTS)[number];
+/** Each shape as xAI's `aspect_ratio` and OpenAI's `size`, and as columns and rows of the frame drawn while it is made. */
+export const IMAGE_SHAPES: Record<ImageAspect, { ratio: string; size: string; columns: number; rows: number }> = {
+  square: { ratio: "1:1", size: "1024x1024", columns: 6, rows: 6 },
+  portrait: { ratio: "2:3", size: "1024x1536", columns: 6, rows: 9 },
+  landscape: { ratio: "3:2", size: "1536x1024", columns: 9, rows: 6 },
+};
+export const MAX_IMAGE_REFERENCES = 5;
+
+export function isImageAspect(value: unknown): value is ImageAspect {
+  return typeof value === "string" && (IMAGE_ASPECTS as readonly string[]).includes(value);
+}
+
 export const CLI_ENGINES = ["claude"] as const;
 export type CliEngine = (typeof CLI_ENGINES)[number];
 
@@ -808,7 +837,12 @@ export type LiveEvent =
    */
   | { topic: "notify"; userId: string; title: string; body: string; url: string; tag: string; threadId: string; device: string | null }
   /** Your desktop on the computer: who is driving it, and whether it is up. */
-  | { topic: "desktop"; userId: string; desktop: DesktopState };
+  | { topic: "desktop"; userId: string; desktop: DesktopState }
+  /**
+   * A picture a bot is making: its shape at once, a rough preview's URL when the API sends one,
+   * then done, with the attachment it was posted as, or failed.
+   */
+  | { topic: "picture"; threadId: string; botId: string; id: string; aspect: ImageAspect; state: "making" | "preview" | "done" | "failed"; preview: string | null; file: string | null };
 
 export const SKILL_LIMITS = {
   name: 60,
@@ -1275,6 +1309,13 @@ export function roomAnswerer<B extends RoomMember>(members: B[]): B | null {
   return members.find((b) => b.primary) ?? members[0] ?? null;
 }
 
+/**
+ * How many bots a room holds: two at least, since one is a 1:1, and six at most, past which it is slow
+ * (only `TURNS_PER_PERSON` of a person's bots answer at once) and too noisy to follow.
+ */
+export const ROOM_MIN_BOTS = 2;
+export const ROOM_MAX_BOTS = 6;
+
 /** A room's name when the person gives it none: its bots, the one that answers first in front ("Pip, Net and Patch", "Pip, Net, Patch and 4 more"). */
 export function roomNameFor(members: RoomMember[]): string {
   const first = roomAnswerer(members);
@@ -1300,17 +1341,18 @@ export function addressedIn<B extends RoomMember>(text: string, members: B[]): B
 }
 
 /**
- * Who a person's message in a room is for, the way a group chat goes: whoever
- * it names; else everyone in the conversation with them, the bots that
- * answered since they last wrote and those still answering (`working`, bot
- * ids); else whoever their last message went to; else `roomAnswerer`.
+ * Who a person's message in a room is for: whoever it names; else, while bots are still answering, them
+ * and those that answered since the person last wrote (`working`, bot ids), so the line reaches the
+ * exchange in flight; else the one bot that spoke last; else whom their last line named; else
+ * `roomAnswerer`, the primary bot when it is there. With nobody named, one bot answers, never the room.
  * `before` is the room's messages before this one, oldest first.
  */
 export function roomTargets<B extends RoomMember>(body: string, members: B[], before: RoomLine[], working: readonly string[] = []): B[] {
   const named = addressedIn(body, members);
   if (named.length) return named;
+  const busy = members.filter((b) => working.includes(b.id));
   const answered: B[] = [];
-  const talking = () => [...answered, ...members.filter((b) => working.includes(b.id) && !answered.includes(b))];
+  const next = () => (busy.length ? [...answered, ...busy.filter((b) => !answered.includes(b))] : answered.slice(-1));
   for (let i = before.length - 1; i >= 0; i -= 1) {
     const line = before[i]!;
     if (line.kind !== "message") continue;
@@ -1320,11 +1362,11 @@ export function roomTargets<B extends RoomMember>(body: string, members: B[], be
       continue;
     }
     if (line.author !== "you") continue;
-    if (talking().length) return talking();
+    if (next().length) return next();
     const earlier = addressedIn(line.body, members);
     if (earlier.length) return earlier;
   }
-  if (talking().length) return talking();
+  if (next().length) return next();
   const answerer = roomAnswerer(members);
   return answerer ? [answerer] : [];
 }
@@ -1656,6 +1698,8 @@ export function describeTool(name: string, input: Record<string, unknown> = {}, 
       return { verb: "Running", detail: typeof input.command === "string" ? short(input.command) : null };
     case "react":
       return { verb: "Reacting", detail: typeof input.emoji === "string" ? input.emoji : null };
+    case "create_image":
+      return { verb: "Making a picture", detail: short(input.prompt) };
     case "send_file": {
       const file = fileOf(input);
       return { verb: "Sending", detail: file ? short(baseName(file)) : null };

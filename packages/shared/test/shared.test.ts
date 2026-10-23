@@ -359,12 +359,14 @@ describe("rooms", () => {
     expect(ids(addressedIn("check both servers", [net, patch, { id: "doug", name: "Doug", primary: false }]))).toEqual([]);
   });
 
-  test("an unaddressed line goes to whoever the person was talking with", () => {
+  test("an unaddressed line goes to one bot: the one that spoke last, else the primary", () => {
     expect(ids(roomTargets("How are things on the IT side?", members, []))).toEqual(["net"]);
+    expect(ids(roomTargets("and the printers?", members, [line("you", "status?"), line("net", "All quiet.")]))).toEqual(["net"]);
+    expect(ids(roomTargets("and the printers?", members, [line("you", "@patch status?"), line("patch", "Nodes are up.")]))).toEqual(["patch"]);
     const afterPatch = [line("you", "@patch are you still working?"), line("patch", "I'm idle. ::choices[Run a read-only sweep | Nothing now]")];
     expect(ids(roomTargets("Run a read-only sweep", members, afterPatch))).toEqual(["patch"]);
     const bothAnswered = [line("you", "status, both of you"), line("net", "Fine."), line("patch", "Fine too.")];
-    expect(ids(roomTargets("ok, thanks", members, bothAnswered))).toEqual(["net", "patch"]);
+    expect(ids(roomTargets("ok, thanks", members, bothAnswered))).toEqual(["patch"]);
     expect(ids(roomTargets("and the backups?", members, [line("you", "@patch check the nodes")]))).toEqual(["patch"]);
     expect(ids(roomTargets("@net you check too", members, afterPatch))).toEqual(["net"]);
     expect(ids(roomTargets("thanks", members, [...afterPatch, line("system", "Patch left.", "event")]))).toEqual(["patch"]);

@@ -1,9 +1,10 @@
-import { ATTACHMENT_TYPES, MAX_ATTACHMENTS, MAX_ATTACHMENT_BYTES, isReaction, plainMarkdown, roomAnswerer, roomNameFor, type Bot, type ChatAttachment, type Thread } from "@gond/shared";
+import { ATTACHMENT_TYPES, MAX_ATTACHMENTS, MAX_ATTACHMENT_BYTES, isReaction, plainMarkdown, ROOM_MAX_BOTS, ROOM_MIN_BOTS, roomAnswerer, roomNameFor, type Bot, type ChatAttachment, type Thread } from "@gond/shared";
 import { Hono } from "hono";
 import { ownThread, ownsThread, userId } from "../access.ts";
 import type { Env } from "../app.ts";
 import { getBot, listBots } from "../data/bots.ts";
 import { attachmentOwner, createRoom, deleteRoom, getAttachment, getMessage, getThread, listExchange, listMessages, listThreads, markThreadRead, postMessage, searchMessages, setReaction, storeAttachment, updateRoom } from "../data/threads.ts";
+import { previewOf } from "../pictures.ts";
 import { activeTurns, postFromPerson, stopThread } from "../responder.ts";
 import { workFor } from "../work.ts";
 
@@ -148,12 +149,13 @@ export function threadsRoutes() {
     const body = (await c.req.json().catch(() => ({}))) as { name?: string; members?: string[] };
     const mine = listBots({ includeHidden: true, userId: userId(c) });
     const members = [...new Set(Array.isArray(body.members) ? body.members.map(String) : [])].filter((id) => mine.some((b) => b.id === id));
-    if (members.length === 0) return c.json({ error: "Add at least one bot" }, 400);
+    if (members.length < ROOM_MIN_BOTS) return c.json({ error: "Pick at least two bots for a room" }, 400);
+    if (members.length > ROOM_MAX_BOTS) return c.json({ error: "A room holds up to six bots" }, 400);
     const name = (String(body.name ?? "").trim() || roomNameFor(mine.filter((b) => members.includes(b.id)))).slice(0, 80);
     const thread = createRoom(name, members, userId(c));
     const answerer = answererOf(members, listBots({ includeHidden: true, userId: userId(c) }));
-    const who = members.length > 1 && answerer ? ` With nobody named, ${answerer} answers; mention a bot with @, or by name, to address it.` : "";
-    postMessage({ threadId: thread.id, author: "system", kind: "event", body: `Room created with ${members.length} bot${members.length === 1 ? "" : "s"}.${who}`, answered: true });
+    const who = answerer ? ` With nobody named, ${answerer} answers; mention a bot with @, or by name, to address it.` : "";
+    postMessage({ threadId: thread.id, author: "system", kind: "event", body: `Room created with ${members.length} bots.${who}`, answered: true });
     return c.json({ thread }, 201);
   });
 
@@ -164,7 +166,9 @@ export function threadsRoutes() {
     const bots = listBots({ includeHidden: true, userId: userId(c) });
     const known = new Set(bots.map((b) => b.id));
     const members = Array.isArray(body.members) ? [...new Set(body.members.map(String).filter((id) => known.has(id)))] : undefined;
-    if (members && members.length === 0) return c.json({ error: "Keep at least one bot in the room" }, 400);
+    // A room from before the limits keeps its size; a change only has to move it toward them.
+    if (members && members.length < ROOM_MIN_BOTS && members.length < before.members.length) return c.json({ error: "Keep at least two bots in the room" }, 400);
+    if (members && members.length > ROOM_MAX_BOTS && members.length > before.members.length) return c.json({ error: "A room holds up to six bots" }, 400);
     const given = body.name === undefined ? undefined : String(body.name).trim().slice(0, 80);
     const name = given === "" ? roomNameFor(bots.filter((b) => (members ?? before.members).includes(b.id))).slice(0, 80) : given;
     if (body.pinned !== undefined && typeof body.pinned !== "boolean") return c.json({ error: "Pinned must be on or off" }, 400);
@@ -179,6 +183,15 @@ export function threadsRoutes() {
     if (!ownsThread(c, c.req.param("id"))) return c.json({ error: "Couldn't find that room" }, 404);
     await stopThread(c.req.param("id"));
     return deleteRoom(c.req.param("id")) ? c.body(null, 204) : c.json({ error: "Couldn't find that room" }, 404);
+  });
+
+  // The latest rough look at a picture a bot is still making; gone once it is made.
+  app.get("/threads/:id/pictures/:pictureId", (c) => {
+    const preview = ownsThread(c, c.req.param("id")) ? previewOf(c.req.param("pictureId"), c.req.param("id")) : null;
+    if (!preview) return c.json({ error: "That picture is already finished" }, 404);
+    return new Response(Buffer.from(preview.data), {
+      headers: { "Content-Type": preview.mediaType, "Content-Security-Policy": "sandbox", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" },
+    });
   });
 
   app.get("/attachments/:id", (c) => {

@@ -58,7 +58,7 @@ export function RoutineDetails({ bot, routine, onClose, onChange }: { bot: Bot; 
           ) : null}
           <Field>
             <FieldTitle>What it does</FieldTitle>
-            <p className="max-h-48 overflow-y-auto rounded-xl border bg-muted px-3 py-2 text-sm whitespace-pre-wrap">{routine.prompt}</p>
+            <p data-select-all className="max-h-48 overflow-y-auto rounded-xl border bg-muted px-3 py-2 text-sm whitespace-pre-wrap">{routine.prompt}</p>
           </Field>
           <FieldLabel htmlFor="routine-enabled">
             <Field orientation="horizontal">

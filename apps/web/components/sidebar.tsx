@@ -40,6 +40,13 @@ function preview(thread: ThreadRow, bots: Bot[], activity: Record<string, string
   return `${who}${plainMarkdown(last.body)}`;
 }
 
+/** Something new for the person is the bot's color; bots only talking to each other there is a grey one. */
+function UnreadDot({ thread, bot, className }: { thread: ThreadRow; bot: Bot | undefined; className: string }) {
+  if (thread.unread > 0) return <span className={cn("rounded-full", className)} style={{ background: bot?.color ?? "var(--foreground)" }} aria-label={`${thread.unread} unread`} />;
+  if (thread.unreadTeam) return <span className={cn("rounded-full bg-ash", className)} aria-label="New between bots" />;
+  return null;
+}
+
 function ThreadMenu({ thread, bot, onOpen, onAsk, trigger, children }: { thread: ThreadRow; bot: Bot | undefined; onOpen: (dialog: ShellDialog) => void; onAsk: (ask: Ask) => void; trigger: ReactElement; children: ReactNode }) {
   const { bots, refresh } = useStore();
   const groups = threadActions({ thread, bot, bots, onOpen, onAsk, refresh });
@@ -83,7 +90,7 @@ const PinnedTile = memo(function PinnedTile({ thread, bot, active, onOpen, onAsk
           </>
         )}
         <span className={cn("max-w-full truncate text-[16px] wide:text-[13px]", active ? "font-medium text-foreground" : "text-muted-foreground")}>{bot?.name ?? thread.name}</span>
-        {thread.unread > 0 && !active ? <span className="absolute top-2 right-3 size-2.5 rounded-full ring-2 ring-background" style={{ background: bot?.color ?? "var(--foreground)" }} aria-label={`${thread.unread} unread`} /> : null}
+        {!active ? <UnreadDot thread={thread} bot={bot} className="absolute top-2 right-3 size-2.5 ring-2 ring-background" /> : null}
       </Link>
     </ThreadMenu>
   );
@@ -130,7 +137,7 @@ const Row = memo(function Row({ thread, bot, active, bots, activity, draft, onOp
               ) : (
                 <span className="truncate">{preview(thread, bots, activity)}</span>
               )}
-              {thread.unread > 0 && !active ? <span className="ml-auto size-2 shrink-0 rounded-full" style={{ background: bot?.color ?? "var(--foreground)" }} aria-label={`${thread.unread} unread`} /> : null}
+              {!active ? <UnreadDot thread={thread} bot={bot} className="ml-auto size-2 shrink-0" /> : null}
             </span>
           </span>
         </SidebarMenuButton>

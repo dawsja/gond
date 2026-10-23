@@ -282,6 +282,26 @@ describe("data", () => {
     expect(getThread(bot.threadId)?.noticed).toBeNull();
   });
 
+  test("what bots say to each other is never a conversation's latest line, only a grey dot", async () => {
+    const { createBot } = await import("../src/data/bots.ts");
+    const { postMessage, getThread, markThreadRead } = await import("../src/data/threads.ts");
+    const { botInputSchema } = await import("@gond/shared");
+    const atlas = createBot(botInputSchema.parse({ name: "Atlas" }), "u-admin");
+    const gond = createBot(botInputSchema.parse({ name: "Hub" }), "u-admin");
+    postMessage({ threadId: atlas.threadId, author: atlas.id, body: "Your flight is booked.", answered: true });
+    await Bun.sleep(2);
+    markThreadRead(atlas.threadId);
+    await Bun.sleep(2);
+    postMessage({ threadId: atlas.threadId, author: gond.id, body: "Dawson released a big backend update.", fromThreadId: gond.threadId, answered: true });
+    expect(getThread(atlas.threadId)).toMatchObject({ lastMessage: { body: "Your flight is booked." }, unread: 0, unreadTeam: true });
+    await Bun.sleep(2);
+    postMessage({ threadId: atlas.threadId, author: atlas.id, body: "Your hotel is booked too.", answered: true });
+    expect(getThread(atlas.threadId)).toMatchObject({ lastMessage: { body: "Your hotel is booked too." }, unread: 1, unreadTeam: false });
+    await Bun.sleep(2);
+    markThreadRead(atlas.threadId);
+    expect(getThread(atlas.threadId)).toMatchObject({ unread: 0, unreadTeam: false });
+  });
+
   test("each person's color is their own, blue until they pick one", async () => {
     const { setUserAccent, userAccent } = await import("../src/data/prefs.ts");
     expect(userAccent("u-color")).toBe("blue");
@@ -3848,6 +3868,20 @@ describe("rooms and a bot's files", () => {
 
     await change(mine, { pinned: false });
     expect(getThread(room.id)!.pinned).toBe(false);
+
+    // Two to six bots: a 1:1 isn't a room, and past six it is too slow and noisy to follow.
+    const more = ["Di", "Ed", "Fy", "Gu"].map((name) => createBot(botInputSchema.parse({ name }), "u-room").id);
+    const make = (members: string[]) => mine.request("/api/rooms", { method: "POST", headers: json, body: JSON.stringify({ name: "", members }) });
+    expect((await make([ada.id])).status).toBe(400);
+    expect((await make([ada.id, bo.id, cy.id, ...more])).status).toBe(400);
+    expect((await make([ada.id, bo.id, ...more])).status).toBe(201);
+    expect((await change(mine, { members: [ada.id] })).status).toBe(400);
+    expect((await change(mine, { members: [ada.id, bo.id, cy.id, ...more] })).status).toBe(400);
+    // A room from before the limits keeps its size and can still shrink toward them.
+    const big = createRoom("Everyone", [ada.id, bo.id, cy.id, ...more], "u-room");
+    const shrink = (members: string[]) => mine.request(`/api/rooms/${big.id}`, { method: "PATCH", headers: json, body: JSON.stringify({ name: "Everyone", members }) });
+    expect((await shrink(getThread(big.id)!.members)).status).toBe(200);
+    expect((await shrink([ada.id, bo.id, ...more])).status).toBe(200);
     expect(listMessages(room.id).at(-1)!.body).toBe("Renamed to Launch week. Cy joined. Bo left.");
     expect(roomChange({ name: "A", members: [] }, { name: "A", members: ["1", "2", "3"] }, (id) => `Bot ${id}`)).toBe("Bot 1, Bot 2 and Bot 3 joined.");
     expect(roomChange({ name: "A", members: ["1", "2"] }, { name: "A", members: ["2", "3"] }, (id) => `Bot ${id}`, ["Bot 1", "Bot 2"])).toBe("Bot 3 joined. Bot 1 left. Bot 2 answers now when nobody's named.");

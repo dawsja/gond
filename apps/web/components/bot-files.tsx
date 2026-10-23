@@ -162,7 +162,7 @@ function FileViewer({ bot, opened, onClose }: { bot: Bot; opened: Opened; onClos
             <Markdown text={text.content} />
           </div>
         ) : (
-          <pre className="overflow-x-auto rounded-2xl border border-primary-edge bg-primary px-4 py-3 font-mono text-[12.5px] leading-5 whitespace-pre-wrap wrap-anywhere">{text.content}</pre>
+          <pre data-select-all className="overflow-x-auto rounded-2xl border border-primary-edge bg-primary px-4 py-3 font-mono text-[12.5px] leading-5 whitespace-pre-wrap wrap-anywhere">{text.content}</pre>
         )}
         <DialogFooter>
           <Button variant="outline" size="lg" onClick={onClose}>
