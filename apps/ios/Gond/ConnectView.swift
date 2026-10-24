@@ -6,29 +6,31 @@ struct ConnectView: View {
     @FocusState private var typing: Bool
 
     var body: some View {
-        ZStack {
-            Theme.background.ignoresSafeArea()
-            faces
+        ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 10) {
                     CogShape().fill(Theme.foreground).frame(width: 28, height: 28)
                     Text("Gond").font(.system(size: 18, weight: .bold))
                 }
                 .accessibilityElement(children: .combine)
-                Spacer(minLength: 24)
-                Text("Connect")
-                    .font(.system(size: 13, weight: .semibold))
-                    .kerning(0.8)
-                    .textCase(.uppercase)
-                    .foregroundStyle(Theme.muted)
+                .padding(.top, 14)
+                // The team stands above the words, never behind them; it steps aside while you type,
+                // so the title and the card rise above the keyboard instead of being pushed under it.
+                if !typing {
+                    team
+                        .padding(.top, 28)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
                 Text("Where is your Gond?")
                     .font(.system(size: 34, weight: .bold))
-                    .padding(.top, 8)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, typing ? 28 : 32)
                 Text("Enter the address you open Gond at in your browser.")
                     .font(.system(size: 16))
                     .foregroundStyle(Theme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 10)
-                form.padding(.top, 26)
+                form.padding(.top, 24)
                 if model.canGoBack, let server = model.server {
                     Button("Back to \(server)") { model.backToServer() }
                         .font(.system(size: 15, weight: .medium))
@@ -36,26 +38,28 @@ struct ConnectView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.top, 18)
                 }
-                Spacer(minLength: 24)
             }
             .foregroundStyle(Theme.foreground)
             .padding(.horizontal, 28)
-            .padding(.vertical, 16)
-            .frame(maxWidth: 520)
+            .padding(.bottom, 24)
+            .frame(maxWidth: 520, alignment: .leading)
+            .frame(maxWidth: .infinity)
         }
+        .scrollBounceBehavior(.basedOnSize)
+        .scrollDismissesKeyboard(.interactively)
+        .background(Theme.background.ignoresSafeArea())
+        .animation(.snappy(duration: 0.3), value: typing)
     }
 
-    /// Bots' faces behind the card, so the glass has something to bend.
-    private var faces: some View {
-        GeometryReader { geometry in
-            let width = geometry.size.width
-            ZStack {
-                BotFace(color: Theme.bots[0]).frame(width: 200).rotationEffect(.degrees(-12)).position(x: width * 0.12, y: geometry.size.height * 0.2)
-                BotFace(color: Theme.bots[1]).frame(width: 160).rotationEffect(.degrees(14)).position(x: width * 0.94, y: geometry.size.height * 0.27)
-                BotFace(color: Theme.bots[2]).frame(width: 140).rotationEffect(.degrees(8)).position(x: width * 0.78, y: geometry.size.height * 0.76)
-            }
+    /// Three bots' faces, standing together like the team you're about to reach.
+    private var team: some View {
+        HStack(alignment: .top, spacing: -14) {
+            BotFace(color: Theme.bots[0]).frame(width: 150).rotationEffect(.degrees(-10))
+            BotFace(color: Theme.bots[1]).frame(width: 118).rotationEffect(.degrees(6)).padding(.top, 38)
+            BotFace(color: Theme.bots[2]).frame(width: 132).rotationEffect(.degrees(12)).padding(.top, -8)
         }
-        .ignoresSafeArea()
+        .frame(maxWidth: .infinity)
+        .frame(height: 176, alignment: .top)
     }
 
     private var form: some View {
