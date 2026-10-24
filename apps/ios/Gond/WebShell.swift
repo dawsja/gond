@@ -176,7 +176,8 @@ final class WebShell: NSObject {
     func snapshot(_ rect: CGRect) async -> UIImage? {
         let configuration = WKSnapshotConfiguration()
         configuration.rect = rect
-        configuration.afterScreenUpdates = false
+        // After the page hid what hangs off the bubble (its reactions) for the lifted copy.
+        configuration.afterScreenUpdates = true
         return await withCheckedContinuation { continuation in
             webView.takeSnapshot(with: configuration) { image, _ in continuation.resume(returning: image) }
         }

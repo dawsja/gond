@@ -13,9 +13,9 @@ final class ScreensTests: XCTestCase {
             throw XCTSkip("Screenshots run in CI against a seeded Gond")
         }
         let folder = env["GOND_SCREENS_DIR"].map { URL(fileURLWithPath: $0) }
-        for appearance in [XCUIDevice.Appearance.light, .dark] {
-            XCUIDevice.shared.appearance = appearance
-            let name = appearance == .dark ? "dark" : "light"
+        // The job sets the simulator's appearance and runs this once for each.
+        let name = env["GOND_SCREENS_APPEARANCE"] ?? "light"
+        do {
             let app = XCUIApplication()
             app.launchEnvironment = ["GOND_SCREENS_SERVER": server, "GOND_SCREENS_COOKIE": cookie, "GOND_SCREENS_PATH": "/app/t/\(thread)"]
             app.launch()
@@ -55,8 +55,14 @@ final class ScreensTests: XCTestCase {
 
             let picture = app.webViews.buttons["View backyard.png"]
             if picture.waitForExistence(timeout: 10) {
+                let started = Date()
                 picture.tap()
-                Thread.sleep(forTimeInterval: 2)
+                var opened = false
+                while !opened && Date().timeIntervalSince(started) < 20 {
+                    opened = app.navigationBars.count > 0 || app.buttons["Done"].exists || app.buttons["Close"].exists
+                    if !opened { Thread.sleep(forTimeInterval: 0.25) }
+                }
+                print("[screens] Quick Look \(opened ? "opened" : "never opened") after \(String(format: "%.1f", Date().timeIntervalSince(started))) s")
                 shot("5-picture")
                 for label in ["Done", "Close"] where app.buttons[label].exists {
                     app.buttons[label].tap()
@@ -70,6 +76,8 @@ final class ScreensTests: XCTestCase {
                 field.tap()
                 field.typeText("Can you also check @")
                 shot("6-typing")
+                // Left in the field it would be the next run's draft.
+                field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 24))
             }
             details.tap()
             shot("7-details")

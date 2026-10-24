@@ -62,13 +62,20 @@ jobs:
           export TEST_RUNNER_GOND_SCREENS_DIR="$RUNNER_TEMP/screens"
           device=$(xcrun simctl list devices available -j | jq -r '[.devices[][] | select(.name | test("^iPhone [0-9]+ Pro$"))][0].udid // empty')
           [ -n "$device" ] || device=$(xcrun simctl list devices available -j | jq -r '[.devices[][] | select(.name | startswith("iPhone"))][0].udid')
-          xcodebuild test -project Gond.xcodeproj -scheme GondScreens -destination "id=$device" -resultBundlePath "$RUNNER_TEMP/screens.xcresult" CODE_SIGNING_ALLOWED=NO -quiet
+          xcrun simctl boot "$device" || true
+          for appearance in light dark; do
+            xcrun simctl ui "$device" appearance "$appearance"
+            TEST_RUNNER_GOND_SCREENS_APPEARANCE="$appearance" xcodebuild test -project Gond.xcodeproj -scheme GondScreens -destination "id=$device" \
+              -resultBundlePath "$RUNNER_TEMP/screens-$appearance.xcresult" CODE_SIGNING_ALLOWED=NO 2>&1 | grep -E '\[screens\]|error:|failed|passed|Test Case' || true
+          done
       - name: Keep the attachments too
         if: always()
         run: |
-          [ -d "$RUNNER_TEMP/screens.xcresult" ] || exit 0
-          mkdir -p "$RUNNER_TEMP/screens/xcresult"
-          xcrun xcresulttool export attachments --path "$RUNNER_TEMP/screens.xcresult" --output-path "$RUNNER_TEMP/screens/xcresult" || true
+          for appearance in light dark; do
+            [ -d "$RUNNER_TEMP/screens-$appearance.xcresult" ] || continue
+            mkdir -p "$RUNNER_TEMP/screens/xcresult-$appearance"
+            xcrun xcresulttool export attachments --path "$RUNNER_TEMP/screens-$appearance.xcresult" --output-path "$RUNNER_TEMP/screens/xcresult-$appearance" || true
+          done
       - uses: actions/upload-artifact@v7
         if: always()
         with:

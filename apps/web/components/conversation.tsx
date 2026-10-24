@@ -279,6 +279,8 @@ const Line = memo(function Line({ message, threadId, bots, threads, bot, approva
   const openNativeMenu = async () => {
     const node = bubble.current;
     if (!node) return;
+    // The badges hang below the bubble, so the lifted copy would cut them; the reactions bar shows them anyway.
+    node.dataset.lifting = "";
     const box = node.getBoundingClientRect();
     const items: NativeMenuItem[] = [];
     if (replyable) items.push({ id: "reply", label: "Reply", symbol: "arrowshape.turn.up.left" });
@@ -292,6 +294,7 @@ const Line = memo(function Line({ message, threadId, bots, threads, bot, approva
       reactions: reactable ? { options: REACTIONS, mine: message.reactions.find((r) => r.author === "you")?.emoji ?? null } : null,
       items,
     });
+    delete node.dataset.lifting;
     if (picked?.react && (REACTIONS as readonly string[]).includes(picked.react)) reactWith(picked.react as ReactionEmoji);
     else if (picked?.action === "reply") onReply(message);
     else if (picked?.action === "copy") void copyToClipboard(copyText(message.body)).then((ok) => toast.add(ok ? { title: "Copied." } : { type: "error", title: "Couldn't copy it." }));
@@ -332,7 +335,7 @@ const Line = memo(function Line({ message, threadId, bots, threads, bot, approva
             // A right click on a link gets the browser's own menu (open in a new tab, copy the address).
             if (!touch && event.target instanceof Element && event.target.closest("a[href]")) event.preventBaseUIHandler();
           }}
-          className={cn("touch-pan-y select-text pointer-coarse:select-none", !swipe && "transition-transform duration-200")}
+          className={cn("group/lift touch-pan-y select-text pointer-coarse:select-none", !swipe && "transition-transform duration-200")}
           style={swipe ? { transform: `translateX(${swipe}px)` } : undefined}
           render={<Bubble variant={mine ? "default" : "outline"} align={mine ? "end" : "start"} className={cn("max-w-[86%] sm:max-w-[78%]", message.reactions.length > 0 && "mb-2.5")} />}
         >

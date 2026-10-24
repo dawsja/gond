@@ -58,7 +58,7 @@ export function ReactionBadges({ message, bots, mine, onReact }: { message: Mess
     groups.set(reaction.emoji, [...(groups.get(reaction.emoji) ?? []), name]);
   }
   return (
-    <span className={cn("absolute -bottom-3 z-10 flex gap-1", mine ? "left-2" : "right-2")}>
+    <span className={cn("absolute -bottom-3 z-10 flex gap-1 group-data-[lifting]/lift:invisible", mine ? "left-2" : "right-2")}>
       {[...groups].map(([emoji, names]) => {
         const yours = names.includes("You");
         const label = `${who(names)} reacted ${emoji}`;

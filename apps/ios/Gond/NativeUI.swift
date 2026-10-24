@@ -326,7 +326,7 @@ private final class AttachPicker: NSObject, PHPickerViewControllerDelegate, UIDo
             for provider in providers {
                 if let file = await Self.load(provider) { files.append(file) }
             }
-            await done(files)
+            done(files)
         }
     }
 
@@ -336,7 +336,7 @@ private final class AttachPicker: NSObject, PHPickerViewControllerDelegate, UIDo
             let type = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
             return File(name: url.lastPathComponent, type: type, data: data)
         }
-        Task { await done(files) }
+        Task { done(files) }
     }
 
     /// A GIF or PNG as it is (a GIF keeps moving); anything else, HEIC included, as a JPEG every browser and bot can read.
