@@ -668,6 +668,33 @@ const MIGRATIONS: Array<string | ((db: Database) => void)> = [
   ALTER TABLE gond_user_prefs ADD COLUMN emoji TEXT;
   `,
   `ALTER TABLE gond_routines ADD COLUMN once INTEGER NOT NULL DEFAULT 0;`,
+  // Whom the room's router judged a person's unnamed line was for, as a JSON array of bot ids.
+  `ALTER TABLE gond_messages ADD COLUMN sent_to TEXT;`,
+  // A person's chat exports, made in the background; the zip is a blob in a table of its own.
+  `
+  CREATE TABLE gond_exports (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    thread_id TEXT,
+    since TEXT,
+    label TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('preparing', 'ready', 'failed', 'expired')),
+    done INTEGER NOT NULL DEFAULT 0,
+    total INTEGER NOT NULL DEFAULT 0,
+    size INTEGER,
+    error TEXT,
+    created_at TEXT NOT NULL,
+    finished_at TEXT,
+    expires_at TEXT
+  );
+  CREATE INDEX gond_exports_user ON gond_exports (user_id, created_at);
+  CREATE TABLE gond_export_files (
+    export_id TEXT PRIMARY KEY REFERENCES gond_exports (id) ON DELETE CASCADE,
+    data BLOB NOT NULL
+  );
+  `,
+  // A secret card that replaces a value the person already has, so it says so.
+  `ALTER TABLE gond_secret_requests ADD COLUMN replaces INTEGER NOT NULL DEFAULT 0;`,
 ];
 
 export const RENAME_VERSION = MIGRATIONS.indexOf(renameLegacyObjects) + 1;

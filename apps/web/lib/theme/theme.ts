@@ -44,4 +44,4 @@ export const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem(${J
   THEME_STORAGE_KEY,
 )});var d=t==="dark"||(t!=="light"&&matchMedia(${JSON.stringify(
   DARK_QUERY,
-)}).matches);document.documentElement.classList.toggle("dark",d);var a=localStorage.getItem(${JSON.stringify(ACCENT_STORAGE_KEY)});if(a&&/^[a-z]+$/.test(a))document.documentElement.setAttribute("data-accent",a);if(window.gondMobile)document.documentElement.setAttribute("data-shell","android")}catch(e){}})()`;
+)}).matches);document.documentElement.classList.toggle("dark",d);var a=localStorage.getItem(${JSON.stringify(ACCENT_STORAGE_KEY)});if(a&&/^[a-z]+$/.test(a))document.documentElement.setAttribute("data-accent",a);if(window.gondMobile)document.documentElement.setAttribute("data-shell","phone")}catch(e){}})()`;

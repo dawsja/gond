@@ -5,20 +5,21 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * The phone layout applies under md, and always inside the Android app
- * (which marks <html data-shell="android"> before first paint), so a
- * tablet or a landscape phone never gets the desktop's sidebar.
+ * The phone layout applies under md, and always inside the Android and
+ * iPhone apps (the theme init script marks <html data-shell="phone"> before
+ * first paint), so a tablet or a landscape phone never gets the desktop's
+ * sidebar.
  */
 @custom-variant wide {
   @media (width >= 48rem) {
-    :root:not([data-shell="android"]) & {
+    :root:not([data-shell="phone"]) & {
       @slot;
     }
   }
 }
 @custom-variant xwide {
   @media (width >= 64rem) {
-    :root:not([data-shell="android"]) & {
+    :root:not([data-shell="phone"]) & {
       @slot;
     }
   }

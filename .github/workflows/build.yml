@@ -53,8 +53,8 @@ jobs:
           REF: ${{ github.ref }}
           BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Everything the desktop and Android builds read (the Connect page keeps its own copy of the web's tokens).
-          APP_FILES: '^(apps/desktop/|apps/android/|assets/|\.github/workflows/)'
+          # Everything the desktop, Android and iPhone builds read (the Connect screens keep their own copy of the web's tokens).
+          APP_FILES: '^(apps/desktop/|apps/android/|apps/ios/|assets/|\.github/workflows/)'
         run: |
           images=true; apps=true; latest=false; carry=""
           if [ "$REF" = refs/heads/main ]; then
@@ -202,6 +202,72 @@ jobs:
           name: gond-android
           path: apps/android/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
+
+  # The iPhone app is tested and built on every change to it. An iPhone app reaches phones through
+  # TestFlight, not the GitHub release, so a push to main or a release tag uploads it there, signed by
+  # Xcode's automatic signing with the App Store Connect API key in the secrets; without them (a fork,
+  # a pull request) it only builds, unsigned. Its version is the release's, its build number this
+  # run's, so every upload is newer than the last. The project is generated from project.yml.
+  ios:
+    name: iPhone app
+    needs: changes
+    if: needs.changes.outputs.apps == 'true'
+    runs-on: macos-26
+    env:
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - run: brew install xcodegen
+      - working-directory: apps/ios
+        run: xcodegen generate
+      - name: Test on a simulator
+        working-directory: apps/ios
+        run: |
+          set -o pipefail
+          device=$(xcrun simctl list devices available -j | jq -r '[.devices[][] | select(.name | startswith("iPhone"))][0].udid')
+          xcodebuild test -project Gond.xcodeproj -scheme Gond -destination "id=$device" CODE_SIGNING_ALLOWED=NO -quiet
+      - name: Build for a phone, unsigned
+        if: env.ASC_KEY_ID == '' || github.event_name == 'pull_request'
+        working-directory: apps/ios
+        run: |
+          set -o pipefail
+          xcodebuild build -project Gond.xcodeproj -scheme Gond -configuration Release -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO -quiet
+      - name: Sign and upload to TestFlight
+        if: env.ASC_KEY_ID != '' && github.event_name != 'pull_request'
+        working-directory: apps/ios
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: |
+          set -o pipefail
+          key="$RUNNER_TEMP/AuthKey_$ASC_KEY_ID.p8"
+          printf '%s\n' "$ASC_KEY_P8" > "$key"
+          version="${RELEASE_TAG#v}"
+          [ -n "$version" ] || version=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null | sed 's/^v//')
+          [ -n "$version" ] || version=0.1.0
+          echo "Gond for iPhone $version ($BUILD_NUMBER)"
+          auth=(-allowProvisioningUpdates -authenticationKeyPath "$key" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID")
+          xcodebuild archive -project Gond.xcodeproj -scheme Gond -configuration Release -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/Gond.xcarchive" DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Automatic \
+            MARKETING_VERSION="$version" CURRENT_PROJECT_VERSION="$BUILD_NUMBER" "${auth[@]}" -quiet
+          cat > "$RUNNER_TEMP/export.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>$APPLE_TEAM_ID</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict></plist>
+          PLIST
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/Gond.xcarchive" -exportOptionsPlist "$RUNNER_TEMP/export.plist" \
+            -exportPath "$RUNNER_TEMP/export" "${auth[@]}"
+          rm -f "$key"
 
   release:
     name: Release the desktop and Android apps

@@ -28,6 +28,7 @@ type MessageRow = {
   claimed_by: string | null;
   answered_at: string | null;
   steered: number;
+  sent_to: string | null;
   reply_to: string | null;
   created_at: string;
 };
@@ -38,6 +39,16 @@ function parseAttachments(text: string): ChatAttachment[] {
     return Array.isArray(value) ? (value as ChatAttachment[]) : [];
   } catch {
     return [];
+  }
+}
+
+function parseSentTo(text: string | null): string[] | null {
+  if (!text) return null;
+  try {
+    const value = JSON.parse(text);
+    return Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : null;
+  } catch {
+    return null;
   }
 }
 
@@ -55,6 +66,7 @@ function messageFrom(row: MessageRow, reactions: Reaction[], quote: Quote | null
     approvalId: row.approval_id,
     fromThreadId: row.from_thread_id,
     steered: row.steered === 1,
+    sentTo: parseSentTo(row.sent_to),
     reactions,
     replyTo: quote,
     createdAt: row.created_at,
@@ -250,6 +262,8 @@ export type NewMessage = {
   replyTo?: string | null;
 
   answering?: string | null;
+  /** A room line for the router: held back from the dispatcher until `routed` says whom it is for. */
+  routing?: boolean;
 };
 
 export function postMessage(input: NewMessage): Message {
@@ -259,15 +273,23 @@ export function postMessage(input: NewMessage): Message {
   const needsAnswer = !input.answered && !input.steered && ((kind === "message" && (input.author === "you" || input.author === "routine" || Boolean(input.fromThreadId) || Boolean(input.wake))) || kind === "prompt");
   transaction((db) => {
     db.query(
-      `INSERT INTO gond_messages (id, thread_id, author, kind, body, attachments, depth, approval_id, from_thread_id, answered_at, steered, reply_to, answering, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(id, input.threadId, input.author, kind, input.body, JSON.stringify(input.attachments ?? []), input.depth ?? 0, input.approvalId ?? null, input.fromThreadId ?? null, needsAnswer ? null : at, input.steered ? 1 : 0, input.replyTo ?? null, input.answering ?? null, at);
+      `INSERT INTO gond_messages (id, thread_id, author, kind, body, attachments, depth, approval_id, from_thread_id, answered_at, steered, reply_to, answering, claimed_by, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(id, input.threadId, input.author, kind, input.body, JSON.stringify(input.attachments ?? []), input.depth ?? 0, input.approvalId ?? null, input.fromThreadId ?? null, needsAnswer ? null : at, input.steered ? 1 : 0, input.replyTo ?? null, input.answering ?? null, needsAnswer && input.routing ? ROUTING : null, at);
     db.query("UPDATE gond_threads SET updated_at = ? WHERE id = ?").run(at, input.threadId);
     if (input.author === "you") db.query("UPDATE gond_threads SET last_read_at = ? WHERE id = ?").run(at, input.threadId);
     for (const file of input.attachments ?? []) db.query("UPDATE gond_attachments SET message_id = ? WHERE id = ?").run(id, file.id);
   });
   threadChanged(input.threadId);
   return getMessage(id)!;
+}
+
+/** The claim a room line holds while the router decides whom it is for, so no turn takes it first. */
+export const ROUTING = "routing";
+
+/** Records whom the router judged a line was for. */
+export function setSentTo(id: string, botIds: string[]) {
+  ensureDatabase().query("UPDATE gond_messages SET sent_to = ? WHERE id = ?").run(JSON.stringify(botIds), id);
 }
 
 /** The message a bot's line in a room was answering, if it was one. */
@@ -382,6 +404,24 @@ export function botLinesSincePerson(threadId: string): number {
   return row.n;
 }
 
+/**
+ * Whether the bot in `ownThreadId` opened its exchange with `otherThreadId`: since the last line
+ * that set it working there (the person's, a routine's or Gond's), its first line to the other bot
+ * came before any line of the other's to it, so what the other says back is part of that errand.
+ */
+export function openedExchange(ownThreadId: string, otherThreadId: string, before: string): boolean {
+  const row = ensureDatabase()
+    .query(
+      `SELECT thread_id FROM gond_messages
+       WHERE ((thread_id = ?1 AND from_thread_id = ?2) OR (thread_id = ?2 AND from_thread_id = ?1))
+         AND author NOT IN ('you', 'system', 'routine') AND created_at < ?3
+         AND created_at > COALESCE((SELECT MAX(created_at) FROM gond_messages WHERE thread_id = ?2 AND author IN ('you', 'system', 'routine') AND created_at < ?3), '')
+       ORDER BY created_at, rowid LIMIT 1`,
+    )
+    .get(otherThreadId, ownThreadId, before) as { thread_id: string } | null;
+  return row?.thread_id === otherThreadId;
+}
+
 export function markAnswered(id: string) {
   ensureDatabase().query("UPDATE gond_messages SET answered_at = ?, claimed_by = NULL WHERE id = ?").run(now(), id);
 }
@@ -402,6 +442,16 @@ export function closeSentFrom(threadId: string, since: string | null = null): nu
   const changed = db.query(`UPDATE gond_messages SET answered_at = ?, claimed_by = NULL WHERE ${where}`).run(now(), ...args).changes;
   for (const row of threads) threadChanged(row.thread_id);
   return changed;
+}
+
+/** Whether a line is still held for the router, not answered or stopped in the meantime. */
+export function stillRouting(id: string): boolean {
+  return Boolean(ensureDatabase().query("SELECT 1 FROM gond_messages WHERE id = ? AND claimed_by = ? AND answered_at IS NULL").get(id, ROUTING));
+}
+
+/** A routed line that every bot it is for took mid-answer: it needs no turn of its own. */
+export function markSteered(id: string) {
+  ensureDatabase().query("UPDATE gond_messages SET steered = 1, answered_at = ?, claimed_by = NULL WHERE id = ? AND answered_at IS NULL").run(now(), id);
 }
 
 export function unsteer(id: string) {
@@ -441,4 +491,16 @@ export function getAttachment(id: string): { meta: ChatAttachment; data: Uint8Ar
     | null;
   if (!row) return null;
   return { meta: { id: row.id, name: row.name, mediaType: row.media_type, size: row.size }, data: row.data };
+}
+
+/**
+ * A conversation's lines as the person sees them (hidden prompts and old activity lines left out), in
+ * the order they were written, a page at a time after `afterRowid` and from `since` on: an export
+ * reads every line, so it pages by rowid, which two lines written in the same millisecond never share.
+ */
+export function messagesInOrder(threadId: string, options: { afterRowid?: number; since?: string | null; limit?: number } = {}): { messages: Message[]; last: number } {
+  const rows = ensureDatabase()
+    .query("SELECT rowid AS r, * FROM gond_messages WHERE thread_id = ? AND rowid > ? AND created_at >= ? AND kind NOT IN ('prompt', 'activity') ORDER BY rowid LIMIT ?")
+    .all(threadId, options.afterRowid ?? 0, options.since ?? "", options.limit ?? 500) as (MessageRow & { r: number })[];
+  return { messages: toMessages(rows), last: rows.at(-1)?.r ?? options.afterRowid ?? 0 };
 }

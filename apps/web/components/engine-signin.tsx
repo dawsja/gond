@@ -10,7 +10,7 @@ import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/c
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { api, del, post } from "@/lib/api";
-import { useNativeShell } from "@/lib/shell";
+import { isPhoneShell, useNativeShell } from "@/lib/shell";
 
 const POLL_MS = 2_000;
 
@@ -126,7 +126,7 @@ export function EngineSignInDialog({ engine, onOpenChange, onDone }: { engine: E
         <DialogHeader>
           <DialogTitle>Sign in to {info.name}</DialogTitle>
           <DialogDescription>
-            {shell === "android" ? "Opens in your phone's browser. Come back when you're done." : "Opens in your browser. Come back when you're done."}
+            {isPhoneShell(shell) ? "Opens in your phone's browser. Come back when you're done." : "Opens in your browser. Come back when you're done."}
           </DialogDescription>
         </DialogHeader>
 

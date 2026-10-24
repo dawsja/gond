@@ -2,7 +2,7 @@ import type { UserRole } from "@gond/shared";
 import { Blocks, BrainCircuit, Info, KeyRound, LogIn, MessageCircleHeart, Mic, Monitor, Palette, Server, Sparkles, UserRound } from "lucide-react";
 
 export const SETTINGS_SECTIONS = [
-  { id: "account", label: "Account", blurb: "Your picture, password and notifications.", icon: UserRound, admin: false },
+  { id: "account", label: "Account", blurb: "Your picture, password, notifications, and exporting your chats.", icon: UserRound, admin: false },
   { id: "appearance", label: "Appearance", blurb: "Light or dark, and the color of your chats.", icon: Palette, admin: false },
   { id: "personalization", label: "Personalization", blurb: "How your bots talk to you: their style, and how many emoji.", icon: MessageCircleHeart, admin: false },
   { id: "shared-computer", label: "Shared computer", blurb: "The computer everyone's bots run on: how it's doing, updating it and resetting it.", icon: Server, admin: true },

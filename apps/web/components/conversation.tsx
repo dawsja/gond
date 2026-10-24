@@ -396,9 +396,9 @@ const Line = memo(function Line({ message, threadId, bots, threads, bot, approva
           ) : null}
         </ContextMenu>
         {noticed?.lead ? <NoticedLinks message={message} watch={noticed.watch} bot={bot} /> : null}
-        {timed || message.steered ? (
+        {timed || message.steered || (message.sentTo && sentTo) ? (
           <MessageFooter className="text-[10.5px] font-normal text-ash">
-            {[timed ? shortTime(message.createdAt) : null, message.steered ? (sentTo ? `Sent to ${sentTo} while working` : "Sent while working") : null].filter(Boolean).join(" · ")}
+            {[timed ? shortTime(message.createdAt) : null, message.steered ? (sentTo ? `Sent to ${sentTo} while working` : "Sent while working") : sentTo ? `Sent to ${sentTo}` : null].filter(Boolean).join(" · ")}
           </MessageFooter>
         ) : null}
       </MessageContent>
@@ -733,18 +733,22 @@ export function Conversation({ threadId }: { threadId: string }) {
   const bot = info?.bot ?? null;
   const watches = useWatches(bot?.id ?? null);
   const runs = useMemo(() => noticedRuns(messages), [messages]);
-  // Who a line in a room goes to, read the way the API reads it (`roomTargets`): the composer says it, and a steered line names it.
+  // Who a line in a room went to: the router's pick when it made one (`sentTo`), else read the way the API reads it (`roomTargets`).
   const roomBots = useMemo(() => (isRoom && info ? roomMembers(info.thread, bots) : []), [isRoom, info, bots]);
   const roomDrivers = useScreenDrivers(threadId);
   const sentTo = useMemo(() => {
     const map = new Map<string, string>();
     if (!roomBots.length) return map;
     messages.forEach((m, index) => {
-      if (m.steered) map.set(m.id, names(roomTargets(m.body, roomBots, messages.slice(0, index)).map((b) => b.name)));
+      const routed = m.sentTo ? roomBots.filter((b) => m.sentTo!.includes(b.id)) : [];
+      if (routed.length) map.set(m.id, names(routed.map((b) => b.name)));
+      else if (m.steered) map.set(m.id, names(roomTargets(m.body, roomBots, messages.slice(0, index)).map((b) => b.name)));
     });
     return map;
   }, [messages, roomBots]);
-  const answersNext = roomBots.length ? roomTargets("", roomBots, messages, [...new Set([...Object.keys(working), ...(info?.busy ?? [])])]).map((b) => b.name) : [];
+  // A line that names nobody is placed by the router after it is sent, so only a line steered into running answers is named ahead.
+  const roomWorking = [...new Set([...Object.keys(working), ...(info?.busy ?? [])])];
+  const answersNext = roomBots.length && roomWorking.length ? roomTargets("", roomBots, messages, roomWorking).map((b) => b.name) : [];
   const waitingOnYou = approvals.some((a) => a.threadId === threadId && a.status === "pending");
 
   async function send(event?: FormEvent, after = false) {
@@ -867,7 +871,7 @@ export function Conversation({ threadId }: { threadId: string }) {
 
   function onKey(event: KeyboardEvent<HTMLTextAreaElement>) {
     if (slash) {
-      const count = slash.kind === "skill" ? matchSkills(skills, slash.query).length : matchBots(bots, slash.query).length;
+      const count = slash.kind === "skill" ? matchSkills(skills, slash.query).length : matchBots(mentionable, slash.query).length;
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault();
         if (count) setSlash({ ...slash, selected: (slash.selected + (event.key === "ArrowDown" ? 1 : count - 1)) % count });
@@ -876,7 +880,7 @@ export function Conversation({ threadId }: { threadId: string }) {
       if ((event.key === "Tab" || event.key === "Enter") && count && !event.shiftKey) {
         event.preventDefault();
         if (slash.kind === "skill") insertSkill(matchSkills(skills, slash.query)[slash.selected]!.slug);
-        else insertBot(matchBots(bots, slash.query)[slash.selected]!);
+        else insertBot(matchBots(mentionable, slash.query)[slash.selected]!);
         return;
       }
       if (event.key === "Escape") {
@@ -958,12 +962,14 @@ export function Conversation({ threadId }: { threadId: string }) {
 
   const busy = Object.keys(working).length > 0 || Boolean(info?.busy.length);
   const members = isRoom && info ? info.thread.members.map((id) => bots.find((b) => b.id === id)).filter((b): b is Bot => Boolean(b)) : [];
+  // In a room, @ offers only the bots in it.
+  const mentionable = isRoom ? members : bots;
   const row = threads.find((t) => t.id === threadId);
   const driving = (bot ? [bot] : roomDrivers).filter((b) => desktop?.drivers.some((driver) => driver.threadId === threadId && driver.botId === b.id));
   const screenProps = { open: screen, onExpand: setScreen, onCollapse: () => setScreen(null) };
   // A wide screen already shows the details beside the chat, so there the bot's pill opens its profile.
   const openPill = () => {
-    if (!window.matchMedia("(width >= 64rem)").matches || document.documentElement.dataset.shell === "android") setDetails(true);
+    if (!window.matchMedia("(width >= 64rem)").matches || document.documentElement.dataset.shell === "phone") setDetails(true);
     else if (bot) openShellDialog({ kind: "edit-bot", botId: bot.id });
     else openShellDialog({ kind: "edit-room", threadId });
   };
@@ -1168,7 +1174,7 @@ export function Conversation({ threadId }: { threadId: string }) {
           ) : null}
           {replying ? <ReplyingTo name={nameOf(replying.author, bots)} color={colorOf(replying.author, bots)} text={quoteText(replying)} onCancel={() => setReplying(null)} /> : null}
           <div className="relative flex items-end gap-2.5">
-          {slash ? <SlashMenu kind={slash.kind} skills={skills} bots={bots} query={slash.query} selected={slash.selected} onPickSkill={(skill) => insertSkill(skill.slug)} onPickBot={insertBot} /> : null}
+          {slash ? <SlashMenu kind={slash.kind} skills={skills} bots={mentionable} query={slash.query} selected={slash.selected} onPickSkill={(skill) => insertSkill(skill.slug)} onPickBot={insertBot} /> : null}
           <Tooltip>
             <TooltipTrigger render={<Button size="icon-xl" aria-label="Attach files" render={<label />} nativeButton={false} className="cursor-pointer" />}>
               <Plus aria-hidden="true" />

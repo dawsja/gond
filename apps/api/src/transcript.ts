@@ -33,12 +33,12 @@ export function transcript(thread: Thread, bots: Bot[], self: Bot, upTo: Message
 
 const LINE_CHARS = 1500;
 
-export function transcriptLines(lines: Message[], bots: Bot[], self: Bot, clipAt = Infinity): string {
+export function transcriptLines(lines: Message[], bots: Bot[], self: Pick<Bot, "id"> | null, clipAt = Infinity): string {
   const names = new Map(bots.map((b) => [b.id, b.name]));
   return lines
     .map((m) => {
-      const nameOf = (author: string) => (author === "you" ? "Person" : author === "routine" ? "Routine" : author === "system" ? "Gond" : (names.get(author) ?? author) + (author === self.id ? " (you)" : ""));
-      const via = m.fromThreadId && names.has(m.author) && m.author !== self.id ? " (teammate, by message)" : "";
+      const nameOf = (author: string) => (author === "you" ? "Person" : author === "routine" ? "Routine" : author === "system" ? "Gond" : (names.get(author) ?? author) + (author === self?.id ? " (you)" : ""));
+      const via = m.fromThreadId && names.has(m.author) && m.author !== self?.id ? " (teammate, by message)" : "";
       const files = m.attachments.length ? ` [attached: ${m.attachments.map((a) => a.name).join(", ")}]` : "";
       const reactions = m.reactions.length ? ` [reactions: ${m.reactions.map((r) => `${nameOf(r.author)} ${r.emoji}`).join(", ")}]` : "";
       const body = m.body.length > clipAt ? `${m.body.slice(0, clipAt)}…` : m.body;

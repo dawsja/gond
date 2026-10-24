@@ -11,14 +11,14 @@ import { sendPush } from "./push.ts";
 import { createDelegation, finishDelegation, getDelegation, handoffWorkedOn, listDelegationsForBot, openChildren, type Delegation } from "./data/delegations.ts";
 import { cancelFollowUp, createFollowUp, listFollowUps } from "./data/follow-ups.ts";
 import { createMcpServer, getMcpServer, listMcpServers, markMcpRefreshed, updateMcpServer } from "./data/mcp.ts";
-import { allSecretValues, containsSecret, hasSecret, hideSecrets, listSecrets, readLogin, secretHider } from "./data/secrets.ts";
+import { allSecretValues, containsSecret, deleteSecret, hasSecret, hideSecrets, listSecrets, readLogin, secretHider } from "./data/secrets.ts";
 import { userTimezone } from "./data/prefs.ts";
 import { listConnections } from "./data/settings.ts";
 import { createSkill, getSkill, getSkillBySlug, listSkills, skillFiles, updateSkill } from "./data/skills.ts";
 import { createRoutine, deleteRoutine, listRoutines, previewRuns, recordRoutineRun, routinePrompt, updateRoutine } from "./data/routines.ts";
 import { botLinesSincePerson, createRoom, listMessages, markAnswered, postMessage, recentMessages, searchMessages, setReaction, storeAttachment, threadRefs } from "./data/threads.ts";
 import { clipToolResult as clip, type DriverTool } from "./driver.ts";
-import { holdLogin, loginFields, loginPrefix, savedLoginFor } from "./logins.ts";
+import { forgetHeldLogin, holdLogin, loginFields, loginPrefix, savedLoginFor } from "./logins.ts";
 import { checkMcpHeaders, secretNamesIn } from "./mcp.ts";
 import { probeMcpServer } from "./mcp-oauth.ts";
 import { botHome, kb, memoryPath, MAX_MEMORY_BYTES, MAX_TEAM_MEMORY_BYTES, NEARLY_FULL, teamDir, teamMemoryPath } from "./memory.ts";
@@ -104,7 +104,7 @@ export const TOOL_NOTES = [
   "team_memory_update replaces the team memory (its path is in the Team memory section), shared by every bot of the person. Keep it to what the whole team needs.",
   "use_skill returns a skill's full instructions and its files by slug. save_skill adds one to the person's library: best from a folder you built in your home (SKILL.md with name and description frontmatter, then the Markdown instructions: steps, decision rules, expected output, what to check with the person first, and how to run each script; beside it scripts/, references/, assets/), or a .skill file, or instructions and text files in the call. update_skill changes one. Every one of the person's bots gets it at once, at ~/.skills/<slug>/.",
   "connect_app connects one of the person's own apps (in their Composio project): it checks whether Gond can connect it through Composio, asks for their Composio key with a masked card when there isn't one yet (set_composio_key does that on its own), and posts a Connect card they tap to sign in. When the app isn't there but has an MCP server, use add_mcp_server with its URL (from the person, or its official docs; never guess one): it asks the person to approve, adds the server for every one of their bots, and posts a Sign in card when the server needs one. A server that wants a key or bearer token instead takes it in headers as {{secret:NAME}}, once request_secret has it; never build a local server or wrapper to carry a key. A server that runs as a command on the computer (like `uv run -m some_mcp`) goes in with add_mcp_server too: install it first, check it starts, then give the command and its args with absolute paths or names on PATH (~/.local/bin is on it) and any environment it needs, never a secret. Every bot gets its tools from its next reply.",
-  "request_secret asks the person for a secret by name (like STRIPE_API_KEY or ROOT_PASSWORD) with a reason; the value is stored and you never see it. Use a stored one with run_with_secrets (a command that gets it as $NAME, with the output scrubbed), with a type_login action (typed into a field on the screen, once the person allows it), or as {{secret:NAME}} in an MCP server's headers. list_secrets shows the names that exist. set_composio_key asks for their Composio API key the same way and turns connected apps on; never ask for either as plain text in the conversation.",
+  "request_secret asks the person for a secret by name (like STRIPE_API_KEY or ROOT_PASSWORD) with a reason; the value is stored and you never see it. When a stored one is wrong or rotated, ask again with replace: true rather than storing it under a new name, and delete one that is no longer used with forget_secret. Use a stored one with run_with_secrets (a command that gets it as $NAME, with the output scrubbed), with a type_login action (typed into a field on the screen, once the person allows it), or as {{secret:NAME}} in an MCP server's headers. list_secrets shows the names that exist. set_composio_key asks for their Composio API key the same way and turns connected apps on; never ask for either as plain text in the conversation.",
   "request_login posts a sign-in card for the site open on your screen when it asks for an email, username, phone, password or code; a type_login action then types each detail into the field you clicked, without you seeing it.",
   "browser and computer are your hands on the screen: a list of JSON actions run in order by Gond, answered with the screen as it is after them. browser is a Chrome window that stays open between replies, for every website; its answer lists what is on screen with refs to act on (click, fill, select, check, read, wait_for and the rest, in its description). computer is the whole desktop, for everything else on it. Connected apps, MCP servers, APIs and the shell come first; never script the screen yourself.",
 ].join("\n");
@@ -724,13 +724,21 @@ export function baseTools(context: Context): Record<string, DriverTool> {
       },
     },
     request_secret: {
-      description: "Ask the person for a secret (an API key, a token) by name. It is stored for injection; you never see it.",
-      inputSchema: schema({ name: { type: "string", description: "UPPER_SNAKE_CASE, like STRIPE_API_KEY." }, reason: { type: "string", description: "What it's for, in one line." } }, ["name", "reason"]),
+      description: "Ask the person for a secret (an API key, a token) by name. It is stored for injection; you never see it. With replace, ask for a new value for one already stored, when the old one is wrong, expired or rotated.",
+      inputSchema: schema(
+        {
+          name: { type: "string", description: "UPPER_SNAKE_CASE, like STRIPE_API_KEY." },
+          reason: { type: "string", description: "What it's for, in one line; with replace, why the old value has to go." },
+          replace: { type: "boolean", description: "True to ask for a new value for a secret that is already stored. The card says it replaces it." },
+        },
+        ["name", "reason"],
+      ),
       execute: async (input) => {
         const name = String(input.name ?? "").trim();
         if (!/^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(name)) return "NOT asked: name it in UPPER_SNAKE_CASE, like STRIPE_API_KEY.";
-        const status = await requestSecret({ bot, threadId: thread.id, name, reason: String(input.reason ?? "").trim().slice(0, 300), signal: context.signal });
-        if (status === "exists") return `${name} is already stored. Use it with run_with_secrets ($${name} in a command), a type_login action (typed into a field on the screen), or {{secret:${name}}} in an MCP server's headers.`;
+        const status = await requestSecret({ bot, threadId: thread.id, name, reason: String(input.reason ?? "").trim().slice(0, 300), replace: input.replace === true, signal: context.signal });
+        if (status === "missing") return `NOT asked: there is no ${name} to replace. Ask for it without replace. list_secrets shows what is stored.`;
+        if (status === "exists") return `${name} is already stored. Use it with run_with_secrets ($${name} in a command), a type_login action (typed into a field on the screen), or {{secret:${name}}} in an MCP server's headers. If its value is wrong, ask again with replace: true.`;
         if (status === "given") return `${name} is stored; you never see the value. Use it with run_with_secrets ($${name} in a command), a type_login action, or {{secret:${name}}} in an MCP server's headers (add_mcp_server), and carry on.`;
         if (status === "declined") return `The person declined to give ${name}. Say what you can do without it.`;
         return expiredText(`for ${name}`);
@@ -785,6 +793,21 @@ export function baseTools(context: Context): Record<string, DriverTool> {
         const failed = await askComposioKey(String(input.reason ?? "").trim().slice(0, 200) || "to connect your apps");
         if (failed) return failed;
         return "Stored. Connected apps are on. Connect one with connect_app; a free key comes from dashboard.composio.dev if they need another.";
+      },
+    },
+    forget_secret: {
+      description: "Delete a stored secret by name, when the person asks or one is wrong and no longer used. The person always confirms it on a card first.",
+      inputSchema: schema({ name: { type: "string", description: "The secret's name, as list_secrets shows it." }, reason: { type: "string", description: "Why it should go, in one line." } }, ["name"]),
+      execute: async (input) => {
+        const name = String(input.name ?? "").trim();
+        if (!hasSecret(bot.userId, name)) return `NOT deleted: there is no secret called ${name || "that"}. list_secrets shows the names.`;
+        const reason = String(input.reason ?? "").trim().slice(0, 200);
+        const decision = await requestApproval({ bot, threadId: thread.id, tool: "forget_secret", input: { name, ...(reason ? { reason } : {}) }, summary: `Delete the secret ${name}`, signal: context.signal });
+        if (decision === "expired") return expiredText(`to delete ${name}`);
+        if (decision !== "allow" && decision !== "always") return `The person kept ${name}. Don't delete it.`;
+        if (!deleteSecret(bot.userId, name)) return `${name} was already gone.`;
+        forgetHeldLogin(name, threadRefs(bot.userId).map((t) => t.id));
+        return `${name} is deleted.`;
       },
     },
     list_secrets: {

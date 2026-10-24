@@ -37,6 +37,10 @@
         "@tauri-apps/cli": "2.12.4",
       },
     },
+    "apps/ios": {
+      "name": "@gond/ios",
+      "version": "0.1.0",
+    },
     "apps/web": {
       "name": "@gond/web",
       "version": "0.1.0",
@@ -230,6 +234,8 @@
     "@gond/box": ["@gond/box@workspace:packages/box"],
 
     "@gond/desktop": ["@gond/desktop@workspace:apps/desktop"],
+
+    "@gond/ios": ["@gond/ios@workspace:apps/ios"],
 
     "@gond/shared": ["@gond/shared@workspace:packages/shared"],
 

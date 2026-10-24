@@ -8,6 +8,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AboutCard } from "@/components/about-card";
 import { ServerUpdateCard } from "@/components/server-update-card";
 import { AccountSection } from "@/components/account-section";
+import { ExportCard } from "@/components/export-card";
 import { AppearanceCard } from "@/components/appearance-card";
 import { PersonalizationCard } from "@/components/personalization-card";
 import { AppsCard } from "@/components/apps-card";
@@ -150,6 +151,7 @@ export function SettingsPage({ user, section, index = false }: { user: SessionUs
         <>
           <AccountSection user={user} />
           <NotificationsCard />
+          <ExportCard />
         </>
       );
       break;

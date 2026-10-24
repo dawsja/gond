@@ -93,10 +93,10 @@ export function injectSecrets(text: string, userId: string, missing?: (name: str
   });
 }
 
-type RequestRow = { id: string; bot_id: string; thread_id: string; name: string; reason: string; target: SecretRequest["target"] | null; site: string | null; fields: string | null; status: SecretRequest["status"]; created_at: string; resolved_at: string | null };
+type RequestRow = { id: string; bot_id: string; thread_id: string; name: string; reason: string; target: SecretRequest["target"] | null; site: string | null; fields: string | null; status: SecretRequest["status"]; replaces: number; created_at: string; resolved_at: string | null };
 
 function toRequest(row: RequestRow): SecretRequest {
-  return { id: row.id, botId: row.bot_id, threadId: row.thread_id, name: row.name, reason: row.reason, target: row.target ?? "secret", site: row.site, fields: parseFields(row.fields), status: row.status, createdAt: row.created_at, resolvedAt: row.resolved_at };
+  return { id: row.id, botId: row.bot_id, threadId: row.thread_id, name: row.name, reason: row.reason, target: row.target ?? "secret", replaces: row.replaces === 1, site: row.site, fields: parseFields(row.fields), status: row.status, createdAt: row.created_at, resolvedAt: row.resolved_at };
 }
 
 function parseFields(raw: string | null): LoginField[] {
@@ -108,11 +108,11 @@ function parseFields(raw: string | null): LoginField[] {
   }
 }
 
-export function createSecretRequest(input: { botId: string; threadId: string; name: string; reason: string; target?: SecretRequest["target"]; site?: string | null; fields?: LoginField[] }): SecretRequest {
+export function createSecretRequest(input: { botId: string; threadId: string; name: string; reason: string; target?: SecretRequest["target"]; site?: string | null; fields?: LoginField[]; replaces?: boolean }): SecretRequest {
   const id = newId("sr");
   ensureDatabase()
-    .query("INSERT INTO gond_secret_requests (id, bot_id, thread_id, name, reason, target, site, fields, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)")
-    .run(id, input.botId, input.threadId, input.name, input.reason, input.target ?? "secret", input.site ?? null, JSON.stringify(input.fields ?? []), now());
+    .query("INSERT INTO gond_secret_requests (id, bot_id, thread_id, name, reason, target, site, fields, replaces, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)")
+    .run(id, input.botId, input.threadId, input.name, input.reason, input.target ?? "secret", input.site ?? null, JSON.stringify(input.fields ?? []), input.replaces ? 1 : 0, now());
   return getSecretRequest(id)!;
 }
 

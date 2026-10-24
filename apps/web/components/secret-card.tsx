@@ -64,7 +64,7 @@ export function SecretCard({ message, bot }: { message: Message; bot: Bot | unde
   const label = composio ? "Composio API key" : secret;
 
   if (request.status !== "pending") {
-    const done = request.status === "given" ? { status: "Saved", tone: "ok" as const } : request.status === "declined" ? { status: "Not now", tone: "neutral" as const } : { status: "Expired", tone: "neutral" as const };
+    const done = request.status === "given" ? { status: request.replaces ? "Replaced" : "Saved", tone: "ok" as const } : request.status === "declined" ? { status: "Not now", tone: "neutral" as const } : { status: "Expired", tone: "neutral" as const };
     return <ActionCardDone id={message.id} bot={bot} icon={icon} title={label} by={request.status === "expired" ? NOBODY_ANSWERED : `${name} · ${composio ? "connected apps" : "secret"}`} status={done.status} tone={done.tone} />;
   }
 
@@ -89,7 +89,7 @@ export function SecretCard({ message, bot }: { message: Message; bot: Bot | unde
     <form onSubmit={answer} className="contents">
       <ActionCard
         icon={icon}
-        title={composio ? `${name} needs your Composio key` : `${name} needs a secret`}
+        title={composio ? `${name} needs your Composio key` : request.replaces ? `Replace ${secret}?` : `${name} needs a secret`}
         by={reason || undefined}
         actions={
           <>
@@ -102,7 +102,7 @@ export function SecretCard({ message, bot }: { message: Message; bot: Bot | unde
             </Button>
           </>
         }
-        note={composio ? "Encrypted, and used only when Gond talks to Composio. The bot never sees it." : `Encrypted. ${name} uses it without ever seeing it, and it never shows in the chat.`}
+        note={composio ? "Encrypted, and used only when Gond talks to Composio. The bot never sees it." : `${request.replaces ? "The old value is overwritten. " : ""}Encrypted. ${name} uses it without ever seeing it, and it never shows in the chat.`}
       >
         {composio ? (
           <p className="text-[13.5px] text-muted-foreground">

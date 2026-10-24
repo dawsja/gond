@@ -92,7 +92,7 @@ export function ServerCard() {
     <Card>
       <CardHeader>
         <CardTitle>This app</CardTitle>
-        <CardDescription>Gond {shell === "android" ? "for Android" : "for the desktop"} is connected to {origin}.</CardDescription>
+        <CardDescription>Gond {shell === "ios" ? "for iPhone" : shell === "android" ? "for Android" : "for the desktop"} is connected to {origin}.</CardDescription>
         <CardAction>
           <Button variant="outline" size="sm" onClick={changeServer}>
             Change server

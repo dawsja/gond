@@ -14,13 +14,16 @@ const holder = globalThis as typeof globalThis & { __gondDbReady?: string };
  * waits on it any more and it would otherwise hold its bot up for good.
  */
 export function releaseClaims(db: Database): number {
-  const cut = db.query("SELECT id FROM gond_messages WHERE claimed_by IS NOT NULL AND answered_at IS NULL").all() as { id: string }[];
+  // A line still waiting on the router was never started, so it isn't cut off; released, it routes by the rules.
+  const cut = db.query("SELECT id FROM gond_messages WHERE claimed_by IS NOT NULL AND claimed_by != 'routing' AND answered_at IS NULL").all() as { id: string }[];
   for (const { id } of cut) noteInterrupted(id);
   db.query("UPDATE gond_messages SET claimed_by = NULL WHERE claimed_by IS NOT NULL").run();
   const at = now();
   const cards =
     db.query("UPDATE gond_approvals SET status = 'expired', resolved_at = ? WHERE status = 'pending'").run(at).changes +
     db.query("UPDATE gond_secret_requests SET status = 'expired', resolved_at = ? WHERE status = 'pending'").run(at).changes;
+  // An export's job lived in memory too; the person starts it again.
+  db.query("UPDATE gond_exports SET status = 'failed', error = ?, finished_at = ? WHERE status = 'preparing'").run("Gond restarted while it was being prepared. Start it again.", at);
   if (cut.length || cards) console.info(`[gond] Picking up after a restart: ${cut.length} message(s) to answer again, ${cards} open card(s) expired`);
   return cards;
 }

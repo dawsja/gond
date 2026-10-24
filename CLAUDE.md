@@ -58,6 +58,33 @@ what is here. The README says what Gond is; this says how it is made.
   the keyboard pads the window), while Connect and any other origin's page
   stay between the bars. Build with
   `gradle assembleRelease` in `apps/android` (ANDROID_HOME set); CI does.
+- `apps/ios`: Swift and SwiftUI, iPhone only, iOS 17 and up, the same
+  shell as Android. Connect is native (`ConnectView.swift`), in Liquid
+  Glass from iOS 26 (`glassEffect`, `.glassProminent`) and a material
+  before it, over bots' faces drawn from the mascot's cog (`CogShape`);
+  after it your Gond's web app fills a `WKWebView` (`WebShell.swift`).
+  `gondMobile` is a script injected at document start that defines itself
+  only on the saved server's origin and posts to a message handler, which
+  checks the frame's origin again before anything happens; WebKit's
+  messages are one way, so what the page reads back (platform `ios`, the
+  version, the notification permission) is written into the script and
+  kept current with a `gond:notifications-state` event. The microphone is
+  granted to that origin only, attachments download to the share sheet,
+  other origins' links open in Safari's view, and the page draws under the
+  bars with `--shell-inset-*` pushed as on Android. Sign-in is
+  `ASWebAuthenticationSession` with `app=ios`, back on `gond://sign-in`.
+  Notifications come through the bridge like Android's, so only while the
+  app is open or just put away; there is no APNs. `ServerURL.swift` mirrors
+  `ServerUrl.kt` with the same tests, and `scripts/check.mjs` (the
+  package's lint) fails when the bridge misses a `GondMobile` method, the
+  loopback port drifts from shared or an Android address test has no Swift
+  twin. The Xcode project is generated from `project.yml` with XcodeGen and
+  never checked in. CI tests it on `macos-26`, and a push to main or a
+  release tag archives it with Xcode's automatic signing through the App
+  Store Connect API key (`APPLE_TEAM_ID`, `ASC_KEY_ID`, `ASC_ISSUER_ID`,
+  `ASC_KEY_P8` in the secrets) and uploads it to TestFlight, the release's
+  version with the run's number as the build; without the secrets, or on a
+  pull request, it builds unsigned. It is never on the GitHub release.
 - `packages/shared`: types, zod schemas, constants, templates, the app
   catalog. If web and api both need it, it goes here.
 - `docker-compose.yml` runs the three services; CI builds the images and
@@ -65,12 +92,12 @@ what is here. The README says what Gond is; this says how it is made.
   published or released unless they pass. When a release's tag lands with
   its main push, the tag's run builds and publishes it (`latest` too) and
   the main run leaves it alone.
-- **The desktop and Android apps are built only when they change, never
+- **The desktop, Android and iPhone apps are built only when they change, never
   just because Gond ships.** They are shells around the server's web app,
   so a web or API change reaches them without a new build. The `changes`
   job in `build.yml` compares a push with the commit before and a release
   tag with the release before it, against `APP_FILES` (`apps/desktop/`,
-  `apps/android/`, `assets/`, the workflows). A release whose apps didn't
+  `apps/android/`, `apps/ios/`, `assets/`, the workflows). A release whose apps didn't
   change carries the last release's installers, APK and `latest.json`
   (`carry`, `gh release download`) instead of building them again, so the
   latest release always has what the updater and the downloads read, and
@@ -215,8 +242,9 @@ what is here. The README says what Gond is; this says how it is made.
   desktop. Wide and narrow are CSS, not `useIsMobile`, so the server's
   HTML is right for both: layout code says `wide:` and `xwide:` (the
   variants in `globals.css`), which are `md` and `lg` except inside the
-  Android app, where the phone layout applies at every width (the theme
-  init script marks `<html data-shell="android">` before first paint).
+  Android and iPhone apps, where the phone layout applies at every width
+  (the theme init script marks `<html data-shell="phone">` before first
+  paint; `isPhoneShell` in `lib/shell.ts` for code).
   Everything at an edge pads with `var(--safe-top)`, `var(--safe-bottom)`
   and friends, never `env(safe-area-inset-*)` directly: the `--safe-*`
   tokens in `globals.css` take the larger of `env()` and what the Android
@@ -358,16 +386,33 @@ what is here. The README says what Gond is; this says how it is made.
   one shows, and a room with no bots left keeps the people icon. A room is read like a group chat
   (`roomTargets` in shared, used by `targetsFor` and by the composer, so
   they never disagree): the person's line goes to whom it names (an
-  @handle, a bot's name as a word in any case since voice types no @, "everyone", or "both" in a room of
-  two, `addressedIn`); else, while bots are still answering (`working`,
-  `workingIn`), to them and those that answered since the person last
-  wrote; else to the one bot that spoke last; else to whom their last line
-  named; else to `roomAnswerer` (the primary if it is there, else the first
-  bot). With nobody named one bot answers, never the room, and the room
-  turn's prompt tells it to answer rather than go quiet, @mentioning a
-  member whose area it is. The opening line and
+  @handle, a bot's name as a word in any case since voice types no @, or
+  the room as a whole, `addressedIn`: "everyone, …", "you guys", "each of
+  you", "hey all", "both" in a room of two, but never "tell everyone",
+  which is about the room and not to it); else to whom the person's own
+  last line named by name, since that is who they are talking to even
+  after others joined in through a bot's @mention; else, while bots are
+  still answering (`working`, `workingIn`), to them and those that
+  answered since the person last wrote; else to the one bot that spoke
+  last; else to whom an earlier line addressed; else to `roomAnswerer`
+  (the primary if it is there, else the first bot). Those rules are the
+  fallback: a line that names nobody (not a thanks) is placed by the room's
+  router (`src/router.ts`), a one-turn, tool-less call on the person's own
+  AI (Claude Code's `haiku` on their plan, else their model) that reads the
+  bots' jobs and the last lines and answers with @handles. The line is
+  posted at once but held from the dispatcher (`claimed_by` `routing`)
+  until the pick is in, at most `ROUTE_TIMEOUT_MS` (8 s); the pick is kept
+  as `sent_to` on the message (`Message.sentTo`), read by `targetsFor` and
+  shown under the bubble as "Sent to Sentry", and then the line steers or
+  queues as any other. No AI to ask (`canRoute`), an error, a timeout or
+  an answer naming nobody in the room, and the rules decide; a line held
+  at a restart is released to them, never marked cut off. With nobody
+  named one bot answers, never the room, and that turn's prompt says so
+  (`ROOM_UNNAMED`): answer rather than go quiet, @mentioning a member
+  whose area it is. The opening line and
   any change to the room name that bot; the placeholder says who answers
-  next ("Patch answers next", counting the bots still working); the
+  next only while bots are working ("Patch answers next"), else "Message
+  the room", since the router picks after sending; the
   @mention chips above the composer are each a filled pill with the bot's
   face, nothing behind them, in one row a thumb swipes along on a phone
   and wrapping on a wide screen; a steered line says whom it
@@ -396,6 +441,20 @@ what is here. The README says what Gond is; this says how it is made.
   conversation is kept per conversation in `localStorage` on that device
   (`lib/drafts.ts`), put back when they return, and shown in the list as
   "Draft: …" until it is sent or cleared.
+- **A person can export their chats** (Settings → Account,
+  `export-card.tsx`). They pick all bots and rooms or one, and how far
+  back (`EXPORT_RANGES`); `POST /api/exports` starts a job in the API
+  (`runExport` in `src/chat-export.ts`), one at a time per person, that
+  reads each conversation by rowid (`messagesInOrder`) and writes a zip:
+  a folder per chat with `chat.md` (by day, as it reads in Gond),
+  `chat.json` (every line, reactions, quotes, how each card ended) and
+  `files/`, plus a README. Hidden prompts and the work log stay out,
+  everything passes the redactor, and what bots said to each other is
+  marked "between bots" in the chat it landed in. Progress is the
+  `exports` live event; the zip is a blob in `gond_export_files`, kept
+  `EXPORT_KEEP_DAYS` (7) and then expired, with a push when it is ready.
+  An export still preparing at start fails with a line saying so, and
+  deleting one stops it.
 - **A bot's files are in its details.** The Files section of the right
   panel and the details sheet (`bot-files.tsx`) lists the bot's folder on
   the computer (`GET /api/bots/:id/files`, which now carries `entries`
@@ -596,7 +655,8 @@ what is here. The README says what Gond is; this says how it is made.
   with a URL the API and the bots can point at (`Settings → Apps → MCP
   servers` in copy). Sign out is in the sidebar footer's profile menu on a
   desktop and the last row of the Settings list on a phone (`useSignOut`).
-  Account is the person themselves (picture, password, notifications);
+  Account is the person themselves (picture, password, notifications,
+  exporting their chats);
   Appearance is how it looks (the theme, which stays on the device, the
   color); About is the app (the server's
   version and, for the admin, updating it, `server-update-card.tsx`; the
@@ -920,8 +980,12 @@ what is here. The README says what Gond is; this says how it is made.
   decision, `answerGoesTo` (up the chain, back to a teammate, or to the
   person), read by both `deliverReply` and `promptFor`, so a turn is never
   told one thing and delivered another: a handoff's result coming back to
-  the bot that handed it out is the person's, and its prompt says so and
-  not to thank or address the teammate; Gond's own reports and hidden
+  the bot that handed it out is the person's, and so is a teammate's line
+  back to a bot that wrote to it first on the person's errand
+  (`openedExchange`: since the line that set it working, its note came
+  before any of the teammate's), so a test the person asked for that
+  waited on a teammate reports to the person, never into the exchange.
+  Either way its prompt says so and not to thank or address the teammate; Gond's own reports and hidden
   prompts answer the person and hear that teammates' lines were answered
   already. The person is never steered into a turn whose answer goes to a
   teammate or up a chain (`route` on the running turn): their line waits for
@@ -1288,8 +1352,14 @@ what is here. The README says what Gond is; this says how it is made.
   what they are and any left empty stay as they were, and the new value
   is encrypted afresh with its site kept, while what a conversation still
   held of the old one is dropped (`forgetHeldLogin`). A new secret still
-  only goes in through a bot's card, a newer one replaces it, and deleting
-  the person takes the lot. Never tell a person to paste a new key into
+  only goes in through a bot's card, and deleting the person takes the
+  lot. A bot can't overwrite or remove one on its own: `request_secret`
+  for a name already stored answers that it is there, and with `replace`
+  posts a card that says it replaces it ("Replace PUSHOVER_USER_KEY?",
+  `replaces` on the request), which writes the new value in place with
+  `changeSecret` so a sign-in keeps its site; `forget_secret` deletes one
+  only after an approval card (on `mustAsk`'s list, no Always, "Delete" /
+  "Keep it"). Never tell a person to paste a new key into
   Settings that a bot could ask for.
 - **A website's sign-in is a card, typed by the API.** When a page the
   bot is driving asks for an email, username, phone, password or code, it

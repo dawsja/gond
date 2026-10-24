@@ -13,11 +13,13 @@ function pending(): Map<string, Pending> {
   return (holder.__gondPendingSecrets ??= new Map());
 }
 
-export async function requestSecret(input: { bot: Bot; threadId: string; name: string; reason: string; target?: SecretRequest["target"]; site?: string; fields?: LoginField[]; signal?: AbortSignal }): Promise<SecretRequest["status"] | "exists"> {
+export async function requestSecret(input: { bot: Bot; threadId: string; name: string; reason: string; target?: SecretRequest["target"]; site?: string; fields?: LoginField[]; replace?: boolean; signal?: AbortSignal }): Promise<SecretRequest["status"] | "exists" | "missing"> {
   const target = input.target ?? "secret";
   const already = target === "login" ? false : target === "composio" ? hasComposioKey(input.bot.userId) : hasSecret(input.bot.userId, input.name);
-  if (already) return "exists";
-  const request = createSecretRequest({ botId: input.bot.id, threadId: input.threadId, name: input.name, reason: input.reason, target, site: input.site, fields: input.fields });
+  const replaces = target === "secret" && input.replace === true;
+  if (replaces && !already) return "missing";
+  if (already && !replaces) return "exists";
+  const request = createSecretRequest({ botId: input.bot.id, threadId: input.threadId, name: input.name, reason: input.reason, target, site: input.site, fields: input.fields, replaces });
   const line = target === "login" ? `Sign in to ${input.site}: ${input.reason}` : `${input.name}: ${input.reason}`;
   postMessage({ threadId: input.threadId, author: input.bot.id, kind: "secret", body: line, approvalId: request.id, answered: true });
   const title = target === "login" ? `${input.bot.name} needs you to sign in` : `${input.bot.name} needs a secret`;

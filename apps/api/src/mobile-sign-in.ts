@@ -8,11 +8,11 @@ type Pending = { session: string; challenge: string; expires: number };
 const holder = globalThis as typeof globalThis & { __gondMobileCodes?: Map<string, Pending> };
 const codes = (holder.__gondMobileCodes ??= new Map());
 
-const CALLBACKS: Record<SignInApp, string> = { android: MOBILE_SIGN_IN_CALLBACK, desktop: DESKTOP_SIGN_IN_CALLBACK };
+const CALLBACKS: Record<SignInApp, string> = { android: MOBILE_SIGN_IN_CALLBACK, ios: MOBILE_SIGN_IN_CALLBACK, desktop: DESKTOP_SIGN_IN_CALLBACK };
 export type { SignInApp };
 
 export function signInApp(value: unknown): SignInApp {
-  return value === "desktop" ? "desktop" : "android";
+  return value === "desktop" || value === "ios" ? value : "android";
 }
 
 export function signInCallback(app: SignInApp): string {

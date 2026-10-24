@@ -51,7 +51,7 @@ describe("shared", () => {
 describe("sign-in and cards", () => {
   test("the phone app comes back to the gond scheme", () => {
     expect(MOBILE_SIGN_IN_CALLBACK).toBe("gond://sign-in");
-    expect(SIGN_IN_APPS).toEqual(["android", "desktop"]);
+    expect(SIGN_IN_APPS).toEqual(["android", "ios", "desktop"]);
   });
 
   test("a connected app's card is named by its toolkit", () => {
@@ -362,6 +362,38 @@ describe("rooms", () => {
     expect(ids(addressedIn("can you both check?", members))).toEqual(["net", "patch"]);
     expect(ids(addressedIn("everyone, status please", members))).toEqual(["net", "patch"]);
     expect(ids(addressedIn("check both servers", [net, patch, { id: "doug", name: "Doug", primary: false }]))).toEqual([]);
+  });
+
+  test("the whole room is spoken to, not merely spoken about", () => {
+    const three = [net, patch, { id: "sentry", name: "Sentry", primary: false }];
+    const all = ["net", "patch", "sentry"];
+    expect(ids(addressedIn("each of you in a simple list. list what you are SME for", three))).toEqual(all);
+    expect(ids(addressedIn("Hey all! sentry is new here! meet and greet", three))).toEqual(all);
+    expect(ids(addressedIn("cool thanks guys", three))).toEqual(all);
+    expect(ids(addressedIn("do you guys agree on what you own?", three))).toEqual(all);
+    expect(ids(addressedIn("Everyone, do a pass through memory", three))).toEqual(all);
+    expect(ids(addressedIn("does everyone agree?", three))).toEqual(all);
+    expect(ids(addressedIn("anything left, team?", three))).toEqual(all);
+    expect(ids(addressedIn("awesome. tell everyone", three))).toEqual([]);
+    expect(ids(addressedIn("set it up for everybody", three))).toEqual([]);
+    expect(ids(addressedIn("is the guest wifi open to all devices?", three))).toEqual([]);
+    expect(ids(addressedIn("@sentry let everyone know", three))).toEqual(["sentry"]);
+  });
+
+  test("an unnamed line stays with the bot the person last named, even after others joined in", () => {
+    const sentry = { id: "sentry", name: "Sentry", primary: false };
+    const three = [net, patch, sentry];
+    const posture = [line("you", "@sentry How is our security posture looking?"), line("sentry", "Good. The rest belongs to @net and @patch."), line("patch", "Servers are fine."), line("net", "Network is fine.")];
+    expect(ids(roomTargets("require TOTP for all accounts no passkey", three, posture))).toEqual(["sentry"]);
+    expect(ids(roomTargets("require TOTP for all accounts no passkey", three, posture, ["net"]))).toEqual(["sentry"]);
+    expect(ids(roomTargets("awesome. tell everyone", three, [line("you", "@patch what is your proposed list"), line("patch", "Here it is.")]))).toEqual(["patch"]);
+    // A line to the whole room hands on to whoever answered it, as before.
+    const intros = [line("you", "Hey all, meet Sentry"), line("sentry", "Hi."), line("patch", "Hi."), line("net", "Hi.")];
+    expect(ids(roomTargets("what do you own?", three, intros))).toEqual(["net"]);
+    expect(ids(roomTargets("What exact UPS should I get?", three, [line("you", "would you guys shut things down?"), line("net", "Yes."), line("patch", "Yes.")]))).toEqual(["patch"]);
+    // The router's pick for the person's last line carries over like a name would.
+    const routed = [{ ...line("you", "require TOTP"), sentTo: ["sentry"] }, line("net", "Not mine.")];
+    expect(ids(roomTargets("and recovery codes", three, routed))).toEqual(["sentry"]);
   });
 
   test("an unaddressed line goes to one bot: the one that spoke last, else the primary", () => {

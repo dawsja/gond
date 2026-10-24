@@ -320,6 +320,8 @@ describe("mobile sign-in", () => {
     const { signInApp, signInCallback } = await import("../src/mobile-sign-in.ts");
     expect(signInCallback(signInApp("desktop"))).toBe(DESKTOP_SIGN_IN_CALLBACK);
     expect(signInCallback(signInApp("android"))).toBe(MOBILE_SIGN_IN_CALLBACK);
+    expect(signInApp("ios")).toBe("ios");
+    expect(signInCallback(signInApp("ios"))).toBe(MOBILE_SIGN_IN_CALLBACK);
 
     expect(signInCallback(signInApp("app"))).toBe(MOBILE_SIGN_IN_CALLBACK);
     expect(signInCallback(signInApp(undefined))).toBe(MOBILE_SIGN_IN_CALLBACK);
@@ -1430,6 +1432,30 @@ describe("login fields", () => {
   });
 });
 
+describe("room router", () => {
+  const bot = (name: string, title = "", description = "") => ({ id: name.toLowerCase(), name, title, description }) as never;
+  const members = [bot("Patch", "Sysadmin"), bot("Sentry", "Security", "Runs authentik.")];
+
+  test("the prompt carries each bot's job, the talk so far and the line", async () => {
+    const { routerPrompt } = await import("../src/router.ts");
+    const prompt = routerPrompt(members, "Person: @patch status?\nPatch: All up.", "require TOTP");
+    expect(prompt).toContain("- @patch: Patch, Sysadmin");
+    expect(prompt).toContain("- @sentry: Sentry, Security. Runs authentik.");
+    expect(prompt).toContain("Patch: All up.");
+    expect(prompt).toContain("The person's new message, which names nobody:\nrequire TOTP");
+  });
+
+  test("an answer is read for the room's bots only", async () => {
+    const { parseRoute } = await import("../src/router.ts");
+    const ids = (list: { id: string }[] | null) => list?.map((b) => b.id) ?? null;
+    expect(ids(parseRoute("@sentry", members))).toEqual(["sentry"]);
+    expect(ids(parseRoute("Sentry.", members))).toEqual(["sentry"]);
+    expect(ids(parseRoute("@sentry @patch", members))).toEqual(["patch", "sentry"]);
+    expect(ids(parseRoute("@clo", members))).toBeNull();
+    expect(ids(parseRoute("", members))).toBeNull();
+  });
+});
+
 describe("conversation summaries", () => {
   test("the prompt carries the old summary and the lines to fold in", async () => {
     const { summaryPrompt } = await import("../src/summaries.ts");
@@ -1637,5 +1663,66 @@ describe("OpenAI's output limit", () => {
     expect(Object.keys(outputLimit({ upstream: "https://api.openai.com/v1" }))).toEqual(["max_completion_tokens"]);
     expect(Object.keys(outputLimit({ upstream: "https://openrouter.ai/api/v1" }))).toEqual(["max_tokens"]);
     expect(Object.keys(outputLimit({ upstream: undefined }))).toEqual(["max_tokens"]);
+  });
+});
+
+describe("chat export files", () => {
+  test("names are safe in any zip and never collide in one folder", async () => {
+    const { safeName, uniqueName } = await import("../src/chat-export.ts");
+    expect(safeName("Trip / plans: v2?")).toBe("Trip - plans- v2-");
+    expect(safeName("  ..  ")).toBe("file");
+    expect(safeName(`${"a".repeat(120)}.pdf`)).toBe(`${"a".repeat(96)}.pdf`);
+    const taken = new Set<string>();
+    expect(["photo.jpg", "Photo.jpg", "photo.jpg", "notes"].map((n) => uniqueName(n, taken))).toEqual(["photo.jpg", "Photo (2).jpg", "photo (3).jpg", "notes"]);
+  });
+
+  test("a chat reads as Markdown by day, with cards, routines, files and reactions", async () => {
+    const { chatMarkdown, exportLabel } = await import("../src/chat-export.ts");
+    expect(exportLabel(null, "all")).toBe("All chats, all time");
+    expect(exportLabel("Patch", "week")).toBe("Patch, the last 7 days");
+    const base = { threadId: "t1", attachments: [], depth: 0, approvalId: null, fromThreadId: null, steered: false, sentTo: null, reactions: [], replyTo: null };
+    const md = chatMarkdown(
+      { id: "t1", kind: "bot", name: "Patch", members: [] },
+      [
+        { ...base, id: "m1", author: "routine", kind: "message", body: "[Routine: Morning brief]\nDo the brief", createdAt: "2026-10-22T13:00:00Z" },
+        { ...base, id: "m2", author: "b1", kind: "message", body: "The key is sk-ant-abcdefghijklmnopqrstu", createdAt: "2026-10-22T13:01:00Z", reactions: [{ author: "you", emoji: "👍" }] },
+        { ...base, id: "m3", author: "b1", kind: "approval", approvalId: "a1", body: "Run a command?", createdAt: "2026-10-23T09:30:00Z" },
+        { ...base, id: "m4", author: "you", kind: "message", body: "", steered: true, attachments: [{ id: "f1", name: "cat.png", mediaType: "image/png", size: 3 }], createdAt: "2026-10-23T09:31:00Z" },
+      ],
+      {
+        nameOf: (a) => (a === "you" ? "You" : "Patch"),
+        chatName: () => null,
+        fileOf: (id) => (id === "f1" ? "files/cat.png" : null),
+        cardOf: () => ({ status: "denied", outcome: null, edited: false, note: "not now" }) as never,
+        redact: (text) => text.replace(/sk-ant-\w+/g, "***"),
+        timeZone: "America/Toronto",
+      },
+    );
+    expect(md).toBe(
+      [
+        "# Patch",
+        "",
+        "## Thursday, October 22, 2026",
+        "",
+        "_Routine: Morning brief · 9:00 AM_",
+        "",
+        "**Patch** · 9:01 AM",
+        "",
+        "The key is ***",
+        "",
+        "_👍 You_",
+        "",
+        "## Friday, October 23, 2026",
+        "",
+        "**Patch** · 5:30 AM",
+        "",
+        '_Card: Run a command? (turned down, "not now")_',
+        "",
+        "**You** · 5:31 AM · sent while working",
+        "",
+        "![cat.png](files/cat.png)",
+        "",
+      ].join("\n"),
+    );
   });
 });

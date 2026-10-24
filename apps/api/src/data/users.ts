@@ -96,6 +96,7 @@ export function deleteUserData(userId: string): { bots: string[] } {
     db.query("DELETE FROM gond_user_prefs WHERE user_id = ?").run(userId);
     db.query("DELETE FROM gond_skill_files WHERE skill_id IN (SELECT id FROM gond_skills WHERE user_id = ?)").run(userId);
     db.query("DELETE FROM gond_skills WHERE user_id = ?").run(userId);
+    db.query("DELETE FROM gond_exports WHERE user_id = ?").run(userId);
     return { bots };
   });
 }

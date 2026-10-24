@@ -42,7 +42,13 @@ export function secretsRoutes() {
           if (!saved && body.remember === true && rememberable(field)) setSecret(userId(c), field.name, value, request.botId, request.site ?? request.name);
         }
       } else if (request.target === "composio") applyComposioKey(userId(c), String(body.value ?? ""));
-      else setSecret(userId(c), request.name, String(body.value ?? ""), request.botId);
+      else if (request.replaces) {
+        const value = String(body.value ?? "");
+        // Replaced in place, so a saved sign-in keeps its site; what a conversation held of the old one goes.
+        if (!value || value.length > 8_000) return c.json({ error: value ? "That's too long" : "Type the new value" }, 400);
+        if (!changeSecret(userId(c), request.name, value)) setSecret(userId(c), request.name, value, request.botId);
+        forgetHeldLogin(request.name, threadRefs(userId(c)).map((t) => t.id));
+      } else setSecret(userId(c), request.name, String(body.value ?? ""), request.botId);
     } catch (error) {
       return c.json({ error: error instanceof Error ? error.message : "Could not save" }, 400);
     }

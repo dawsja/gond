@@ -148,7 +148,7 @@ const ESCALATES = new Set(["sudo", "su", "doas"]);
 const SEGMENTS = /\s*(?:\|\||&&|[;|\n\r`()]|\$\()\s*/;
 
 export function mustAsk(tool: string, input: Record<string, unknown>, bot: Pick<Bot, "id" | "userId">): boolean {
-  if (tool === "ask_approval" || tool === "add_mcp_server" || tool === "request_login" || tool === "type_secret") return true;
+  if (tool === "ask_approval" || tool === "add_mcp_server" || tool === "request_login" || tool === "type_secret" || tool === "forget_secret") return true;
   if (tool === "Bash") return typeof input.command === "string" && riskyCommand(input.command, bot);
   // A draft goes nowhere, but the letter card is how the person sees what was written, so it asks too.
   return OUTWARD_ACTION.test(tool) || emailDraftOf(tool, input)?.mode === "draft";

@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 
 export type Decision = ApprovalAnswer["decision"];
 
-type Shape = { icon: ReactNode; title: string; by: string; body: ReactNode; allow: string; deny: string; always: boolean; note?: string };
+type Shape = { icon: ReactNode; title: string; by: string; body: ReactNode; allow: string; deny: string; always: boolean; note?: string; allowed?: string; denied?: string };
 
 const KIND_ICONS: Record<string, ReactNode> = {
   purchase: <CreditCard aria-hidden="true" />,
@@ -78,6 +78,8 @@ function shapeOf(message: Message, approval: Approval | null, name: string): Sha
       return { ...base, icon: <Monitor aria-hidden="true" />, title: "Use the screen?", by: `${name} · for this reply`, body: <p className="text-[13.5px] text-muted-foreground">It will click and type on the computer&apos;s screen. You can watch, and take control at any time.</p> };
     case "type_secret":
       return { ...base, icon: <KeyRound aria-hidden="true" />, title: "Type a saved secret?", by: `${name} · into the screen`, body: <ActionCode>{text(input.name) ?? message.body}</ActionCode>, always: false };
+    case "forget_secret":
+      return { ...base, icon: <KeyRound aria-hidden="true" />, title: "Delete a saved secret?", by: text(input.reason) ? `${name} · ${text(input.reason)}` : name, body: <ActionCode>{text(input.name) ?? message.body}</ActionCode>, allow: "Delete", deny: "Keep it", always: false, allowed: "Deleted", denied: "Kept" };
     case "request_login":
       return { ...base, icon: <LogIn aria-hidden="true" />, title: "Use your saved sign-in?", by: text(input.site) ? `${name} · ${text(input.site)}` : name, body: null };
     case "add_mcp_server":
@@ -111,9 +113,9 @@ function ToolApprovalCard({ message, approval, bot, noticed, onDecide }: { messa
     const custom = approval?.tool === "ask_approval";
     const done =
       status === "allowed"
-        ? { status: approval?.rule ? "Always" : custom ? shape.allow : "Allowed", tone: "ok" as const }
+        ? { status: approval?.rule ? "Always" : (shape.allowed ?? (custom ? shape.allow : "Allowed")), tone: "ok" as const }
         : status === "denied"
-          ? { status: custom ? shape.deny : "Denied", tone: "bad" as const }
+          ? { status: shape.denied ?? (custom ? shape.deny : "Denied"), tone: shape.denied ? ("neutral" as const) : ("bad" as const) }
           : { status: "Expired", tone: "neutral" as const };
     const title = shape.title;
     const by = approval?.rule ? `From now on: ${ruleLabel(approval.rule)}` : status === "expired" ? NOBODY_ANSWERED : shape.by;
@@ -138,7 +140,7 @@ function ToolApprovalCard({ message, approval, bot, noticed, onDecide }: { messa
               Always allow
             </Button>
           ) : null}
-          <Button size="xl" variant="outline" className={cn("w-full", approval?.tool !== "ask_approval" && "text-destructive")} disabled={Boolean(busy)} onClick={() => void decide("deny")}>
+          <Button size="xl" variant="outline" className={cn("w-full", approval?.tool !== "ask_approval" && !shape.denied && "text-destructive")} disabled={Boolean(busy)} onClick={() => void decide("deny")}>
             {busy === "deny" ? <Spinner data-icon="inline-start" /> : null}
             {shape.deny}
           </Button>

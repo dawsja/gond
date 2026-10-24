@@ -10,6 +10,7 @@ import { botsRoutes } from "./routes/bots.ts";
 import { boxRoutes } from "./routes/box.ts";
 import { connectionsRoutes } from "./routes/connections.ts";
 import { eventsRoutes } from "./routes/events.ts";
+import { exportsRoutes } from "./routes/exports.ts";
 import { llmProxyRoutes, providerRoutes } from "./routes/llm.ts";
 import { mcpHandBack, mcpProxyRoutes, mcpRoutes } from "./routes/mcp.ts";
 import { mobileSignInRoutes } from "./routes/mobile-sign-in.ts";
@@ -127,6 +128,7 @@ export function createApp() {
   app.route("/api", connectionsRoutes());
   app.route("/api", boxRoutes());
   app.route("/api", eventsRoutes());
+  app.route("/api", exportsRoutes());
   app.route("/api", skillsRoutes());
   app.route("/api", mcpRoutes());
   app.route("/api", secretsRoutes());

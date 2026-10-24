@@ -11,7 +11,7 @@ export function useSwipeBack(href: string, enabled = true) {
   useEffect(() => {
     if (!enabled) return;
     let start: { x: number; y: number } | null = null;
-    const phone = () => document.documentElement.dataset.shell === "android" || window.matchMedia("(width < 48rem)").matches;
+    const phone = () => document.documentElement.dataset.shell === "phone" || window.matchMedia("(width < 48rem)").matches;
     const onStart = (event: TouchEvent) => {
       const touch = event.touches[0];
       const onScreen = event.target instanceof Element && event.target.closest("[data-no-swipe-back]");

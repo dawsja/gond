@@ -10,7 +10,7 @@ import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle }
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
 import { currentSubscription, disablePush, enablePush, pushPermission, pushSupported, setShellNotificationsOff, shellNotificationsOff } from "@/lib/push";
-import { shellBridge, useNativeShell } from "@/lib/shell";
+import { isPhoneShell, shellBridge, useNativeShell } from "@/lib/shell";
 
 type State = "checking" | "unsupported" | "off" | "on" | "blocked";
 
@@ -79,8 +79,8 @@ export function NotificationsCard() {
     }
   }
 
-  const where = shell === "android" ? "this phone" : shell === "desktop" ? "this computer" : "this browser";
-  const how = shell === "android" ? "The phone's notifications" : shell === "desktop" ? "The desktop's notifications" : "Browser notifications";
+  const where = isPhoneShell(shell) ? "this phone" : shell === "desktop" ? "this computer" : "this browser";
+  const how = isPhoneShell(shell) ? "The phone's notifications" : shell === "desktop" ? "The desktop's notifications" : "Browser notifications";
   return (
     <Card>
       <CardHeader>
@@ -107,7 +107,7 @@ export function NotificationsCard() {
           <Badge variant={state === "on" ? "default" : "outline"}>{state === "checking" ? "Checking…" : state === "on" ? "On" : state === "off" ? "Off" : state === "blocked" ? "Blocked" : "Unavailable"}</Badge>
           <span className="text-[13.5px] text-muted-foreground">
             {state === "on"
-              ? shell === "android"
+              ? isPhoneShell(shell)
                 ? "This phone shows them."
                 : shell === "desktop"
                   ? "This computer shows them."
@@ -115,7 +115,7 @@ export function NotificationsCard() {
               : state === "off"
                 ? `Off for ${where}.`
                 : state === "blocked"
-                  ? shell === "android"
+                  ? isPhoneShell(shell)
                     ? "Notifications are off for Gond in the phone's settings. Turn on opens them."
                     : shell === "desktop"
                       ? "Notifications are off for Gond in the computer's settings. Allow them there, then try again."

@@ -143,6 +143,8 @@ export type Message = {
   fromThreadId: string | null;
 
   steered: boolean;
+  /** In a room, the bots Gond's router judged a person's unnamed line was for; null when the line named them or nothing was routed. */
+  sentTo: string[] | null;
 
   reactions: Reaction[];
   /** The message this one answers, quoted: who wrote it and its first words, or its first file's name. */
@@ -397,7 +399,7 @@ export const OIDC_PROVIDER_ID = "oidc";
 
 export const MOBILE_SIGN_IN_CALLBACK = "gond://sign-in";
 
-export const SIGN_IN_APPS = ["android", "desktop"] as const;
+export const SIGN_IN_APPS = ["android", "ios", "desktop"] as const;
 export type SignInApp = (typeof SIGN_IN_APPS)[number];
 export const OIDC_DEFAULT_SCOPES = "openid profile email";
 
@@ -831,6 +833,8 @@ export type LiveEvent =
   | { topic: "ai"; userId: string }
   /** Your skills library changed. */
   | { topic: "skills"; userId: string }
+  /** One of your chat exports moved on: as it now stands, or gone. */
+  | { topic: "exports"; userId: string; export: ChatExport | null; id: string }
   /**
    * A bot finished a job for you or needs you: what the API just sent as a
    * push notification, for a client without Web Push (the Android app)
@@ -1143,6 +1147,8 @@ export type SecretRequest = {
   reason: string;
 
   target: "secret" | "composio" | "login";
+  /** The card replaces a secret the person already has: its value is overwritten, never shown. */
+  replaces: boolean;
 
   site: string | null;
   fields: LoginField[];
@@ -1337,7 +1343,7 @@ export function handleOf(name: string): string {
 }
 
 type RoomMember = { id: string; name: string; primary: boolean };
-type RoomLine = { author: string; kind: string; body: string };
+type RoomLine = { author: string; kind: string; body: string; sentTo?: string[] | null };
 
 /** Who answers a room when nothing says otherwise: the primary bot if it's there, else the first bot. */
 export function roomAnswerer<B extends RoomMember>(members: B[]): B | null {
@@ -1360,31 +1366,49 @@ export function roomNameFor(members: RoomMember[]): string {
   return `${names.slice(0, 3).join(", ")} and ${names.length - 3} more`;
 }
 
-const EVERYONE = /\b(?:everyone|everybody|all of you|y'?all|you all|you guys)\b/i;
+// Words that speak to the whole room wherever they stand.
+const PLURAL_YOU = /\b(?:all of you|each of you|every one of you|y'?all|you all|you guys)\b/i;
+// "everyone" speaks to the room unless it is what a verb or a preposition acts on: "tell everyone", "for everyone".
+const EVERYONE = /(?<!\b(?:tell|inform|notify|message|ping|remind|update|let|show|ask|thank|give|send|cc|for|to|with|from|about|on|of)\s+)\b(?:everyone|everybody)\b/i;
+// "all", "guys", "team" and "folks" only as a greeting or a sign-off: "Hey all!", "thanks guys", "status, team?".
+const VOCATIVE = /^\s*(?:(?:hey|hi|hello|ok|okay|so|alright|cool|great|awesome|nice|thanks|thank you|thx|morning|good morning)[\s,!.]+)*(?:all|guys|team|folks)\b|,\s*(?:all|guys|team|folks)\s*[?.!]*\s*$/i;
 const BOTH = /\b(?:both|you two)\b/i;
 
-/**
- * The members a person's message in a room speaks to: an @handle, a member's
- * name as a word in any case ("Patch, are you…", or "patch" as voice types
- * it, with no @), or the room as a whole ("everyone", or "both" in a room of
- * two).
- */
-export function addressedIn<B extends RoomMember>(text: string, members: B[]): B[] {
+/** The members a line names, by @handle or by name as a word in any case ("Patch, are you…", or "patch" as voice types it). */
+function namedIn<B extends RoomMember>(text: string, members: B[]): B[] {
   const handles = mentionsIn(text);
-  if (handles.includes("everyone") || handles.includes("all") || EVERYONE.test(text) || (members.length === 2 && BOTH.test(text))) return members;
   return members.filter((b) => handles.includes(handleOf(b.name)) || new RegExp(`(?<![\\w@])${b.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?!\\w)`, "i").test(text));
 }
 
 /**
- * Who a person's message in a room is for: whoever it names; else, while bots are still answering, them
- * and those that answered since the person last wrote (`working`, bot ids), so the line reaches the
- * exchange in flight; else the one bot that spoke last; else whom their last line named; else
- * `roomAnswerer`, the primary bot when it is there. With nobody named, one bot answers, never the room.
- * `before` is the room's messages before this one, oldest first.
+ * The members a person's message in a room speaks to: those it names, or the room as a whole
+ * ("everyone, …", "you guys", "each of you", "hey all", or "both" in a room of two). "Tell
+ * everyone" is about the room, not to it.
+ */
+export function addressedIn<B extends RoomMember>(text: string, members: B[]): B[] {
+  const handles = mentionsIn(text);
+  if (handles.includes("everyone") || handles.includes("all") || PLURAL_YOU.test(text) || EVERYONE.test(text) || VOCATIVE.test(text) || (members.length === 2 && BOTH.test(text))) return members;
+  return namedIn(text, members);
+}
+
+/**
+ * Who a person's message in a room is for: whoever it names; else whom the person's own last line
+ * named, since that is who they are talking to even when others joined in since; else, while bots
+ * are still answering, them and those that answered since the person last wrote (`working`, bot
+ * ids), so the line reaches the exchange in flight; else the one bot that spoke last; else whom an
+ * earlier line of theirs addressed; else `roomAnswerer`, the primary bot when it is there. With
+ * nobody named, one bot answers, never the room. `before` is the room's messages before this one,
+ * oldest first.
  */
 export function roomTargets<B extends RoomMember>(body: string, members: B[], before: RoomLine[], working: readonly string[] = []): B[] {
   const named = addressedIn(body, members);
   if (named.length) return named;
+  const previous = before.findLast((line) => line.kind === "message" && line.author === "you");
+  // Only bots named by name, or picked by the router, carry over: a line to the whole room hands on to whoever answered it.
+  const routed = previous?.sentTo ? members.filter((b) => previous.sentTo!.includes(b.id)) : [];
+  if (routed.length) return routed;
+  const talkingTo = previous ? namedIn(previous.body, members) : [];
+  if (talkingTo.length && addressedIn(previous!.body, members).length === talkingTo.length) return talkingTo;
   const busy = members.filter((b) => working.includes(b.id));
   const answered: B[] = [];
   const next = () => (busy.length ? [...answered, ...busy.filter((b) => !answered.includes(b))] : answered.slice(-1));
@@ -1791,6 +1815,8 @@ export function describeTool(name: string, input: Record<string, unknown> = {}, 
       return { verb: "Requesting a secret", detail: short(input.name) };
     case "list_secrets":
       return { verb: "Listing secrets", detail: null };
+    case "forget_secret":
+      return { verb: "Deleting a secret", detail: short(input.name) };
     case "request_login":
       return { verb: "Requesting a sign-in", detail: short(input.site) ? `to ${short(input.site)}` : null };
     case "ask_approval":
@@ -1851,6 +1877,10 @@ export function approvalLine(name: string, input: Record<string, unknown> = {}, 
     case "request_login": {
       const site = short(input.site);
       return site ? `sign in to ${site} with your saved details` : "sign in with your saved details";
+    }
+    case "forget_secret": {
+      const name = short(input.name);
+      return name ? `delete the secret ${name}` : "delete a secret";
     }
     case "ask_approval": {
       const summary = short(input.summary ?? input.action ?? input.text, 300);
@@ -2167,3 +2197,40 @@ export function emailName(recipient: string): string {
   const match = /^\s*"?([^"<]+?)"?\s*<[^>]+>\s*$/.exec(recipient);
   return match?.[1]?.trim() || recipient.trim();
 }
+
+/** An export of a person's conversations, made on the server and kept for a while to download. */
+export const EXPORT_STATUSES = ["preparing", "ready", "failed", "expired"] as const;
+export type ExportStatus = (typeof EXPORT_STATUSES)[number];
+
+/** How long a finished export is kept, and how many of a person's are listed before the oldest go. */
+export const EXPORT_KEEP_DAYS = 7;
+export const EXPORTS_LISTED = 5;
+
+/** How far back an export reaches. */
+export const EXPORT_RANGES = [
+  { id: "all", label: "All time", days: null },
+  { id: "year", label: "The last year", days: 365 },
+  { id: "month", label: "The last 30 days", days: 30 },
+  { id: "week", label: "The last 7 days", days: 7 },
+] as const;
+export type ExportRange = (typeof EXPORT_RANGES)[number]["id"];
+
+export function isExportRange(value: unknown): value is ExportRange {
+  return EXPORT_RANGES.some((range) => range.id === value);
+}
+
+export type ChatExport = {
+  id: string;
+  /** What it holds, in words: "All chats, all time", "Trip to Lisbon, the last 30 days". */
+  label: string;
+  status: ExportStatus;
+  /** Conversations gathered so far, of `total`. */
+  done: number;
+  total: number;
+  /** The zip's size in bytes once it is ready. */
+  size: number | null;
+  error: string | null;
+  createdAt: string;
+  finishedAt: string | null;
+  expiresAt: string | null;
+};

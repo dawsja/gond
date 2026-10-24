@@ -57,7 +57,7 @@ declare global {
   }
 }
 
-export type NativeShell = "desktop" | "android";
+export type NativeShell = "desktop" | "android" | "ios";
 
 export function mobileShell(): GondMobile | null {
   return typeof window === "undefined" ? null : (window.gondMobile ?? null);
@@ -74,9 +74,15 @@ export function shellBridge(): GondMobile | GondDesktop | null {
 }
 
 export function nativeShell(): NativeShell | null {
-  if (mobileShell()) return "android";
+  const mobile = mobileShell();
+  if (mobile) return mobile.platform() === "ios" ? "ios" : "android";
   if (desktopShell()) return "desktop";
   return null;
+}
+
+/** The Android and iPhone apps: a phone, whatever the window's width. */
+export function isPhoneShell(shell: NativeShell | null): shell is "android" | "ios" {
+  return shell === "android" || shell === "ios";
 }
 
 const never = () => () => {};

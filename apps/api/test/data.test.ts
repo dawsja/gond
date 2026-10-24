@@ -385,6 +385,89 @@ describe("data", () => {
     expect(listMessages(outsider.threadId).map((m) => m.body)).toEqual(["Budget for the VM?"]);
     expect(listMessages(room.id)).toHaveLength(2);
     expect(getThread(net.threadId)).toBeTruthy();
+
+    // A line that names nobody reaches one bot, which is told it must answer and point to whose area it is.
+    const { postMessage } = await import("../src/data/threads.ts");
+    const { promptFor } = await import("../src/responder.ts");
+    const UNNAMED = "The person named nobody in this line, so it came to you alone";
+    const unnamed = postMessage({ threadId: room.id, author: "you", body: "is the VPN up?" });
+    // Patchy spoke last, so the line is Patchy's alone.
+    expect(promptFor(patch, room, unnamed, [patch, net])).toContain(UNNAMED);
+    const named = postMessage({ threadId: room.id, author: "you", body: "@netty is the VPN up?" });
+    expect(promptFor(net, room, named, [patch, net])).not.toContain(UNNAMED);
+    const thanks = postMessage({ threadId: room.id, author: "you", body: "thanks" });
+    expect(promptFor(patch, room, thanks, [patch, net])).not.toContain(UNNAMED);
+  });
+
+  test("a room line that names nobody is placed by the router on the person's own AI, and by the rules when it can't say", async () => {
+    const { createBot } = await import("../src/data/bots.ts");
+    const { createRoom, getMessage, postMessage } = await import("../src/data/threads.ts");
+    const { saveProvider } = await import("../src/data/providers.ts");
+    const { updateAi } = await import("../src/data/ai.ts");
+    const { postFromPerson, targetsFor } = await import("../src/responder.ts");
+    const { ensureDatabase, releaseClaims } = await import("../src/db/init.ts");
+    const { wasInterrupted } = await import("../src/resume.ts");
+    const { botInputSchema } = await import("@gond/shared");
+    const claimOf = (id: string) => (ensureDatabase().query("SELECT claimed_by FROM gond_messages WHERE id = ?").get(id) as { claimed_by: string | null }).claimed_by;
+    const settled = async (id: string) => {
+      for (let i = 0; i < 300 && claimOf(id) === "routing"; i += 1) await Bun.sleep(10);
+    };
+
+    let answer = "@routesentry";
+    const asked: string[] = [];
+    const fake = Bun.serve({
+      port: 0,
+      async fetch(request: Request) {
+        const body = (await request.json()) as { messages: { content: string }[] };
+        asked.push(body.messages.map((m) => m.content).join("\n"));
+        return Response.json({ choices: [{ message: { role: "assistant", content: answer }, finish_reason: "stop" }] });
+      },
+    });
+    const internal = process.env.GOND_API_INTERNAL_URL;
+    process.env.GOND_API_INTERNAL_URL = `http://127.0.0.1:${fake.port}`;
+    try {
+      saveProvider("u-route", "openai", { baseUrl: "https://api.openai.com/v1", apiKey: "sk-route-1234567890" });
+      updateAi("u-route", { engine: "api", enabled: ["api"], engines: { api: { access: "api", model: "small-model", provider: "openai" } } });
+      const patch = createBot(botInputSchema.parse({ name: "RoutePatch", title: "Servers and containers" }), "u-route");
+      const sentry = createBot(botInputSchema.parse({ name: "RouteSentry", title: "Security", description: "Runs authentik: users, MFA and sign-in policies." }), "u-route");
+      const room = createRoom("Ops", [patch.id, sentry.id], "u-route");
+      postMessage({ threadId: room.id, author: "you", body: "@routepatch how are the servers?", answered: true });
+      postMessage({ threadId: room.id, author: patch.id, body: "All up.", answered: true });
+
+      const line = await postFromPerson(room, { body: "require TOTP for all accounts" });
+      expect(claimOf(line.id)).toBe("routing");
+      await settled(line.id);
+      expect(asked.at(-1)).toContain("@routesentry: RouteSentry, Security. Runs authentik");
+      expect(asked.at(-1)).toContain("require TOTP for all accounts");
+      const routed = getMessage(line.id)!;
+      expect(routed.sentTo).toEqual([sentry.id]);
+      expect(claimOf(line.id)).toBeNull();
+      expect(targetsFor(routed, room, [patch, sentry]).map((b) => b.id)).toEqual([sentry.id]);
+
+      // A line that names its bot never waits on the router.
+      const calls = asked.length;
+      const named = await postFromPerson(room, { body: "@routepatch reboot it" });
+      expect(claimOf(named.id)).toBeNull();
+      expect(named.sentTo).toBeNull();
+      expect(asked.length).toBe(calls);
+
+      // An answer that names nobody in the room leaves the line to the rules.
+      answer = "I'm not sure.";
+      const unsure = await postFromPerson(room, { body: "and the backups?" });
+      await settled(unsure.id);
+      expect(getMessage(unsure.id)!.sentTo).toBeNull();
+      expect(claimOf(unsure.id)).toBeNull();
+
+      // A line still held for the router at a restart wasn't cut off: it is released to route by the rules.
+      const held = postMessage({ threadId: room.id, author: "you", body: "status?", routing: true });
+      releaseClaims(ensureDatabase());
+      expect(claimOf(held.id)).toBeNull();
+      expect(wasInterrupted(held.id)).toBe(false);
+    } finally {
+      if (internal === undefined) delete process.env.GOND_API_INTERNAL_URL;
+      else process.env.GOND_API_INTERNAL_URL = internal;
+      fake.stop(true);
+    }
   });
 
   test("any bot creates a teammate with create_bot", async () => {
@@ -1446,8 +1529,10 @@ describe("data", () => {
       expect(reset[0]).toMatchObject({ method: "POST", user: "u-fresh" });
     } finally {
       fake.stop(true);
-      process.env.GOND_BOX_URL = boxUrl;
-      process.env.GOND_BOX_TOKEN = boxToken;
+      if (boxUrl === undefined) delete process.env.GOND_BOX_URL;
+      else process.env.GOND_BOX_URL = boxUrl;
+      if (boxToken === undefined) delete process.env.GOND_BOX_TOKEN;
+      else process.env.GOND_BOX_TOKEN = boxToken;
     }
   });
 
@@ -2119,8 +2204,10 @@ describe("stop", () => {
       expect(listMessages(thread.id).at(-1)!.body).toBe("Start with backups.");
     } finally {
       fake.stop(true);
-      process.env.GOND_BOX_URL = boxUrl;
-      process.env.GOND_BOX_TOKEN = boxToken;
+      if (boxUrl === undefined) delete process.env.GOND_BOX_URL;
+      else process.env.GOND_BOX_URL = boxUrl;
+      if (boxToken === undefined) delete process.env.GOND_BOX_TOKEN;
+      else process.env.GOND_BOX_TOKEN = boxToken;
     }
   });
 
@@ -2200,8 +2287,10 @@ describe("stop", () => {
       expect(listMessages(thread.id).at(-1)!.id).toBe(unreacted.id);
     } finally {
       fake.stop(true);
-      process.env.GOND_BOX_URL = boxUrl;
-      process.env.GOND_BOX_TOKEN = boxToken;
+      if (boxUrl === undefined) delete process.env.GOND_BOX_URL;
+      else process.env.GOND_BOX_URL = boxUrl;
+      if (boxToken === undefined) delete process.env.GOND_BOX_TOKEN;
+      else process.env.GOND_BOX_TOKEN = boxToken;
     }
   });
 
@@ -2271,8 +2360,10 @@ describe("stop", () => {
       expect(turns.at(-1)!.prompt).toContain("Sonic on Fridays");
     } finally {
       fake.stop(true);
-      process.env.GOND_BOX_URL = boxUrl;
-      process.env.GOND_BOX_TOKEN = boxToken;
+      if (boxUrl === undefined) delete process.env.GOND_BOX_URL;
+      else process.env.GOND_BOX_URL = boxUrl;
+      if (boxToken === undefined) delete process.env.GOND_BOX_TOKEN;
+      else process.env.GOND_BOX_TOKEN = boxToken;
     }
   });
 
@@ -2497,6 +2588,41 @@ describe("handoffs", () => {
     expect(promptFor(clo, cloThread, nudge, [clo, jeff])).toContain("Exchange Jeff wrote here as a teammate and was answered already");
   });
 
+  test("a teammate answering a note a bot sent on the person's errand wakes it with an answer for the person", async () => {
+    const { createBot } = await import("../src/data/bots.ts");
+    const { botInputSchema } = await import("@gond/shared");
+    const { getThread, listMessages, postMessage } = await import("../src/data/threads.ts");
+    const { answerGoesTo, deliverReply, promptFor } = await import("../src/responder.ts");
+    const tick = () => Bun.sleep(3);
+
+    const net = createBot(botInputSchema.parse({ name: "Errand Net" }), "u-errand");
+    const patch = createBot(botInputSchema.parse({ name: "Errand Patch" }), "u-errand");
+    const netThread = getThread(net.threadId)!;
+    postMessage({ threadId: net.threadId, author: "you", body: "Test DNS failover" });
+    await tick();
+    postMessage({ threadId: patch.threadId, author: net.id, body: "Stop AdGuard on gengar, please.", depth: 1, fromThreadId: net.threadId });
+    await tick();
+    const stopped = postMessage({ threadId: net.threadId, author: patch.id, body: "Stopped. Go ahead.", depth: 2, fromThreadId: patch.threadId });
+    expect(answerGoesTo(stopped)).toBe("person");
+    const told = promptFor(net, netThread, stopped, [net, patch]);
+    expect(told).toContain("Errand Patch answering what you asked it while working on the person's request");
+    expect(told).not.toContain("goes back to them");
+    deliverReply(net, netThread, stopped, "Failover works.");
+    expect(listMessages(net.threadId).at(-1)).toMatchObject({ author: net.id, body: "Failover works.", fromThreadId: null });
+    expect(listMessages(patch.threadId).some((m) => m.body === "Failover works.")).toBe(false);
+
+    // When the teammate opened the exchange, its next line is still the teammate's to hear back on.
+    await tick();
+    postMessage({ threadId: net.threadId, author: "you", body: "Thanks" });
+    await tick();
+    const asks = postMessage({ threadId: net.threadId, author: patch.id, body: "Which resolver is primary?", depth: 1, fromThreadId: patch.threadId });
+    expect(answerGoesTo(asks)).toBe("teammate");
+    deliverReply(net, netThread, asks, "Gengar.");
+    await tick();
+    const again = postMessage({ threadId: net.threadId, author: patch.id, body: "And the secondary?", depth: 1, fromThreadId: patch.threadId });
+    expect(answerGoesTo(again)).toBe("teammate");
+  });
+
   test("a teammate whose run keeps breaking reports each time as a failed result, and the carry-on briefs never run out of hops", async () => {
     const { createBot } = await import("../src/data/bots.ts");
     const { botInputSchema } = await import("@gond/shared");
@@ -2543,8 +2669,10 @@ describe("handoffs", () => {
       }
     } finally {
       fake.stop(true);
-      process.env.GOND_BOX_URL = boxUrl;
-      process.env.GOND_BOX_TOKEN = boxToken;
+      if (boxUrl === undefined) delete process.env.GOND_BOX_URL;
+      else process.env.GOND_BOX_URL = boxUrl;
+      if (boxToken === undefined) delete process.env.GOND_BOX_TOKEN;
+      else process.env.GOND_BOX_TOKEN = boxToken;
     }
   });
 
@@ -2659,8 +2787,10 @@ describe("the primary bot", () => {
       expect(listMessages(first.threadId).some((m) => m.body.startsWith("Incident"))).toBe(false);
     } finally {
       fake.stop(true);
-      process.env.GOND_BOX_URL = boxUrl;
-      process.env.GOND_BOX_TOKEN = boxToken;
+      if (boxUrl === undefined) delete process.env.GOND_BOX_URL;
+      else process.env.GOND_BOX_URL = boxUrl;
+      if (boxToken === undefined) delete process.env.GOND_BOX_TOKEN;
+      else process.env.GOND_BOX_TOKEN = boxToken;
     }
   });
 });
@@ -3751,6 +3881,67 @@ describe("changing a secret", () => {
     expect(readSecret("u-sec-a", "CURA_TOKEN")).toBe("new-token-654321");
     expect(JSON.stringify(await (await mine.request("/api/secrets")).json())).not.toContain("new-token");
   });
+
+  test("a bot replaces a wrong secret on a card and deletes one only once the person says so", async () => {
+    await seedUsers(["u-sec-bot", "user"]);
+    const { Hono } = await import("hono");
+    const { setSecret, readSecret, readLogin, hasSecret } = await import("../src/data/secrets.ts");
+    const { createBot } = await import("../src/data/bots.ts");
+    const { getThread, listMessages } = await import("../src/data/threads.ts");
+    const { getApproval } = await import("../src/data/approvals.ts");
+    const { decide } = await import("../src/approvals.ts");
+    const { baseTools } = await import("../src/tools.ts");
+    const { secretsRoutes } = await import("../src/routes/secrets.ts");
+    const { botInputSchema } = await import("@gond/shared");
+    const bot = createBot(botInputSchema.parse({ name: "Rotator", approval: "auto" }), "u-sec-bot");
+    const thread = getThread(bot.threadId)!;
+    const context = { box: { url: "http://box.invalid", token: "t", user: "u-sec-bot" }, bot, thread, message: { depth: 0 } as never, askBot: async () => "", syncSoul: async () => undefined, stopWork: async () => false, isWorking: () => false };
+    const tools = baseTools(context);
+    const routes = asPerson(new Hono(), "u-sec-bot").route("/api", secretsRoutes());
+    const lastCard = async (kind: "secret" | "approval") => {
+      for (let i = 0; i < 300; i += 1) {
+        const last = listMessages(thread.id).at(-1);
+        if (last?.kind === kind && last.approvalId && (kind === "secret" || getApproval(last.approvalId)?.status === "pending")) return last;
+        await Bun.sleep(10);
+      }
+      throw new Error(`no ${kind} card`);
+    };
+    setSecret("u-sec-bot", "PUSHOVER_USER_KEY", "wrong-key-123456", bot.id);
+    setSecret("u-sec-bot", "NPM_PASSWORD", "npm-password-1", bot.id, "Nginx Proxy Manager");
+
+    expect(String(await tools.request_secret!.execute({ name: "PUSHOVER_USER_KEY", reason: "alerts" }, "c1"))).toContain("ask again with replace: true");
+    expect(String(await tools.request_secret!.execute({ name: "NEVER_STORED", reason: "x", replace: true }, "c2"))).toContain("no NEVER_STORED to replace");
+
+    const replacing = tools.request_secret!.execute({ name: "PUSHOVER_USER_KEY", reason: "Pushover rejected the old key", replace: true }, "c3");
+    const card = await lastCard("secret");
+    const shown = (await (await routes.request(`/api/secret-requests/${card.approvalId}`)).json()) as { request: { replaces: boolean } };
+    expect(shown.request.replaces).toBe(true);
+    expect((await routes.request(`/api/secret-requests/${card.approvalId}`, { method: "POST", body: JSON.stringify({ value: "right-key-654321" }) })).status).toBe(200);
+    const told = String(await replacing);
+    expect(told).toContain("PUSHOVER_USER_KEY is stored");
+    expect(told).not.toContain("right-key");
+    expect(readSecret("u-sec-bot", "PUSHOVER_USER_KEY")).toBe("right-key-654321");
+
+    // A saved sign-in replaced this way stays a sign-in for its site.
+    const signIn = tools.request_secret!.execute({ name: "NPM_PASSWORD", reason: "rotated", replace: true }, "c4");
+    const signInCard = await lastCard("secret");
+    await routes.request(`/api/secret-requests/${signInCard.approvalId}`, { method: "POST", body: JSON.stringify({ value: "npm-password-2" }) });
+    await signIn;
+    expect(readLogin("u-sec-bot", "NPM_PASSWORD")).toBe("npm-password-2");
+
+    expect(String(await tools.forget_secret!.execute({ name: "NOT_THERE" }, "c5"))).toContain("NOT deleted");
+    const kept = tools.forget_secret!.execute({ name: "PUSHOVER_USER_KEY", reason: "replaced" }, "c6");
+    const ask = await lastCard("approval");
+    expect(getApproval(ask.approvalId!)).toMatchObject({ tool: "forget_secret", input: { name: "PUSHOVER_USER_KEY", reason: "replaced" } });
+    decide(ask.approvalId!, { decision: "deny" });
+    expect(String(await kept)).toContain("kept PUSHOVER_USER_KEY");
+    expect(hasSecret("u-sec-bot", "PUSHOVER_USER_KEY")).toBe(true);
+
+    const gone = tools.forget_secret!.execute({ name: "PUSHOVER_USER_KEY" }, "c7");
+    decide((await lastCard("approval")).approvalId!, { decision: "allow" });
+    expect(String(await gone)).toBe("PUSHOVER_USER_KEY is deleted.");
+    expect(hasSecret("u-sec-bot", "PUSHOVER_USER_KEY")).toBe(false);
+  });
 });
 
 describe("bot templates", () => {
@@ -4110,5 +4301,102 @@ describe("rooms and a bot's files", () => {
       activeTurns().delete("patch-busy");
       activeTurns().delete("sage-busy");
     }
+  });
+});
+
+describe("chat exports", () => {
+  const waitFor = async (check: () => boolean) => {
+    for (let i = 0; i < 200 && !check(); i += 1) await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(check()).toBe(true);
+  };
+
+  test("an export gathers a person's chats into a zip in the background, and only they can have it", async () => {
+    const { Hono } = await import("hono");
+    const { unzipSync } = await import("fflate");
+    const { botInputSchema } = await import("@gond/shared");
+    const { createBot } = await import("../src/data/bots.ts");
+    const { createRoom, postMessage, storeAttachment } = await import("../src/data/threads.ts");
+    const { getExport } = await import("../src/data/exports.ts");
+    const { exportsRoutes } = await import("../src/routes/exports.ts");
+    const ada = createBot(botInputSchema.parse({ name: "Ada" }), "u-export");
+    const bo = createBot(botInputSchema.parse({ name: "Bo" }), "u-export");
+    const room = createRoom("Trip / plans", [ada.id, bo.id], "u-export");
+    const first = postMessage({ threadId: ada.threadId, author: "you", body: "Find me a **flight**", answered: true });
+    const ticket = storeAttachment({ name: "ticket.pdf", mediaType: "application/pdf", data: new TextEncoder().encode("%PDF-1.4 ticket") });
+    postMessage({ threadId: ada.threadId, author: ada.id, body: "Here it is.", attachments: [ticket], replyTo: first.id, answered: true });
+    postMessage({ threadId: ada.threadId, author: "system", kind: "prompt", body: "Greet the person.", answered: true });
+    postMessage({ threadId: ada.threadId, author: bo.id, body: "Ada, the hotel is booked.", fromThreadId: bo.threadId, answered: true });
+    postMessage({ threadId: room.id, author: "you", body: "Both of you, plan the trip", answered: true });
+
+    const app = asPerson(new Hono(), "u-export").route("/api", exportsRoutes());
+    const started = await app.request("/api/exports", { method: "POST", body: JSON.stringify({ range: "all" }) });
+    expect(started.status).toBe(202);
+    const { export: made } = (await started.json()) as { export: { id: string; label: string; total: number } };
+    expect(made.label).toBe("All chats, all time");
+    expect(made.total).toBe(3);
+    await waitFor(() => getExport(made.id, "u-export")?.status === "ready");
+    expect(getExport(made.id, "u-export")!.done).toBe(3);
+
+    const someone = asPerson(new Hono(), "u-someone").route("/api", exportsRoutes());
+    expect((await someone.request(`/api/exports/${made.id}/download`)).status).toBe(404);
+    expect((await someone.request(`/api/exports/${made.id}`, { method: "DELETE" })).status).toBe(404);
+    expect(((await (await someone.request("/api/exports")).json()) as { exports: unknown[] }).exports).toEqual([]);
+
+    const res = await app.request(`/api/exports/${made.id}/download`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Disposition")).toMatch(/^attachment; filename="gond-chats-\d{4}-\d{2}-\d{2}\.zip"$/);
+    const files = unzipSync(new Uint8Array(await res.arrayBuffer()));
+    const names = Object.keys(files).map((name) => name.replace(/^gond-chats-[\d-]+\//, "")).sort();
+    expect(names).toEqual(["Ada/chat.json", "Ada/chat.md", "Ada/files/ticket.pdf", "Bo/chat.json", "Bo/chat.md", "README.md", "Trip - plans/chat.json", "Trip - plans/chat.md"]);
+    const read = (suffix: string) => new TextDecoder().decode(Object.entries(files).find(([name]) => name.endsWith(suffix))![1]);
+    const markdown = read("Ada/chat.md");
+    expect(markdown).toContain("**You** · ");
+    expect(markdown).toContain("Find me a **flight**");
+    expect(markdown).toContain('> You: "Find me a flight"');
+    expect(markdown).toContain("[ticket.pdf](files/ticket.pdf)");
+    expect(markdown).toContain("**Bo**, to Ada · between bots");
+    expect(markdown).not.toContain("Greet the person");
+    expect(read("Ada/files/ticket.pdf")).toBe("%PDF-1.4 ticket");
+    const json = JSON.parse(read("Ada/chat.json")) as { chat: { kind: string }; messages: { authorName: string; attachments: { path: string | null }[]; betweenBots: { fromChat: string } | null }[] };
+    expect(json.chat.kind).toBe("bot");
+    expect(json.messages.map((m) => m.authorName)).toEqual(["You", "Ada", "Bo"]);
+    expect(json.messages[1]!.attachments[0]!.path).toBe("files/ticket.pdf");
+    expect(json.messages[2]!.betweenBots?.fromChat).toBe("Bo");
+    expect(read("Trip - plans/chat.md")).toContain("A room with Ada, Bo.");
+    expect(read("README.md")).toContain("| Trip / plans | Room | 1 | `Trip - plans/` |");
+
+    expect((await app.request(`/api/exports/${made.id}`, { method: "DELETE" })).status).toBe(204);
+    expect((await app.request(`/api/exports/${made.id}/download`)).status).toBe(404);
+  });
+
+  test("one export at a time, one chat or a stretch, and a restart or its expiry ends one", async () => {
+    const { Hono } = await import("hono");
+    const { botInputSchema } = await import("@gond/shared");
+    const { createBot } = await import("../src/data/bots.ts");
+    const { ensureDatabase, releaseClaims } = await import("../src/db/init.ts");
+    const { createExport, expireExports, getExport, listExports } = await import("../src/data/exports.ts");
+    const { exportsRoutes } = await import("../src/routes/exports.ts");
+    const app = asPerson(new Hono(), "u-export-2").route("/api", exportsRoutes());
+    const start = (body: unknown) => app.request("/api/exports", { method: "POST", body: JSON.stringify(body) });
+    expect((await start({})).status).toBe(400);
+    const pip = createBot(botInputSchema.parse({ name: "Pip" }), "u-export-2");
+    createBot(botInputSchema.parse({ name: "Sam" }), "u-export-2");
+    expect((await start({ range: "forever" })).status).toBe(400);
+    expect((await start({ threadId: "t-nobodys" })).status).toBe(404);
+
+    const stuck = createExport({ userId: "u-export-2", threadId: null, since: null, label: "All chats, all time", total: 2 });
+    expect((await start({})).status).toBe(409);
+    releaseClaims(ensureDatabase());
+    expect(getExport(stuck.id, "u-export-2")).toMatchObject({ status: "failed", error: "Gond restarted while it was being prepared. Start it again." });
+
+    const one = (await (await start({ threadId: pip.threadId, range: "month" })).json()) as { export: { id: string; label: string; total: number } };
+    expect(one.export).toMatchObject({ label: "Pip, the last 30 days", total: 1 });
+    await waitFor(() => getExport(one.export.id, "u-export-2")?.status === "ready");
+    const kept = getExport(one.export.id, "u-export-2")!;
+    expect(kept.size).toBeGreaterThan(0);
+    expect(expireExports(new Date(Date.parse(kept.expiresAt!) + 1000).toISOString())).toBe(1);
+    expect(getExport(one.export.id, "u-export-2")!.status).toBe("expired");
+    expect((await app.request(`/api/exports/${one.export.id}/download`)).status).toBe(404);
+    expect(listExports("u-export-2").map((x) => x.id)).toEqual([one.export.id, stuck.id]);
   });
 });
