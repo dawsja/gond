@@ -5,7 +5,7 @@ import { exactApp, fuzzyScore, indexApps, pageOf, searchIndex } from "../src/cat
 import { activityLine, workSteps } from "../src/driver.ts";
 import { clearWork, clipOutput, recordStep, workFor } from "../src/work.ts";
 import { curatedToolkits, isReadOnlyAction, narrowed } from "../src/composio.ts";
-import { activeDevice, isViewing, markActive, markViewing, VIEWING_TTL_MS } from "../src/presence.ts";
+import { isViewing, markViewing, VIEWING_TTL_MS } from "../src/presence.ts";
 import { renderSoul } from "../src/souls.ts";
 import { checkBundleFiles, packSkill, parseSkillMd, readableName, renderSkillMd, unpackSkill } from "../src/skill-bundle.ts";
 import { zipSync } from "fflate";
@@ -785,16 +785,6 @@ describe("viewing", () => {
     markViewing("u-two", "laptop", "thread-b", t + 30);
     expect(isViewing("u-two", "thread-a", t + 40)).toBe(false);
   });
-
-  test("notices follow the device the person used last, and go everywhere until one is known", () => {
-    expect(activeDevice("u-fresh")).toBeNull();
-    markActive("u-dev", "laptop", 100);
-    markActive("u-dev", "phone", 200);
-    expect(activeDevice("u-dev")).toBe("phone");
-    markActive("u-dev", "laptop", 150);
-    expect(activeDevice("u-dev")).toBe("phone");
-    expect(activeDevice("u-fresh")).toBeNull();
-  });
 });
 
 describe("handoff depth", () => {
@@ -1429,6 +1419,25 @@ describe("login fields", () => {
     expect(ask("AdGuard Home", ["username", "password", "code"])).toBeNull();
     expect(ask("AdGuard Home", ["phone", "password"])).toBeNull();
     expect(ask("Uptime Kuma", ["username", "password"])).toBeNull();
+  });
+});
+
+describe("notification services", () => {
+  test("what the person types is checked, and a secret left empty keeps the saved one", async () => {
+    const { checkService } = await import("../src/notify-services.ts");
+    expect(checkService("ntfy", { topic: "gond-dawson-7k2" }, null)).toEqual({ settings: { server: "https://ntfy.sh", topic: "gond-dawson-7k2", priority: "3" }, secrets: {} });
+    expect(checkService("ntfy", { server: "https://ntfy.example.com/", topic: "ok", token: "tk_1" }, null)).toEqual({ settings: { server: "https://ntfy.example.com", topic: "ok", priority: "3" }, secrets: { token: "tk_1" } });
+    expect(checkService("ntfy", { topic: "has spaces" }, null)).toEqual({ error: "A topic is letters, numbers, dashes and underscores, up to 64 of them." });
+    expect(checkService("ntfy", { topic: "ok", priority: "9" }, null)).toEqual({ error: "Pick a priority from the list." });
+    expect(checkService("discord", { url: "https://example.com/api/webhooks/1/x" }, null)).toHaveProperty("error");
+    expect(checkService("discord", { url: "https://discord.com/api/webhooks/1/abc" }, null)).toEqual({ settings: {}, secrets: { url: "https://discord.com/api/webhooks/1/abc" } });
+    expect(checkService("telegram", { token: "123:short", chat: "1" }, null)).toEqual({ error: "That doesn't look like a bot token from @BotFather." });
+    expect(checkService("telegram", { token: `123456:${"a".repeat(35)}`, chat: "nope" }, null)).toEqual({ error: "A chat ID is a number, like 123456789, or a channel's @name." });
+    expect(checkService("pushover", { user: "u".repeat(30) }, null)).toEqual({ error: "Enter the application token." });
+    expect(checkService("gotify", { server: "ftp://x", token: "t" }, null)).toEqual({ error: "The server's address has to start with https:// or http://." });
+    const saved = { kind: "pushover" as const, enabled: true, settings: { priority: "0" }, secrets: { user: "u".repeat(30), token: "t".repeat(30) } };
+    expect(checkService("pushover", { priority: "1" }, saved)).toEqual({ settings: { priority: "1" }, secrets: saved.secrets });
+    expect(checkService("webhook", {}, saved)).toEqual({ error: "Enter the url." });
   });
 });
 

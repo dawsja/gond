@@ -645,8 +645,8 @@ what is here. The README says what Gond is; this says how it is made.
   nothing. A card still open when the API starts expires with no line
   (see "A restart never strands a bot").
 - **Settings is sections, not a scroll.** `SETTINGS_SECTIONS` in
-  `lib/settings-sections.ts` is the list (account, appearance,
-  personalization, team, ai,
+  `lib/settings-sections.ts` is the list (account, notifications,
+  appearance, personalization, team, ai,
   voice, computer, skills, apps, secrets, auth, about), each marked `admin`
   or not; the route
   `/app/settings/[[...section]]` maps to it and 404s a user on an admin
@@ -658,8 +658,8 @@ what is here. The README says what Gond is; this says how it is made.
   with a URL the API and the bots can point at (`Settings → Apps → MCP
   servers` in copy). Sign out is in the sidebar footer's profile menu on a
   desktop and the last row of the Settings list on a phone (`useSignOut`).
-  Account is the person themselves (picture, password, notifications,
-  exporting their chats);
+  Account is the person themselves (picture, password, exporting their
+  chats); Notifications is where their notices go;
   Appearance is how it looks (the theme, which stays on the device, the
   color); About is the app (the server's
   version and, for the admin, updating it, `server-update-card.tsx`; the
@@ -1513,28 +1513,32 @@ what is here. The README says what Gond is; this says how it is made.
 - A hidden `prompt` message (author `system`) is how the API asks a bot to
   do something on its own, like greeting a new person; the dispatcher
   answers it like a message and the web never renders it.
-- **Notifications** are Web Push in a browser (`src/push.ts`, `web-push`,
-  VAPID keys in the data directory; `public/sw.js` shows one and a click
-  focuses the window already on the conversation, or opens one). Send from
-  the API only when a bot finishes for the person or needs them, and only
-  when `bot.notify` is on. `sendPush` also emits the same notice as a
-  `notify` live event (`userId`, `title`, `body`, `url`, `tag`; the events
-  route lets only the owner hear it): on Android and the desktop that event
-  becomes a native notification through the shell bridge in
-  `shell-notifications.tsx`. Nothing is pushed about a conversation the
+- **Notifications go everywhere the person set up**, from Settings →
+  Notifications (`notifications-section.tsx`): every browser and app they
+  turned them on in, and one notification service. In a browser it is Web
+  Push (`src/push.ts`, `web-push`, VAPID keys in the data directory;
+  `public/sw.js` shows one and a click focuses the window already on the
+  conversation, or opens one). Send from the API only when a bot finishes
+  for the person or needs them, and only when `bot.notify` is on.
+  `sendPush` also emits the same notice as a `notify` live event (`userId`,
+  `title`, `body`, `url`, `tag`; the events route lets only the owner hear
+  it): on Android, the iPhone and the desktop that event becomes a native
+  notification through the shell bridge in `shell-notifications.tsx`, so
+  only while the app runs. Nothing is pushed about a conversation the
   person has in front of them: the page reports what it shows
-  (`viewing-report.tsx` → `/api/push/viewing`, `src/presence.ts`), since the
-  service worker can't tell on an iPhone. A notice goes only to the device
-  the person used last: every browser and app install has an id in
-  `localStorage` (`deviceId` in `lib/push.ts`), sent with its push
-  subscription (`device` on `gond_push_subscriptions`) and with the
-  presence ping when the person opens, focuses, taps or types there
-  (`active`; the heartbeat never claims it, or an idle desktop window
-  would win the notices back from the phone in their hand). `sendPush`
-  sends Web Push only to that device's subscriptions and stamps the
-  `notify` event with it, and `shell-notifications.tsx` shows only its
-  own; until the API has seen the person since it started
-  (`activeDevice` is in memory), every device gets it.
+  (`viewing-report.tsx` → `/api/push/viewing`, `src/presence.ts`), since
+  the service worker can't tell on an iPhone. There is no "device used
+  last": every subscription and app gets every notice. The service
+  (`NOTIFY_SERVICES` in shared: ntfy, Pushover, Discord, Telegram, Gotify
+  and a plain webhook, each with its fields) is one per person for now
+  (`gond_notify_services`, `src/data/notify-services.ts`, its keys
+  encrypted and never returned; a key left empty when changing it keeps
+  the saved one), checked by `checkService` and sent by `deliver` in
+  `src/notify-services.ts` with a link back to the conversation; how the
+  last send went is kept and shown on its row, and Send a test tries what
+  the form holds before it is saved. Its addresses are the person's own
+  (a LAN ntfy or Gotify is the point), so the API calls them as given and
+  passes back only a short reason, never the response.
 - **Time is the person's browser's.** `gond_user_prefs` keeps each person's
   zone, reported by `viewing-report.tsx` with every presence ping;
   `userTimezone(userId)` in `src/data/prefs.ts` is the only reader;

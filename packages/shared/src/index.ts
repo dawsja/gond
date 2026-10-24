@@ -840,7 +840,7 @@ export type LiveEvent =
    * push notification, for a client without Web Push (the Android app)
    * to show on its own. Quiet when that conversation is in front of you.
    */
-  | { topic: "notify"; userId: string; title: string; body: string; url: string; tag: string; threadId: string; device: string | null }
+  | { topic: "notify"; userId: string; title: string; body: string; url: string; tag: string; threadId: string }
   /** Your desktop on the computer: who is driving it, and whether it is up. */
   | { topic: "desktop"; userId: string; desktop: DesktopState }
   /**
@@ -1207,6 +1207,123 @@ export function coverLogin(fields: LoginField[], saved: string[]): Map<string, s
   }
   return found;
 }
+
+/**
+ * The services a person can send their notices to besides their browsers and apps, one at a time.
+ * Each field is what the service needs; a `secret` one is stored encrypted and never sent back, so
+ * the form shows it empty and leaving it empty keeps what was saved.
+ */
+export const NOTIFY_SERVICE_KINDS = ["ntfy", "pushover", "discord", "telegram", "gotify", "webhook"] as const;
+export type NotifyServiceKind = (typeof NOTIFY_SERVICE_KINDS)[number];
+
+export type NotifyField = {
+  key: string;
+  label: string;
+  placeholder?: string;
+  help?: string;
+  secret?: boolean;
+  optional?: boolean;
+  options?: readonly { value: string; label: string }[];
+  initial?: string;
+};
+
+export const NOTIFY_SERVICES: Record<NotifyServiceKind, { name: string; blurb: string; color: string; fields: readonly NotifyField[] }> = {
+  ntfy: {
+    name: "ntfy",
+    blurb: "The ntfy app on your phone, on ntfy.sh or your own server.",
+    color: "#338574",
+    fields: [
+      { key: "server", label: "Server", placeholder: "https://ntfy.sh", initial: "https://ntfy.sh" },
+      { key: "topic", label: "Topic", placeholder: "gond-yourname-7k2", help: "Subscribe to it in the ntfy app. On ntfy.sh anyone who knows a topic can read it, so make it hard to guess." },
+      { key: "token", label: "Access token", placeholder: "Only for a protected topic", secret: true, optional: true },
+      {
+        key: "priority",
+        label: "Priority",
+        initial: "3",
+        options: [
+          { value: "2", label: "Low" },
+          { value: "3", label: "Normal" },
+          { value: "4", label: "High" },
+          { value: "5", label: "Urgent" },
+        ],
+      },
+    ],
+  },
+  pushover: {
+    name: "Pushover",
+    blurb: "The Pushover app on your phone.",
+    color: "#249DF1",
+    fields: [
+      { key: "user", label: "User key", placeholder: "From your Pushover dashboard", secret: true },
+      { key: "token", label: "Application token", placeholder: "Create one at pushover.net/apps", secret: true },
+      {
+        key: "priority",
+        label: "Priority",
+        initial: "0",
+        options: [
+          { value: "-1", label: "Quiet" },
+          { value: "0", label: "Normal" },
+          { value: "1", label: "High" },
+        ],
+      },
+    ],
+  },
+  discord: {
+    name: "Discord",
+    blurb: "A message in a Discord channel.",
+    color: "#5865F2",
+    fields: [{ key: "url", label: "Webhook URL", placeholder: "https://discord.com/api/webhooks/…", help: "In the channel's settings: Integrations, then Webhooks, then New Webhook.", secret: true }],
+  },
+  telegram: {
+    name: "Telegram",
+    blurb: "A message from your own Telegram bot.",
+    color: "#27A7E7",
+    fields: [
+      { key: "token", label: "Bot token", placeholder: "From @BotFather", secret: true },
+      { key: "chat", label: "Chat ID", placeholder: "123456789", help: "Message your bot once, then ask @userinfobot for your ID, or use a group's ID." },
+    ],
+  },
+  gotify: {
+    name: "Gotify",
+    blurb: "Your own Gotify server and its app.",
+    color: "#2D6BCB",
+    fields: [
+      { key: "server", label: "Server", placeholder: "https://gotify.example.com" },
+      { key: "token", label: "App token", placeholder: "From Apps in Gotify", secret: true },
+      {
+        key: "priority",
+        label: "Priority",
+        initial: "5",
+        options: [
+          { value: "2", label: "Low" },
+          { value: "5", label: "Normal" },
+          { value: "8", label: "High" },
+        ],
+      },
+    ],
+  },
+  webhook: {
+    name: "Webhook",
+    blurb: "Any address that takes a POST: Gond sends the title, the message and a link as JSON.",
+    color: "#4B4B4B",
+    fields: [{ key: "url", label: "URL", placeholder: "https://example.com/hooks/gond", secret: true }],
+  },
+};
+
+export function isNotifyServiceKind(value: unknown): value is NotifyServiceKind {
+  return typeof value === "string" && (NOTIFY_SERVICE_KINDS as readonly string[]).includes(value);
+}
+
+/** A person's notification service as the web sees it: what isn't secret, and which secrets are saved. */
+export type NotifyService = {
+  kind: NotifyServiceKind;
+  enabled: boolean;
+  details: Record<string, string>;
+  saved: string[];
+  lastSentAt: string | null;
+  lastError: string | null;
+  updatedAt: string;
+};
 
 export type PushSubscriptionInput = {
   endpoint: string;

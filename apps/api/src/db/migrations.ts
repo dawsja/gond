@@ -695,6 +695,20 @@ const MIGRATIONS: Array<string | ((db: Database) => void)> = [
   `,
   // A secret card that replaces a value the person already has, so it says so.
   `ALTER TABLE gond_secret_requests ADD COLUMN replaces INTEGER NOT NULL DEFAULT 0;`,
+  // Where a person's notices go besides their browsers and apps: one service each, its keys encrypted.
+  `
+  CREATE TABLE gond_notify_services (
+    user_id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL,
+    settings TEXT NOT NULL,
+    secrets TEXT NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    last_sent_at TEXT,
+    last_error TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  `,
 ];
 
 export const RENAME_VERSION = MIGRATIONS.indexOf(renameLegacyObjects) + 1;

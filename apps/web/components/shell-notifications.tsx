@@ -1,12 +1,12 @@
 "use client";
 
 import { useLiveEvents } from "@/components/hq/live-events";
-import { deviceId, shellNotificationsOff } from "@/lib/push";
+import { shellNotificationsOff } from "@/lib/push";
 import { shellBridge } from "@/lib/shell";
 
 export function ShellNotifications() {
   useLiveEvents((event) => {
-    if (event.topic !== "notify" || (event.device && event.device !== deviceId())) return;
+    if (event.topic !== "notify") return;
     const shell = shellBridge();
     if (!shell || typeof shell.notify !== "function" || shellNotificationsOff()) return;
     const target = new URL(event.url, window.location.origin);

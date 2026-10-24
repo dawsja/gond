@@ -31,12 +31,9 @@ export async function enablePush(): Promise<void> {
   const { publicKey } = await api<{ publicKey: string }>("/api/push");
   const existing = await registration.pushManager.getSubscription();
   const subscription = existing ?? (await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: toKey(publicKey) }));
-  await post("/api/push/subscriptions", { ...subscription.toJSON(), device: deviceId() });
+  await post("/api/push/subscriptions", subscription.toJSON());
 }
 
-let device: string | null = null;
-
-/** One id per browser or app install, kept across reloads, so the API can notify only the one the person used last. */
 // The apps can't take back the system's permission, so their Turn off is a switch kept on this device.
 const SHELL_OFF = "gond-shell-notifications-off";
 
@@ -53,27 +50,6 @@ export function setShellNotificationsOff(off: boolean) {
     if (off) localStorage.setItem(SHELL_OFF, "1");
     else localStorage.removeItem(SHELL_OFF);
   } catch {}
-}
-
-export function deviceId(): string {
-  if (device) return device;
-  try {
-    device = localStorage.getItem("gond-device");
-    if (!device) {
-      device = crypto.randomUUID();
-      localStorage.setItem("gond-device", device);
-    }
-  } catch {
-    device ??= crypto.randomUUID();
-  }
-  return device;
-}
-
-/** A subscription made before devices were recorded gets its device on the next visit. */
-export async function tagSubscription(): Promise<void> {
-  if (pushPermission() !== "granted") return;
-  const subscription = await currentSubscription().catch(() => null);
-  if (subscription) await post("/api/push/subscriptions", { ...subscription.toJSON(), device: deviceId() }).catch(() => undefined);
 }
 
 export async function disablePush(): Promise<void> {

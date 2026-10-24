@@ -17,7 +17,7 @@ import { ComputerCard } from "@/components/computer-card";
 import { AiSteps } from "@/components/ai-steps";
 import { HomeResetCard } from "@/components/home-reset-card";
 import { McpCard } from "@/components/mcp-card";
-import { NotificationsCard } from "@/components/notifications-card";
+import { NotificationsSection } from "@/components/notifications-section";
 import { OidcCard } from "@/components/oidc-card";
 import { VoiceCard } from "@/components/voice-card";
 import { SecretsCard } from "@/components/secrets-card";
@@ -150,10 +150,12 @@ export function SettingsPage({ user, section, index = false }: { user: SessionUs
       body = (
         <>
           <AccountSection user={user} />
-          <NotificationsCard />
           <ExportCard />
         </>
       );
+      break;
+    case "notifications":
+      body = <NotificationsSection />;
       break;
     case "appearance":
       body = <AppearanceCard />;

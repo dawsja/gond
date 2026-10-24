@@ -14,6 +14,7 @@ import { exportsRoutes } from "./routes/exports.ts";
 import { llmProxyRoutes, providerRoutes } from "./routes/llm.ts";
 import { mcpHandBack, mcpProxyRoutes, mcpRoutes } from "./routes/mcp.ts";
 import { mobileSignInRoutes } from "./routes/mobile-sign-in.ts";
+import { notifyRoutes } from "./routes/notify.ts";
 import { pushRoutes } from "./routes/push.ts";
 import { secretsRoutes } from "./routes/secrets.ts";
 import { skillsRoutes } from "./routes/skills.ts";
@@ -135,6 +136,7 @@ export function createApp() {
   app.route("/api", providerRoutes());
   app.route("/api", voiceRoutes());
   app.route("/api", pushRoutes());
+  app.route("/api", notifyRoutes());
   app.route("/api", usersRoutes());
   app.route("/api", releaseRoutes());
 

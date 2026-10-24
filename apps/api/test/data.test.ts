@@ -1434,7 +1434,7 @@ describe("data", () => {
     } finally {
       stop();
     }
-    expect(seen).toEqual([{ topic: "notify", userId: "u-admin", title: "Pip", body: "Done.", url: "/app/t/t1", tag: "t1", threadId: "t1", device: null }]);
+    expect(seen).toEqual([{ topic: "notify", userId: "u-admin", title: "Pip", body: "Done.", url: "/app/t/t1", tag: "t1", threadId: "t1" }]);
   });
 
   test("the time zone is the person's browser's, and a change moves their routines", async () => {
@@ -1634,24 +1634,85 @@ describe("data", () => {
       stop();
     }
     expect(delivered).toEqual(["https://push.example/tester"]);
-    expect(seen).toEqual([{ topic: "notify", userId: "u-tester", ...notice, device: null }]);
+    expect(seen).toEqual([{ topic: "notify", userId: "u-tester", ...notice }]);
 
+    // Every browser and app the person turned notifications on in gets every notice, whichever they used last.
     delivered.length = 0;
-    seen.length = 0;
-    saveSubscription({ endpoint: "https://push.example/tester-phone", keys: { p256dh: "a", auth: "b" } }, "u-tester", "", "phone");
-    const again = subscribe((event) => {
-      if (event.topic === "notify") seen.push(event);
+    saveSubscription({ endpoint: "https://push.example/tester-phone", keys: { p256dh: "a", auth: "b" } }, "u-tester");
+    const app = asPerson(new Hono(), "u-tester").route("/api", pushRoutes());
+    expect((await app.request("/api/push/viewing", { method: "POST", body: JSON.stringify({ client: "w2", threadId: null }) })).status).toBe(204);
+    expect(await sendPush(notice, "u-tester")).toBe(2);
+    expect(delivered.sort()).toEqual(["https://push.example/tester", "https://push.example/tester-phone"]);
+  });
+
+  test("a person's one notification service gets every notice, with its keys kept out of every answer", async () => {
+    const { Hono } = await import("hono");
+    const { notifyRoutes } = await import("../src/routes/notify.ts");
+    const { sendPush } = await import("../src/push.ts");
+    const { markViewing } = await import("../src/presence.ts");
+    const { ensureDatabase } = await import("../src/db/init.ts");
+    const got: { path: string; headers: Record<string, string>; body: unknown }[] = [];
+    let status = 200;
+    const fake = Bun.serve({
+      port: 0,
+      async fetch(request: Request) {
+        const url = new URL(request.url);
+        got.push({ path: url.pathname, headers: Object.fromEntries(request.headers), body: await request.json().catch(() => null) });
+        return new Response(status === 200 ? "{}" : JSON.stringify({ error: "bad token" }), { status });
+      },
     });
+    const at = `http://127.0.0.1:${fake.port}`;
     try {
-      const app = asPerson(new Hono(), "u-tester").route("/api", pushRoutes());
-      const used = await app.request("/api/push/viewing", { method: "POST", body: JSON.stringify({ client: "w2", threadId: null, device: "phone", active: true }) });
-      expect(used.status).toBe(204);
-      expect(await sendPush(notice, "u-tester")).toBe(1);
+      const app = asPerson(new Hono(), "u-notify").route("/api", notifyRoutes());
+      const call = (method: string, path: string, body?: unknown) => app.request(`/api${path}`, { method, body: body === undefined ? undefined : JSON.stringify(body) });
+      expect(await (await call("GET", "/notify-service")).json()).toEqual({ service: null });
+      expect((await call("PUT", "/notify-service", { kind: "slack", values: {} })).status).toBe(400);
+      expect((await call("PUT", "/notify-service", { kind: "webhook", values: { url: "not a url" } })).status).toBe(400);
+
+      // A test before saving goes to what the form holds.
+      const tried = await call("POST", "/notify-service/test", { kind: "ntfy", values: { server: at, topic: "gond-test", token: "tk_secret_123" } });
+      expect(tried.status).toBe(200);
+      expect(got.at(-1)).toMatchObject({ path: "/", headers: { authorization: "Bearer tk_secret_123" }, body: { topic: "gond-test", title: "Gond is set up", priority: 3 } });
+      expect((got.at(-1)!.body as { click: string }).click).toMatch(/\/app$/);
+
+      const saved = await call("PUT", "/notify-service", { kind: "webhook", values: { url: `${at}/hooks/gond-secret-path` } });
+      expect(saved.status).toBe(200);
+      const shown = JSON.stringify(await saved.json());
+      expect(shown).not.toContain("gond-secret-path");
+      expect(shown).toContain('"saved":["url"]');
+      expect(JSON.stringify(ensureDatabase().query("SELECT * FROM gond_notify_services").all())).not.toContain("gond-secret-path");
+
+      got.length = 0;
+      await sendPush({ title: "Patch", body: "Disk is back to 41%.", url: "/app/t/t9", tag: "t9", threadId: "t9" }, "u-notify");
+      await Bun.sleep(50);
+      expect(got).toHaveLength(1);
+      expect(got[0]).toMatchObject({ path: "/hooks/gond-secret-path", body: { title: "Patch", body: "Disk is back to 41%." } });
+      expect((got[0]!.body as { url: string }).url).toMatch(/\/app\/t\/t9$/);
+      expect(((await (await call("GET", "/notify-service")).json()) as { service: { lastSentAt: string | null } }).service.lastSentAt).not.toBeNull();
+
+      // Nothing about the conversation on screen, and nothing while it's switched off.
+      got.length = 0;
+      markViewing("u-notify", "w1", "t9");
+      await sendPush({ title: "Patch", body: "Again.", url: "/app/t/t9", tag: "t9", threadId: "t9" }, "u-notify");
+      expect((await call("PATCH", "/notify-service", { enabled: false })).status).toBe(200);
+      await sendPush({ title: "Patch", body: "Off.", url: "/app/t/t8", tag: "t8", threadId: "t8" }, "u-notify");
+      await Bun.sleep(50);
+      expect(got).toHaveLength(0);
+
+      // Changing it keeps a key left empty; a refusal is said in words, and kept for Settings.
+      expect((await call("PUT", "/notify-service", { kind: "webhook", values: {} })).status).toBe(200);
+      status = 401;
+      const refused = await call("POST", "/notify-service/test");
+      expect(refused.status).toBe(400);
+      expect(((await refused.json()) as { error: string }).error).toBe("Webhook turned the key down: bad token. Check it and save again.");
+      expect(got.at(-1)!.path).toBe("/hooks/gond-secret-path");
+
+      expect((await call("DELETE", "/notify-service")).status).toBe(200);
+      expect(await (await call("GET", "/notify-service")).json()).toEqual({ service: null });
+      expect((await call("POST", "/notify-service/test")).status).toBe(404);
     } finally {
-      again();
+      fake.stop(true);
     }
-    expect(delivered).toEqual(["https://push.example/tester-phone"]);
-    expect(seen).toMatchObject([{ topic: "notify", device: "phone" }]);
   });
 
   test("each person has their own bots, conversations and subscriptions", async () => {
