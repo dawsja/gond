@@ -36,7 +36,15 @@ const project = read("apps/ios/project.yml");
 for (const key of ["NSMicrophoneUsageDescription", "NSLocalNetworkUsageDescription", "UILaunchScreen"]) {
   if (!project.includes(`${key}:`)) problems.push(`apps/ios/project.yml: ${key} is missing`);
 }
-if (!fs.existsSync(path.join(ios, "Gond", "Assets.xcassets", "AppIcon.appiconset", "icon-1024.png"))) problems.push("apps/ios: the app icon is missing");
+const iconDir = path.join(ios, "AppIcon.icon");
+const iconJson = path.join(iconDir, "icon.json");
+if (!fs.existsSync(iconJson)) problems.push("apps/ios: the app icon is missing");
+else {
+  const icon = JSON.parse(fs.readFileSync(iconJson, "utf8"));
+  for (const layer of (icon.groups ?? []).flatMap((group) => group.layers ?? [])) {
+    if (layer["image-name"] && !fs.existsSync(path.join(iconDir, "Assets", layer["image-name"]))) problems.push(`apps/ios: the app icon's ${layer["image-name"]} is missing`);
+  }
+}
 
 if (problems.length) {
   console.error(problems.join("\n"));

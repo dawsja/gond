@@ -68,7 +68,11 @@ what is here. The README says what Gond is; this says how it is made.
   checks the frame's origin again before anything happens; WebKit's
   messages are one way, so what the page reads back (platform `ios`, the
   version, the notification permission) is written into the script and
-  kept current with a `gond:notifications-state` event. The microphone is
+  kept current with a `gond:notifications-state` event. `setTheme`
+  says whether the page follows the system, and then the app pins no
+  colour scheme, since the web view's `prefers-color-scheme` is whatever
+  the app pins (only the iPhone hears it: Android's bridge matches a call
+  by its argument count). The microphone is
   granted to that origin only, attachments download to the share sheet,
   other origins' links open in Safari's view, and the page draws under the
   bars with `--shell-inset-*` pushed as on Android. Sign-in is
@@ -78,7 +82,11 @@ what is here. The README says what Gond is; this says how it is made.
   `ServerUrl.kt` with the same tests, and `scripts/check.mjs` (the
   package's lint) fails when the bridge misses a `GondMobile` method, the
   loopback port drifts from shared or an Android address test has no Swift
-  twin. The Xcode project is generated from `project.yml` with XcodeGen and
+  twin. The icon is `AppIcon.icon`, Icon Composer's format: the cog as one
+  glass layer, ink on white and light on dark, from which iOS draws the
+  tinted and clear looks and Xcode the flat icons for iOS before 26; it
+  is a resource file of its own in `project.yml`, never inside `Gond/`.
+  The Xcode project is generated from `project.yml` with XcodeGen and
   never checked in. CI tests it on `macos-26`, and a push to main or a
   release tag archives it with Xcode's automatic signing through the App
   Store Connect API key (`APPLE_TEAM_ID`, `ASC_KEY_ID`, `ASC_ISSUER_ID`,
@@ -443,7 +451,13 @@ what is here. The README says what Gond is; this says how it is made.
 - **A draft stays where it was typed.** What the person types in a
   conversation is kept per conversation in `localStorage` on that device
   (`lib/drafts.ts`), put back when they return, and shown in the list as
-  "Draft: …" until it is sent or cleared.
+  "Draft: …" until it is sent or cleared. In an empty composer, Up puts
+  the person's last line from that conversation back in it to send
+  again or change, Up again an older one and Down a newer one, then the
+  empty field (`sentHistory`, `historyStep` in `lib/sent-history.ts`). It
+  only moves while the caret is on the field's first line (Up) or last
+  (Down) and nothing is selected, the @ and / list keeps the arrows while
+  it is open, and typing ends it, so it never gets in the way of editing.
 - **A person can export their chats** (Settings → Account,
   `export-card.tsx`). They pick all bots and rooms or one, and how far
   back (`EXPORT_RANGES`); `POST /api/exports` starts a job in the API

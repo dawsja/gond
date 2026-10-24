@@ -4,6 +4,8 @@ import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { ChevronLeft, ChevronRight, Download, X } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { Button } from "@/components/ui/button";
+import { useStableCallback } from "@/hooks/use-stable-callback";
+import { askNative, useNativeUi } from "@/lib/native-ui";
 import { cn } from "@/lib/utils";
 
 export type ViewerImage = { id: string; name: string };
@@ -16,7 +18,30 @@ const SWIPE_PX = 60;
  * the pills floating over it like a conversation's. A tap zooms in where it lands and dragging
  * moves around; a swipe or the arrows go to the next one.
  */
-export function ImageViewer({ images, openId, onOpenId }: { images: ViewerImage[]; openId: string | null; onOpenId: (id: string | null) => void }) {
+type ViewerProps = { images: ViewerImage[]; openId: string | null; onOpenId: (id: string | null) => void };
+
+export function ImageViewer(props: ViewerProps) {
+  return useNativeUi() ? <NativeViewer {...props} /> : <PageViewer {...props} />;
+}
+
+/** The iPhone app's Quick Look: its own zoom, swipes, Share and Save to Photos, in Liquid Glass. */
+function NativeViewer({ images, openId, onOpenId }: ViewerProps) {
+  const shown = useRef<string | null>(null);
+  const close = useStableCallback(onOpenId);
+  useEffect(() => {
+    if (!openId) {
+      shown.current = null;
+      return;
+    }
+    if (shown.current) return;
+    shown.current = openId;
+    const index = Math.max(0, images.findIndex((image) => image.id === openId));
+    void askNative({ kind: "pictures", items: images.map((image) => ({ url: `/api/attachments/${image.id}`, name: image.name })), index }).then(() => close(null));
+  }, [openId, images, close]);
+  return null;
+}
+
+function PageViewer({ images, openId, onOpenId }: ViewerProps) {
   const index = images.findIndex((image) => image.id === openId);
   const image = index >= 0 ? images[index]! : null;
   const [zoom, setZoom] = useState<{ x: number; y: number } | null>(null);

@@ -30,7 +30,10 @@ function syncShell(resolved: ResolvedTheme, system: boolean) {
     return;
   }
   const mobile = mobileShell();
-  if (typeof mobile?.setTheme === "function") mobile.setTheme(background, resolved === "dark");
+  if (typeof mobile?.setTheme !== "function") return;
+  // Android's bridge matches a call by its argument count, so only the iPhone hears whether this follows the system.
+  if (mobile.platform() === "ios") mobile.setTheme(background, resolved === "dark", system);
+  else mobile.setTheme(background, resolved === "dark");
 }
 
 function apply(theme: Theme) {

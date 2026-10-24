@@ -27,6 +27,7 @@ final class WebShell: NSObject {
         configuration.applicationNameForUserAgent = "Mobile/15E148 Gond/\(AppInfo.version) (iOS)"
         webView = WKWebView(frame: .zero, configuration: configuration)
         super.init()
+        model.ui.shell = self
         configuration.userContentController.add(ScriptHandler(self), name: "gondMobile")
         webView.navigationDelegate = self
         webView.uiDelegate = self
@@ -105,7 +106,9 @@ final class WebShell: NSObject {
             requestNotifications: function () { post("requestNotifications"); },
             signIn: function (next) { post("signIn", [String(next || "")]); },
             openExternal: function (url) { post("openExternal", [String(url || "")]); },
-            setTheme: function (background, dark) { post("setTheme", [String(background || ""), Boolean(dark)]); }
+            setTheme: function (background, dark, system) { post("setTheme", [String(background || ""), Boolean(dark), Boolean(system)]); },
+            present: function (kind, request) { post("present", [String(kind || ""), String(request || "")]); },
+            chrome: function (state) { post("chrome", [String(state || "null")]); }
           };
         })();
         """
@@ -134,7 +137,11 @@ final class WebShell: NSObject {
         case "openExternal":
             if let url = URL(string: text(0)) { openOutside(url) }
         case "setTheme":
-            model?.applyTheme(background: text(0), dark: args.count > 1 ? (args[1] as? Bool ?? false) : false)
+            model?.applyTheme(background: text(0), dark: args.count > 1 ? (args[1] as? Bool ?? false) : false, system: args.count > 2 ? (args[2] as? Bool ?? false) : false)
+        case "present":
+            model?.ui.present(kind: text(0), json: text(1))
+        case "chrome":
+            model?.ui.setChrome(text(0))
         default:
             break
         }
@@ -154,6 +161,64 @@ final class WebShell: NSObject {
         let js = "window.dispatchEvent(new CustomEvent('gond:notifications-state', { detail: '\(state)' }));window.dispatchEvent(new Event('gond:notifications'));"
         webView.evaluateJavaScript(js, completionHandler: nil)
     }
+
+    // MARK: The app's own pieces (NativeUI)
+
+    /// An event the page listens for; only ever the connected Gond's own page hears it.
+    func dispatch(_ name: String, _ detail: [String: Any]) {
+        guard ownPage, let data = try? JSONSerialization.data(withJSONObject: detail) else { return }
+        let json = String(decoding: data, as: UTF8.self)
+        let event = name == "gond:native" ? "gond:native" : "gond:native-chrome"
+        webView.evaluateJavaScript("window.dispatchEvent(new CustomEvent('\(event)', { detail: \(json) }))", completionHandler: nil)
+    }
+
+    /// What a part of the page looks like now, for a message lifted into its menu.
+    func snapshot(_ rect: CGRect) async -> UIImage? {
+        let configuration = WKSnapshotConfiguration()
+        configuration.rect = rect
+        configuration.afterScreenUpdates = false
+        return await withCheckedContinuation { continuation in
+            webView.takeSnapshot(with: configuration) { image, _ in continuation.resume(returning: image) }
+        }
+    }
+
+    /// A path on the connected Gond with the web view's own session, for the pictures Quick Look shows.
+    func fetch(_ path: String) async throws -> Data {
+        guard let server, path.hasPrefix("/"), !path.hasPrefix("//"), let url = URL(string: server + path), let host = url.host else { throw URLError(.badURL) }
+        let cookies: [HTTPCookie] = await withCheckedContinuation { continuation in
+            webView.configuration.websiteDataStore.httpCookieStore.getAllCookies { continuation.resume(returning: $0) }
+        }
+        let mine = cookies.filter { cookie in
+            let domain = cookie.domain.hasPrefix(".") ? String(cookie.domain.dropFirst()) : cookie.domain
+            return host == domain || host.hasSuffix(".\(domain)")
+        }
+        var request = URLRequest(url: url)
+        request.httpShouldHandleCookies = false
+        for (field, value) in HTTPCookie.requestHeaderFields(with: mine) { request.setValue(value, forHTTPHeaderField: field) }
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
+        return data
+    }
+
+    /// Where the app's composer sits, so the page keeps its own (unseen) under it and pads the messages to match.
+    func setComposerMetrics(_ metrics: (bottom: CGFloat, height: CGFloat)?) {
+        guard ownPage else { return }
+        let script = metrics.map { "s.setProperty('--native-composer-bottom','\($0.bottom)px');s.setProperty('--native-composer-height','\($0.height)px');" }
+            ?? "s.removeProperty('--native-composer-bottom');s.removeProperty('--native-composer-height');"
+        webView.evaluateJavaScript("(function(s){\(script)})(document.documentElement.style)", completionHandler: nil)
+    }
+
+    #if DEBUG
+    /// The seeded session the screenshot job signs in with, as `name=value`.
+    func setCookie(_ pair: String, for server: String) async {
+        let parts = pair.split(separator: "=", maxSplits: 1).map(String.init)
+        guard parts.count == 2, let host = URL(string: server)?.host,
+              let cookie = HTTPCookie(properties: [.name: parts[0], .value: parts[1], .domain: host, .path: "/"]) else { return }
+        await withCheckedContinuation { continuation in
+            webView.configuration.websiteDataStore.httpCookieStore.setCookie(cookie) { continuation.resume() }
+        }
+    }
+    #endif
 
     // MARK: The page's edges
 
@@ -230,6 +295,7 @@ extension WebShell: WKNavigationDelegate {
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
         ownPage = ServerURL.sameOrigin(webView.url, server)
+        model?.ui.clear()
     }
 
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {

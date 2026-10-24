@@ -26,6 +26,9 @@ struct RootView: View {
             WebContainer(shell: model.shell)
                 .ignoresSafeArea()
                 .opacity(model.screen == .web ? 1 : 0)
+            if model.screen == .web {
+                NativeLayer(ui: model.ui)
+            }
             if model.screen == .web && model.progress < 1 {
                 ProgressView(value: model.progress)
                     .progressViewStyle(.linear)
@@ -43,9 +46,10 @@ struct RootView: View {
 }
 
 extension RootView {
-    /// The page's own theme while it shows, so the status bar reads on it; the system's on Connect.
+    /// The page's own theme while it shows, so the status bar reads on it; the system's on Connect and
+    /// while the page follows the system, since a pinned scheme is what the page's media query would see.
     var scheme: ColorScheme? {
-        guard model.screen == .web, let dark = model.pageDark else { return nil }
+        guard model.screen == .web, !model.pageFollowsSystem, let dark = model.pageDark else { return nil }
         return dark ? .dark : .light
     }
 }

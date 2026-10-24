@@ -94,6 +94,7 @@ struct ConnectView: View {
                     if model.connecting { ProgressView().tint(.white) }
                     Text(model.connecting ? "Connecting…" : "Connect").font(.system(size: 17, weight: .semibold))
                 }
+                .foregroundStyle(.white)
                 .frame(maxWidth: .infinity, minHeight: 54)
             }
             .prominentGlass()

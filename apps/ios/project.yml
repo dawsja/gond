@@ -19,6 +19,10 @@ targets:
     platform: iOS
     sources:
       - path: Gond
+      # Icon Composer's Liquid Glass icon; one file to Xcode, which also draws the flat icons older iOS shows.
+      - path: AppIcon.icon
+        type: file
+        buildPhase: resources
     info:
       path: Gond/Info.plist
       properties:
@@ -54,6 +58,18 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.gond.ios.tests
         GENERATE_INFOPLIST_FILE: true
+  GondUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: GondUITests
+    dependencies:
+      - target: Gond
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.gond.ios.uitests
+        GENERATE_INFOPLIST_FILE: true
+        TEST_TARGET_NAME: Gond
 schemes:
   Gond:
     build:
@@ -63,3 +79,12 @@ schemes:
     test:
       targets:
         - GondTests
+  # Screenshots for review, against a seeded Gond (.github/workflows/ios-screens.yml); never part of `Gond`'s tests.
+  GondScreens:
+    build:
+      targets:
+        Gond: all
+        GondUITests: [test]
+    test:
+      targets:
+        - GondUITests
