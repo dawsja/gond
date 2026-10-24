@@ -27,12 +27,12 @@ permissions:
 jobs:
   # What this run has to build. A main push and its release tag land together when Gond ships; the
   # tag's run builds the images (publishing latest too) and the apps, so the main run doesn't repeat
-  # them at the same moment. The desktop and Android apps are shells around the server's web app, so
-  # they build only when their own files changed: on a push since the commit before, on a release
-  # since the release before. A release whose apps didn't change carries that release's installers,
-  # APK and latest.json (`carry`) instead of building the same apps again, so its run is quick and no
-  # desktop app is told to update to an identical build. The check job runs their Rust and Android
-  # checks either way.
+  # them at the same moment. The desktop, Android and iPhone apps are shells around the server's web
+  # app, so each builds only when its own files changed: on a push since the commit before, on a
+  # release since the release before. A release carries an unchanged app's last build (the desktop's
+  # installers and latest.json, the APK) instead of building it again, so no desktop app is told to
+  # update to an identical build. The workflow itself isn't an app's file: after changing how an app
+  # builds, run this workflow by hand, which builds them all.
   changes:
     name: What to build
     runs-on: ubuntu-24.04
@@ -40,9 +40,12 @@ jobs:
       contents: read
     outputs:
       images: ${{ steps.decide.outputs.images }}
-      apps: ${{ steps.decide.outputs.apps }}
+      desktop: ${{ steps.decide.outputs.desktop }}
+      android: ${{ steps.decide.outputs.android }}
+      ios: ${{ steps.decide.outputs.ios }}
       latest: ${{ steps.decide.outputs.latest }}
-      carry: ${{ steps.decide.outputs.carry }}
+      carry_desktop: ${{ steps.decide.outputs.carry_desktop }}
+      carry_android: ${{ steps.decide.outputs.carry_android }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -53,40 +56,54 @@ jobs:
           REF: ${{ github.ref }}
           BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Everything the desktop, Android and iPhone builds read (the Connect screens keep their own copy of the web's tokens).
-          APP_FILES: '^(apps/desktop/|apps/android/|apps/ios/|assets/|\.github/workflows/)'
+          # What each app's build reads (each Connect screen keeps its own copy of the web's tokens).
+          DESKTOP_FILES: '^(apps/desktop/|assets/)'
+          ANDROID_FILES: '^(apps/android/|assets/)'
+          IOS_FILES: '^(apps/ios/|assets/)'
         run: |
-          images=true; apps=true; latest=false; carry=""
+          images=true; desktop=true; android=true; ios=true; latest=false; carry_desktop=""; carry_android=""
           if [ "$REF" = refs/heads/main ]; then
             latest=true
             if [ "$EVENT" = push ] && [ -n "$(git tag --points-at HEAD --list 'v*')" ]; then
               echo "This commit is a release; its tag's run builds and publishes it."
-              images=false; apps=false
+              images=false; desktop=false; android=false; ios=false
             fi
           elif [ -n "$RELEASE_TAG" ]; then
             [ "$(git rev-parse origin/main)" = "$GITHUB_SHA" ] && latest=true
           fi
-          if [ "$apps" = true ] && [ -z "$RELEASE_TAG" ] && [ -n "$BASE" ] && git cat-file -e "$BASE^{commit}" 2>/dev/null; then
-            if ! git diff --name-only "$BASE" "$GITHUB_SHA" | grep -qE "$APP_FILES"; then
-              echo "The desktop and Android apps didn't change."
-              apps=false
-            fi
+          changed() { git diff --name-only "$1" "$GITHUB_SHA" | grep -qE "$2"; }
+          # A push or pull request: each app against the commit before. A manual run builds them all.
+          if [ "$EVENT" != workflow_dispatch ] && [ -z "$RELEASE_TAG" ] && [ -n "$BASE" ] && git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            changed "$BASE" "$DESKTOP_FILES" || desktop=false
+            changed "$BASE" "$ANDROID_FILES" || android=false
+            changed "$BASE" "$IOS_FILES" || ios=false
           fi
-          # A pushed release tag: compare with the release before it. A manual run for a tag always builds.
+          # A pushed release tag: each app against the release before, carrying that release's build when it didn't change.
           if [[ "$REF" == refs/tags/v* ]]; then
             previous=$(git tag --list 'v*' --sort=-v:refname --merged "$GITHUB_SHA" | grep -vxF "$RELEASE_TAG" | head -n 1)
-            if [ -n "$previous" ] && ! git diff --name-only "$previous" "$GITHUB_SHA" | grep -qE "$APP_FILES"; then
+            if [ -n "$previous" ]; then
               assets=$(gh release view "$previous" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' 2>/dev/null || true)
-              if grep -q -- '-setup\.exe$' <<<"$assets" && grep -q '\.AppImage$' <<<"$assets" && grep -q '\.apk$' <<<"$assets"; then
-                echo "The desktop and Android apps haven't changed since $previous; $RELEASE_TAG carries its builds."
-                apps=false; carry=$previous
-              else
-                echo "The apps haven't changed since $previous, but it has no builds to carry, so they build."
+              if ! changed "$previous" "$DESKTOP_FILES"; then
+                if grep -q -- '-setup\.exe$' <<<"$assets" && grep -q '\.AppImage$' <<<"$assets"; then
+                  echo "The desktop app hasn't changed since $previous; $RELEASE_TAG carries its installers."
+                  desktop=false; carry_desktop=$previous
+                else
+                  echo "The desktop app hasn't changed since $previous, but it has no installers to carry, so it builds."
+                fi
               fi
+              if ! changed "$previous" "$ANDROID_FILES"; then
+                if grep -q '\.apk$' <<<"$assets"; then
+                  echo "The Android app hasn't changed since $previous; $RELEASE_TAG carries its APK."
+                  android=false; carry_android=$previous
+                else
+                  echo "The Android app hasn't changed since $previous, but it has no APK to carry, so it builds."
+                fi
+              fi
+              changed "$previous" "$IOS_FILES" || ios=false
             fi
           fi
-          echo "images=$images apps=$apps latest=$latest carry=$carry"
-          { echo "images=$images"; echo "apps=$apps"; echo "latest=$latest"; echo "carry=$carry"; } >> "$GITHUB_OUTPUT"
+          echo "images=$images desktop=$desktop android=$android ios=$ios latest=$latest carry_desktop=$carry_desktop carry_android=$carry_android"
+          { echo "images=$images"; echo "desktop=$desktop"; echo "android=$android"; echo "ios=$ios"; echo "latest=$latest"; echo "carry_desktop=$carry_desktop"; echo "carry_android=$carry_android"; } >> "$GITHUB_OUTPUT"
 
   check:
     name: Lint, typecheck and test
@@ -104,7 +121,7 @@ jobs:
   desktop:
     name: Desktop app for ${{ matrix.os }}
     needs: changes
-    if: needs.changes.outputs.apps == 'true'
+    if: needs.changes.outputs.desktop == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -168,7 +185,7 @@ jobs:
   android:
     name: Android app
     needs: changes
-    if: needs.changes.outputs.apps == 'true'
+    if: needs.changes.outputs.android == 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -211,7 +228,7 @@ jobs:
   ios:
     name: iPhone app
     needs: changes
-    if: needs.changes.outputs.apps == 'true'
+    if: needs.changes.outputs.ios == 'true'
     runs-on: macos-26
     env:
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -282,9 +299,10 @@ jobs:
     permissions:
       contents: write
     env:
-      CARRY: ${{ needs.changes.outputs.carry }}
+      CARRY_DESKTOP: ${{ needs.changes.outputs.carry_desktop }}
+      CARRY_ANDROID: ${{ needs.changes.outputs.carry_android }}
     steps:
-      - if: env.CARRY == ''
+      - if: needs.changes.outputs.desktop == 'true' || needs.changes.outputs.android == 'true'
         uses: actions/download-artifact@v8
         with:
           path: release
@@ -292,16 +310,21 @@ jobs:
           merge-multiple: true
       # The apps are the last release's: its files as they are, latest.json included, which still names
       # that version and its downloads, so an app already on it isn't offered an update.
-      - name: Carry the last release's apps
-        if: env.CARRY != ''
+      - name: Carry the last release's desktop app
+        if: env.CARRY_DESKTOP != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release download "$CARRY" --repo "$GITHUB_REPOSITORY" --dir release
+        run: gh release download "$CARRY_DESKTOP" --repo "$GITHUB_REPOSITORY" --dir release --pattern '*-setup.exe' --pattern '*.AppImage' --pattern 'latest.json'
+      - name: Carry the last release's Android app
+        if: env.CARRY_ANDROID != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release download "$CARRY_ANDROID" --repo "$GITHUB_REPOSITORY" --dir release --pattern '*.apk'
       # What the desktop app's updater reads at releases/latest/download/latest.json.
       # The signatures go into it rather than onto the release; without them
       # (no signing key) there is no latest.json and the apps don't update.
       - name: Write latest.json for the desktop updater
-        if: env.CARRY == ''
+        if: env.CARRY_DESKTOP == ''
         run: |
           mkdir -p signatures
           find release -maxdepth 1 -name '*.sig' -exec mv {} signatures/ \;

@@ -93,18 +93,21 @@ what is here. The README says what Gond is; this says how it is made.
   its main push, the tag's run builds and publishes it (`latest` too) and
   the main run leaves it alone.
 - **The desktop, Android and iPhone apps are built only when they change, never
-  just because Gond ships.** They are shells around the server's web app,
-  so a web or API change reaches them without a new build. The `changes`
-  job in `build.yml` compares a push with the commit before and a release
-  tag with the release before it, against `APP_FILES` (`apps/desktop/`,
-  `apps/android/`, `apps/ios/`, `assets/`, the workflows). A release whose apps didn't
-  change carries the last release's installers, APK and `latest.json`
-  (`carry`, `gh release download`) instead of building them again, so the
-  latest release always has what the updater and the downloads read, and
-  no desktop app is told to update to an identical build. The apps' version
-  is then the release they were last built for, which can be older than the
-  server's. Anything an app build starts to read from outside those folders
-  goes into `APP_FILES`, or a change to it won't reach the apps.
+  just because Gond ships, and each one on its own.** They are shells around the
+  server's web app, so a web or API change reaches them without a new build.
+  The `changes` job in `build.yml` compares a push with the commit before and
+  a release tag with the release before it, per app: `DESKTOP_FILES`
+  (`apps/desktop/`, `assets/`), `ANDROID_FILES` (`apps/android/`, `assets/`)
+  and `IOS_FILES` (`apps/ios/`, `assets/`), so an iPhone change never rebuilds
+  the desktop app. A release carries each unchanged app's last build
+  (`carry_desktop`: the installers and `latest.json`; `carry_android`: the
+  APK; `gh release download`) instead of building it again, so the latest
+  release always has what the updater and the downloads read, and no desktop
+  app is told to update to an identical build. The apps' version is then the
+  release they were last built for, which can be older than the server's. The
+  workflow file is no app's: after changing how an app builds, run the workflow
+  by hand, which builds them all. Anything an app build starts to read from
+  outside its folders goes into its pattern, or a change to it won't reach it.
 
 ## Web
 
