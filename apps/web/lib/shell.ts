@@ -17,7 +17,13 @@ export type GondMobile = {
 
   signIn?(next: string): void;
 
-  setTheme(background: string, dark: boolean): void;
+  /** `system` only on the iPhone, whose app would otherwise pin the page's scheme. */
+  setTheme(background: string, dark: boolean, system?: boolean): void;
+
+  /** The iPhone app's own pieces in Liquid Glass (`lib/native-ui.ts`): a confirm, a message's menu, the pictures. */
+  present?(kind: string, request: string): void;
+  /** A conversation's header and composer, drawn by the iPhone app from this state; null takes them away. */
+  chrome?(state: string): void;
 };
 
 export type GondDesktop = {

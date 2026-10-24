@@ -1,0 +1,84 @@
+name: iPhone screenshots
+
+# Runs the iPhone app in a simulator against a throwaway Gond with a seeded conversation and keeps
+# screenshots of the app's own glass (the header, the composer, the menus, a confirm, Quick Look) in
+# light and dark, for review of a change to them. The screenshots are this run's artifact.
+on:
+  pull_request:
+    paths:
+      - "apps/ios/**"
+      - "apps/web/components/conversation*.tsx"
+      - "apps/web/lib/native-ui.ts"
+      - ".github/workflows/ios-screens.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  screens:
+    name: Screenshots
+    runs-on: macos-26
+    timeout-minutes: 50
+    env:
+      SERVER: http://127.0.0.1:3005
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - run: bun install --frozen-lockfile
+      - run: bun run --filter @gond/web build
+      - name: Start a throwaway Gond
+        run: |
+          mkdir -p "$RUNNER_TEMP/gond" "$RUNNER_TEMP/screens"
+          (cd apps/api && GOND_DATA_DIR="$RUNNER_TEMP/gond" GOND_SETUP_TOKEN=screens PORT=8799 APP_URL="$SERVER" nohup bun run src/index.ts > "$RUNNER_TEMP/screens/api.log" 2>&1 &)
+          (cd apps/web && GOND_API_URL=http://127.0.0.1:8799 nohup bunx --bun next start -H 127.0.0.1 -p 3005 > "$RUNNER_TEMP/screens/web.log" 2>&1 &)
+          for i in $(seq 90); do curl -sf "$SERVER/api/health" > /dev/null && break; sleep 2; done
+          curl -sf "$SERVER/api/health"
+      - name: Register and seed
+        run: |
+          curl -sf -D "$RUNNER_TEMP/headers" -o /dev/null -X POST "$SERVER/api/register" -H "Origin: $SERVER" -H "Content-Type: application/json" \
+            -d '{"token":"screens","username":"screens","password":"screens-pass-123","confirm":"screens-pass-123"}'
+          cookie=$(grep -i '^set-cookie: better-auth.session_token=' "$RUNNER_TEMP/headers" | head -1 | sed -E 's/^[^:]*: *//; s/;.*$//' | tr -d '\r')
+          [ -n "$cookie" ] || { echo "No session cookie"; cat "$RUNNER_TEMP/headers"; exit 1; }
+          thread=$(GOND_DATA_DIR="$RUNNER_TEMP/gond" bun apps/ios/scripts/screens-seed.ts | tail -1)
+          { echo "SCREENS_COOKIE=$cookie"; echo "SCREENS_THREAD=$thread"; } >> "$GITHUB_ENV"
+      - run: brew install xcodegen
+      - working-directory: apps/ios
+        run: xcodegen generate
+      - name: Take the screenshots
+        working-directory: apps/ios
+        env:
+          TEST_RUNNER_GOND_SCREENS_SERVER: ${{ env.SERVER }}
+          TEST_RUNNER_GOND_SCREENS_COOKIE: ${{ env.SCREENS_COOKIE }}
+          TEST_RUNNER_GOND_SCREENS_THREAD: ${{ env.SCREENS_THREAD }}
+        run: |
+          set -o pipefail
+          export TEST_RUNNER_GOND_SCREENS_DIR="$RUNNER_TEMP/screens"
+          device=$(xcrun simctl list devices available -j | jq -r '[.devices[][] | select(.name | test("^iPhone [0-9]+ Pro$"))][0].udid // empty')
+          [ -n "$device" ] || device=$(xcrun simctl list devices available -j | jq -r '[.devices[][] | select(.name | startswith("iPhone"))][0].udid')
+          xcrun simctl boot "$device" || true
+          for appearance in light dark; do
+            xcrun simctl ui "$device" appearance "$appearance"
+            TEST_RUNNER_GOND_SCREENS_APPEARANCE="$appearance" xcodebuild test -project Gond.xcodeproj -scheme GondScreens -destination "id=$device" \
+              -resultBundlePath "$RUNNER_TEMP/screens-$appearance.xcresult" CODE_SIGNING_ALLOWED=NO 2>&1 | grep -E '\[screens\]|error:|failed|passed|Test Case' || true
+          done
+      - name: Keep the attachments too
+        if: always()
+        run: |
+          for appearance in light dark; do
+            [ -d "$RUNNER_TEMP/screens-$appearance.xcresult" ] || continue
+            mkdir -p "$RUNNER_TEMP/screens/xcresult-$appearance"
+            xcrun xcresulttool export attachments --path "$RUNNER_TEMP/screens-$appearance.xcresult" --output-path "$RUNNER_TEMP/screens/xcresult-$appearance" || true
+          done
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: iphone-screenshots
+          path: ${{ runner.temp }}/screens
+          if-no-files-found: warn

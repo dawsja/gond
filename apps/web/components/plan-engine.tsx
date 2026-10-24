@@ -4,7 +4,7 @@ import { PROVIDER_LABELS, type PlanProviderKind, type ProviderMeta } from "@gond
 import { ExternalLink } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { ProviderCheck } from "@/components/providers-card";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Confirm } from "@/components/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { del, post } from "@/lib/api";
@@ -58,26 +58,17 @@ export function PlanSignedIn({
           Sign out
         </Button>
       </div>
-      <AlertDialog open={leaving} onOpenChange={setLeaving}>
-        <AlertDialogContent size="sm">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Sign out of {label.short}?</AlertDialogTitle>
-            <AlertDialogDescription>Bots running on your {label.name} stop working until you sign in again or pick somewhere else for them to run.</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              variant="destructive"
-              onAction={async () => {
-                await del(`/api/providers/${kind}`);
-                await onChange();
-              }}
-            >
-              Sign out
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <Confirm
+        open={leaving}
+        onOpenChange={setLeaving}
+        title={`Sign out of ${label.short}?`}
+        description={`Bots running on your ${label.name} stop working until you sign in again or pick somewhere else for them to run.`}
+        action="Sign out"
+        onConfirm={async () => {
+          await del(`/api/providers/${kind}`);
+          await onChange();
+        }}
+      />
     </div>
   );
 }

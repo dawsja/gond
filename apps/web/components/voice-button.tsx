@@ -15,7 +15,10 @@ function clock(seconds: number) {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
-export function VoiceButton({ threadId, onText }: { threadId: string; onText: (text: string) => void }) {
+export type VoiceInput = ReturnType<typeof useVoiceInput>;
+
+/** Talking instead of typing: the recorder, its transcription into the draft, and what the button says. */
+export function useVoiceInput(threadId: string, onText: (text: string) => void) {
   const { voice } = useVoice();
   const [transcribing, setTranscribing] = useState(false);
 
@@ -55,18 +58,23 @@ export function VoiceButton({ threadId, onText }: { threadId: string; onText: (t
   }
 
   const label = transcribing ? "Turning it into text" : recorder.recording ? "Stop and turn it into text" : ready ? "Talk instead of typing" : "Add a voice key to talk";
+  return { ready, transcribing, recording: recorder.recording, seconds: recorder.seconds, toggle, label };
+}
+
+export function VoiceButton({ input }: { input: VoiceInput }) {
+  const { ready, transcribing, recording, seconds, toggle, label } = input;
   return (
     <>
-      {recorder.recording ? <span className="px-1 text-xs text-muted-foreground tabular-nums">{clock(recorder.seconds)}</span> : null}
+      {recording ? <span className="px-1 text-xs text-muted-foreground tabular-nums">{clock(seconds)}</span> : null}
       <Tooltip>
         <TooltipTrigger
           render={
             <InputGroupButton
               type="button"
-              variant={recorder.recording ? "control" : "ghost"}
+              variant={recording ? "control" : "ghost"}
               size="icon-sm"
               aria-label={label}
-              aria-pressed={recorder.recording}
+              aria-pressed={recording}
               aria-disabled={!ready || undefined}
               disabled={transcribing}
               onClick={() => void toggle()}
@@ -74,7 +82,7 @@ export function VoiceButton({ threadId, onText }: { threadId: string; onText: (t
             />
           }
         >
-          {transcribing ? <Spinner aria-hidden="true" /> : recorder.recording ? <Square aria-hidden="true" className="fill-current" /> : <Mic aria-hidden="true" />}
+          {transcribing ? <Spinner aria-hidden="true" /> : recording ? <Square aria-hidden="true" className="fill-current" /> : <Mic aria-hidden="true" />}
         </TooltipTrigger>
         <TooltipContent>{label}</TooltipContent>
       </Tooltip>

@@ -28,12 +28,19 @@ final class AppModel: ObservableObject {
     /// What the page says it is drawn in (`setTheme`), so the window around it and the status bar match; nil on Connect.
     @Published private(set) var pageBackground: Color?
     @Published private(set) var pageDark: Bool?
+    /// The page follows the system, so the app mustn't pin a scheme: the web view would then only ever see that one.
+    @Published private(set) var pageFollowsSystem = false
     @Published var progress: Double = 1
 
+    let ui = NativeUI()
     private(set) lazy var shell = WebShell(model: self)
     private let signIn = SignIn()
 
     init() {
+        #if DEBUG
+        // The screenshot job (.github/workflows/ios-screens.yml) points a debug build at a seeded Gond.
+        if let server = ProcessInfo.processInfo.environment["GOND_SCREENS_SERVER"] { Prefs.server = server }
+        #endif
         let saved = Prefs.server
         server = saved
         address = saved ?? ""
@@ -44,6 +51,16 @@ final class AppModel: ObservableObject {
         Notifications.shared.onOpen = { [weak self] url in self?.open(url) }
         // A tap on a notification that launched the app opens its conversation, not the list.
         let target = Notifications.shared.takePendingOpen() ?? "/app"
+        #if DEBUG
+        let screens = ProcessInfo.processInfo.environment
+        if let server, let cookie = screens["GOND_SCREENS_COOKIE"], let path = screens["GOND_SCREENS_PATH"] {
+            Task {
+                await shell.setCookie(cookie, for: server)
+                open(path)
+            }
+            return
+        }
+        #endif
         if server != nil { open(target) }
     }
 
@@ -52,6 +69,7 @@ final class AppModel: ObservableObject {
 
     func showConnect(error: String? = nil) {
         resetTheme()
+        ui.clear()
         if let server { address = server }
         connectError = error
         screen = .connect
@@ -116,14 +134,16 @@ final class AppModel: ObservableObject {
         signIn.start(server: server, next: next) { [weak self] path in self?.open(path) }
     }
 
-    func applyTheme(background: String?, dark: Bool) {
+    func applyTheme(background: String?, dark: Bool, system: Bool) {
         if let background, let color = UIColor(css: background) { pageBackground = Color(color) }
         pageDark = dark
+        pageFollowsSystem = system
     }
 
     private func resetTheme() {
         pageBackground = nil
         pageDark = nil
+        pageFollowsSystem = false
     }
 
     private static func message(for failure: ServerURL.Invalid) -> String {

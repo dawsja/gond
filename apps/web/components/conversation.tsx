@@ -1,14 +1,15 @@
 "use client";
 
-import { handleOf, plainMarkdown, roomTargets, type Approval, type ApprovalAnswer, type Bot, type ChatAttachment, type ImageAspect, type LiveEvent, type Message, type ReactionEmoji, type Thread } from "@gond/shared";
+import { handleOf, plainMarkdown, REACTIONS, roomTargets, type Approval, type ApprovalAnswer, type Bot, type ChatAttachment, type ImageAspect, type LiveEvent, type Message, type ReactionEmoji, type Thread } from "@gond/shared";
 import { ArrowUp, ChevronLeft, Copy, CornerUpLeft, Download, ListEnd, EllipsisVertical, FileText, Monitor, PanelRight, Paperclip, Pencil, Plus, TextSelect, X } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type CSSProperties, type DragEvent, type FormEvent, type KeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { ApprovalCard } from "@/components/approval-card";
 import { QuoteInBubble, ReplyingTo } from "@/components/reply-quote";
 import { BotAvatar, RoomAvatar, roomMembers } from "@/components/bot-avatar";
+import { ConversationChrome } from "@/components/conversation-chrome";
 import { copyToClipboard } from "@/components/hq/clipboard";
 import { copyText } from "@/lib/markdown";
 import { canReact, react, ReactionBadges, ReactionPicker } from "@/components/reactions";
@@ -42,7 +43,7 @@ import { MessageScroller, MessageScrollerButton, MessageScrollerContent, Message
 import { toast } from "@/components/ui/toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { VoiceButton } from "@/components/voice-button";
+import { useVoiceInput, VoiceButton } from "@/components/voice-button";
 import { WorkLine, WorkLines } from "@/components/work-log";
 import { useCoarsePointer } from "@/hooks/use-mobile";
 import { useSwipeBack } from "@/hooks/use-swipe-back";
@@ -50,6 +51,8 @@ import { REPLY_DISTANCE, useSwipeToReply } from "@/hooks/use-swipe-to-reply";
 import { useStableCallback } from "@/hooks/use-stable-callback";
 import { api, ApiError, post } from "@/lib/api";
 import { readDraft, saveDraft } from "@/lib/drafts";
+import { historyStep, sentHistory } from "@/lib/sent-history";
+import { askNative, filesFrom, useNativeUi, type NativeMenuItem } from "@/lib/native-ui";
 import { cn } from "@/lib/utils";
 
 const ExchangeDialog = dynamic(() => import("@/components/exchange-dialog").then((m) => m.ExchangeDialog));
@@ -237,6 +240,7 @@ function quoteText(message: Message): string {
 const Line = memo(function Line({ message, threadId, bots, threads, bot, approvals, isRoom, editing, stops, touch, answer, sentTo, noticed, reveal, onPick, onView, onDecide, onOpenExchange, onEdit, onSelectText, onReacted, onReply, onJump }: { message: Message; threadId: string; bots: Bot[]; threads: ThreadRow[]; bot: Bot | null; approvals: Map<string, Approval>; isRoom: boolean; editing: boolean; stops: boolean; touch: boolean; answer: string | undefined; sentTo: string | undefined; noticed: Noticed | undefined; reveal: PictureReveal | undefined; onPick: (option: string, from: string) => Promise<void>; onView: (attachmentId: string) => void; onDecide: (id: string, answer: ApprovalAnswer) => Promise<void>; onOpenExchange: (withThreadId: string) => void; onEdit: (message: Message | null, text?: string) => Promise<boolean>; onSelectText: (text: string) => void; onReacted: (message: Message) => void; onReply: (message: Message) => void; onJump: (id: string) => void }) {
   const mine = message.author === "you";
   const bubble = useRef<HTMLDivElement>(null);
+  const native = useNativeUi();
 
   const [selected, setSelected] = useState("");
   const [timed, setTimed] = useState(false);
@@ -271,6 +275,32 @@ const Line = memo(function Line({ message, threadId, bots, threads, bot, approva
   const editable = mine && Boolean(message.body.trim()) && message.attachments.length === 0;
   const reactable = canReact(message);
   const reactWith = (emoji: ReactionEmoji) => void react(message, emoji, onReacted);
+  // On the iPhone a long press lifts the bubble into the app's own menu, with the reactions above it.
+  const openNativeMenu = async () => {
+    const node = bubble.current;
+    if (!node) return;
+    // The badges hang below the bubble, so the lifted copy would cut them; the reactions bar shows them anyway.
+    node.dataset.lifting = "";
+    const box = node.getBoundingClientRect();
+    const items: NativeMenuItem[] = [];
+    if (replyable) items.push({ id: "reply", label: "Reply", symbol: "arrowshape.turn.up.left" });
+    if (message.body) items.push({ id: "copy", label: "Copy text", symbol: "doc.on.doc" });
+    if (message.body) items.push({ id: "select", label: "Select text", symbol: "character.cursor.ibeam" });
+    if (editable) items.push({ id: "edit", label: "Edit and resend", symbol: "pencil" });
+    const picked = await askNative({
+      kind: "message",
+      rect: { x: box.x, y: box.y, width: box.width, height: box.height },
+      mine,
+      reactions: reactable ? { options: REACTIONS, mine: message.reactions.find((r) => r.author === "you")?.emoji ?? null } : null,
+      items,
+    });
+    delete node.dataset.lifting;
+    if (picked?.react && (REACTIONS as readonly string[]).includes(picked.react)) reactWith(picked.react as ReactionEmoji);
+    else if (picked?.action === "reply") onReply(message);
+    else if (picked?.action === "copy") void copyToClipboard(copyText(message.body)).then((ok) => toast.add(ok ? { title: "Copied." } : { type: "error", title: "Couldn't copy it." }));
+    else if (picked?.action === "select") onSelectText(copyText(message.body));
+    else if (picked?.action === "edit") void onEdit(message);
+  };
   if (editing) {
     return (
       <MessageRow align="end">
@@ -296,10 +326,16 @@ const Line = memo(function Line({ message, threadId, bots, threads, bot, approva
           ref={bubble}
           onClick={(event) => showsTime(event) && setTimed((on) => !on)}
           onContextMenu={(event) => {
+            if (native && touch) {
+              event.preventDefault();
+              event.preventBaseUIHandler();
+              if (message.body || editable || reactable || replyable) void openNativeMenu();
+              return;
+            }
             // A right click on a link gets the browser's own menu (open in a new tab, copy the address).
             if (!touch && event.target instanceof Element && event.target.closest("a[href]")) event.preventBaseUIHandler();
           }}
-          className={cn("touch-pan-y select-text pointer-coarse:select-none", !swipe && "transition-transform duration-200")}
+          className={cn("group/lift touch-pan-y select-text pointer-coarse:select-none", !swipe && "transition-transform duration-200")}
           style={swipe ? { transform: `translateX(${swipe}px)` } : undefined}
           render={<Bubble variant={mine ? "default" : "outline"} align={mine ? "end" : "start"} className={cn("max-w-[86%] sm:max-w-[78%]", message.reactions.length > 0 && "mb-2.5")} />}
         >
@@ -462,6 +498,14 @@ function LoadEarlier({ onLoad }: { onLoad: () => Promise<boolean> }) {
 export function Conversation({ threadId }: { threadId: string }) {
   const { bots, threads, approvals, refresh, boxUpdating, desktop } = useStore();
   const activity = useActivity();
+  const router = useRouter();
+  // In the iPhone app the header and the composer are the app's own, in Liquid Glass (`ConversationChrome`).
+  const nativeChrome = useNativeUi();
+  const [focusRev, setFocusRev] = useState(0);
+  const focusField = () => {
+    if (nativeChrome) setFocusRev((n) => n + 1);
+    else textarea.current?.focus();
+  };
   const [info, setInfo] = useState<ThreadInfo | null>(null);
   const [missing, setMissing] = useState(false);
   const [infoFailed, setInfoFailed] = useState(false);
@@ -470,11 +514,14 @@ export function Conversation({ threadId }: { threadId: string }) {
   const [earlier, setEarlier] = useState<boolean | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [draft, setDraft] = useState("");
+  // Which of the person's sent lines Up and Down put in the field (`sentHistory`), while it still shows that line.
+  const [recall, setRecall] = useState<number | null>(null);
   const restored = useRef(false);
   useEffect(() => {
     const saved = readDraft(threadId);
     void Promise.resolve().then(() => {
       if (saved) setDraft((d) => d || saved);
+      setRecall(null);
       restored.current = true;
     });
   }, [threadId]);
@@ -542,6 +589,8 @@ export function Conversation({ threadId }: { threadId: string }) {
     }
     return map;
   }, [messages]);
+
+  const history = useMemo(() => sentHistory(messages), [messages]);
 
   const pictures = useMemo(() => messages.flatMap((m) => (m.kind === "prompt" ? [] : m.attachments.filter(isPicture).map((file) => ({ id: file.id, name: file.name })))), [messages]);
 
@@ -772,6 +821,7 @@ export function Conversation({ threadId }: { threadId: string }) {
       append([data.message]);
       setSent(data.message.id);
       setDraft("");
+      setRecall(null);
       setFiles([]);
       setReplying(null);
     } catch (failure) {
@@ -786,7 +836,7 @@ export function Conversation({ threadId }: { threadId: string }) {
   function replyTo(message: Message) {
     setReplying(message);
     setEditing(null);
-    window.requestAnimationFrame(() => textarea.current?.focus());
+    window.requestAnimationFrame(focusField);
   }
 
   async function pick(option: string, from: string) {
@@ -851,10 +901,12 @@ export function Conversation({ threadId }: { threadId: string }) {
   function insertToken(token: string) {
     if (!slash) return;
     const el = textarea.current;
-    const caret = el?.selectionStart ?? draft.length;
+    // The app's field keeps its caret to itself; what's typed there is at the end.
+    const caret = nativeChrome ? draft.length : (el?.selectionStart ?? draft.length);
     const next = `${draft.slice(0, slash.start)}${token} ${draft.slice(caret)}`;
     setDraft(next);
     setSlash(null);
+    if (nativeChrome) return focusField();
     window.requestAnimationFrame(() => {
       const at = slash.start + token.length + 1;
       el?.setSelectionRange(at, at);
@@ -886,6 +938,21 @@ export function Conversation({ threadId }: { threadId: string }) {
       if (event.key === "Escape") {
         event.preventDefault();
         setSlash(null);
+        return;
+      }
+    }
+    if ((event.key === "ArrowUp" || event.key === "ArrowDown") && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey && !event.nativeEvent.isComposing) {
+      const el = event.currentTarget;
+      const at = recall !== null && history[recall] === draft ? recall : null;
+      const step = historyStep({ key: event.key, text: draft, start: el.selectionStart, end: el.selectionEnd, at, count: history.length });
+      if (step !== null) {
+        event.preventDefault();
+        const next = step < 0 ? "" : history[step]!;
+        setRecall(step < 0 ? null : step);
+        setDraft(next);
+        // Up leaves the caret at the start and Down at the end, so pressing the same key again keeps going.
+        const caret = event.key === "ArrowUp" ? 0 : next.length;
+        window.requestAnimationFrame(() => el.setSelectionRange(caret, caret));
         return;
       }
     }
@@ -930,10 +997,11 @@ export function Conversation({ threadId }: { threadId: string }) {
     },
     [touch],
   );
+  const voice = useVoiceInput(threadId, dictated);
 
   const mention = (b: Bot) => {
     setDraft((d) => `${d}${d && !d.endsWith(" ") ? " " : ""}@${handleOf(b.name)} `);
-    textarea.current?.focus();
+    focusField();
   };
 
   const onPick = useStableCallback(pick);
@@ -992,12 +1060,12 @@ export function Conversation({ threadId }: { threadId: string }) {
           </div>
         ) : null}
 
-        <header className="pointer-events-none absolute inset-x-0 top-0 z-20 flex h-[calc(64px+var(--safe-top))] items-center gap-2 px-3 pt-[var(--safe-top)] sm:px-4">
+        <header className={cn("pointer-events-none absolute inset-x-0 top-0 z-20 flex h-[calc(64px+var(--safe-top))] items-center gap-2 px-3 pt-[var(--safe-top)] sm:px-4", nativeChrome && "invisible")}>
           <Button size="icon-xl" aria-label="Back to chats" render={<Link href="/app" />} nativeButton={false} className="pointer-events-auto wide:hidden">
             <ChevronLeft aria-hidden="true" />
           </Button>
           <h1 className="sr-only">{info?.thread.name ?? "Conversation"}</h1>
-          <Button size="xl" onClick={openPill} aria-label={bot ? `${bot.name}'s details` : "Room details"} className="pointer-events-auto min-w-0 shrink gap-2 pl-1.5 text-left">
+          <Button size="xl" onClick={openPill} aria-label={bot ? `${bot.name}'s details` : "Room details"} data-native-avatar="" className="pointer-events-auto min-w-0 shrink gap-2 pl-1.5 text-left">
             {bot ? <BotAvatar bot={bot} size={32} /> : <RoomAvatar bots={roomBots} size={32} />}
             <span className="flex min-w-0 flex-col">
               <span className="truncate text-[15px] leading-5 font-semibold">{info?.thread.name ?? "…"}</span>
@@ -1132,7 +1200,15 @@ export function Conversation({ threadId }: { threadId: string }) {
           </MessageScroller>
         </MessageScrollerProvider>
 
-        <form onSubmit={send} ref={composer} className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-3 pt-2.5 pb-[max(12px,var(--safe-bottom))] sm:px-4 sm:pt-3 [&>*]:pointer-events-auto">
+        <form
+          onSubmit={send}
+          ref={composer}
+          data-native-composer={nativeChrome ? "" : undefined}
+          // Under the app's composer the page keeps its own in place, unseen, so what sits above it (the
+          // bots to mention, files, a quote, the / list) and the messages' padding stay where they were.
+          style={nativeChrome ? { paddingBottom: "var(--native-composer-bottom, max(12px, var(--safe-bottom)))" } : undefined}
+          className={cn("pointer-events-none absolute inset-x-0 bottom-0 z-20 px-3 pt-2.5 pb-[max(12px,var(--safe-bottom))] sm:px-4 sm:pt-3 [&>*]:pointer-events-auto", nativeChrome && "transition-[padding] duration-250 ease-out")}
+        >
           {members.length ? (
             // One row a thumb swipes along on a phone, however many bots; on a wide screen they wrap.
             <div className="-mx-3 mb-2 flex max-w-[calc(100%+1.5rem)] gap-1.5 overflow-x-auto overscroll-x-contain px-3 py-1 sm:-mx-4 sm:max-w-[calc(100%+2rem)] sm:px-4 wide:mx-0 wide:max-w-full wide:flex-wrap wide:overflow-visible wide:px-0">
@@ -1176,7 +1252,7 @@ export function Conversation({ threadId }: { threadId: string }) {
           <div className="relative flex items-end gap-2.5">
           {slash ? <SlashMenu kind={slash.kind} skills={skills} bots={mentionable} query={slash.query} selected={slash.selected} onPickSkill={(skill) => insertSkill(skill.slug)} onPickBot={insertBot} /> : null}
           <Tooltip>
-            <TooltipTrigger render={<Button size="icon-xl" aria-label="Attach files" render={<label />} nativeButton={false} className="cursor-pointer" />}>
+            <TooltipTrigger render={<Button size="icon-xl" aria-label="Attach files" render={<label />} nativeButton={false} className={cn("cursor-pointer", nativeChrome && "invisible")} />}>
               <Plus aria-hidden="true" />
               <input type="file" multiple className="sr-only" accept="image/*,.pdf,.txt,.md,.csv,.json" onChange={(e) => {
                 attach([...(e.target.files ?? [])]);
@@ -1186,12 +1262,13 @@ export function Conversation({ threadId }: { threadId: string }) {
             <TooltipContent>Attach files</TooltipContent>
           </Tooltip>
 
-          <InputGroup variant="pill" className="min-h-11 rounded-[22px] pr-1.5">
+          <InputGroup variant="pill" className={cn("min-h-11 rounded-[22px] pr-1.5", nativeChrome && "invisible overflow-hidden")} style={nativeChrome ? { height: "var(--native-composer-height, 44px)" } : undefined}>
             <InputGroupTextarea
               ref={textarea}
               value={draft}
               onChange={(e) => {
                 setDraft(e.target.value);
+                setRecall(null);
 
                 if (notice) setNotice(null);
                 trackSlash(e.target.value, e.target.selectionStart ?? e.target.value.length);
@@ -1217,7 +1294,7 @@ export function Conversation({ threadId }: { threadId: string }) {
                   <TooltipContent>Send after it finishes</TooltipContent>
                 </Tooltip>
               ) : null}
-              <VoiceButton threadId={threadId} onText={dictated} />
+              <VoiceButton input={voice} />
               <Tooltip>
                 <TooltipTrigger render={<InputGroupButton type="submit" variant="tint" size="icon-sm" aria-label="Send" disabled={sending || (!draft.trim() && !files.length)} className="rounded-full" />}>
                   <ArrowUp aria-hidden="true" />
@@ -1232,6 +1309,42 @@ export function Conversation({ threadId }: { threadId: string }) {
       {panel && info ? <RightPanel thread={info.thread} bot={bot} working={busy} screen={screenProps} /> : null}
       {info ? <DetailsSheet open={details} onOpenChange={setDetails} thread={info.thread} bot={bot} working={busy} screen={screenProps} /> : null}
       {screen ? <ScreenPanel threadId={threadId} botId={screen} expanded onExpand={() => setScreen(screen)} onCollapse={() => setScreen(null)} /> : null}
+      {nativeChrome ? (
+        <ConversationChrome
+          thread={threadId}
+          avatarKey={JSON.stringify((bot ? [bot] : roomBots).map((b) => [b.id, b.color, b.shape, b.avatar, b.expression]))}
+          title={info?.thread.name ?? "…"}
+          subtitle={`${bot ? bot.title || "Teammate" : info ? `${info.thread.members.length} bots` : ""}${boxUpdating ? " · the computer is updating, replies wait" : busy ? " · working" : waitingOnYou ? " · waiting on you" : watches.length ? ` · watching ${watches.length === 1 ? "1 thing" : `${watches.length} things`}` : ""}`}
+          working={busy || boxUpdating}
+          more={bot ? 0 : Math.max(0, roomBots.length - 2)}
+          primary={Boolean(bot?.primary)}
+          menu={actions}
+          composer={{
+            text: draft,
+            focusRev,
+            placeholder: replying ? `Reply to ${nameOf(replying.author, bots)}` : busy && !isRoom ? "Add to it, or say stop" : bot ? `Message ${bot.name}` : answersNext.length ? `${names(answersNext)} ${answersNext.length > 1 ? "answer" : "answers"} next` : "Message the room",
+            canSend: !sending && Boolean(draft.trim() || files.length),
+            sending,
+            later: busy && Boolean(draft.trim()) && !files.length,
+            voice: voice.transcribing ? "working" : voice.recording ? "recording" : voice.ready ? "idle" : "off",
+            seconds: voice.seconds,
+          }}
+          onEvent={(event) => {
+            if (event.type === "back") router.push("/app");
+            else if (event.type === "details") openPill();
+            else if (event.type === "menu") actions.flat().find((action) => action.id === event.id)?.run();
+            else if (event.type === "text") {
+              setDraft(event.value);
+              setRecall(null);
+              if (notice) setNotice(null);
+              trackSlash(event.value, event.value.length);
+            } else if (event.type === "send") void send(undefined, Boolean(event.later));
+            else if (event.type === "voice") void voice.toggle();
+            else if (event.type === "attach") void filesFrom(event.files).then(attach, () => setNotice("Couldn't attach that file."));
+            else if (event.type === "notice") setNotice(event.text);
+          }}
+        />
+      ) : null}
       <ThreadConfirms ask={ask} onClose={() => setAsk(null)} />
       <SelectTextDialog text={selectText} onClose={() => setSelectText(null)} />
       <ImageViewer images={pictures} openId={viewing} onOpenId={setViewing} />

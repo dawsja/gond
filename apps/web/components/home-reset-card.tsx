@@ -2,7 +2,7 @@
 
 import { RotateCcw } from "lucide-react";
 import { useState } from "react";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Confirm } from "@/components/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "@/components/ui/toast";
@@ -59,20 +59,15 @@ export function HomeResetCard() {
         </Button>
       </CardFooter>
 
-      <AlertDialog open={confirming} onOpenChange={(open) => !busy && setConfirming(open)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Start your space fresh?</AlertDialogTitle>
-            <AlertDialogDescription>Your bots stop what they&apos;re doing, and everything installed and every file in your space goes. Their memories and your sign-ins stay. This can&apos;t be undone.</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={busy}>Not now</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" onAction={reset}>
-              Start fresh
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <Confirm
+        open={confirming}
+        onOpenChange={(open) => !busy && setConfirming(open)}
+        title="Start your space fresh?"
+        description="Your bots stop what they're doing, and everything installed and every file in your space goes. Their memories and your sign-ins stay. This can't be undone."
+        action="Start fresh"
+        cancel="Not now"
+        onConfirm={reset}
+      />
     </Card>
   );
 }

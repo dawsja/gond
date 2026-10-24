@@ -12,34 +12,37 @@ import { del, patch } from "@/lib/api";
 
 export type Ask = { kind: "delete" | "transfer"; thread: ThreadRow };
 
-export type ThreadAction = { id: string; label: string; icon: LucideIcon; run: () => void; destructive?: boolean };
+/** `symbol` is the SF Symbol the iPhone app's menu shows for it. */
+export type ThreadAction = { id: string; label: string; icon: LucideIcon; symbol: string; run: () => void; destructive?: boolean };
 
 export function threadActions({ thread, bot, bots, onOpen, onAsk, refresh }: { thread: ThreadRow; bot: Bot | undefined; bots: Bot[]; onOpen: (dialog: NonNullable<ShellDialog>) => void; onAsk: (ask: Ask) => void; refresh: () => Promise<void> }): ThreadAction[][] {
   const groups: ThreadAction[][] = [];
   if (bot) {
     groups.push([
-      { id: "edit", label: "Edit profile", icon: Pencil, run: () => onOpen({ kind: "edit-bot", botId: bot.id }) },
+      { id: "edit", label: "Edit profile", icon: Pencil, symbol: "pencil", run: () => onOpen({ kind: "edit-bot", botId: bot.id }) },
       {
         id: "pin",
         label: bot.pinned ? "Unpin" : "Pin to the top",
         icon: bot.pinned ? PinOff : Pin,
+        symbol: bot.pinned ? "pin.slash" : "pin",
         run: () =>
           void patch(`/api/bots/${bot.id}`, { pinned: !bot.pinned })
             .then(() => refresh())
             .catch(failed(bot.pinned ? "Couldn't unpin it." : "Couldn't pin it.")),
       },
-      { id: "share", label: "Share as template", icon: Share2, run: () => onOpen({ kind: "share-bot", botId: bot.id }) },
+      { id: "share", label: "Share as template", icon: Share2, symbol: "square.and.arrow.up", run: () => onOpen({ kind: "share-bot", botId: bot.id }) },
     ]);
     if (bot.primary && bots.some((b) => b.id !== bot.id && !b.hidden)) {
-      groups.push([{ id: "transfer", label: "Transfer primary bot", icon: ArrowRightLeft, run: () => onAsk({ kind: "transfer", thread }) }]);
+      groups.push([{ id: "transfer", label: "Transfer primary bot", icon: ArrowRightLeft, symbol: "arrow.left.arrow.right", run: () => onAsk({ kind: "transfer", thread }) }]);
     }
   } else if (thread.kind === "room") {
     groups.push([
-      { id: "edit", label: "Edit room", icon: Pencil, run: () => onOpen({ kind: "edit-room", threadId: thread.id }) },
+      { id: "edit", label: "Edit room", icon: Pencil, symbol: "pencil", run: () => onOpen({ kind: "edit-room", threadId: thread.id }) },
       {
         id: "pin",
         label: thread.pinned ? "Unpin" : "Pin to the top",
         icon: thread.pinned ? PinOff : Pin,
+        symbol: thread.pinned ? "pin.slash" : "pin",
         run: () =>
           void patch(`/api/rooms/${thread.id}`, { pinned: !thread.pinned })
             .then(() => refresh())
@@ -48,7 +51,7 @@ export function threadActions({ thread, bot, bots, onOpen, onAsk, refresh }: { t
     ]);
   }
   groups.push([
-    { id: "delete", label: bot ? "Delete bot" : "Delete room", icon: Trash2, destructive: true, run: () => onAsk({ kind: "delete", thread }) },
+    { id: "delete", label: bot ? "Delete bot" : "Delete room", icon: Trash2, symbol: "trash", destructive: true, run: () => onAsk({ kind: "delete", thread }) },
   ]);
   return groups;
 }

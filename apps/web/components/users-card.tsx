@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { PersonAvatar } from "@/components/bot-avatar";
 import { useLiveEvents } from "@/components/hq/live-events";
 import { useStore } from "@/components/store";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Confirm } from "@/components/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -85,20 +85,15 @@ export function UsersCard() {
           </ul>
         )}
       </CardContent>
-      <AlertDialog open={Boolean(removing)} onOpenChange={(open) => !open && setRemoving(null)}>
-        <AlertDialogContent size="sm">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Remove {shownRemoving?.name}?</AlertDialogTitle>
-            <AlertDialogDescription>Their {shownRemoving?.bots ?? 0} {shownRemoving?.bots === 1 ? "bot" : "bots"}, every conversation and the bots&apos; files on the computer are deleted. This can&apos;t be undone.</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Keep them</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" onAction={async () => removing && (await remove(removing))}>
-              Remove
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <Confirm
+        open={Boolean(removing)}
+        onOpenChange={(open) => !open && setRemoving(null)}
+        title={`Remove ${shownRemoving?.name ?? ""}?`}
+        description={`Their ${shownRemoving?.bots ?? 0} ${shownRemoving?.bots === 1 ? "bot" : "bots"}, every conversation and the bots' files on the computer are deleted. This can't be undone.`}
+        action="Remove"
+        cancel="Keep them"
+        onConfirm={async () => removing && (await remove(removing))}
+      />
     </Card>
   );
 }

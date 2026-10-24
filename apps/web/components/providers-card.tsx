@@ -4,7 +4,7 @@ import { KEY_PROVIDER_KINDS, PROVIDER_KINDS, PROVIDER_LABELS, type KeyProviderKi
 import { Check, TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useLiveEvents } from "@/components/hq/live-events";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Confirm } from "@/components/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -134,26 +134,17 @@ function ManageKey({ kind, provider, onChange }: { kind: KeyProviderKind; provid
           </Button>
         </div>
       )}
-      <AlertDialog open={removing} onOpenChange={setRemoving}>
-        <AlertDialogContent size="sm">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Remove this API key?</AlertDialogTitle>
-            <AlertDialogDescription>Bots running on the {label.short} API stop working until you add a key again or pick somewhere else for them to run.</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              variant="destructive"
-              onAction={async () => {
-                await del(`/api/providers/${kind}`);
-                await onChange();
-              }}
-            >
-              Remove
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <Confirm
+        open={removing}
+        onOpenChange={setRemoving}
+        title="Remove this API key?"
+        description={`Bots running on the ${label.short} API stop working until you add a key again or pick somewhere else for them to run.`}
+        action="Remove"
+        onConfirm={async () => {
+          await del(`/api/providers/${kind}`);
+          await onChange();
+        }}
+      />
     </div>
   );
 }
