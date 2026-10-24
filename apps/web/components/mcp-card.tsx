@@ -11,7 +11,7 @@ import { McpDialog } from "@/components/mcp-dialog";
 import { McpPasteSignIn, startMcpSignIn } from "@/components/mcp-signin";
 import { LoadFailed } from "@/components/load-failed";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Confirm } from "@/components/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -165,27 +165,19 @@ export function McpCard() {
           ) : null}
         </DialogContent>
       </Dialog>
-      <AlertDialog open={Boolean(removing)} onOpenChange={(open) => !open && setRemoving(null)}>
-        <AlertDialogContent size="sm">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Remove this server?</AlertDialogTitle>
-            <AlertDialogDescription>The bots lose {shownRemoving?.name}&apos;s tools on their next reply.</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Keep it</AlertDialogCancel>
-            <AlertDialogAction
-              variant="destructive"
-              onAction={async () => {
-                if (!removing) return;
-                await del(`/api/mcp-servers/${removing.id}`);
-                await load();
-              }}
-            >
-              Remove
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <Confirm
+        open={Boolean(removing)}
+        onOpenChange={(open) => !open && setRemoving(null)}
+        title="Remove this server?"
+        description={`The bots lose ${shownRemoving?.name ?? ""}'s tools on their next reply.`}
+        action="Remove"
+        cancel="Keep it"
+        onConfirm={async () => {
+          if (!removing) return;
+          await del(`/api/mcp-servers/${removing.id}`);
+          await load();
+        }}
+      />
     </Card>
   );
 }

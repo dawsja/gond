@@ -4,7 +4,7 @@ import { SKILL_LIMITS, type Skill, type SkillFile } from "@gond/shared";
 import { ChevronLeft, Download, FileCode, FilePlus, FileText, Trash2, Upload } from "lucide-react";
 import { useRef, useState, type FormEvent } from "react";
 import { useDiscardChanges } from "@/components/discard-changes";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Confirm } from "@/components/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -271,20 +271,14 @@ export function SkillDialog({ skill: initial, onClose, onSaved }: { skill: Skill
           </form>
         )}
 
-        <AlertDialog open={Boolean(removing)} onOpenChange={(open) => !open && setRemoving(null)}>
-          <AlertDialogContent size="sm">
-            <AlertDialogHeader>
-              <AlertDialogTitle>Delete this file?</AlertDialogTitle>
-              <AlertDialogDescription>{shownRemoving?.path} leaves the skill for every one of your bots.</AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction variant="destructive" onAction={async () => removing && (await removeFile(removing))}>
-                Delete
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+        <Confirm
+          open={Boolean(removing)}
+          onOpenChange={(open) => !open && setRemoving(null)}
+          title="Delete this file?"
+          description={`${shownRemoving?.path ?? ""} leaves the skill for every one of your bots.`}
+          action="Delete"
+          onConfirm={async () => removing && (await removeFile(removing))}
+        />
       </DialogContent>
       {discard.prompt}
       {leaveFile.prompt}

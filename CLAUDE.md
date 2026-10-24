@@ -78,7 +78,26 @@ what is here. The README says what Gond is; this says how it is made.
   bars with `--shell-inset-*` pushed as on Android. Sign-in is
   `ASWebAuthenticationSession` with `app=ios`, back on `gond://sign-in`.
   Notifications come through the bridge like Android's, so only while the
-  app is open or just put away; there is no APNs. `ServerURL.swift` mirrors
+  app is open or just put away; there is no APNs. A few things are the
+  app's own, in Liquid Glass (`NativeUI.swift`, `NativeViews.swift`, and
+  `lib/native-ui.ts` on the page): `present` asks for a confirm (iOS's
+  alert, from every `Confirm`), a message's long-press menu (the bubble
+  snapshotted and lifted over a blur, the reactions in a glass capsule
+  above it, the actions below) and the pictures (Quick Look, fetched with
+  the web view's cookies), answered as a `gond:native` event; `chrome`
+  hands over a conversation's header and composer (`ConversationChrome`),
+  which the page keeps in place unseen so what sits above the composer
+  and the messages' padding stay put (`--native-composer-bottom`,
+  `--native-composer-height` from the app), and the person's taps and
+  typing come back as `gond:native-chrome` events. The page decides
+  everything; the app only draws and reports. The text lives in the app's
+  field while it is typed in and goes back to it only when the page
+  changed it itself (`textRev`), and the chrome steps aside while
+  anything of the page's covers the conversation (a sheet, a dialog, a
+  menu). The `iPhone screenshots` workflow (`ios-screens.yml`) runs a
+  debug build in a simulator against a throwaway Gond seeded by
+  `scripts/screens-seed.ts` (the `GOND_SCREENS_*` hooks exist only in
+  debug builds) and keeps light and dark screenshots of all of it. `ServerURL.swift` mirrors
   `ServerUrl.kt` with the same tests, and `scripts/check.mjs` (the
   package's lint) fails when the bridge misses a `GondMobile` method, the
   loopback port drifts from shared or an Android address test has no Swift
@@ -122,7 +141,8 @@ what is here. The README says what Gond is; this says how it is made.
 - **Use shadcn, don't hand-roll.** The skill is in `.agents/skills/shadcn`
   and its rules apply: forms are `FieldGroup`/`Field`, option sets are
   `ToggleGroup`, callouts are `Alert`, empty states are `Empty`, confirms
-  are `AlertDialog` (never `window.confirm`), notices are `toast`, chat is
+  are `AlertDialog` (never `window.confirm`), and a plain yes or no is
+  `Confirm` (`confirm-dialog.tsx`), which the iPhone app shows as its own, notices are `toast`, chat is
   `MessageScroller`/`Message`/`Bubble`/`Attachment`/`Marker`, the sidebar
   is the `Sidebar` block, menus are `DropdownMenu` with items in groups,
   `Select` items in `SelectGroup`. Add a component with

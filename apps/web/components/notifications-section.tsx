@@ -5,7 +5,7 @@ import { Ellipsis, Globe, Monitor, Pencil, Send, Smartphone, Trash2 } from "luci
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { failed } from "@/components/failed";
 import { LoadFailed } from "@/components/load-failed";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Confirm } from "@/components/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -72,27 +72,19 @@ export function NotificationsSection() {
         />
       ) : null}
 
-      <AlertDialog open={removing} onOpenChange={setRemoving}>
-        <AlertDialogContent size="sm">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Remove {shownName}?</AlertDialogTitle>
-            <AlertDialogDescription>Notices stop going to {shownName}, and its keys are forgotten. Your browsers and apps keep getting theirs.</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Keep it</AlertDialogCancel>
-            <AlertDialogAction
-              variant="destructive"
-              onAction={async () => {
-                await del("/api/notify-service");
-                setService(null);
-                setEditing(false);
-              }}
-            >
-              Remove
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <Confirm
+        open={removing}
+        onOpenChange={setRemoving}
+        title={`Remove ${shownName}?`}
+        description={`Notices stop going to ${shownName}, and its keys are forgotten. Your browsers and apps keep getting theirs.`}
+        action="Remove"
+        cancel="Keep it"
+        onConfirm={async () => {
+          await del("/api/notify-service");
+          setService(null);
+          setEditing(false);
+        }}
+      />
     </>
   );
 }

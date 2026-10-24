@@ -5,7 +5,7 @@ import { KeyRound } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useLiveEvents } from "@/components/hq/live-events";
 import { LoadFailed } from "@/components/load-failed";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Confirm } from "@/components/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -138,20 +138,14 @@ export function ComposioCard({ onChange }: { onChange: () => void }) {
         )}
       </CardContent>
 
-      <AlertDialog open={removing} onOpenChange={setRemoving}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Remove your Composio key?</AlertDialogTitle>
-            <AlertDialogDescription>Your bots lose those apps here. They stay in your Composio project.</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" onAction={remove}>
-              Remove
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <Confirm
+        open={removing}
+        onOpenChange={setRemoving}
+        title="Remove your Composio key?"
+        description="Your bots lose those apps here. They stay in your Composio project."
+        action="Remove"
+        onConfirm={remove}
+      />
     </Card>
   );
 }

@@ -7,7 +7,7 @@ import { failed } from "@/components/failed";
 import { useLiveEvents } from "@/components/hq/live-events";
 import { SkillDialog } from "@/components/skill-dialog";
 import { LoadFailed } from "@/components/load-failed";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Confirm } from "@/components/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -169,27 +169,19 @@ export function SkillsCard() {
       </CardContent>
 
       {editing ? <SkillDialog skill={editing === "new" ? null : editing} onClose={() => setEditing(null)} onSaved={load} /> : null}
-      <AlertDialog open={Boolean(removing)} onOpenChange={(open) => !open && setRemoving(null)}>
-        <AlertDialogContent size="sm">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete this skill?</AlertDialogTitle>
-            <AlertDialogDescription>&ldquo;{shownRemoving?.name}&rdquo; and its files leave your library, for all of your bots. Routines that run it keep their prompt.</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Keep it</AlertDialogCancel>
-            <AlertDialogAction
-              variant="destructive"
-              onAction={async () => {
-                if (!removing) return;
-                await del(`/api/skills/${removing.id}`);
-                await load();
-              }}
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <Confirm
+        open={Boolean(removing)}
+        onOpenChange={(open) => !open && setRemoving(null)}
+        title="Delete this skill?"
+        description={`\u201c${shownRemoving?.name ?? ""}\u201d and its files leave your library, for all of your bots. Routines that run it keep their prompt.`}
+        action="Delete"
+        cancel="Keep it"
+        onConfirm={async () => {
+          if (!removing) return;
+          await del(`/api/skills/${removing.id}`);
+          await load();
+        }}
+      />
     </Card>
   );
 }

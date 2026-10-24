@@ -5,7 +5,7 @@ import { KeyRound, LogIn, Pencil, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useLiveEvents } from "@/components/hq/live-events";
 import { LoadFailed } from "@/components/load-failed";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Confirm } from "@/components/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -216,20 +216,15 @@ export function SecretsCard() {
 
       {changing ? <ChangeDialog changing={changing} onClose={() => setChanging(null)} onSaved={() => void load()} /> : null}
 
-      <AlertDialog open={Boolean(forgetting)} onOpenChange={(open) => !open && setForgetting(null)}>
-        <AlertDialogContent size="sm">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Forget {breakable(shownForgetting?.title ?? "")}?</AlertDialogTitle>
-            <AlertDialogDescription>{shownForgetting?.detail}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Keep it</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" onAction={async () => forgetting && (await forget(forgetting))}>
-              Forget
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <Confirm
+        open={Boolean(forgetting)}
+        onOpenChange={(open) => !open && setForgetting(null)}
+        title={`Forget ${shownForgetting?.title ?? ""}?`}
+        description={shownForgetting?.detail ?? ""}
+        action="Forget"
+        cancel="Keep it"
+        onConfirm={async () => forgetting && (await forget(forgetting))}
+      />
     </>
   );
 }
