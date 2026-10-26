@@ -1,0 +1,545 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Anti-bot challenge</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: #eef2f7;
+    color: #17202e;
+    display: grid;
+    place-items: center;
+  }
+  main {
+    width: min(760px, calc(100vw - 40px));
+    background: #fff;
+    border: 1px solid #d7dfea;
+    border-radius: 18px;
+    padding: 28px 32px 26px;
+    box-shadow: 0 22px 60px rgba(23, 32, 46, .14);
+  }
+  h1 { margin: 0 0 6px; font-size: 24px; letter-spacing: -.02em; }
+  .tip { margin: 0 0 18px; color: #55647a; font-size: 15px; }
+  .stage { min-height: 360px; display: grid; place-content: center; justify-items: center; gap: 18px; }
+  .status {
+    margin: 20px 0 0;
+    padding: 12px 14px;
+    border-radius: 10px;
+    background: #f4f7fb;
+    border: 1px solid #dbe4ef;
+    font-size: 15px;
+    font-weight: 600;
+    color: #43516a;
+  }
+  .status.good { background: #e8f8ee; border-color: #a9e5be; color: #12652f; }
+  .status.bad { background: #fdecec; border-color: #f3b7b7; color: #8c1d1d; }
+
+  .holdButton {
+    position: relative;
+    width: 260px;
+    height: 68px;
+    border: 0;
+    border-radius: 999px;
+    background: #1f6feb;
+    color: #fff;
+    font-size: 17px;
+    font-weight: 700;
+    cursor: pointer;
+    overflow: hidden;
+    touch-action: none;
+    user-select: none;
+  }
+  .holdButton span { position: relative; z-index: 1; }
+  .holdButton .fill {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 0%;
+    background: #0b4fbf;
+    pointer-events: none;
+  }
+  .holdButton.done { background: #1a7f45; }
+  .holdButton.done .fill { width: 100% !important; background: #12652f; }
+
+  .iconGrid { display: grid; gap: 10px; }
+  .grid3 { grid-template-columns: repeat(3, 96px); }
+  .grid4 { grid-template-columns: repeat(4, 88px); }
+  .tile {
+    display: grid;
+    place-items: center;
+    width: 96px;
+    height: 96px;
+    padding: 0;
+    border: 2px solid #cdd8e7;
+    border-radius: 14px;
+    background: #f8fafd;
+    cursor: pointer;
+    transition: transform .08s ease, border-color .08s ease, background .08s ease;
+  }
+  .grid4 .tile { width: 88px; height: 88px; }
+  .tile:hover { border-color: #8fb3e8; transform: translateY(-1px); }
+  .tile.selected { border-color: #1f6feb; background: #e7f0ff; box-shadow: inset 0 0 0 3px #bcd5ff; }
+  .tile.wrong { border-color: #d64545; background: #fdecec; }
+  .target {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 15px;
+    color: #55647a;
+  }
+  .target .iconBox {
+    width: 86px;
+    height: 86px;
+    border-radius: 14px;
+    background: #eef4ff;
+    border: 2px dashed #9ebef0;
+    display: grid;
+    place-items: center;
+  }
+  .row { display: flex; align-items: center; gap: 12px; }
+  .btn {
+    border: 0;
+    border-radius: 10px;
+    background: #17202e;
+    color: #fff;
+    padding: 13px 24px;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .btn:hover { background: #2b3a52; }
+  .orderRow { display: flex; gap: 10px; font-size: 15px; font-weight: 700; color: #1f6feb; }
+  .orderRow .chip { background: #eaf1ff; border: 1px solid #bcd5ff; border-radius: 999px; padding: 6px 12px; }
+
+  .sliderTrack {
+    position: relative;
+    width: 560px;
+    max-width: 100%;
+    height: 56px;
+    border-radius: 12px;
+    background: #dbe6f6;
+    border: 2px solid #c2d2e8;
+    overflow: hidden;
+    touch-action: none;
+    user-select: none;
+  }
+  .sliderGap {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 46px;
+    background: repeating-linear-gradient(135deg, #9db7dc 0 8px, #b8cbea 8px 16px);
+    border-left: 2px dashed #58779f;
+    border-right: 2px dashed #58779f;
+  }
+  .sliderHandle {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 50px;
+    height: 46px;
+    border-radius: 9px;
+    background: #1f6feb;
+    color: #fff;
+    display: grid;
+    place-items: center;
+    font-size: 20px;
+    font-weight: 700;
+    cursor: grab;
+  }
+  .sliderHandle.dragging { cursor: grabbing; background: #0b4fbf; }
+
+  .robot {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    border: 2px solid #cdd8e7;
+    border-radius: 12px;
+    background: #f8fafd;
+    padding: 16px 20px;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: 600;
+    user-select: none;
+  }
+  .robot .box {
+    width: 28px; height: 28px;
+    border: 2px solid #7b8ca6;
+    border-radius: 6px;
+    display: grid; place-items: center;
+    background: #fff;
+    font-size: 19px;
+    color: #fff;
+  }
+  .robot.checked .box { background: #1a7f45; border-color: #1a7f45; color: #fff; }
+
+  /* The bot's pointer, drawn where Playwright actually moves the mouse, so a recording shows the hands. */
+  #botCursor {
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: 20px;
+    height: 20px;
+    margin: -10px 0 0 -10px;
+    border-radius: 50%;
+    border: 2px solid rgba(31, 111, 235, .95);
+    background: rgba(31, 111, 235, .22);
+    box-shadow: 0 0 0 3px rgba(31, 111, 235, .12);
+    pointer-events: none;
+    z-index: 9999;
+    transition: transform .04s linear, background .08s linear;
+  }
+  #botCursor.down { transform: scale(.72); background: rgba(31, 111, 235, .6); }
+  .ripple {
+    position: fixed;
+    width: 18px;
+    height: 18px;
+    margin: -9px 0 0 -9px;
+    border-radius: 50%;
+    border: 2px solid rgba(31, 111, 235, .8);
+    pointer-events: none;
+    z-index: 9998;
+    animation: ripple .45s ease-out forwards;
+  }
+  @keyframes ripple {
+    from { opacity: .9; transform: scale(.5); }
+    to { opacity: 0; transform: scale(3.2); }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1 id="title">Checking your browser</h1>
+  <p class="tip" id="tip">This is a local test of the anti-bot challenge tools. Nothing leaves this page.</p>
+  <div class="stage" id="stage"></div>
+  <p class="status" id="status" role="status">Waiting for you to start.</p>
+</main>
+<script>
+const ICONS = {
+  star: '<polygon points="50,6 61,37 94,37 67,56 77,88 50,69 23,88 33,56 6,37 39,37" fill="#f2b705" stroke="#b88700" stroke-width="3"/>',
+  circle: '<circle cx="50" cy="50" r="38" fill="#e5484d" stroke="#a91f24" stroke-width="3"/>',
+  square: '<rect x="13" y="13" width="74" height="74" rx="8" fill="#1f6feb" stroke="#0b4fbf" stroke-width="3"/>',
+  triangle: '<polygon points="50,8 94,88 6,88" fill="#22a06b" stroke="#12652f" stroke-width="3"/>',
+  heart: '<path d="M50 87C20 66 8 50 8 33 8 18 19 8 33 8c8 0 14 4 17 9 3-5 9-9 17-9 14 0 25 10 25 25 0 17-12 33-42 54z" fill="#e93d82" stroke="#a81d59" stroke-width="3"/>',
+  bolt: '<polygon points="56,4 18,55 44,55 38,96 84,40 55,40" fill="#f2b705" stroke="#b88700" stroke-width="3"/>',
+  moon: '<path d="M70 6a46 46 0 1 0 24 84A42 42 0 0 1 70 6z" fill="#8b5cf6" stroke="#5b21b6" stroke-width="3"/>',
+  sun: '<circle cx="50" cy="50" r="22" fill="#f59e0b" stroke="#b45309" stroke-width="3"/><g stroke="#f59e0b" stroke-width="6" stroke-linecap="round"><path d="M50 4v14M50 82v14M4 50h14M82 50h14M17 17l10 10M73 73l10 10M83 17L73 27M27 73L17 83"/></g>',
+  train: '<rect x="14" y="18" width="72" height="52" rx="10" fill="#1f6feb" stroke="#0b4fbf" stroke-width="3"/><rect x="24" y="28" width="20" height="16" rx="3" fill="#dbeafe"/><rect x="56" y="28" width="20" height="16" rx="3" fill="#dbeafe"/><rect x="26" y="58" width="48" height="8" rx="4" fill="#0b4fbf"/><circle cx="30" cy="80" r="8" fill="#17202e"/><circle cx="70" cy="80" r="8" fill="#17202e"/>',
+  bike: '<circle cx="26" cy="66" r="19" fill="none" stroke="#17202e" stroke-width="5"/><circle cx="74" cy="66" r="19" fill="none" stroke="#17202e" stroke-width="5"/><path d="M26 66l16-28h16l16 28M42 38h18M50 66L42 38M50 66l14-20" fill="none" stroke="#22a06b" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>',
+  boat: '<path d="M10 72h80l-12 16H22z" fill="#0e7490" stroke="#155e75" stroke-width="3"/><path d="M50 10v58M50 14l28 44H50z" fill="#f8fafc" stroke="#0e7490" stroke-width="3"/>',
+  plane: '<path d="M50 6c5 0 8 7 8 18v12l32 18v10L58 56v14l10 8v8l-18-6-18 6v-8l10-8V56L10 64V54l32-18V24c0-11 3-18 8-18z" fill="#64748b" stroke="#334155" stroke-width="3" stroke-linejoin="round"/>',
+  drop: '<path d="M50 6C36 26 20 44 20 62a30 30 0 0 0 60 0C80 44 64 26 50 6z" fill="#0ea5e9" stroke="#0369a1" stroke-width="3"/>',
+};
+const icon = (name, size = 64) => `<svg viewBox="0 0 100 100" width="${size}" height="${size}" aria-hidden="true">${ICONS[name]}</svg>`;
+const stage = document.getElementById("stage");
+const status = document.getElementById("status");
+const title = document.getElementById("title");
+const tip = document.getElementById("tip");
+const params = new URLSearchParams(location.search);
+const kind = params.get("c") || "hold";
+let solved = false;
+
+// A visible pointer makes a recording show that the bot moved to a place and pressed there.
+const botCursor = document.createElement("div");
+botCursor.id = "botCursor";
+document.body.append(botCursor);
+const moveCursor = (event) => {
+  botCursor.style.left = `${event.clientX}px`;
+  botCursor.style.top = `${event.clientY}px`;
+};
+window.addEventListener("mousemove", moveCursor, { passive: true });
+window.addEventListener("pointerdown", (event) => {
+  moveCursor(event);
+  botCursor.classList.add("down");
+}, { passive: true });
+window.addEventListener("pointerup", (event) => {
+  moveCursor(event);
+  botCursor.classList.remove("down");
+}, { passive: true });
+window.addEventListener("click", (event) => {
+  const ripple = document.createElement("div");
+  ripple.className = "ripple";
+  ripple.style.left = `${event.clientX}px`;
+  ripple.style.top = `${event.clientY}px`;
+  document.body.append(ripple);
+  setTimeout(() => ripple.remove(), 500);
+});
+
+function setStatus(text, tone = "") {
+  status.textContent = text;
+  status.className = `status${tone ? ` ${tone}` : ""}`;
+}
+function solve(text = "Verified. You are human.") {
+  solved = true;
+  document.body.dataset.solved = "true";
+  setStatus(text, "good");
+}
+function fail(text = "That wasn't quite right. Try again.") {
+  document.body.dataset.solved = "false";
+  setStatus(text, "bad");
+}
+function verify(text = "Verified. You are human.") {
+  if (solved) return;
+  solve(text);
+}
+function shuffle(list) {
+  const copy = [...list];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+function makeTiles(names, gridClass = "grid3") {
+  const grid = document.createElement("div");
+  grid.className = `iconGrid ${gridClass}`;
+  for (const name of names) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "tile";
+    button.dataset.icon = name;
+    button.setAttribute("aria-label", `tile ${name}`);
+    button.innerHTML = icon(name, gridClass === "grid4" ? 58 : 64);
+    grid.append(button);
+  }
+  return grid;
+}
+function button(text, onClick) {
+  const element = document.createElement("button");
+  element.type = "button";
+  element.className = "btn";
+  element.textContent = text;
+  element.addEventListener("click", onClick);
+  return element;
+}
+
+function holdChallenge() {
+  title.textContent = "Press and hold";
+  tip.textContent = "Press and keep holding until the circle fills. Letting go early starts again.";
+  const hold = document.createElement("button");
+  hold.type = "button";
+  hold.className = "holdButton";
+  hold.id = "holdButton";
+  hold.setAttribute("aria-label", "Press and hold to verify");
+  hold.innerHTML = '<div class="fill"></div><span>Press and hold</span>';
+  stage.append(hold);
+  const fill = hold.querySelector(".fill");
+  const NEED = 1800;
+  let started = 0;
+  let timer = null;
+  const stop = (cancelled) => {
+    if (!started) return;
+    const held = performance.now() - started;
+    started = 0;
+    clearInterval(timer);
+    timer = null;
+    hold.classList.remove("pressing");
+    if (held >= NEED) {
+      hold.classList.add("done");
+      hold.querySelector("span").textContent = "Held";
+      solve();
+    } else if (cancelled) {
+      fill.style.width = "0%";
+    } else {
+      fill.style.width = "0%";
+      setStatus(`Let go after ${Math.round(held)} ms; hold for ${NEED} ms.`, "bad");
+    }
+  };
+  hold.addEventListener("pointerdown", (event) => {
+    if (solved || started) return;
+    event.preventDefault();
+    hold.setPointerCapture?.(event.pointerId);
+    started = performance.now();
+    hold.classList.add("pressing");
+    setStatus("Keep holding…");
+    timer = setInterval(() => {
+      const held = performance.now() - started;
+      fill.style.width = `${Math.min(100, (held / NEED) * 100)}%`;
+      if (held >= NEED) {
+        stop(false);
+        hold.releasePointerCapture?.(event.pointerId);
+      }
+    }, 40);
+  });
+  hold.addEventListener("pointerup", () => stop(false));
+  hold.addEventListener("pointerleave", () => stop(true));
+  hold.addEventListener("pointercancel", () => stop(true));
+  document.body.dataset.need = String(NEED);
+}
+
+function matchChallenge() {
+  title.textContent = "Match the icon";
+  tip.textContent = "Pick the tile whose icon matches the picture, then press Verify.";
+  const shapes = ["star", "circle", "square", "triangle", "heart", "bolt", "moon", "sun", "drop"];
+  const target = shapes[Math.floor(Math.random() * shapes.length)];
+  const tiles = shuffle([target, ...shuffle(shapes.filter((name) => name !== target)).slice(0, 8)]);
+  const targetRow = document.createElement("div");
+  targetRow.className = "target";
+  targetRow.innerHTML = `<span>Find this icon:</span><span class="iconBox">${icon(target, 66)}</span>`;
+  const grid = makeTiles(tiles);
+  const row = document.createElement("div");
+  row.className = "row";
+  row.append(button("Verify", () => {
+    const picked = grid.querySelector(".tile.selected");
+    if (picked?.dataset.icon === target) verify();
+    else {
+      grid.querySelectorAll(".tile").forEach((tile) => tile.classList.remove("selected"));
+      fail("That isn't the icon shown. Look again.");
+    }
+  }));
+  stage.append(targetRow, grid, row);
+  grid.addEventListener("click", (event) => {
+    const tile = event.target.closest(".tile");
+    if (!tile || solved) return;
+    grid.querySelectorAll(".tile").forEach((other) => other.classList.remove("selected"));
+    tile.classList.add("selected");
+  });
+  document.body.dataset.targetIcon = target;
+}
+
+function trainsChallenge() {
+  title.textContent = "Select every train";
+  tip.textContent = "Pick every picture that contains a train, then press Verify.";
+  const kinds = ["train", "bike", "boat", "plane"];
+  const cells = [];
+  const trains = 3 + Math.floor(Math.random() * 3);
+  for (let i = 0; i < 16; i++) cells.push(kinds[0]);
+  for (let i = 0; i < 16; i++) cells[i] = kinds[Math.floor(Math.random() * kinds.length)];
+  const trainIndexes = shuffle([...Array(16).keys()]).slice(0, trains);
+  for (const index of trainIndexes) cells[index] = "train";
+  const grid = makeTiles(cells, "grid4");
+  const row = document.createElement("div");
+  row.className = "row";
+  row.append(button("Verify", () => {
+    const selected = [...grid.querySelectorAll(".tile.selected")].map((tile) => tile.dataset.icon);
+    const wanted = cells.filter((cell) => cell === "train").length;
+    if (selected.length === wanted && selected.every((name) => name === "train")) verify();
+    else {
+      grid.querySelectorAll(".tile").forEach((tile) => tile.classList.remove("selected"));
+      fail(`Not quite: ${selected.length} picked, ${wanted} trains there.`);
+    }
+  }));
+  stage.append(grid, row);
+  grid.addEventListener("click", (event) => {
+    const tile = event.target.closest(".tile");
+    if (!tile || solved) return;
+    tile.classList.toggle("selected");
+  });
+  document.body.dataset.trainCount = String(trains);
+}
+
+function orderChallenge() {
+  title.textContent = "Click the icons in order";
+  tip.textContent = "Click the icons in the order shown. A wrong icon starts the sequence again.";
+  const shapes = ["star", "circle", "square", "triangle", "heart", "bolt", "moon", "sun"];
+  const order = shuffle(shapes).slice(0, 4);
+  const row = document.createElement("div");
+  row.className = "orderRow";
+  row.innerHTML = order.map((name, index) => `<span class="chip">${index + 1}. ${name}</span>`).join("");
+  const tiles = shuffle(order);
+  const grid = makeTiles(tiles, "grid4");
+  stage.append(row, grid);
+  let step = 0;
+  grid.addEventListener("click", (event) => {
+    const tile = event.target.closest(".tile");
+    if (!tile || solved) return;
+    if (tile.dataset.icon === order[step]) {
+      tile.classList.add("selected");
+      step += 1;
+      setStatus(`Good: ${step} of ${order.length}.`);
+      if (step === order.length) verify();
+    } else {
+      step = 0;
+      grid.querySelectorAll(".tile").forEach((other) => other.classList.remove("selected"));
+      fail(`Start again: the next one is ${order[0]}.`);
+    }
+  });
+  document.body.dataset.order = order.join(",");
+}
+
+function sliderChallenge() {
+  title.textContent = "Slide the piece into the gap";
+  tip.textContent = "Drag the blue piece across until it sits in the striped gap, then let go.";
+  const track = document.createElement("div");
+  track.className = "sliderTrack";
+  const gap = document.createElement("div");
+  gap.className = "sliderGap";
+  const handle = document.createElement("div");
+  handle.className = "sliderHandle";
+  handle.textContent = "→";
+  handle.setAttribute("role", "slider");
+  handle.setAttribute("aria-label", "slide the piece");
+  track.append(gap, handle);
+  stage.append(track);
+  const handleWidth = 50;
+  const max = 560 - 6 - handleWidth;
+  const target = 330 + Math.round(Math.random() * 100);
+  gap.style.left = `${target}px`;
+  gap.style.width = "46px";
+  let dragging = false;
+  let offset = 0;
+  const place = (left) => {
+    const clamped = Math.max(0, Math.min(max, left));
+    handle.style.left = `${3 + clamped}px`;
+    handle.dataset.left = String(clamped);
+    handle.dataset.ready = Math.abs(clamped - target) <= 18 ? "true" : "false";
+  };
+  handle.addEventListener("pointerdown", (event) => {
+    if (solved) return;
+    event.preventDefault();
+    handle.setPointerCapture?.(event.pointerId);
+    dragging = true;
+    offset = event.clientX - handle.getBoundingClientRect().left;
+    handle.classList.add("dragging");
+  });
+  window.addEventListener("pointermove", (event) => {
+    if (!dragging) return;
+    const left = event.clientX - track.getBoundingClientRect().left - offset - 3;
+    place(left);
+  });
+  window.addEventListener("pointerup", () => {
+    if (!dragging) return;
+    dragging = false;
+    handle.classList.remove("dragging");
+    if (Math.abs(Number(handle.dataset.left) - target) <= 18) verify("Verified: the piece is in the gap.");
+    else fail("The piece didn't reach the gap. Try again.");
+  });
+  document.body.dataset.gap = String(target);
+}
+
+function checkboxChallenge() {
+  title.textContent = "Are you a robot?";
+  tip.textContent = "Tick the box. A real browser then waits a moment and lets you through.";
+  const label = document.createElement("div");
+  label.className = "robot";
+  label.id = "robotCheck";
+  label.setAttribute("role", "checkbox");
+  label.setAttribute("aria-checked", "false");
+  label.setAttribute("tabindex", "0");
+  label.innerHTML = '<span class="box">✓</span><span>I am not a robot</span>';
+  stage.append(label);
+  label.addEventListener("click", () => {
+    if (solved || label.classList.contains("checked")) return;
+    label.classList.add("checked");
+    label.setAttribute("aria-checked", "true");
+    setStatus("Checking…");
+    setTimeout(() => verify(), 900);
+  });
+}
+
+({
+  hold: holdChallenge,
+  match: matchChallenge,
+  trains: trainsChallenge,
+  order: orderChallenge,
+  slider: sliderChallenge,
+  checkbox: checkboxChallenge,
+}[kind] ?? holdChallenge)();
+</script>
+</body>
+</html>

@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Your bot's browser</title>
+<style>
+  :root { color-scheme: light; --bot: #189c47; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: #ffffff; color: #1b1a18;
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding-bottom: 8vh;
+  }
+  main { width: min(640px, calc(100vw - 32px)); display: flex; flex-direction: column; align-items: center; }
+  .peek { width: 160px; height: 106px; overflow: hidden; display: flex; justify-content: center; }
+  .bot { width: 160px; height: 160px; flex: none; margin-top: 4px; animation: peek 3.4s ease-in-out infinite; cursor: pointer; }
+  .bot.hop { animation: hop 0.9s cubic-bezier(.34, 1.56, .64, 1) 1; }
+  .face { animation: glance 7s ease-in-out infinite; }
+  .eye { transform-origin: center; transform-box: fill-box; animation: blink 4.2s ease-in-out infinite; }
+  form { width: 100%; margin: 0; }
+  label {
+    width: 100%; height: 56px; display: flex; align-items: center; gap: 12px; padding: 0 24px;
+    border-radius: 9999px; border: 1px solid #dadce0; background: #ffffff;
+    box-shadow: 0 2px 10px rgba(32, 33, 36, .14);
+  }
+  label:focus-within { border-color: #bdc1c6; box-shadow: 0 2px 14px rgba(32, 33, 36, .22); }
+  input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font: inherit; font-size: 17px; color: inherit; }
+  input::placeholder { color: #6b6863; }
+  p { margin: 18px 0 0; font-size: 13px; color: #6b6863; }
+  @keyframes peek { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+  @keyframes hop { 0% { transform: translateY(0); } 40% { transform: translateY(-22px); } 100% { transform: translateY(0); } }
+  @keyframes blink { 0%, 93%, 100% { transform: scaleY(1); } 96% { transform: scaleY(.08); } }
+  @keyframes glance { 0%, 35%, 100% { transform: translate(0, 2px); } 45%, 65% { transform: translate(-3px, 2px); } 75%, 90% { transform: translate(3px, 2px); } }
+  @media (prefers-reduced-motion: reduce) { .bot, .bot.hop, .face, .eye { animation: none; } }
+</style>
+</head>
+<body>
+<main>
+  <div class="peek">
+    <svg class="bot" viewBox="0 0 100 100" role="img" aria-label="Your bot peeking over the search bar">
+      <path class="body" d="M40.14 25.36 C44.29 23.64 45 17 52 17 C59 17 59.71 23.64 63.86 25.36 C68.02 27.08 73.21 22.89 78.16 27.84 C83.11 32.79 78.92 37.98 80.64 42.14 C82.36 46.29 89 47 89 54 C89 61 82.36 61.71 80.64 65.86 C78.92 70.02 83.11 75.21 78.16 80.16 C73.21 85.11 68.02 80.92 63.86 82.64 C59.71 84.36 59 91 52 91 C45 91 44.29 84.36 40.14 82.64 C35.98 80.92 30.79 85.11 25.84 80.16 C20.89 75.21 25.08 70.02 23.36 65.86 C21.64 61.71 15 61 15 54 C15 47 21.64 46.29 23.36 42.14 C25.08 37.98 20.89 32.79 25.84 27.84 C30.79 22.89 35.98 27.08 40.14 25.36 Z" fill="var(--bot)" stroke="var(--bot)" stroke-width="5" stroke-linejoin="round"/>
+      <g class="face">
+        <g class="eye"><rect x="40.3" y="47.5" width="7.4" height="18" rx="3.7" fill="#fff" transform="rotate(-16 44 56.5)"/></g>
+        <g class="eye"><rect x="56.8" y="44" width="7.4" height="18" rx="3.7" fill="#fff" transform="rotate(-16 60.5 53)"/></g>
+      </g>
+    </svg>
+  </div>
+  <form action="https://www.google.com/search" method="get" role="search">
+    <label>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5f6368" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+      <input type="search" name="q" placeholder="What should we look up?" aria-label="Search Google" autocomplete="off" autofocus>
+    </label>
+  </form>
+  <p>Search Google, or type an address</p>
+</main>
+<script>
+  (() => {
+    // Each bot's browser has its own profile, so what one opening of the page was told is remembered for its new tabs.
+    const KEY = "gond-home";
+    let saved = {};
+    try { saved = JSON.parse(localStorage.getItem(KEY) || "{}") || {}; } catch { saved = {}; }
+    const query = new URLSearchParams(location.search);
+    const name = (query.get("name") || saved.name || "").replace(/\s+/g, " ").trim().slice(0, 60);
+    const raw = query.get("color") || saved.color || "";
+    const color = /^[0-9a-f]{6}$/i.test(raw) ? raw.toLowerCase() : "";
+    if (query.has("name") || query.has("color")) {
+      try { localStorage.setItem(KEY, JSON.stringify({ name, color })); } catch {}
+    }
+    if (color) document.documentElement.style.setProperty("--bot", `#${color}`);
+    if (name) {
+      document.title = `${name}'s browser`;
+      document.querySelector(".bot").setAttribute("aria-label", `${name} peeking over the search bar`);
+    }
+    const bot = document.querySelector(".bot");
+    bot.addEventListener("click", () => {
+      bot.classList.remove("hop");
+      void bot.getBoundingClientRect();
+      bot.classList.add("hop");
+    });
+    bot.addEventListener("animationend", () => bot.classList.remove("hop"));
+  })();
+</script>
+</body>
+</html>

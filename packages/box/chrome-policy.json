@@ -1,0 +1,14 @@
+{
+  "MetricsReportingEnabled": false,
+  "DefaultBrowserSettingEnabled": false,
+  "PromotionalTabsEnabled": false,
+  "BrowserSignin": 0,
+  "SyncDisabled": true,
+  "PasswordManagerEnabled": false,
+  "BackgroundModeEnabled": false,
+  "CommandLineFlagSecurityWarningsEnabled": false,
+  "HomepageLocation": "file:///usr/share/gond/home/index.html",
+  "HomepageIsNewTabPage": false,
+  "ShowHomeButton": true,
+  "NewTabPageLocation": "file:///usr/share/gond/home/index.html"
+}

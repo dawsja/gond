@@ -1,0 +1,25 @@
+{
+  "name": "gond",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Gond: a self-hosted, open-source team of always-on AI bots with their own computer.",
+  "license": "MIT",
+  "workspaces": ["apps/*", "packages/*"],
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "dev": "bun run --filter '*' dev",
+    "dev:api": "bun run --filter @gond/api dev",
+    "dev:web": "bun run --filter @gond/web dev",
+    "dev:box": "bun run --filter @gond/box dev",
+    "build": "bun run --filter @gond/shared build && bun run --filter @gond/api build && bun run --filter @gond/web build",
+    "typecheck": "bun run --filter '*' typecheck",
+    "lint": "bun run --filter '*' lint",
+    "test": "bun run --filter '*' test"
+  },
+  "packageManager": "bun@1.4.4",
+  "devDependencies": {
+    "sharp": "0.35.5"
+  }
+}

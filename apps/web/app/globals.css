@@ -1,0 +1,560 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * The phone layout applies under md, and always inside the Android and
+ * iPhone apps (the theme init script marks <html data-shell="phone"> before
+ * first paint), so a tablet or a landscape phone never gets the desktop's
+ * sidebar.
+ */
+@custom-variant wide {
+  @media (width >= 48rem) {
+    :root:not([data-shell="phone"]) & {
+      @slot;
+    }
+  }
+}
+/* Room a call's pill takes under the header on a phone, when the call is away from this screen. */
+:root {
+  --call-pill-space: 0px;
+}
+:root[data-call-pill] {
+  --call-pill-space: 52px;
+}
+@media (width >= 48rem) {
+  :root:not([data-shell="phone"])[data-call-pill] {
+    --call-pill-space: 0px;
+  }
+}
+
+@custom-variant xwide {
+  @media (width >= 64rem) {
+    :root:not([data-shell="phone"]) & {
+      @slot;
+    }
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-jetbrains);
+  --font-heading: var(--font-inter);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-hangup: var(--hangup);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-primary-edge: var(--primary-edge);
+  --color-primary-edge-focus: var(--primary-edge-focus);
+  /* Hover is a solid step toward the ink, never see-through, so a pill floating over a page or
+     a picture reads as hovered and doesn't take on what is behind it. */
+  --color-primary-hover: color-mix(in oklch, var(--primary), var(--foreground) 8%);
+  --color-control-hover: color-mix(in oklch, var(--control), var(--background) 18%);
+  --color-bubble-you: var(--bubble-you);
+  --color-bubble-you-foreground: var(--bubble-you-foreground);
+  --color-tint: var(--tint);
+  --color-tint-solid: var(--tint-solid);
+  --color-tint-solid-hover: color-mix(in oklch, var(--tint-solid), black 12%);
+  --color-tint-foreground: #ffffff;
+  --color-tint-wash: var(--tint-wash);
+  --color-tint-edge: var(--tint-edge);
+  --color-tint-ink: var(--tint-ink);
+  --color-tone-ok-wash: color-mix(in srgb, var(--tone-ok) 14%, var(--bubble-bot));
+  --color-tone-ok-edge: color-mix(in srgb, var(--tone-ok) 30%, var(--primary-edge));
+  /* A redraft's marks on the letter, which is drawn on --primary. */
+  --color-diff-added: color-mix(in srgb, var(--tone-ok) 22%, var(--primary));
+  --color-diff-removed: color-mix(in srgb, var(--tone-bad) 16%, var(--primary));
+  --color-bubble-bot: var(--bubble-bot);
+  --color-bubble-inset: var(--bubble-inset);
+  --color-control-foreground: var(--control-foreground);
+  --color-control: var(--control);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-carbon: var(--carbon);
+  --color-paper-white: var(--paper-white);
+  --color-linen: var(--linen);
+  --color-mist: var(--mist);
+  --color-fog: var(--fog);
+  --color-ash: var(--ash);
+  --color-graphite: var(--graphite);
+  --color-mint: var(--mint);
+  --color-mint-wash: var(--mint-wash);
+  --color-amber: var(--amber);
+  --color-sky: var(--sky);
+  --color-magenta: var(--magenta);
+  --color-grape: var(--grape);
+  --color-ember: var(--ember);
+  --color-tone-ok: var(--tone-ok);
+  --color-tone-warn: var(--tone-warn);
+  --color-tone-bad: var(--tone-bad);
+  --color-tone-info: var(--tone-info);
+  --color-gold: var(--gold);
+  --color-gold-foreground: var(--gold-foreground);
+  --color-ink: var(--carbon);
+  --radius-sm: 8px;
+  --radius-md: 8px;
+  --radius-lg: 8px;
+  --radius-xl: 16px;
+  --radius-2xl: 16px;
+  --radius-3xl: 24px;
+  --radius-4xl: 9999px;
+  --shadow-subtle: var(--shadow-subtle);
+  --shadow-subtle-2: var(--shadow-subtle-2);
+  --shadow-subtle-3: var(--shadow-subtle-3);
+}
+
+/*
+ * Dark is a plain Material dark theme: #121212 with each surface a step
+ * lighter, text at 87% and 60%, 200-tone accents. WCAG ratios, measured:
+ *
+ *                     light                          dark
+ *   carbon    on linen 15.7  paper 17.4  mist 14.2    14.2  12.6  11.3
+ *   graphite  on linen  7.4  paper  8.2  mist  6.7     7.2   6.4   5.7
+ *   ash       on linen  5.0  paper  5.5  mist  4.5     5.4   4.8   4.3
+ *   carbon    on bubble-you 12.9  bubble-bot 14.2      9.5  11.9
+ *   graphite  on bubble-you  6.1  bubble-bot  6.7      4.8   6.0
+ *   tone-ok   on linen  4.7  paper 5.2  14% wash 4.3  11.4  10.1  7.3
+ *   tone-warn on linen  5.3  paper 5.9  14% wash 4.9  14.5  12.9  8.9
+ *   tone-bad  on linen  5.1  paper 5.6  14% wash 4.5   8.7   7.7  6.0
+ *   tone-info on linen  5.0  paper 5.6  14% wash 4.6  10.7   9.5  7.0
+ *   mint / amber / sky on linen  4.7 / 5.3 / 5.0       9.6 / 13.4 / 8.9
+ *   magenta / grape / ember on linen 5.0 / 4.5 / 5.1   8.3 / 7.5 / 5.2
+ *   white on ember                5.6                   3.6
+ *   gold-foreground on gold       5.3 (5.0 at the coin's darkest)
+ *   control-foreground on control 17.4                 14.2
+ */
+:root {
+  /* The colour a cut-out ring is painted in, so it reads as a gap whatever the badge sits on: the
+     page here, and each raised surface (a filled button, a card, a dialog, a sheet) sets its own. */
+  --surface: var(--background);
+  /* The Android app draws the page under its bars and says how tall they are
+     (--shell-inset-*); a WebView's env() can't be relied on for it. */
+  --safe-top: max(env(safe-area-inset-top), var(--shell-inset-top, 0px));
+  --safe-bottom: max(env(safe-area-inset-bottom), var(--shell-inset-bottom, 0px));
+  --safe-left: max(env(safe-area-inset-left), var(--shell-inset-left, 0px));
+  --safe-right: max(env(safe-area-inset-right), var(--shell-inset-right, 0px));
+  --carbon: #1b1a18;
+  --paper-white: #ffffff;
+  --linen: #f5f3ee;
+  --mist: #ebe8e1;
+  --fog: #d6d2c9;
+  --ash: #6b6863;
+  --graphite: #524f4a;
+  --mint: #1a7d38;
+  --mint-wash: #dcf3e3;
+  --amber: #8a5a00;
+  --sky: #2266c4;
+  --magenta: #b8307f;
+  --grape: #8250df;
+  --ember: #c2301a;
+  /* A phone's hang-up red, deep enough for a white icon in both themes. */
+  --hangup: #c2301a;
+  --tone-ok: #1a7d38;
+  --tone-warn: #8a5a00;
+  --tone-bad: #c2301a;
+  --tone-info: #2266c4;
+  --gold: #d9a21b;
+  --gold-coin: linear-gradient(145deg, #fff1b0 0%, #f6d158 30%, #d49b16 68%, #9a6a08 100%);
+  --gold-foreground: #4a3000;
+
+  --background: var(--linen);
+  --foreground: var(--carbon);
+  --card: var(--paper-white);
+  --card-foreground: var(--carbon);
+  --popover: var(--paper-white);
+  --popover-foreground: var(--carbon);
+  --primary: var(--paper-white);
+  --primary-foreground: var(--carbon);
+  --primary-edge: #d9d4ca;
+  --primary-edge-focus: #c9c4b9;
+  --primary-shadow: none;
+  /* The person's color (Settings → Appearance), blue until they pick another. Each color is a block
+     below, its shades worked out so white on --tint-solid and --tint-ink on --tint-wash clear 4.6:1. */
+  --tint: #2F6FD6;
+  --tint-solid: #2c62ba;
+  --tint-wash: #d6dbe0;
+  --tint-edge: #a9b8cd;
+  --tint-ink: #29559d;
+  --bubble-you: #cfe0f5;
+  --bubble-you-foreground: var(--carbon);
+  --bubble-bot: #ebe8e1;
+  --bubble-inset: color-mix(in oklch, var(--foreground) 7%, transparent);
+  --control: var(--carbon);
+  --control-foreground: var(--paper-white);
+  --secondary: var(--mist);
+  --secondary-foreground: var(--carbon);
+  --muted: var(--mist);
+  --muted-foreground: var(--graphite);
+  --accent: var(--mist);
+  --accent-foreground: var(--carbon);
+  --destructive: var(--ember);
+  --border: var(--fog);
+  --input: #c9c5bb;
+  --ring: var(--carbon);
+  --chart-1: var(--carbon);
+  --chart-2: var(--sky);
+  --chart-3: var(--mint);
+  --chart-4: var(--amber);
+  --chart-5: var(--magenta);
+  --radius: 1rem;
+  --sidebar: var(--paper-white);
+  --sidebar-foreground: var(--carbon);
+  --sidebar-primary: var(--carbon);
+  --sidebar-primary-foreground: var(--paper-white);
+  --sidebar-accent: var(--mist);
+  --sidebar-accent-foreground: var(--carbon);
+  --sidebar-border: var(--fog);
+  --sidebar-ring: var(--ring);
+  --shadow-subtle: 0 1px 1px rgba(20, 16, 8, 0.06),
+    0 0 0 1px rgba(20, 16, 8, 0.08);
+  --shadow-subtle-2: 0 1px 2px rgba(20, 16, 8, 0.08),
+    0 0 0 1px rgba(20, 16, 8, 0.08);
+  --shadow-subtle-3: 0 16px 40px rgba(20, 16, 8, 0.16),
+    0 0 0 1px rgba(20, 16, 8, 0.06);
+  --grid-line: rgba(20, 16, 8, 0.07);
+  color-scheme: light;
+}
+
+.dark {
+  --carbon: #e0e0e0;
+  --paper-white: #1e1e1e;
+  --linen: #121212;
+  --mist: #272727;
+  --fog: #2c2c2c;
+  --ash: #8a8a8a;
+  --graphite: #a0a0a0;
+  --mint: #81c995;
+  --mint-wash: #1f3326;
+  --amber: #fdd663;
+  --sky: #8ab4f8;
+  --magenta: #f28bca;
+  --grape: #c58af9;
+  --ember: #cf6679;
+  --hangup: #c4372b;
+  --tone-ok: #a5d6a7;
+  --tone-warn: #ffe082;
+  --tone-bad: #ef9a9a;
+  --tone-info: #90caf9;
+  --gold: #d9a21b;
+  --gold-coin: linear-gradient(145deg, #fff1b0 0%, #f6d158 30%, #d49b16 68%, #9a6a08 100%);
+  --gold-foreground: #4a3000;
+
+  --background: var(--linen);
+  --foreground: var(--carbon);
+  --card: var(--paper-white);
+  --card-foreground: var(--carbon);
+  --popover: #2e2e2e;
+  --popover-foreground: var(--carbon);
+  --primary: #2e2e2e;
+  --primary-foreground: var(--carbon);
+  --primary-edge: #474747;
+  --primary-edge-focus: #5c5c5c;
+  --primary-shadow: none;
+  --tint: #2F6FD6;
+  --tint-solid: #2b61b9;
+  --tint-wash: #252f40;
+  --tint-edge: #3d5780;
+  --tint-ink: #8db0e8;
+  --bubble-you: #173554;
+  --bubble-you-foreground: var(--carbon);
+  --bubble-bot: #232323;
+  --bubble-inset: color-mix(in oklch, var(--foreground) 8%, transparent);
+  --control: var(--carbon);
+  --control-foreground: #121212;
+  --secondary: var(--mist);
+  --secondary-foreground: var(--carbon);
+  --muted: var(--mist);
+  --muted-foreground: var(--graphite);
+  --accent: var(--mist);
+  --accent-foreground: var(--carbon);
+  --destructive: var(--ember);
+  --border: var(--fog);
+  /* Field edges: lighter than the card and the border, so an empty input reads as a box. */
+  --input: #333333;
+  --ring: var(--carbon);
+  --chart-1: var(--carbon);
+  --chart-2: var(--sky);
+  --chart-3: var(--mint);
+  --chart-4: var(--amber);
+  --chart-5: var(--magenta);
+  --sidebar: var(--paper-white);
+  --sidebar-foreground: var(--carbon);
+  --sidebar-primary: var(--carbon);
+  --sidebar-primary-foreground: var(--paper-white);
+  --sidebar-accent: var(--mist);
+  --sidebar-accent-foreground: var(--carbon);
+  --sidebar-border: var(--fog);
+  --sidebar-ring: var(--ring);
+  --shadow-subtle: 0 1px 1px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(255, 255, 255, 0.08);
+  --shadow-subtle-2: 0 1px 2px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.08);
+  --shadow-subtle-3: 0 16px 40px rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(255, 255, 255, 0.06);
+  --grid-line: rgba(255, 255, 255, 0.055);
+  color-scheme: dark;
+}
+
+:root:not(.dark)[data-accent="blue"] {
+  --tint: #2F6FD6;
+  --tint-solid: #2c62ba;
+  --tint-wash: #d6dbe0;
+  --tint-edge: #a9b8cd;
+  --tint-ink: #29559d;
+  --bubble-you: #cfe0f5;
+}
+:root.dark[data-accent="blue"] {
+  --tint: #2F6FD6;
+  --tint-solid: #2b61b9;
+  --tint-wash: #252f40;
+  --tint-edge: #3d5780;
+  --tint-ink: #8db0e8;
+  --bubble-you: #173554;
+}
+:root:not(.dark)[data-accent="purple"] {
+  --tint: #7650D8;
+  --tint-solid: #6848bb;
+  --tint-wash: #ded7e0;
+  --tint-edge: #bdafce;
+  --tint-ink: #5b409e;
+  --bubble-you: #ded5f6;
+}
+:root.dark[data-accent="purple"] {
+  --tint: #7650D8;
+  --tint-solid: #6747ba;
+  --tint-wash: #302a40;
+  --tint-edge: #5a4b81;
+  --tint-ink: #b49fea;
+  --bubble-you: #322651;
+}
+:root:not(.dark)[data-accent="pink"] {
+  --tint: #CF3D85;
+  --tint-solid: #b43875;
+  --tint-wash: #e8d5d7;
+  --tint-edge: #d6aab7;
+  --tint-ink: #993364;
+  --bubble-you: #f3d0e2;
+}
+:root.dark[data-accent="pink"] {
+  --tint: #CF3D85;
+  --tint-solid: #b33774;
+  --tint-wash: #3f2733;
+  --tint-edge: #7d4360;
+  --tint-ink: #e594bc;
+  --bubble-you: #4e2037;
+}
+:root:not(.dark)[data-accent="red"] {
+  --tint: #D03A3A;
+  --tint-solid: #b53535;
+  --tint-wash: #e8d5cf;
+  --tint-edge: #d6a9a2;
+  --tint-ink: #9a3030;
+  --bubble-you: #f4d0d0;
+}
+:root.dark[data-accent="red"] {
+  --tint: #D03A3A;
+  --tint-solid: #b33434;
+  --tint-wash: #3f2727;
+  --tint-edge: #7e4242;
+  --tint-ink: #e59393;
+  --bubble-you: #4f1f1f;
+}
+:root:not(.dark)[data-accent="orange"] {
+  --tint: #E04E0A;
+  --tint-solid: #c2460c;
+  --tint-wash: #ead7c9;
+  --tint-edge: #dbae94;
+  --tint-ink: #9f3d0f;
+  --bubble-you: #f8d5c4;
+}
+:root.dark[data-accent="orange"] {
+  --tint: #E04E0A;
+  --tint-solid: #c1450b;
+  --tint-wash: #412a1f;
+  --tint-edge: #844a2f;
+  --tint-ink: #ee9e78;
+  --bubble-you: #54250f;
+}
+:root:not(.dark)[data-accent="amber"] {
+  --tint: #D98A08;
+  --tint-solid: #9e670d;
+  --tint-wash: #e9dec9;
+  --tint-edge: #d9bf94;
+  --tint-ink: #83580f;
+  --bubble-you: #f6e3c4;
+}
+:root.dark[data-accent="amber"] {
+  --tint: #D98A08;
+  --tint-solid: #9f670b;
+  --tint-wash: #40331f;
+  --tint-edge: #81622e;
+  --tint-ink: #eabf77;
+  --bubble-you: #52380f;
+}
+:root:not(.dark)[data-accent="green"] {
+  --tint: #189C47;
+  --tint-solid: #19863f;
+  --tint-wash: #d4e0d0;
+  --tint-edge: #a3c4a5;
+  --tint-ink: #196d36;
+  --bubble-you: #c8e7d3;
+}
+:root.dark[data-accent="green"] {
+  --tint: #189C47;
+  --tint-solid: #17853e;
+  --tint-wash: #213629;
+  --tint-edge: #346947;
+  --tint-ink: #80c99a;
+  --bubble-you: #143e23;
+}
+
+@theme {
+  --animate-hop: hop 0.9s cubic-bezier(0.34, 1.56, 0.64, 1) 2;
+  --animate-confetti: confetti 1.1s ease-out 1 both;
+  --animate-pop: pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  --animate-light-up: light-up 1.6s ease-in-out infinite;
+  --animate-picture-light: picture-light 2.6s ease-in-out infinite;
+  --animate-picture-fall: picture-fall 0.45s ease-in both;
+
+  @keyframes hop {
+    0%, 100% { transform: translateY(0); }
+    35% { transform: translateY(-7px); }
+    65% { transform: translateY(0) scale(1.06, 0.94); }
+  }
+  @keyframes confetti {
+    0% { opacity: 0; transform: translate(0, 0) scale(0.4); }
+    30% { opacity: 1; }
+    100% { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(1); }
+  }
+  /* A square lit in its bot's colour (`--lit`) and back to dark. */
+  @keyframes light-up {
+    0%, 70%, 100% { background: var(--muted); transform: scale(0.85); }
+    35% { background: var(--lit); transform: scale(1); }
+  }
+  /* The squares of a picture being made (`PictureMaking`): each rests in one shade of the bot's colour (`--rest`) and swells into another (`--lit`). */
+  @keyframes picture-light {
+    0%, 100% { background: var(--rest); transform: scale(0.86); }
+    45% { background: var(--lit); transform: scale(1); }
+  }
+  /* And falls away onto the finished picture. */
+  @keyframes picture-fall {
+    0% { opacity: 1; transform: scale(1); }
+    40% { background: var(--lit); }
+    100% { opacity: 0; transform: scale(0.4); }
+  }
+  @keyframes pop {
+    0% { opacity: 0; transform: scale(0.4); }
+    60% { opacity: 1; transform: scale(1.15); }
+    100% { transform: scale(1); }
+  }
+}
+
+/* While a mouse drag that began in a box of text selects (`ScopedSelection` in shell.tsx), nothing
+   outside the box can join in, so the selection stays inside and the box scrolls instead. */
+html[data-selecting] * {
+  user-select: none;
+}
+
+html[data-selecting] [data-selecting-in],
+html[data-selecting] [data-selecting-in] * {
+  user-select: text;
+}
+
+[data-slot="bubble-content"] ::selection {
+  background: color-mix(in oklch, var(--foreground) 25%, transparent);
+}
+
+/* The primary bot's crown is a gold coin, lit from the top. A big coin also gets an edge of light
+   and shade, in --tw-inset-shadow so a ring on the same element still draws; on a small one those
+   pixels would only blur it. */
+@utility bg-gold-coin {
+  background-color: var(--gold);
+  background-image: var(--gold-coin);
+}
+
+@utility gold-coin-shine {
+  --tw-inset-shadow: inset 0 1px 0 rgb(255 255 255 / 0.65), inset 0 -1px 0 rgb(90 55 0 / 0.35);
+}
+
+/* `scrollbar-none` stays for the call sites that say it out loud; the base already does the same. */
+@utility scrollbar-none {
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+    scrollbar-width: none;
+  }
+
+  *::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
+  }
+
+  html {
+    @apply font-sans antialiased;
+    letter-spacing: -0.02em;
+  }
+
+  body {
+    @apply bg-background text-foreground font-normal;
+  }
+
+  /* In the phone apps a long press is a menu's: a picture or a link that could be dragged would
+     lift iOS's own square preview over it instead. */
+  :root[data-shell="phone"] :is(img, a) {
+    -webkit-user-drag: none;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-heading), ui-sans-serif, system-ui, sans-serif;
+    font-weight: 600;
+    color: var(--carbon);
+  }
+}
+
+.blueprint-grid {
+  background-image:
+    linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
+  background-size: 48px 48px;
+}

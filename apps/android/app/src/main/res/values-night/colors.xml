@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The web app's dark tokens. -->
+<resources>
+    <color name="background">#121212</color>
+    <color name="foreground">#E0E0E0</color>
+    <color name="card">#1E1E1E</color>
+    <color name="muted_foreground">#A0A0A0</color>
+    <color name="ash">#8A8A8A</color>
+    <color name="primary">#E0E0E0</color>
+    <color name="on_primary">#121212</color>
+    <color name="destructive">#CF6679</color>
+    <color name="input">#474747</color>
+</resources>

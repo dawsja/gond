@@ -1,0 +1,14 @@
+{
+  "name": "@gond/ios",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Gond for iPhone: Connect to your Gond, then the web app in a native shell with notifications, downloads and the microphone.",
+  "license": "MIT",
+  "scripts": {
+    "generate:ios": "xcodegen generate",
+    "test:ios": "xcodegen generate && xcodebuild test -project Gond.xcodeproj -scheme Gond -destination 'platform=iOS Simulator,name=iPhone 17'",
+    "lint": "node scripts/check.mjs",
+    "typecheck": "echo 'ios: typechecked by Xcode, see test:ios'",
+    "test": "echo 'ios: unit tests run in Xcode, see test:ios'"
+  }
+}

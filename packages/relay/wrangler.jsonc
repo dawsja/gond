@@ -1,0 +1,14 @@
+{
+  // gond-relay on Cloudflare. `bunx wrangler deploy` from packages/relay puts it on api.gond.io;
+  // `bunx wrangler dev` runs it locally. A self-hosted relay doesn't need any of this (see the Dockerfile).
+  "name": "gond-relay",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [{ "pattern": "api.gond.io", "custom_domain": true }],
+  "durable_objects": {
+    "bindings": [{ "name": "MAILBOXES", "class_name": "Mailbox" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Mailbox"] }]
+}

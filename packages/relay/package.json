@@ -1,0 +1,25 @@
+{
+  "name": "@gond/relay",
+  "private": true,
+  "version": "0.1.0",
+  "description": "gond-relay: carries sealed messages between Gond servers that can't reach each other.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    "./client": "./src/client.ts",
+    "./protocol": "./src/protocol.ts"
+  },
+  "scripts": {
+    "dev": "bun run --watch src/server.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "echo relay: no lint",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "typescript": "^5",
+    "@types/bun": "^1.4.4"
+  },
+  "dependencies": {
+    "@hpke/core": "^1.9.0"
+  }
+}

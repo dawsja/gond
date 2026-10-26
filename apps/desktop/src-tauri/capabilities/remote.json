@@ -1,0 +1,25 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "remote",
+  "description": "A page of your Gond: the bridge the web app uses, nothing from Tauri's core or its plugins. Each command checks the page's origin again in Rust.",
+  "windows": ["main", "child-*"],
+  "local": false,
+  "remote": {
+    "urls": ["http://**:*", "https://**:*"]
+  },
+  "permissions": [
+    "allow-change-server",
+    "allow-sign-in",
+    "allow-notify",
+    "allow-notifications-state",
+    "allow-request-notifications",
+    "allow-open-external",
+    "allow-set-theme",
+    "allow-open-window",
+    "allow-menu-bar",
+    "allow-set-menu-bar",
+    "allow-update-state",
+    "allow-check-for-updates",
+    "allow-install-update"
+  ]
+}

@@ -1,0 +1,533 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release to attach the apps to (v1.2.3); empty only builds. Assets the release already has are kept."
+        required: false
+        default: ""
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  # The release the apps are built for: the pushed tag, or the one a manual run names.
+  RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || inputs.tag || '' }}
+
+permissions:
+  contents: read
+
+jobs:
+  # What this run has to build. A main push and its release tag land together when Gond ships; the
+  # tag's run builds the images (publishing latest too) and the apps, so the main run doesn't repeat
+  # them at the same moment. The desktop, Android and iPhone apps are shells around the server's web
+  # app, so each builds only when its own files changed: on a push since the commit before, on a
+  # release since the release before. A release carries an unchanged app's last build (the desktop's
+  # installers and latest.json, the APK) instead of building it again, so no desktop app is told to
+  # update to an identical build. The workflow itself isn't an app's file: after changing how an app
+  # builds, run this workflow by hand, which builds them all.
+  changes:
+    name: What to build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      images: ${{ steps.decide.outputs.images }}
+      desktop: ${{ steps.decide.outputs.desktop }}
+      android: ${{ steps.decide.outputs.android }}
+      ios: ${{ steps.decide.outputs.ios }}
+      latest: ${{ steps.decide.outputs.latest }}
+      carry_desktop: ${{ steps.decide.outputs.carry_desktop }}
+      carry_android: ${{ steps.decide.outputs.carry_android }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: decide
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # What each app's build reads (each Connect screen keeps its own copy of the web's tokens).
+          DESKTOP_FILES: '^(apps/desktop/|assets/)'
+          ANDROID_FILES: '^(apps/android/|assets/)'
+          IOS_FILES: '^(apps/ios/|assets/)'
+        run: |
+          images=true; desktop=true; android=true; ios=true; latest=false; carry_desktop=""; carry_android=""
+          if [ "$REF" = refs/heads/main ]; then
+            latest=true
+            if [ "$EVENT" = push ] && [ -n "$(git tag --points-at HEAD --list 'v*')" ]; then
+              echo "This commit is a release; its tag's run builds and publishes it."
+              images=false; desktop=false; android=false; ios=false
+            fi
+          elif [ -n "$RELEASE_TAG" ]; then
+            [ "$(git rev-parse origin/main)" = "$GITHUB_SHA" ] && latest=true
+          fi
+          changed() { git diff --name-only "$1" "$GITHUB_SHA" | grep -qE "$2"; }
+          # A push or pull request: each app against the commit before. A manual run builds them all.
+          if [ "$EVENT" != workflow_dispatch ] && [ -z "$RELEASE_TAG" ] && [ -n "$BASE" ] && git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            changed "$BASE" "$DESKTOP_FILES" || desktop=false
+            changed "$BASE" "$ANDROID_FILES" || android=false
+            changed "$BASE" "$IOS_FILES" || ios=false
+          fi
+          # A pushed release tag: each app against the release before, carrying that release's build when it didn't change.
+          if [[ "$REF" == refs/tags/v* ]]; then
+            previous=$(git tag --list 'v*' --sort=-v:refname --merged "$GITHUB_SHA" | grep -vxF "$RELEASE_TAG" | head -n 1)
+            if [ -n "$previous" ]; then
+              assets=$(gh release view "$previous" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' 2>/dev/null || true)
+              if ! changed "$previous" "$DESKTOP_FILES"; then
+                if grep -q -- '-setup\.exe$' <<<"$assets" && grep -q '\.AppImage$' <<<"$assets"; then
+                  echo "The desktop app hasn't changed since $previous; $RELEASE_TAG carries its installers."
+                  desktop=false; carry_desktop=$previous
+                else
+                  echo "The desktop app hasn't changed since $previous, but it has no installers to carry, so it builds."
+                fi
+              fi
+              if ! changed "$previous" "$ANDROID_FILES"; then
+                if grep -q '\.apk$' <<<"$assets"; then
+                  echo "The Android app hasn't changed since $previous; $RELEASE_TAG carries its APK."
+                  android=false; carry_android=$previous
+                else
+                  echo "The Android app hasn't changed since $previous, but it has no APK to carry, so it builds."
+                fi
+              fi
+              changed "$previous" "$IOS_FILES" || ios=false
+            fi
+          fi
+          echo "images=$images desktop=$desktop android=$android ios=$ios latest=$latest carry_desktop=$carry_desktop carry_android=$carry_android"
+          { echo "images=$images"; echo "desktop=$desktop"; echo "android=$android"; echo "ios=$ios"; echo "latest=$latest"; echo "carry_desktop=$carry_desktop"; echo "carry_android=$carry_android"; } >> "$GITHUB_OUTPUT"
+
+  check:
+    name: Lint, typecheck and test
+    runs-on: ubuntu-24.04
+    # It takes about a minute; anything that hangs fails here instead of holding a release for hours.
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - run: bun install ${{ hashFiles('bun.lock') != '' && '--frozen-lockfile' || '' }}
+      - run: bun run lint
+      - run: bun run typecheck
+      - run: bun run test
+
+  desktop:
+    name: Desktop app for ${{ matrix.os }}
+    needs: changes
+    if: needs.changes.outputs.desktop == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows
+            runner: windows-latest
+            script: dist:win
+            files: |
+              apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe
+              apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe.sig
+          - os: linux
+            runner: ubuntu-24.04
+            script: dist:linux
+            files: |
+              apps/desktop/src-tauri/target/release/bundle/appimage/*.AppImage
+              apps/desktop/src-tauri/target/release/bundle/appimage/*.AppImage.sig
+    runs-on: ${{ matrix.runner }}
+    env:
+      GOND_REQUIRE_CARGO: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - if: matrix.os == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev libsoup-3.0-dev libayatana-appindicator3-dev librsvg2-dev patchelf libgtk-3-dev libssl-dev build-essential libxdo-dev
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+      - run: bun install ${{ hashFiles('bun.lock') != '' && '--frozen-lockfile' || '' }}
+      - if: env.RELEASE_TAG != ''
+        shell: bash
+        run: bun -e "const f = 'apps/desktop/src-tauri/tauri.conf.json'; const p = await Bun.file(f).json(); p.version = process.env.RELEASE_TAG.slice(1); await Bun.write(f, JSON.stringify(p, null, 2) + '\\n');"
+      - run: cargo fmt --all --check
+        working-directory: apps/desktop/src-tauri
+      - run: cargo test
+        working-directory: apps/desktop/src-tauri
+      # The bundler signs the installer for the updater (a .sig next to it)
+      # with the repository's key; without it (a fork) it builds unsigned.
+      - name: Build unsigned without the signing key
+        shell: bash
+        env:
+          HAS_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
+        run: |
+          if [ "$HAS_KEY" = "true" ]; then exit 0; fi
+          echo "No TAURI_SIGNING_PRIVATE_KEY here: building without updater signatures."
+          bun -e "const f = 'apps/desktop/src-tauri/tauri.conf.json'; const p = await Bun.file(f).json(); p.bundle.createUpdaterArtifacts = false; await Bun.write(f, JSON.stringify(p, null, 2) + '\\n');"
+      - run: bun run --filter @gond/desktop ${{ matrix.script }}
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: gond-desktop-${{ matrix.os }}
+          path: ${{ matrix.files }}
+          if-no-files-found: error
+
+  android:
+    name: Android app
+    needs: changes
+    if: needs.changes.outputs.android == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v5
+        with:
+          gradle-version: 8.14.3
+      # A release tag (v1.2.3) names the APK; package.json stays 0.x in the tree.
+      - if: env.RELEASE_TAG != ''
+        shell: bash
+        run: |
+          node -e "const fs=require('fs');const f='apps/android/package.json';const p=JSON.parse(fs.readFileSync(f,'utf8'));p.version=process.env.RELEASE_TAG.slice(1);fs.writeFileSync(f,JSON.stringify(p,null,2)+'\n');"
+      - name: Keystore from secrets
+        if: env.KEYSTORE != ''
+        env:
+          KEYSTORE: ${{ secrets.GOND_ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          echo "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/release.keystore"
+          echo "GOND_ANDROID_KEYSTORE=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
+      - working-directory: apps/android
+        env:
+          GOND_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.GOND_ANDROID_KEYSTORE_PASSWORD }}
+          GOND_ANDROID_KEY_ALIAS: ${{ secrets.GOND_ANDROID_KEY_ALIAS }}
+          GOND_ANDROID_KEY_PASSWORD: ${{ secrets.GOND_ANDROID_KEY_PASSWORD }}
+        run: gradle --no-daemon testReleaseUnitTest assembleRelease
+      - uses: actions/upload-artifact@v7
+        with:
+          name: gond-android
+          path: apps/android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+
+  # The iPhone app is tested and built on every change to it. An iPhone app reaches phones through
+  # TestFlight, not the GitHub release, so a push to main or a release tag uploads it there, signed by
+  # Xcode's automatic signing with the App Store Connect API key in the secrets; without them (a fork,
+  # a pull request) it only builds, unsigned. Its version is the release's, its build number this
+  # run's, so every upload is newer than the last. The project is generated from project.yml.
+  ios:
+    name: iPhone app
+    needs: changes
+    if: needs.changes.outputs.ios == 'true'
+    runs-on: macos-26
+    env:
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - run: brew install xcodegen
+      - working-directory: apps/ios
+        run: xcodegen generate
+      - name: Test on a simulator
+        working-directory: apps/ios
+        run: |
+          set -o pipefail
+          device=$(xcrun simctl list devices available -j | jq -r '[.devices[][] | select(.name | startswith("iPhone"))][0].udid')
+          xcodebuild test -project Gond.xcodeproj -scheme Gond -destination "id=$device" CODE_SIGNING_ALLOWED=NO -quiet
+      - name: Build for a phone, unsigned
+        if: env.ASC_KEY_ID == '' || github.event_name == 'pull_request'
+        working-directory: apps/ios
+        run: |
+          set -o pipefail
+          xcodebuild build -project Gond.xcodeproj -scheme Gond -configuration Release -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO -quiet
+      - name: Sign and upload to TestFlight
+        if: env.ASC_KEY_ID != '' && github.event_name != 'pull_request'
+        working-directory: apps/ios
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: |
+          set -o pipefail
+          key="$RUNNER_TEMP/AuthKey_$ASC_KEY_ID.p8"
+          printf '%s\n' "$ASC_KEY_P8" > "$key"
+          version="${RELEASE_TAG#v}"
+          [ -n "$version" ] || version=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null | sed 's/^v//')
+          [ -n "$version" ] || version=0.1.0
+          echo "Gond for iPhone $version ($BUILD_NUMBER)"
+          auth=(-allowProvisioningUpdates -authenticationKeyPath "$key" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID")
+          # Archived unsigned: automatic signing would sign it for development first, which needs a
+          # device registered to the team. The export signs it for the App Store, a cloud-managed
+          # distribution certificate through the key, no device needed.
+          xcodebuild archive -project Gond.xcodeproj -scheme Gond -configuration Release -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/Gond.xcarchive" DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGNING_ALLOWED=NO \
+            MARKETING_VERSION="$version" CURRENT_PROJECT_VERSION="$BUILD_NUMBER" -quiet
+          cat > "$RUNNER_TEMP/export.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>$APPLE_TEAM_ID</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict></plist>
+          PLIST
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/Gond.xcarchive" -exportOptionsPlist "$RUNNER_TEMP/export.plist" \
+            -exportPath "$RUNNER_TEMP/export" "${auth[@]}"
+          rm -f "$key"
+
+  release:
+    name: Release the desktop and Android apps
+    needs: [changes, check, desktop, android]
+    # The app jobs are skipped when a release carries the last one's builds; anything that failed stops it.
+    if: always() && needs.check.result == 'success' && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') && (startsWith(github.ref, 'refs/tags/v') || inputs.tag != '')
+
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      CARRY_DESKTOP: ${{ needs.changes.outputs.carry_desktop }}
+      CARRY_ANDROID: ${{ needs.changes.outputs.carry_android }}
+    steps:
+      - if: needs.changes.outputs.desktop == 'true' || needs.changes.outputs.android == 'true'
+        uses: actions/download-artifact@v8
+        with:
+          path: release
+          pattern: gond-*
+          merge-multiple: true
+      # The apps are the last release's: its files as they are, latest.json included, which still names
+      # that version and its downloads, so an app already on it isn't offered an update.
+      - name: Carry the last release's desktop app
+        if: env.CARRY_DESKTOP != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release download "$CARRY_DESKTOP" --repo "$GITHUB_REPOSITORY" --dir release --pattern '*-setup.exe' --pattern '*.AppImage' --pattern 'latest.json'
+      - name: Carry the last release's Android app
+        if: env.CARRY_ANDROID != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release download "$CARRY_ANDROID" --repo "$GITHUB_REPOSITORY" --dir release --pattern '*.apk'
+      # What the desktop app's updater reads at releases/latest/download/latest.json.
+      # The signatures go into it rather than onto the release; without them
+      # (no signing key) there is no latest.json and the apps don't update.
+      - name: Write latest.json for the desktop updater
+        if: env.CARRY_DESKTOP == ''
+        run: |
+          mkdir -p signatures
+          find release -maxdepth 1 -name '*.sig' -exec mv {} signatures/ \;
+          exe=$(find release -maxdepth 1 -name '*-setup.exe' -printf '%f\n' | head -n 1)
+          appimage=$(find release -maxdepth 1 -name '*.AppImage' -printf '%f\n' | head -n 1)
+          if [ -z "$exe" ] || [ -z "$appimage" ] || [ ! -s "signatures/$exe.sig" ] || [ ! -s "signatures/$appimage.sig" ]; then
+            echo "The desktop builds aren't signed, so there is no latest.json for $RELEASE_TAG."
+            exit 0
+          fi
+          download="https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG"
+          jq -n \
+            --arg version "${RELEASE_TAG#v}" \
+            --arg notes "See https://github.com/$GITHUB_REPOSITORY/releases/tag/$RELEASE_TAG" \
+            --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --rawfile windows "signatures/$exe.sig" \
+            --arg windowsUrl "$download/$exe" \
+            --rawfile linux "signatures/$appimage.sig" \
+            --arg linuxUrl "$download/$appimage" \
+            '{
+              version: $version,
+              notes: $notes,
+              pub_date: $date,
+              platforms: {
+                "windows-x86_64": { signature: ($windows | gsub("\\s"; "")), url: $windowsUrl },
+                "linux-x86_64": { signature: ($linux | gsub("\\s"; "")), url: $linuxUrl }
+              }
+            }' > release/latest.json
+          cat release/latest.json
+      # A new tag gets a release with everything; an existing release (a
+      # manual run for it) gets what it doesn't have yet and keeps the rest.
+      # latest.json goes up only with the installers it signs: next to ones
+      # from an earlier build, its signatures wouldn't match them.
+      - name: Create the GitHub release, or add to it
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            existing=$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
+            kept=""
+            for file in release/*; do
+              name=$(basename "$file")
+              [ "$name" = latest.json ] && continue
+              if grep -qxF "$name" <<<"$existing"; then echo "$name is already on $RELEASE_TAG"; kept="$kept $name"; continue; fi
+              gh release upload "$RELEASE_TAG" "$file" --repo "$GITHUB_REPOSITORY"
+            done
+            if [ -f release/latest.json ]; then
+              if grep -qxF latest.json <<<"$existing"; then
+                echo "latest.json is already on $RELEASE_TAG"
+              elif [[ "$kept" == *-setup.exe* || "$kept" == *.AppImage* ]]; then
+                echo "$RELEASE_TAG keeps installers from an earlier build, so latest.json isn't added."
+              else
+                gh release upload "$RELEASE_TAG" release/latest.json --repo "$GITHUB_REPOSITORY"
+              fi
+            fi
+          else
+            gh release create "$RELEASE_TAG" release/* --repo "$GITHUB_REPOSITORY" --title "Gond $RELEASE_TAG" --generate-notes
+          fi
+
+  build:
+    name: Build ${{ matrix.name }} ${{ matrix.arch }}
+    needs: changes
+    if: needs.changes.outputs.images == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        name: [gond-web, gond-api, gond-box, gond-relay]
+        arch: [amd64, arm64]
+        include:
+          - name: gond-web
+            context: .
+            dockerfile: apps/web/Dockerfile
+          - name: gond-api
+            context: .
+            dockerfile: apps/api/Dockerfile
+          - name: gond-box
+            context: packages/box
+            dockerfile: packages/box/Dockerfile
+          - name: gond-relay
+            context: packages/relay
+            dockerfile: packages/relay/Dockerfile
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/${{ github.repository_owner }}/${{ matrix.name }}
+      PUSH: ${{ github.event_name != 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The tags, so the image knows which release it is.
+          fetch-depth: 0
+      - name: Read the version
+        id: version
+        run: echo "value=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || echo dev)" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v4
+      - name: Log in to GHCR
+        if: env.PUSH == 'true'
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE }}
+      - id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/${{ matrix.arch }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: GOND_VERSION=${{ steps.version.outputs.value }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=${{ env.PUSH }}
+          cache-from: type=gha,scope=${{ matrix.name }}-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}-${{ matrix.arch }}
+      - name: Export digest
+        if: env.PUSH == 'true'
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/digests"
+          touch "$RUNNER_TEMP/digests/${DIGEST#sha256:}"
+      - if: env.PUSH == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: digests-${{ matrix.name }}--${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    name: Publish ${{ matrix.name }}
+    # Nothing is published unless the checks passed, though the images build alongside them.
+    needs: [changes, check, build]
+    if: github.event_name != 'pull_request'
+    strategy:
+      fail-fast: false
+      matrix:
+        name: [gond-web, gond-api, gond-box, gond-relay]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    env:
+      IMAGE: ghcr.io/${{ github.repository_owner }}/${{ matrix.name }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-${{ matrix.name }}--*
+          merge-multiple: true
+      - uses: docker/setup-buildx-action@v4
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE }}
+          # latest follows main (a release tag on main's head publishes it too); release tags (v1.2.3) publish 1.2.3 and 1.2.
+          flavor: latest=false
+          tags: |
+            type=raw,value=latest,enable=${{ needs.changes.outputs.latest == 'true' }}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha
+      - name: Create manifest list
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          mapfile -t tags < <(jq -r '.tags[]' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          args=()
+          for tag in "${tags[@]}"; do args+=(-t "$tag"); done
+          for digest in *; do args+=("$IMAGE@sha256:$digest"); done
+          docker buildx imagetools create "${args[@]}"
+      - name: Read manifest digest
+        id: manifest
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          digest=$(docker buildx imagetools inspect "$IMAGE:$VERSION" --format '{{json .Manifest}}' | jq -r .digest)
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "Published $IMAGE:$VERSION ($digest)" >> "$GITHUB_STEP_SUMMARY"
+      # Signed provenance for the published image. GitHub only stores
+      # attestations for public repositories and for private ones under an
+      # organization, so on a private personal repo this is skipped rather
+      # than failing a publish whose images are already pushed.
+      - if: github.event.repository.visibility == 'public'
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.manifest.outputs.digest }}
+          push-to-registry: true

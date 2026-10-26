@@ -1,0 +1,36 @@
+import { approvalDecisionSchema } from "@gond/shared";
+import { Hono } from "hono";
+import { ownsThread, userId } from "../access.ts";
+import type { Env } from "../app.ts";
+import { answerProblem, decide, openApprovals } from "../approvals.ts";
+import { getApproval, listApprovals } from "../data/approvals.ts";
+import { threadRefs } from "../data/threads.ts";
+
+export function approvalsRoutes() {
+  const app = new Hono<Env>();
+
+  app.get("/approvals", (c) => {
+    const status = c.req.query("status");
+    const mine = new Set(threadRefs(userId(c)).map((t) => t.id));
+    if (status === "pending" || !status) return c.json({ approvals: openApprovals().filter((a) => mine.has(a.threadId)) });
+    return c.json({ approvals: listApprovals({ limit: Number(c.req.query("limit")) || 100 }).filter((a) => mine.has(a.threadId)) });
+  });
+
+  app.get("/approvals/:id", (c) => {
+    const approval = getApproval(c.req.param("id"));
+    return approval && ownsThread(c, approval.threadId) ? c.json({ approval }) : c.json({ error: "Couldn't find that approval" }, 404);
+  });
+
+  app.post("/approvals/:id", async (c) => {
+    const parsed = approvalDecisionSchema.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) return c.json({ error: "Say allow, deny or always" }, 400);
+    const asked = getApproval(c.req.param("id"));
+    if (!asked || !ownsThread(c, asked.threadId)) return c.json({ error: "Couldn't find that approval" }, 404);
+    const problem = asked.status === "pending" ? answerProblem(asked, parsed.data) : null;
+    if (problem) return c.json({ error: problem }, 400);
+    const approval = decide(c.req.param("id"), parsed.data);
+    return approval ? c.json({ approval }) : c.json({ error: "Couldn't find that approval" }, 404);
+  });
+
+  return app;
+}

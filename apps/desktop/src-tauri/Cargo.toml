@@ -1,0 +1,37 @@
+[workspace]
+members = [".", "server-url"]
+
+[package]
+name = "gond-desktop"
+version = "0.1.0"
+description = "Gond for Windows and Linux: the web app in its own window, pointed at your Gond."
+license = "MIT"
+edition = "2021"
+rust-version = "1.85"
+
+[lib]
+name = "gond_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "=2.7.1", features = [] }
+
+[dependencies]
+tauri = { version = "=2.12.1", features = [] }
+tauri-plugin-opener = "=2.7.0"
+tauri-plugin-notification = "=2.5.1"
+tauri-plugin-single-instance = "=2.5.2"
+tauri-plugin-dialog = "=2.8.1"
+tauri-plugin-updater = "=2.14.0"
+reqwest = { version = "=0.13.5", default-features = false, features = ["rustls", "json"] }
+tiny_http = "=0.12.0"
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.151"
+rand = "=0.10.3"
+sha2 = "=0.11.0"
+base64 = "=0.23.1"
+url = "=2.5.8"
+server-url = { path = "server-url" }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+webkit2gtk = { version = "=2.0.2", features = ["v2_38"] }
