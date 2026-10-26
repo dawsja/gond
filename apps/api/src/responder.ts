@@ -11,7 +11,7 @@ import { allSecretValues, listSecrets } from "./data/secrets.ts";
 import { userTalk, userTimezone } from "./data/prefs.ts";
 import { listConnections } from "./data/settings.ts";
 import { listSkills } from "./data/skills.ts";
-import { answeringOf, botLinesSincePerson, closePending, closeSentFrom, dropMessage, getAttachment, getMessage, getThread, markAnswered, openedExchange, postMessage, reactionsOf, recentMessages, markSteered, releaseClaim, setSentTo, stillRouting, threadBusy, threadRefs, unsteer } from "./data/threads.ts";
+import { answeringOf, awaitsReport, botLinesSincePerson, closePending, closeSentFrom, dropMessage, getAttachment, getMessage, getThread, markAnswered, openedExchange, postMessage, reactionsOf, recentMessages, markSteered, releaseClaim, setSentTo, stillRouting, threadBusy, threadRefs, unsteer } from "./data/threads.ts";
 import { computerTools, secretCommandTool } from "./computer.ts";
 import { computerTool } from "./computer-tool.ts";
 import { attachmentNote, deliverAttachments, type Delivered } from "./inbox.ts";
@@ -569,7 +569,7 @@ export function promptFor(bot: Bot, thread: Thread, message: Message, bots: Bot[
       : result
         ? `\n\nThis is the result of the task you handed ${sender}. Your answer goes to the person, in this chat: tell them what came of it. Don't thank or address ${sender}; to tell ${sender} anything, use message_bot.`
         : route === "person"
-          ? `\n\nThis is ${sender} answering what you asked it while working on the person's request. Your answer goes to the person, in this chat: carry on with their request and tell them what came of it. Don't thank or address ${sender}; to tell ${sender} anything, use message_bot.`
+          ? `\n\nThis is ${sender} answering what you asked it while working on the person's request. Your answer goes to the person, in this chat: carry on with their request (if you said you'd do your part once it reported, do it now) and tell them what came of it. If you still wait on another teammate before there's anything to do or tell, answer exactly ${QUIET_REPLY}. Don't thank or address ${sender}; to tell ${sender} anything, use message_bot.`
           : message.note === "action"
             ? `\n\nThis is an action from ${sender}: it needs you to do something. Act on it now: do the work it asks for (don't just acknowledge it or say you will), then answer with what you did and what came of it. Your answer goes back to ${sender} as information, not to the person; if ${sender} must then do something itself, also tell it with message_bot as an action. If it brings something the person should hear (a result, a change, a question for them), tell them with post_message, which posts in your chat with them.`
             : `\n\nThis message came from ${sender}. Do the work it asks for and answer with the result; your answer goes back to them, not to the person. If it brings something the person should hear (a result, a change, a question for them), tell them with post_message, which posts in your chat with them, then answer ${sender} in a line.`;
@@ -616,7 +616,7 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
 
     return botTurn(target, targetThread, posted, controller.signal).catch((error: unknown) => `(${target.name} could not answer: ${error instanceof Error ? error.message : "error"})`);
   };
-  const context = { box, bot, thread, message, askBot, syncSoul, stopWork: interruptMessage, isWorking: isBusy, tellWorking, signal: controller.signal };
+  const context = { box, bot, thread, message, askBot, syncSoul, stopWork: interruptMessage, isWorking: isBusy, tellWorking, reportTo, signal: controller.signal };
   let reply = "";
   let quiet = false;
   let stopped = false;
@@ -877,11 +877,30 @@ function answersMyNote(message: Pick<Message, "threadId" | "fromThreadId" | "cre
   return Boolean(message.fromThreadId) && openedExchange(message.threadId, message.fromThreadId!, message.createdAt);
 }
 
+/**
+ * A teammate's line back to a bot that asked it to act on the person's errand wakes that bot, or
+ * reaches its turn there by steer, so one that said it would carry on once the others report does.
+ * Its answer goes to the person, so the two can't bounce lines; null when it isn't such a report.
+ */
+export function reportTo(bot: Bot, fromThreadId: string, asker: Bot, body: string, depth: number): Message | null {
+  if (depth > MAX_CHAIN || !awaitsReport(asker.threadId, fromThreadId, new Date().toISOString())) return null;
+  const turn = [...activeTurns().values()].find((t) => t.botId === asker.id && t.threadId === asker.threadId);
+  const message = postMessage({ threadId: asker.threadId, author: bot.id, body, depth, fromThreadId, note: "info", steered: Boolean(turn) });
+  if (turn) {
+    void turn
+      .steer(`${bot.name}, whom you asked to act, reported back while you were working:\n\n${body}\n\nIf it's what you were waiting for, carry on with your part now. Your answer at the end covers it.`)
+      .catch(() => false)
+      .then((taken) => taken || unsteer(message.id));
+  }
+  return message;
+}
+
 /*
  * A reply to a teammate belongs to the exchange between the two bots, never
  * the person's chat with the one answering: it lands in the sender's
  * conversation (where it shows as "Message from …" and opens the exchange)
- * and wakes nobody, so two bots can't bounce replies forever. A handoff's
+ * and wakes nobody but a bot that waits on it as a report (reportTo), so two
+ * bots can't bounce replies forever. A handoff's
  * result goes up the chain from reportBack. Only a result coming back to the
  * bot that handed the task out is for the person.
  */
@@ -894,7 +913,8 @@ export function deliverReply(bot: Bot, thread: Thread, message: Message, reply: 
   }
   const sender = route === "teammate" && message.fromThreadId ? getThread(message.fromThreadId) : null;
   if (sender) {
-    // An answer wakes nobody: what the sender must do with it comes as its own action, by message_bot.
+    const asker = getBot(message.author);
+    if (asker?.threadId === sender.id && reportTo(bot, thread.id, asker, reply, message.depth + 1)) return;
     postMessage({ threadId: sender.id, author: bot.id, body: reply, depth: message.depth + 1, fromThreadId: thread.id, answered: true, note: "info" });
     return;
   }

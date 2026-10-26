@@ -111,7 +111,8 @@ export type MessageAuthor = "you" | "system" | "routine" | string;
 
 /**
  * What one bot tells another with message_bot: an `action` wakes it to act on the note and answer with
- * what it did; `info` only lets it know ("my part is done") and wakes nobody.
+ * what it did; `info` only lets it know ("my part is done") and wakes nobody, unless it reports to the
+ * bot that asked for the action.
  */
 export const NOTE_KINDS = ["action", "info"] as const;
 export type NoteKind = (typeof NOTE_KINDS)[number];

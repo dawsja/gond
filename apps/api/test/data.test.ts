@@ -482,11 +482,11 @@ describe("data", () => {
     expect(told[0]).toContain("isn't a request");
     expect(transcriptLines([action, info], [ops, dev], dev)).toBe("Opsy (teammate, action for you): Deploy the fix to staging.\nOpsy (teammate, for your information): My part is done.");
 
-    // The answer to an action goes back as information: what the sender must do comes as its own action.
+    // The answer to an action goes back as information, and wakes the bot that asked for it to carry on.
     deliverReply(dev, getThread(dev.threadId)!, action, "Deployed to staging.");
     const back = listMessages(ops.threadId).at(-1)!;
     expect(back).toMatchObject({ author: dev.id, body: "Deployed to staging.", note: "info" });
-    expect(answered(back.id)).not.toBeNull();
+    expect(answered(back.id)).toBeNull();
   });
 
   test("in a space every answer is told it's public, and a bot reads how its cards were answered", async () => {
@@ -3161,6 +3161,78 @@ describe("handoffs", () => {
     await tick();
     const again = postMessage({ threadId: net.threadId, author: patch.id, body: "And the secondary?", depth: 1, fromThreadId: patch.threadId });
     expect(answerGoesTo(again)).toBe("teammate");
+  });
+
+  test("a bot that asked teammates to act is woken by their reports, even ones sent as information, and carries on", async () => {
+    const { createBot } = await import("../src/data/bots.ts");
+    const { botInputSchema, QUIET_REPLY } = await import("@gond/shared");
+    const { getThread, listMessages, markAnswered, postMessage } = await import("../src/data/threads.ts");
+    const { baseTools } = await import("../src/tools.ts");
+    const { activeTurns, answerGoesTo, deliverReply, promptFor, reportTo } = await import("../src/responder.ts");
+    const { ensureDatabase } = await import("../src/db/init.ts");
+    const tick = () => Bun.sleep(3);
+    const waits = (id: string) => (ensureDatabase().query("SELECT answered_at FROM gond_messages WHERE id = ?").get(id) as { answered_at: string | null }).answered_at === null;
+    const patch = createBot(botInputSchema.parse({ name: "Wake Patch" }), "u-wake");
+    const net = createBot(botInputSchema.parse({ name: "Wake Net" }), "u-wake");
+    const sentry = createBot(botInputSchema.parse({ name: "Wake Sentry" }), "u-wake");
+    const toolsOf = (bot: typeof patch, message: { depth: number }) =>
+      baseTools({ box: { url: "http://box.invalid", token: "t", user: "u-wake" }, bot, thread: getThread(bot.threadId)!, message: message as never, askBot: async () => "", syncSoul: async () => undefined, stopWork: async () => false, isWorking: () => false, tellWorking: async () => false, reportTo }).message_bot!;
+
+    // The person's errand: Patch asks Net and Sentry to do their parts and ends its turn, waiting on them.
+    const errand = postMessage({ threadId: patch.threadId, author: "you", body: "Decommission the old NAS." });
+    await tick();
+    await toolsOf(patch, errand).execute({ bot: "Wake Net", kind: "action", text: "Move the DNS records off the NAS and confirm." }, "c1");
+    await toolsOf(patch, errand).execute({ bot: "Wake Sentry", kind: "action", text: "Drop the NAS from monitoring and confirm." }, "c2");
+    markAnswered(errand.id);
+    const netNote = listMessages(net.threadId).at(-1)!;
+    const sentryNote = listMessages(sentry.threadId).at(-1)!;
+    await tick();
+
+    // Net reports as information mid-turn: that still wakes Patch, whose answer goes to the person.
+    expect(await toolsOf(net, netNote).execute({ bot: "Wake Patch", kind: "info", text: "DNS is moved. My part is done." }, "c3")).toContain("carries on");
+    const netReport = listMessages(patch.threadId).at(-1)!;
+    expect(netReport).toMatchObject({ author: net.id, note: "info", fromThreadId: net.threadId });
+    expect(waits(netReport.id)).toBe(true);
+    expect(answerGoesTo(netReport)).toBe("person");
+    const prompt = promptFor(patch, getThread(patch.threadId)!, netReport, [patch, net, sentry]);
+    expect(prompt).toContain("Wake Net answering what you asked it");
+    expect(prompt).toContain("do it now");
+    expect(prompt).toContain(QUIET_REPLY);
+
+    // Net's final answer lands while its report still waits: it doesn't wake Patch a second time.
+    deliverReply(net, getThread(net.threadId)!, netNote, "Done: DNS is off the NAS.");
+    const netAnswer = listMessages(patch.threadId).at(-1)!;
+    expect(netAnswer.body).toBe("Done: DNS is off the NAS.");
+    expect(waits(netAnswer.id)).toBe(false);
+
+    // While Patch works in its chat, Sentry's answer reaches that turn by steer instead of queuing a new one.
+    markAnswered(netReport.id);
+    const steered: string[] = [];
+    activeTurns().set("wake-patch-turn", { botId: patch.id, threadId: patch.threadId, userId: "u-wake", messageId: netReport.id, route: "person", controller: new AbortController(), startedAt: Date.now(), steer: async (text: string) => (steered.push(text), true) });
+    try {
+      await tick();
+      deliverReply(sentry, getThread(sentry.threadId)!, sentryNote, "Monitoring no longer watches the NAS.");
+      await tick();
+      const sentryAnswer = listMessages(patch.threadId).at(-1)!;
+      expect(sentryAnswer).toMatchObject({ author: sentry.id, fromThreadId: sentry.threadId, steered: true });
+      expect(waits(sentryAnswer.id)).toBe(false);
+      expect(steered[0]).toContain("Monitoring no longer watches the NAS.");
+      expect(steered[0]).toContain("carry on with your part");
+    } finally {
+      activeTurns().delete("wake-patch-turn");
+    }
+
+    // Patch's answer to a report is the person's, so the two bots can't bounce lines.
+    deliverReply(patch, getThread(patch.threadId)!, netReport, "The NAS is decommissioned.");
+    expect(listMessages(patch.threadId).at(-1)).toMatchObject({ author: patch.id, body: "The NAS is decommissioned.", fromThreadId: null });
+    expect(listMessages(net.threadId).some((m) => m.body === "The NAS is decommissioned.")).toBe(false);
+
+    // Once the person speaks again the errand is over: a late line from Net only lets Patch know.
+    await tick();
+    postMessage({ threadId: patch.threadId, author: "you", body: "Thanks" });
+    await tick();
+    await toolsOf(net, netNote).execute({ bot: "Wake Patch", kind: "info", text: "Also cleared the old DHCP lease." }, "c4");
+    expect(waits(listMessages(patch.threadId).at(-1)!.id)).toBe(false);
   });
 
   test("a teammate whose run keeps breaking reports each time as a failed result, and the carry-on briefs never run out of hops", async () => {

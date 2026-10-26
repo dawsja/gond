@@ -93,7 +93,7 @@ export const TOOL_NOTES = [
   `react puts an emoji on the person's message you are answering, as a person taps one in a chat: 👍 or ❤️ when they thank you, agree or close ("thanks!", "perfect", "that will be all"), the others when they fit. When the reaction says it all, react and answer with exactly ${QUIET_REPLY}: nothing more is posted and nobody is notified. Otherwise react and reply as usual. Most messages need no reaction.`,
   "post_message adds a line to the conversation you are in before your final answer, e.g. to say what you are starting on. Your final answer is posted for you; don't repeat it. Both only ever reach the person: a teammate hears from you through message_bot, ask_bot or delegate_bot, or through your final answer when its own message woke you.",
   "list_bots shows the team with each bot's id, job and whether it is busy.",
-  "message_bot sends a teammate a note and returns at once, as one of two kinds. An action is something it must do: a request, a task, a question to answer, a fix; it wakes the teammate to act on it, and its answer comes back to your conversation as information, without starting another turn of yours. Information is only for it to know (\"my part is done\", \"the VM is up\", a heads-up): it wakes nobody and needs no answer. Never send information hoping it gets done: if it needs doing, it's an action. A teammate's note or answer that reached you as information asks nothing of you; if it needs something from you, it comes as an action. Use ask_bot when you need the answer now. Neither shows in the person's chat with it. In a room, a member is told in the room: an @mention in your answer, or message_bot, which says it there for everyone to see; never a private note.",
+  "message_bot sends a teammate a note and returns at once, as one of two kinds. An action is something it must do: a request, a task, a question to answer, a fix; it wakes the teammate to act on it, and its answer comes back to your conversation as information and wakes you (or reaches you mid-work) to carry on with the person's request, so you needn't check on it: if you said you'd do your part once it reports, do it then. Information is only for it to know (\"my part is done\", \"the VM is up\", a heads-up): it wakes nobody and needs no answer, except a report to the teammate that asked you to act, which wakes it like your answer. Never send information hoping it gets done: if it needs doing, it's an action. Other information from a teammate asks nothing of you; if it needs something from you, it comes as an action. Use ask_bot when you need the answer now. Neither shows in the person's chat with it. In a room, a member is told in the room: an @mention in your answer, or message_bot, which says it there for everyone to see; never a private note.",
   "delegate_bot hands a teammate a self-contained brief (outcome, sources, constraints, deliverable, review point) in its own conversation and returns immediately. The result comes back to you here as a new message from that teammate; report it to the person then, not before. When you hand on part of a task that was handed to you, it stays open: the results come back to you, and your reply once the last of them is in is what goes back to whoever handed it to you, so don't relay results with message_bot.",
   "list_handoffs is the truth about what you handed out: check it before you tell anyone what is in flight or done, and before you plan the next round. When the plan changes under a brief that is out, amend_handoff replaces it and cancel_handoff withdraws it; don't send a second brief and leave the teammate to guess which one wins.",
   "follow_up wakes you later in this conversation with a note to yourself. Use it when you are waiting on something that doesn't message you (a build, a deadline, a quiet teammate) so the work carries on without the person having to nudge you.",
@@ -134,6 +134,9 @@ type Context = {
 
   /** Hands a note to the bot's turns running now, so it hears it mid-work; false when it isn't working. */
   tellWorking?: (bot: Bot, text: string) => Promise<boolean>;
+
+  /** Posts a line for a bot that asked this one to act, waking it; null when it isn't waiting on one. */
+  reportTo?: (bot: Bot, fromThreadId: string, asker: Bot, body: string, depth: number) => Message | null;
 
   signal?: AbortSignal;
 };
@@ -711,7 +714,7 @@ export function baseTools(context: Context): Record<string, DriverTool> {
     },
     message_bot: {
       description:
-        "Send a teammate a note and return at once. kind \"action\": it must do something (a request, a task, a question); it is woken to act on it, and its answer comes back to your conversation without waking you. kind \"info\": only for it to know (\"my part is done\"); it wakes nobody and needs no answer. In a room, a note to another member is said in the room, with an @mention, for everyone to see.",
+        "Send a teammate a note and return at once. kind \"action\": it must do something (a request, a task, a question); it is woken to act on it, and its answer comes back to your conversation and wakes you to carry on. kind \"info\": only for it to know (\"my part is done\"); it wakes nobody and needs no answer, unless it reports on what that teammate asked of you. In a room, a note to another member is said in the room, with an @mention, for everyone to see.",
       inputSchema: schema(
         {
           bot: { type: "string", description: "The teammate's id, name or @handle." },
@@ -741,12 +744,13 @@ export function baseTools(context: Context): Record<string, DriverTool> {
         }
         const body = hideSecrets(text);
         if (kind === "info") {
+          if (context.reportTo?.(bot, thread.id, target, body, depth)) return `Sent to ${target.name}. It asked this of you, so it hears it now and carries on.`;
           postMessage({ threadId: target.threadId, author: bot.id, body, depth, fromThreadId: thread.id, answered: true, note: "info" });
           const heard = await context.tellWorking?.(target, `${bot.name}, a teammate, sent you this for your information while you were working (it needs no answer, and isn't a request):\n\n${body}\n\nKeep it in mind; if it changes what you're doing, adjust, and carry on.`);
           return `Sent to ${target.name} for its information${heard ? ", in the middle of what it's doing" : ""}. It needs no answer and wakes nobody.`;
         }
         postMessage({ threadId: target.threadId, author: bot.id, body, depth, fromThreadId: thread.id, note: "action" });
-        return `Sent to ${target.name} as an action: it's woken to act on it, and its answer will come back here.`;
+        return `Sent to ${target.name} as an action: it's woken to act on it, and its answer will come back here and wake you to carry on.`;
       },
     },
     ...sayInSpaceTool(context),

@@ -751,10 +751,13 @@ One line each: where to start, and what must not change.
   `gond_messages`): an `action` wakes the teammate to act and report what
   it did; `info` is posted answered, wakes nobody, and reaches running
   turns by steer (`tellWorking`). A teammate's answer always goes back as
-  info. No kind means action.
+  info. A line back to a bot that asked for an action on the person's
+  errand (`awaitsReport`, the answer or an info note) wakes it, or steers
+  its turn there, so it carries on (`reportTo`); its answer goes to the
+  person, so the two can't bounce. No kind means action.
 - **What bots say to each other stays between them.** A reply to a
   teammate is posted in the sender's conversation with `fromThreadId`,
-  answered, waking nobody (`deliverReply`); a handoff result goes up via
+  answered, waking nobody but a bot waiting on its report (`deliverReply`); a handoff result goes up via
   `reportBack`. Neither is ever a bubble in the person's chat with the
   answering bot. A `fromThreadId` line never previews, dates, sorts or
   counts as `unread` (new ones are `unreadTeam`, a grey dot). A bot a

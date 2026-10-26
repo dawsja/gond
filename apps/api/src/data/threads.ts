@@ -498,6 +498,23 @@ export function openedExchange(ownThreadId: string, otherThreadId: string, befor
   return row?.thread_id === otherThreadId;
 }
 
+/**
+ * Whether the bot in `ownThreadId` asked the bot in `otherThreadId` to act, on the errand it is on
+ * now, so a line back from the other is a report it waits on; false while one already waits.
+ */
+export function awaitsReport(ownThreadId: string, otherThreadId: string, at: string): boolean {
+  if (!openedExchange(ownThreadId, otherThreadId, at)) return false;
+  const row = ensureDatabase()
+    .query(
+      `SELECT
+         EXISTS (SELECT 1 FROM gond_messages WHERE thread_id = ?2 AND from_thread_id = ?1 AND note = 'action' AND created_at < ?3
+           AND created_at > COALESCE((SELECT MAX(created_at) FROM gond_messages WHERE thread_id = ?1 AND author IN ('you', 'system', 'routine') AND created_at < ?3), '')) AS asked,
+         EXISTS (SELECT 1 FROM gond_messages WHERE thread_id = ?1 AND from_thread_id = ?2 AND answered_at IS NULL) AS waiting`,
+    )
+    .get(ownThreadId, otherThreadId, at) as { asked: number; waiting: number };
+  return Boolean(row.asked) && !row.waiting;
+}
+
 export function markAnswered(id: string) {
   ensureDatabase().query("UPDATE gond_messages SET answered_at = ?, claimed_by = NULL WHERE id = ?").run(now(), id);
 }
