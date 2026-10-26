@@ -14,7 +14,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   const target = safeNext(typeof next === "string" ? next : null, "/app");
   const accounts = await countAccounts();
   if (accounts === 0) redirect("/register");
-  if (await getSessionUser()) redirect(target);
+  if ("user" in (await getSessionUser())) redirect(target);
   const config = await getAuthConfig();
   const oidc = config?.oidc ?? null;
   return (

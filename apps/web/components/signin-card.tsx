@@ -1,20 +1,38 @@
 "use client";
 
-import { composioCardToolkit, type Bot, type McpServer, type Message } from "@gond/shared";
+import { AI_SETUP_CARD, composioCardToolkit, type Bot, type McpServer, type Message } from "@gond/shared";
 import { ShieldCheck, TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { ActionCard, ActionCardDone, cheerOnFold } from "@/components/action-card";
+import { AiSetupCard } from "@/components/ai-setup-card";
 import { ConnectCard } from "@/components/connect-card";
 import { useLiveEvents } from "@/components/hq/live-events";
 import { Button } from "@/components/ui/button";
+import { failed } from "@/components/failed";
 import { McpPasteSignIn, startMcpSignIn } from "@/components/mcp-signin";
 import { Spinner } from "@/components/ui/spinner";
 import { apiShared } from "@/lib/api";
+import { retryTurn } from "@/lib/message-actions";
 
 export function SignInCard({ message, bot }: { message: Message; bot: Bot | undefined }) {
+  if (message.approvalId === AI_SETUP_CARD) return <AiSetupInChat message={message} bot={bot} />;
   const toolkit = composioCardToolkit(message.approvalId);
   if (toolkit) return <ConnectCard message={message} bot={bot} toolkit={toolkit} />;
   return <McpSignInCard message={message} bot={bot} />;
+}
+
+function AiSetupInChat({ message, bot }: { message: Message; bot: Bot | undefined }) {
+  const [retrying, setRetrying] = useState(false);
+  const retry = (answering: string) => {
+    if (retrying) return;
+    setRetrying(true);
+    // Done, the card goes with the reload; only a failure leaves it here to try again.
+    void retryTurn(message.threadId, answering)
+      .catch(failed("Couldn't try again."))
+      .finally(() => setRetrying(false));
+  };
+  const answering = message.answering;
+  return <AiSetupCard bot={bot} reason={message.body} onRetry={answering ? () => retry(answering) : undefined} retrying={retrying} />;
 }
 
 function McpSignInCard({ message, bot }: { message: Message; bot: Bot | undefined }) {

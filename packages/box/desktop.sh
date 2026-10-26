@@ -24,11 +24,16 @@ xauth -q -f "$XAUTHORITY" add ":$number" MIT-MAGIC-COOKIE-1 "$(head -c 16 /dev/u
 vncsock="$XDG_RUNTIME_DIR/vnc.sock"
 rm -f "$vncsock"
 
+# What a viewer pastes lands in CLIPBOARD and PRIMARY, so Ctrl+V, a
+# terminal's Shift+Insert and a middle click all paste it. Only CLIPBOARD
+# goes back out: with SendPrimary every selection on the screen would
+# replace the person's own clipboard.
 Xtigervnc "$display" \
   -geometry "${width}x${height}" -depth 24 \
   -auth "$XAUTHORITY" \
   -rfbunixpath "$vncsock" -rfbunixmode 0600 -rfbport -1 -localhost yes \
   -SecurityTypes None -AlwaysShared -AcceptSetDesktopSize=0 \
+  -SetPrimary=1 -SendPrimary=0 \
   -AllowOverride desktop,AcceptPointerEvents,AcceptKeyEvents,AcceptCutText \
   -desktop "Gond" -nolisten tcp &
 xpid=$!

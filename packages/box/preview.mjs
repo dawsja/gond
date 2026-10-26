@@ -15,6 +15,10 @@ export const PREVIEW_CODERS = {
   "image/bmp": "bmp",
 };
 
+// An iPhone's HEIC or HEIF photo as a JPEG every browser and model can read, stdin to stdout: rotated
+// the way the camera held it, its metadata (where it was taken, too) left behind.
+export const JPEG_FROM_HEIC = ["convert", "heic:-[0]", "-auto-orient", "-strip", "-quality", "90", "jpeg:-"];
+
 export function previewArgv(source, mediaType, out, edge = PREVIEW_EDGE) {
   const coder = PREVIEW_CODERS[mediaType];
   if (!coder) return null;

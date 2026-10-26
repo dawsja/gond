@@ -122,6 +122,8 @@ function MessageScrollerButton({
 // How far, in pixels, an edge takes to fade in: at the very top or bottom
 // the fade is gone, so the first and last lines read in full.
 const EDGE_FADE_PX = 48
+// The last stretch of the top strip, where it fades from the page's background into the text.
+const TOP_FADE_PX = 24
 
 /**
  * The text fades into the top and bottom edges while there is more to
@@ -151,11 +153,12 @@ function MessageScrollerEdges({ top, bottom, viewport: selector = '[data-slot="m
       resized.disconnect()
     }
   }, [selector])
-  const strip = "pointer-events-none absolute inset-x-0 z-10 from-background to-transparent transition-opacity duration-150"
+  const strip = "pointer-events-none absolute inset-x-0 z-10 transition-opacity duration-150"
   return (
     <div ref={ref} aria-hidden="true" className="contents">
-      <div className={cn(strip, "top-0 bg-linear-to-b")} style={{ height: top, opacity: edges.top }} />
-      <div className={cn(strip, "bottom-0 bg-linear-to-t")} style={{ height: bottom, opacity: edges.bottom }} />
+      {/* Solid under the header, so nothing shows between its pills, then a short fade into the text. */}
+      <div className={cn(strip, "top-0")} style={{ height: top, opacity: edges.top, backgroundImage: `linear-gradient(to bottom, var(--background) calc(100% - ${TOP_FADE_PX}px), transparent)` }} />
+      <div className={cn(strip, "bottom-0 bg-linear-to-t from-background to-transparent")} style={{ height: bottom, opacity: edges.bottom }} />
     </div>
   )
 }

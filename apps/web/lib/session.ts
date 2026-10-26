@@ -17,15 +17,29 @@ export async function apiFetch(path: string, init: RequestInit = {}): Promise<Re
 
 export type SessionUser = Me;
 
-export async function getSessionUser(): Promise<SessionUser | null> {
+/** Who is signed in, or why nobody is: a refusal from the API is signed out, an API that doesn't answer is down, as while it restarts after an update. */
+export type Session = { user: SessionUser } | { signedOut: true } | { down: true };
+
+export async function getSessionUser(): Promise<Session> {
+  let res: Response;
   try {
-    const res = await apiFetch("/api/me");
-    if (!res.ok) return null;
-    const data = (await res.json()) as { user?: SessionUser };
-    return data.user ?? null;
+    res = await apiFetch("/api/me");
   } catch {
-    return null;
+    return { down: true };
   }
+  if (res.status >= 500) return { down: true };
+  if (!res.ok) return { signedOut: true };
+  try {
+    const data = (await res.json()) as { user?: SessionUser };
+    return data.user ? { user: data.user } : { signedOut: true };
+  } catch {
+    return { down: true };
+  }
+}
+
+/** Where to sign in so the person comes back to `path` afterwards. */
+export function loginHref(path: string): string {
+  return `/login?next=${encodeURIComponent(safeNext(path))}`;
 }
 
 export async function getAuthConfig(): Promise<AuthConfig | null> {

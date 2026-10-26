@@ -80,6 +80,18 @@ test("settle reads a result line and ignores task notifications", () => {
   const done = settle({ type: "result", result: "hi" });
   assert.equal(done.ok, true);
   assert.equal(done.text, "hi");
+  assert.equal(done.error, undefined);
+});
+
+test("settle keeps a failed result's text as the error and flags a signed-out CLI", () => {
+  const out = settle({ type: "result", is_error: true, result: "Not logged in · Please run /login" });
+  assert.equal(out.ok, false);
+  assert.equal(out.error, "Not logged in · Please run /login");
+  assert.equal(out.signedOut, true);
+  const broke = settle({ type: "result", is_error: true, result: "Something else went wrong" });
+  assert.equal(broke.signedOut, false);
+  assert.equal(broke.error, "Something else went wrong");
+  assert.equal(settle({ type: "result", is_error: true }).error, undefined);
 });
 
 const say = (...content) => ({ type: "assistant", message: { content } });

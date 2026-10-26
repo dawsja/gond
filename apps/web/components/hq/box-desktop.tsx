@@ -3,13 +3,16 @@
 import type RFB from "@novnc/novnc";
 import type { RawChannel } from "@novnc/novnc";
 import { DESKTOP_CONTROL_LABELS, type DesktopControl } from "@gond/shared";
-import { CircleCheck, CircleQuestionMark, CircleX, GraduationCap, Hand, Keyboard, MonitorOff, RotateCw, Undo2, X, ZoomIn, ZoomOut } from "lucide-react";
+import { CircleCheck, CircleQuestionMark, CircleX, ClipboardCheck, GraduationCap, Hand, Keyboard, MonitorOff, RotateCw, Undo2, X, ZoomIn, ZoomOut } from "lucide-react";
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type ReactNode, type Ref, type RefObject } from "react";
 
 import { copyToClipboard, isPasteChord } from "@/components/hq/clipboard";
+import { appleKeyboard, chordKeys, clipboardReadWay, isPasteCode, pasteChordAction, pasteText, type PasteCode } from "@/components/hq/screen-paste";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+import { toast } from "@/components/ui/toast";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { desktopShell } from "@/lib/shell";
 import { cn } from "@/lib/utils";
 
 function IconButton({
@@ -97,9 +100,9 @@ export function keysymOf(character: string): number {
   return code <= 0xff ? code : 0x01000000 + code;
 }
 
-const PASTE_KEYSYMS: Record<string, number> = { KeyV: 0x76, Insert: 0xff63 };
-
+// Without readText, the browser's paste event follows the chord's keydown at once, or not at all.
 const PASTE_EVENT_WAIT_MS = 250;
+const PASTED_MS = 1_200;
 
 const NOTICE_MS = 2_500;
 
@@ -213,6 +216,8 @@ export function DesktopView({
   quality,
   onStatus,
   onKeyboard,
+  name,
+  onTakeControl,
   className,
   ref,
 }: {
@@ -222,6 +227,10 @@ export function DesktopView({
   quality: DesktopQuality;
   onStatus?: (report: DesktopReport) => void;
   onKeyboard?: (open: boolean) => void;
+  /** The bot whose screen this is, for what pasting and copying say. */
+  name?: string;
+  /** Offered when a paste is refused because a bot holds the screen. */
+  onTakeControl?: () => void;
   className?: string;
   ref?: Ref<DesktopViewHandle>;
 }) {
@@ -237,8 +246,9 @@ export function DesktopView({
   const [visible, setVisible] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(1);
   const noticeTimer = useRef<number | undefined>(undefined);
-
-  const lastSent = useRef<string | null>(null);
+  const [pasted, setPasted] = useState(false);
+  const pastedTimer = useRef<number | undefined>(undefined);
+  const readPermission = useRef<PermissionState | null>(null);
 
   const pendingCopy = useRef<string | null>(null);
   const remoteCopy = useRef<string | null>(null);
@@ -254,7 +264,19 @@ export function DesktopView({
     window.clearTimeout(noticeTimer.current);
     noticeTimer.current = window.setTimeout(() => setNotice(null), NOTICE_MS);
   }, []);
-  useEffect(() => () => window.clearTimeout(noticeTimer.current), []);
+  useEffect(
+    () => () => {
+      window.clearTimeout(noticeTimer.current);
+      window.clearTimeout(pastedTimer.current);
+    },
+    [],
+  );
+
+  const showPasted = useCallback(() => {
+    setPasted(true);
+    window.clearTimeout(pastedTimer.current);
+    pastedTimer.current = window.setTimeout(() => setPasted(false), PASTED_MS);
+  }, []);
 
   const report = useRef(onStatus);
   useEffect(() => {
@@ -268,6 +290,10 @@ export function DesktopView({
   useEffect(() => {
     settings.current = { viewOnly, trackpad, quality };
   }, [viewOnly, trackpad, quality]);
+  const who = useRef({ botId, name, onTakeControl });
+  useEffect(() => {
+    who.current = { botId, name, onTakeControl };
+  }, [botId, name, onTakeControl]);
   useEffect(() => {
     report.current?.({ status, message, notice, zoom: zoomLevel });
   }, [status, message, notice, zoomLevel]);
@@ -376,16 +402,23 @@ export function DesktopView({
     return () => observer.disconnect();
   }, [layout]);
 
+  const tellCopied = useCallback(() => {
+    const { botId, name } = who.current;
+    if (name) toast.add({ id: `screen-copied-${botId}`, title: `Copied from ${name}'s screen` });
+    else showNotice("Copied from the desktop");
+  }, [showNotice]);
+
   const onRemoteClipboard = useCallback(
     (text: string) => {
       if (!text) return;
       remoteCopy.current = text;
       void copyToClipboard(text).then((done) => {
         pendingCopy.current = done ? null : text;
-        showNotice(done ? "Copied from the desktop" : "Copied in the desktop; click in it once to take it");
+        if (done) tellCopied();
+        else showNotice("Copied on the screen. Click it once to take it.");
       });
     },
-    [showNotice],
+    [showNotice, tellCopied],
   );
 
   useEffect(() => {
@@ -475,6 +508,40 @@ export function DesktopView({
     client.viewOnly = viewOnly;
     if (!viewOnly && status === "live" && !isCoarsePointer()) client.focus();
   }, [viewOnly, status]);
+
+  useEffect(() => {
+    if (!viewOnly) toast.close(`screen-held-${botId}`);
+  }, [viewOnly, botId]);
+
+  // Only a granted permission is read on the chord; a prompt would stop every first paste.
+  useEffect(() => {
+    let gone = false;
+    let status: PermissionStatus | null = null;
+    const watch = () => {
+      readPermission.current = status?.state ?? null;
+    };
+    let query: Promise<PermissionStatus> | undefined;
+    try {
+      query = navigator.permissions?.query({ name: "clipboard-read" as PermissionName });
+    } catch {
+      query = undefined;
+    }
+    void query?.then(
+      (answer) => {
+        if (gone) return;
+        status = answer;
+        watch();
+        answer.addEventListener("change", watch);
+      },
+      () => {
+        readPermission.current = null;
+      },
+    );
+    return () => {
+      gone = true;
+      status?.removeEventListener("change", watch);
+    };
+  }, []);
 
   // noVNC reads the touches (tap, hold, drag, two-finger scroll) and says
   // what it saw as gesture events, which don't bubble but do pass through
@@ -610,69 +677,108 @@ export function DesktopView({
     };
   }, [anchorAt, zoomAround, zoomTo, followPointer, movePointer, pointerOnPage]);
 
+  // The paste chord never reaches noVNC as typed: the person's text goes onto
+  // the screen's clipboard first, then the chord, so the screen pastes it.
   useEffect(() => {
     const node = host.current;
     if (!node) return;
     const swallowed = new Set<string>();
-    let pending: { code: string; timer: number } | null = null;
+    // What noVNC has told the screen is held down, mirrored for the chord.
+    const held = new Set<string>();
+    type Attempt = { text: string | null; settled: boolean; arrived: () => void; event: Promise<void> };
+    let latest: Attempt | null = null;
+    let queue: Promise<void> = Promise.resolve();
+    let gone = false;
 
-    const replay = (code: string) => {
+    const press = (code: PasteCode, text: string | null) => {
       const client = rfb.current;
-      const keysym = PASTE_KEYSYMS[code];
-      if (client && keysym) client.sendKey(keysym, code);
+      if (gone || !client || client.viewOnly) return;
+      if (text) client.clipboardPasteFrom(text);
+      for (const key of chordKeys(code, held, appleKeyboard(navigator.platform))) client.sendKey(key.keysym, key.code, key.down);
+      if (text) showPasted();
     };
-    const settle = () => {
-      if (!pending) return;
-      window.clearTimeout(pending.timer);
-      const { code } = pending;
-      pending = null;
-      return code;
+
+    const readFor = async (attempt: Attempt) => {
+      const way = clipboardReadWay({ readText: typeof navigator.clipboard?.readText === "function", permission: readPermission.current, desktopApp: desktopShell() !== null });
+      let read: string | null = null;
+      if (way === "read") read = await navigator.clipboard.readText().then((text) => text, () => null);
+      else await Promise.race([attempt.event, new Promise((done) => window.setTimeout(done, PASTE_EVENT_WAIT_MS))]);
+      attempt.settled = true;
+      return pasteText(read, attempt.text);
+    };
+
+    const tellHeld = () => {
+      const { botId, name, onTakeControl } = who.current;
+      if (!name || !onTakeControl) return;
+      const id = `screen-held-${botId}`;
+      toast.add({
+        id,
+        title: `${name} is using the screen. Take control to paste.`,
+        actionProps: {
+          children: "Take control",
+          onClick: () => {
+            toast.close(id);
+            onTakeControl();
+          },
+        },
+      });
     };
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!rfb.current || rfb.current.viewOnly || !isPasteChord(event) || !(event.code in PASTE_KEYSYMS)) return;
-      event.stopPropagation();
-      swallowed.add(event.code);
       const code = event.code;
-      if (pending) window.clearTimeout(pending.timer);
-      pending = {
-        code,
-        timer: window.setTimeout(() => {
-          pending = null;
-          replay(code);
-        }, PASTE_EVENT_WAIT_MS),
-      };
+      if (!isPasteChord(event) || !isPasteCode(code)) {
+        held.add(code);
+        return;
+      }
+      const client = rfb.current;
+      const action = pasteChordAction({ connected: client !== null, viewOnly: client?.viewOnly ?? true, canTakeControl: Boolean(who.current.name && who.current.onTakeControl) });
+      if (action === "held") tellHeld();
+      if (action !== "paste") return;
+      event.stopPropagation();
+      swallowed.add(code);
+      let arrived = () => {};
+      const attempt: Attempt = { text: null, settled: false, arrived: () => arrived(), event: new Promise<void>((done) => (arrived = done)) };
+      latest = attempt;
+      // Read now, in the keypress, and press in order however long each read takes.
+      const text = readFor(attempt);
+      queue = queue.then(() => text).then((found) => press(code, found));
     };
     const onKeyUp = (event: KeyboardEvent) => {
+      held.delete(event.code);
       if (!swallowed.delete(event.code)) return;
       event.stopPropagation();
     };
+    // noVNC lets every key go when the screen loses focus.
+    const onFocusOut = () => held.clear();
     const onPaste = (event: ClipboardEvent) => {
       const client = rfb.current;
       if (!client || client.viewOnly) return;
-      const code = settle();
-      const active = document.activeElement;
-
-      if (!code && active && active !== document.body && !node.contains(active)) return;
-      event.preventDefault();
       const text = event.clipboardData?.getData("text/plain") ?? "";
-      if (text && text !== lastSent.current) {
-        lastSent.current = text;
-        client.clipboardPasteFrom(text);
+      if (latest && !latest.settled) {
+        event.preventDefault();
+        latest.text = text;
+        latest.arrived();
+        return;
       }
-      if (code) replay(code);
+      // A paste with no chord (a menu's Paste): the text waits on the screen's clipboard.
+      const active = document.activeElement;
+      if (active && active !== document.body && !node.contains(active)) return;
+      event.preventDefault();
+      if (text) client.clipboardPasteFrom(text);
     };
 
     node.addEventListener("keydown", onKeyDown, true);
     node.addEventListener("keyup", onKeyUp, true);
+    node.addEventListener("focusout", onFocusOut);
     window.addEventListener("paste", onPaste);
     return () => {
-      settle();
+      gone = true;
       node.removeEventListener("keydown", onKeyDown, true);
       node.removeEventListener("keyup", onKeyUp, true);
+      node.removeEventListener("focusout", onFocusOut);
       window.removeEventListener("paste", onPaste);
     };
-  }, []);
+  }, [showPasted]);
 
   useEffect(() => {
     const node = host.current;
@@ -682,7 +788,7 @@ export function DesktopView({
       if (!text) return;
       pendingCopy.current = null;
       void copyToClipboard(text).then((done) => {
-        if (done) showNotice("Copied from the desktop");
+        if (done) tellCopied();
         else pendingCopy.current = text;
       });
     };
@@ -692,7 +798,7 @@ export function DesktopView({
       node.removeEventListener("pointerdown", retry, true);
       node.removeEventListener("keydown", retry, true);
     };
-  }, [showNotice]);
+  }, [tellCopied]);
 
   const onTyped = useCallback(() => {
     const field = keyboard.current;
@@ -719,7 +825,6 @@ export function DesktopView({
   const typeText = useCallback((text: string) => {
     const client = rfb.current;
     if (!client || client.viewOnly || !text) return;
-    lastSent.current = text;
     client.clipboardPasteFrom(text);
     // Typed rather than Ctrl+V, which a terminal doesn't take as paste.
     for (const character of text) client.sendKey(keysymOf(character), null);
@@ -765,6 +870,13 @@ export function DesktopView({
           </div>
         </div>
       </div>
+
+      {pasted ? (
+        <div role="status" className="pointer-events-none absolute top-[calc(72px+var(--safe-top))] left-1/2 z-10 flex -translate-x-1/2 animate-in items-center gap-1.5 rounded-full border border-primary-edge bg-primary px-3 py-1.5 text-[12px] font-medium text-primary-foreground shadow-subtle-3 fade-in wide:top-3">
+          <ClipboardCheck className="size-3.5" aria-hidden="true" />
+          Pasted
+        </div>
+      ) : null}
 
       {viewOnly ? null : (
         <textarea

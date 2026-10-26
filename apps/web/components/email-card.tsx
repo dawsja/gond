@@ -3,7 +3,7 @@
 import { emailAddress, emailDraftOf, emailEditable, emailName, sendDraftAction, wordDiff, type Approval, type ApprovalAnswer, type Bot, type EmailDraft, type EmailEdit, type Message } from "@gond/shared";
 import { ArrowUp, ChevronDown, ChevronUp, CornerUpLeft, Forward, Mail, NotebookPen, Paperclip, Pencil, Undo2 } from "lucide-react";
 import { useState, type ReactNode } from "react";
-import { ActionCard, ActionCardDone, cheerOnFold, NOBODY_ANSWERED } from "@/components/action-card";
+import { ActionCard, ActionCardDone, cheerOnFold, NOBODY_ANSWERED, SET_ASIDE } from "@/components/action-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput, InputGroupText } from "@/components/ui/input-group";
@@ -190,8 +190,9 @@ export function EmailApprovalCard({ message, approval, email, bot, noticed, onDe
     if (approval.outcome === "changes") return <ActionCardDone id={message.id} bot={bot} icon={icon} title="Changes asked" by={approval.note ?? undefined} status="Sent back" tone="neutral" />;
     if (approval.outcome === "sent") return <ActionCardDone id={message.id} bot={bot} icon={icon} title="Email sent" by={by} status="Sent" tone="ok" />;
     if (approval.status === "allowed") return <ActionCardDone id={message.id} bot={bot} icon={icon} title={words.done} by={by} status={words.allowed} tone="ok" />;
-    if (approval.status === "denied") return <ActionCardDone id={message.id} bot={bot} icon={icon} title={sendsDraft ? "Not sent" : words.title} by={emailGist(email)} status={words.denied} tone="bad" />;
-    return <ActionCardDone id={message.id} bot={bot} icon={icon} title={sendsDraft ? "Send this email?" : words.title} by={NOBODY_ANSWERED} status="Expired" tone="neutral" />;
+    if (approval.status === "denied") return <ActionCardDone id={message.id} bot={bot} icon={icon} title={words.title} by={emailGist(email)} status={words.denied} tone="bad" />;
+    if (approval.outcome === "aside") return <ActionCardDone id={message.id} bot={bot} icon={icon} title={words.title} by={SET_ASIDE.by} status={SET_ASIDE.status} tone="neutral" />;
+    return <ActionCardDone id={message.id} bot={bot} icon={icon} title={words.title} by={NOBODY_ANSWERED} status="Expired" tone="neutral" />;
   }
 
   const changed = editing && JSON.stringify(fields) !== JSON.stringify(fieldsOf(email));
@@ -221,14 +222,15 @@ export function EmailApprovalCard({ message, approval, email, bot, noticed, onDe
     <ActionCard
       noticed={noticed}
       icon={icon}
-      title={sendsDraft ? "Send this email?" : words.title}
+      title={words.title}
       by={`${name} · ${email.app}${before ? " · New draft" : ""}`}
-      note={sendsDraft ? "Nothing goes out until you tap Send, and nothing is saved until you tap Save as draft." : `Nothing goes out until you tap ${words.allow}.`}
+      note={sendsDraft ? "It waits in your drafts once you tap Save draft. Send now sends it instead." : email.mode === "draft" ? "Nothing is saved until you tap Save draft." : `Nothing goes out until you tap ${words.allow}.`}
       actions={
         sendsDraft ? (
+          // A draft was asked for, so saving it is the main button; sending is the step aside.
           <>
-            {button("send", "Send", { decision: "allow", send: true }, "tint")}
-            {button("save", "Save as draft", { decision: "allow" }, "outline")}
+            {button("save", words.allow, { decision: "allow" }, "tint")}
+            {button("send", "Send now", { decision: "allow", send: true }, "outline")}
             {button("deny", "Not now", { decision: "deny" }, "outline")}
           </>
         ) : (
@@ -243,7 +245,7 @@ export function EmailApprovalCard({ message, approval, email, bot, noticed, onDe
       {editable ? (
         <div className="flex items-center gap-2">
           {editing ? (
-            <p className="min-w-0 flex-1 text-[12.5px] leading-4 text-muted-foreground">{wrong ? "Check the addresses." : changed ? "What you see is what goes." : "Change anything, then send it."}</p>
+            <p className="min-w-0 flex-1 text-[12.5px] leading-4 text-muted-foreground">{wrong ? "Check the addresses." : changed ? (email.mode === "draft" ? "What you see is what's saved." : "What you see is what goes.") : email.mode === "draft" ? "Change anything, then save it." : "Change anything, then send it."}</p>
           ) : (
             <form
               className="min-w-0 flex-1"

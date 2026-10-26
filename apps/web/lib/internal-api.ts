@@ -12,7 +12,16 @@ function decoded(pathname: string): string {
   return path.replace(/\/{2,}/g, "/");
 }
 
+// The API resolves `.` and `..` segments (and their escapes) before routing, so the check must too.
+function resolved(pathname: string): string {
+  try {
+    return new URL(pathname, "http://gond.invalid").pathname;
+  } catch {
+    return pathname;
+  }
+}
+
 /** The API's LLM and MCP proxies trust a bearer token alone and are for the box on the Compose network, never the internet. */
 export function isInternalApiPath(pathname: string): boolean {
-  return INTERNAL.test(pathname) || INTERNAL.test(decoded(pathname));
+  return [pathname, decoded(pathname)].some((path) => INTERNAL.test(path) || INTERNAL.test(resolved(path)) || INTERNAL.test(resolved(decoded(resolved(path)))));
 }

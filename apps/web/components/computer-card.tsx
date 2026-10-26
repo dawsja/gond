@@ -3,6 +3,7 @@
 import { BOX_UPDATE_PHASE_LABELS, type BoxStatus, type BoxUpdate } from "@gond/shared";
 import { RefreshCw, Trash2, TriangleAlert } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
+import { Meter } from "@/components/chat-blocks";
 import { useStore } from "@/components/store";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogMedia, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
@@ -11,8 +12,11 @@ import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle }
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "@/components/ui/toast";
 import { api, post } from "@/lib/api";
+import { checkedAgo, diskLow, formatBytes, percentOf } from "@/lib/health";
+import type { Meter as MeterRecord } from "@/lib/markdown";
 import { cn } from "@/lib/utils";
 
 const ORDER = ["pausing", "pulling", "restarting", "resetting", "patching", "resuming", "done"] as const;
@@ -78,6 +82,8 @@ export function ComputerCard({ status, admin, onCheck }: { status: BoxStatus | n
           : { text: "Running", tone: "ok", detail: liveSessions ? (liveSessions === 1 ? (admin ? "1 bot session is live on it." : "1 of your bots is live on it.") : admin ? `${liveSessions} bot sessions are live on it.` : `${liveSessions} of your bots are live on it.`) : admin ? "No bot is working on it right now." : "None of your bots is working on it right now." };
 
   const blocked = boxUpdating || !status?.reachable;
+  const health = state.tone === "ok" ? status?.health : undefined;
+  const working = status?.agents.filter((a) => a.busy).length ?? 0;
 
   return (
     <>
@@ -97,8 +103,15 @@ export function ComputerCard({ status, admin, onCheck }: { status: BoxStatus | n
               <span className={cn("size-2 rounded-full", state.tone === "ok" ? "bg-mint" : state.tone === "busy" ? "bg-amber" : state.tone === "problem" ? "bg-destructive" : "bg-ash")} aria-hidden="true" />
               {state.text}
             </Badge>
-            <span className="flex-1 text-[13.5px]">{state.detail}</span>
+            {health ? (
+              <span className="flex-1 text-[13px] text-muted-foreground">
+                {working === 0 ? "No bots working" : working === 1 ? "1 bot working" : `${working} bots working`} · checked {checkedAgo(health.at)}
+              </span>
+            ) : (
+              <span className="flex-1 text-[13.5px]">{state.detail}</span>
+            )}
           </div>
+          {health ? <Health health={health} /> : null}
           {installed.length ? (
             <div className="flex flex-col gap-1.5">
               <span className="text-[12px] font-medium text-muted-foreground">Installed</span>
@@ -220,6 +233,60 @@ export function ComputerCard({ status, admin, onCheck }: { status: BoxStatus | n
       </AlertDialog>
     </>
   );
+}
+
+type BoxHealth = NonNullable<BoxStatus["health"]>;
+
+function meter(fields: Pick<MeterRecord, "value" | "max" | "text" | "left" | "right" | "tone">): MeterRecord {
+  return { ...fields, percent: percentOf(fields.value, fields.max), label: [] };
+}
+
+/** What the computer has left, and who is using it: the admin's view, from the box's own count. */
+function Health({ health }: { health: BoxHealth }) {
+  const { disk, memory } = health;
+  const diskUsed = Math.max(0, disk.total - disk.free);
+  const memoryFree = Math.max(0, memory.total - memory.used);
+  return (
+    <div className="flex flex-col gap-5 pt-1">
+      <div className="flex flex-col gap-4 text-[14px]">
+        <Meter meter={meter({ value: diskUsed, max: disk.total, text: `${percentOf(diskUsed, disk.total)}% used`, left: `${formatBytes(diskUsed)} used`, right: `${formatBytes(disk.free)} free of ${formatBytes(disk.total)}`, tone: diskLow(disk.free, disk.total) ? "warn" : "info" })}>Disk</Meter>
+        <Meter meter={meter({ value: memory.used, max: memory.total, text: `${formatBytes(memory.used)} of ${formatBytes(memory.total)}`, left: "Bots and screens", right: `${formatBytes(memoryFree)} free`, tone: memory.total > 0 && memoryFree / memory.total < 0.1 ? "warn" : "info" })}>Memory</Meter>
+      </div>
+      {health.people.length ? (
+        <div className="flex flex-col gap-1">
+          <h3 className="text-[13px] font-medium">Who&apos;s using it</h3>
+          {/* Words wrap here, so all five columns fit a phone without scrolling sideways. */}
+          <Table className="[&_td]:whitespace-normal [&_th]:whitespace-normal">
+            <TableHeader>
+              <TableRow>
+                <TableHead>Person</TableHead>
+                <TableHead>Bots running</TableHead>
+                <TableHead>Screens</TableHead>
+                <TableHead>Memory</TableHead>
+                <TableHead>Disk</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {health.people.map((person) => (
+                <TableRow key={person.id}>
+                  <TableCell className="max-w-48 [overflow-wrap:anywhere]">{person.name}</TableCell>
+                  <TableCell>{person.bots}</TableCell>
+                  <TableCell>{person.screens}</TableCell>
+                  <TableCell>{person.memory === null ? <NotCounted /> : formatBytes(person.memory)}</TableCell>
+                  <TableCell>{person.disk === null ? <NotCounted /> : formatBytes(person.disk)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      ) : null}
+      <p className="text-[12px] text-muted-foreground">Disk use is counted once an hour{health.diskAt ? `, last ${checkedAgo(health.diskAt)}` : ""}. Clearing an old home or starting a person&apos;s computer fresh frees it.</p>
+    </div>
+  );
+}
+
+function NotCounted() {
+  return <span className="text-muted-foreground">Not counted yet</span>;
 }
 
 function ActionRow({ icon, tone, title, badge, line, action }: { icon: ReactNode; tone: "warn" | "destructive"; title: string; badge: string; line: string; action: ReactNode }) {

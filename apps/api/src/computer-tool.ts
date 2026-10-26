@@ -1,5 +1,5 @@
 import { BROWSER_ONLY_STEPS, fromNativeAction, isCardField, LOOK_STEPS, MAX_SCREEN_STEPS, SCREEN_STEP_TYPES, type Bot, type DesktopDriver, type Message, type ScreenStepType, type ScreenTarget, type Thread } from "@gond/shared";
-import { expiredText, requestApproval, type Decision } from "./approvals.ts";
+import { askApproval, expiredText, requestApproval, setAsideText, type Decision } from "./approvals.ts";
 import { BoxError, desktopControl, personHasControl, readBoxFileBytes, screenBatch, type BoxConfig, type ScreenResult, type ScreenStep, type ScreenView } from "./box.ts";
 import { getBot } from "./data/bots.ts";
 import { storeAttachment, postMessage } from "./data/threads.ts";
@@ -324,7 +324,10 @@ export function computerTool(context: Context): { computer: DriverTool; browser:
   const mayUseInput = async (target: ScreenTarget): Promise<string | null> => {
     if (asked === null) {
       const summary = target === "browser" ? `Use the computer (the browser on ${bot.name}'s screen)` : `Use the computer (the mouse and keyboard on ${bot.name}'s screen)`;
-      asked = await requestApproval({ bot, threadId: thread.id, tool: "computer", input: { target }, summary, signal: context.signal });
+      const answer = await askApproval({ bot, threadId: thread.id, tool: "computer", input: { target }, summary, signal: context.signal });
+      // Set aside isn't a no for the rest of the reply: the next batch asks again.
+      if (answer.aside) return setAsideText("to use the computer");
+      asked = answer.decision;
     }
     if (asked === "deny") return DENIED_TEXT;
     if (asked === "expired") return EXPIRED_TEXT();

@@ -1,22 +1,25 @@
 import { isRemoteAuthor, replyLine, type Bot, type Message, type Thread } from "@gond/shared";
-import { readBoxFile, type BoxConfig } from "./box.ts";
+import { BoxError, readBoxFile, type BoxConfig } from "./box.ts";
 import { getApproval } from "./data/approvals.ts";
 import { memberOfAuthor } from "./data/spaces.ts";
 import { recentMessages } from "./data/threads.ts";
-import { LEGACY_TEAM_MEMORY_PATH, memoryPath, teamMemoryPath } from "./memory.ts";
+import { LEGACY_TEAM_MEMORY_PATH, memoryPath, teamMemoryPath, UNREADABLE, type LoadedMemory } from "./memory.ts";
 import { ownerIsAdmin } from "./toolkits.ts";
 
-export async function loadMemory(box: BoxConfig, botId: string): Promise<string | null> {
-  return readBoxFile(box, memoryPath(botId))
-    .then((file) => file.content ?? null)
-    .catch(() => null);
+/** Only a file that isn't there is no memory; any other failure (the computer updating, a timeout) is UNREADABLE. */
+function readMemory(box: BoxConfig, path: string): Promise<LoadedMemory> {
+  return readBoxFile(box, path).then(
+    (file) => file.content ?? null,
+    (error) => (error instanceof BoxError && error.status === 404 ? null : UNREADABLE),
+  );
 }
 
-export async function loadTeamMemory(box: BoxConfig, userId: string): Promise<string | null> {
-  const read = (path: string) =>
-    readBoxFile(box, path)
-      .then((file) => file.content ?? null)
-      .catch(() => null);
+export function loadMemory(box: BoxConfig, botId: string): Promise<LoadedMemory> {
+  return readMemory(box, memoryPath(botId));
+}
+
+export async function loadTeamMemory(box: BoxConfig, userId: string): Promise<LoadedMemory> {
+  const read = (path: string) => readMemory(box, path);
   const own = await read(teamMemoryPath(userId));
   if (own !== null || !ownerIsAdmin(userId)) return own;
   return read(LEGACY_TEAM_MEMORY_PATH);

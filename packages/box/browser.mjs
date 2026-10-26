@@ -137,6 +137,8 @@ export function createBrowsers({ start, idleMs = BROWSER_IDLE_MS, launchMs = LAU
     record: (account, bot, on) => request(account, bot, { op: "record", on }, launchMs),
     run: (account, steps, signal, options = {}) => request(account, options.bot ?? "", { op: "run", steps, ...options }, batchMs(steps) + launchMs, signal),
     running: (accountId, bot) => of(accountId, bot).some((host) => !host.dead),
+    /** How many of the person's bots have a browser open. */
+    count: (accountId) => [...hosts.values()].filter((host) => host.user === accountId && !host.dead).length,
     /** Closes a bot's browser, or every one of the person's without a bot. */
     close: (accountId, bot) => {
       for (const host of of(accountId, bot)) fail(host, "The browser was closed");

@@ -1,7 +1,7 @@
 "use client";
 
 import type { BotExpression } from "@gond/shared";
-import { BOT_TEMPLATES, ENGINE_LABELS, ENGINES, type AiSettings, type BoxStatus, type Engine, type EngineSettings } from "@gond/shared";
+import { BOT_TEMPLATES, ENGINE_LABELS, ENGINES, type AiSettings, type Bot, type BoxStatus, type Engine, type EngineSettings, type Message } from "@gond/shared";
 import { Check, LogIn } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -22,23 +22,25 @@ import { Spinner } from "@/components/ui/spinner";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { api, patch, post } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { SayHi } from "./say-hi";
 
-type Step = "welcome" | "team" | "ai";
-const STEPS: Step[] = ["welcome", "team", "ai"];
+type Step = "welcome" | "team" | "ai" | "hello";
+const STEPS: Step[] = ["welcome", "team", "ai", "hello"];
 
+// Kept to the outer gutters, and only from lg up, so they never touch the heading or the fields.
 const FLOATERS: { color: string; expression: BotExpression; className: string }[] = [
-  { color: "#11998A", expression: "happy", className: "left-[8%] top-[18%]" },
-  { color: "#D03A3A", expression: "wink", className: "left-[34%] top-[8%]" },
-  { color: "#2F6FD6", expression: "happy", className: "right-[10%] top-[14%]" },
-  { color: "#D98A08", expression: "surprised", className: "right-[22%] bottom-[16%]" },
-  { color: "#7650D8", expression: "wink", className: "left-[16%] bottom-[12%]" },
+  { color: "#11998A", expression: "happy", className: "left-[4%] top-[16%]" },
+  { color: "#D03A3A", expression: "wink", className: "left-[9%] top-[62%]" },
+  { color: "#2F6FD6", expression: "happy", className: "left-[5%] top-[84%]" },
+  { color: "#D98A08", expression: "surprised", className: "left-[91%] top-[12%]" },
+  { color: "#7650D8", expression: "wink", className: "left-[88%] top-[70%]" },
 ];
 
 function Floaters() {
   return (
     <>
       {FLOATERS.map((f, i) => (
-        <span key={i} className={cn("pointer-events-none absolute hidden opacity-90 sm:block", f.className)} aria-hidden="true">
+        <span key={i} className={cn("pointer-events-none absolute hidden opacity-90 lg:block", f.className)} aria-hidden="true">
           <GondBot color={f.color} size={36} expression={f.expression} greet={false} />
         </span>
       ))}
@@ -57,6 +59,9 @@ export function Onboarding() {
   const [ai, setAi] = useState<AiSettings | null>(null);
   const [aiFailed, setAiFailed] = useState(false);
   const [aiAttempt, setAiAttempt] = useState(0);
+  // Set once the bots are made: the primary one says hi on the last step, and finishing again is never asked.
+  const [primary, setPrimary] = useState<Bot | null>(null);
+  const [hello, setHello] = useState<Message | null>(null);
   const { providers, reload: reloadProviders } = useProviders();
   useEffect(() => {
     let alive = true;
@@ -103,14 +108,24 @@ export function Onboarding() {
   const next = () => setStep(STEPS[Math.min(index + 1, STEPS.length - 1)]!);
   const back = () => setStep(STEPS[Math.max(index - 1, 0)]!);
 
+  function leave() {
+    router.replace("/app");
+    router.refresh();
+  }
+
+  // Makes the bots and stays on this page, so the server's "setup is done" redirect can't cut the last step short.
   async function finish() {
     if (busy) return;
+    if (primary) return setStep("hello");
     setBusy(true);
     setError(null);
     try {
-      await post("/api/onboarding/complete", { templates, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone });
-      router.replace("/app");
-      router.refresh();
+      const { bots } = await post<{ bots: Bot[] }>("/api/onboarding/complete", { templates, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone });
+      const first = bots.find((b) => b.primary) ?? bots[0];
+      if (!first) return leave();
+      setPrimary(first);
+      setBusy(false);
+      setStep("hello");
     } catch (failure) {
       setBusy(false);
       setError(failure instanceof Error ? failure.message : "Couldn't finish setup.");
@@ -164,28 +179,33 @@ export function Onboarding() {
           </>
         ) : null}
 
+        {step === "hello" && primary ? <SayHi bot={primary} sent={hello} onSent={setHello} onBack={back} onDone={leave} /> : null}
+
         {error ? <FieldError className="mt-4">{error}</FieldError> : null}
 
-        <div className="mt-8 flex w-full max-w-xs flex-col gap-2">
-          {step === "ai" ? (
-            <>
-              <Button size="xl" onClick={() => void finish()} disabled={busy}>
-                {busy ? <Spinner data-icon="inline-start" /> : null}
-                {busy ? "Setting up…" : "Finish"}
+        {step === "hello" ? null : (
+          <div className="mt-8 flex w-full max-w-xs flex-col gap-2">
+            {step === "ai" ? (
+              <>
+                <Button size="xl" onClick={() => void finish()} disabled={busy}>
+                  {busy ? <Spinner data-icon="inline-start" /> : null}
+                  {busy ? "Setting up…" : "Next"}
+                </Button>
+                <p className="text-center text-[12.5px] text-muted-foreground">Not set up yet? Go on anyway: your bots answer once it&apos;s done under Settings → AI.</p>
+              </>
+            ) : (
+              <Button size="xl" onClick={next}>
+                {step === "welcome" ? "Get started" : "Next"}
               </Button>
-              <p className="text-center text-[12.5px] text-muted-foreground">Not set up yet? Finish anyway: your bots answer once it&apos;s done under Settings → AI.</p>
-            </>
-          ) : (
-            <Button size="xl" onClick={next}>
-              {step === "welcome" ? "Get started" : "Next"}
-            </Button>
-          )}
-          {index > 0 ? (
-            <Button variant="secondary" size="xl" onClick={back}>
-              Back
-            </Button>
-          ) : null}
-        </div>
+            )}
+            {/* Once the bots are made, the team can't be picked again. */}
+            {index > 0 && !(step === "ai" && primary) ? (
+              <Button variant="secondary" size="xl" onClick={back}>
+                Back
+              </Button>
+            ) : null}
+          </div>
+        )}
         <Progress value={((index + 1) / STEPS.length) * 100} aria-label={`Step ${index + 1} of ${STEPS.length}`} className="mt-6 w-full max-w-xs">
           <span className="w-full text-center text-[12px] text-ash">
             Step {index + 1} of {STEPS.length}

@@ -126,8 +126,8 @@ function samplesOf(bytes: ArrayBuffer): Float32Array<ArrayBuffer> {
   return out;
 }
 
-// A little runway so audio that arrives in bursts still plays without gaps.
-const LEAD_S = 0.06;
+// Without the worklet: a little runway so audio that arrives in bursts still plays without gaps.
+const LEAD_S = 0.15;
 // Quieter than this (about -48 dB) is silence, which GPT-Live streams the whole call while nobody talks.
 const QUIET = 0.004;
 
@@ -137,36 +137,28 @@ function loudest(samples: Float32Array): number {
   return peak;
 }
 
-/** The bot's voice, played in order as it arrives. */
-export class CallPlayer {
-  readonly analyser: AnalyserNode;
+/** Each chunk scheduled as its own buffer, for engines without AudioWorklet. */
+class ScheduledVoice {
   private next = 0;
   // When the last of its words ends: speaking and draining mean words, not the silence between calls.
   private loudUntil = 0;
   private playing = new Set<AudioBufferSourceNode>();
 
-  constructor(private readonly context: AudioContext) {
-    this.analyser = context.createAnalyser();
-    this.analyser.fftSize = 512;
-    this.analyser.connect(context.destination);
-  }
+  constructor(
+    private readonly context: AudioContext,
+    private readonly output: AudioNode,
+  ) {}
 
-  /** The voice as base64, from the stream the call falls back to. */
-  play(data: string) {
-    this.playPcm(Uint8Array.from(atob(data), (c) => c.charCodeAt(0)).buffer);
-  }
-
-  playPcm(bytes: ArrayBuffer) {
+  play(bytes: ArrayBuffer) {
     const samples = samplesOf(bytes);
     if (!samples.length) return;
     const loud = loudest(samples) >= QUIET;
-    // Silence plays only as a pause inside what it is saying; once that is done, the quiet stream is dropped.
     if (!loud && this.loudUntil <= this.context.currentTime) return;
     const buffer = this.context.createBuffer(1, samples.length, CALL_SAMPLE_RATE);
     buffer.copyToChannel(samples, 0);
     const source = this.context.createBufferSource();
     source.buffer = buffer;
-    source.connect(this.analyser);
+    source.connect(this.output);
     const at = Math.max(this.context.currentTime + LEAD_S, this.next);
     source.start(at);
     this.next = at + buffer.duration;
@@ -175,7 +167,6 @@ export class CallPlayer {
     source.onended = () => this.playing.delete(source);
   }
 
-  /** The person spoke over it: what is queued goes, as a person would stop mid-word. */
   clear() {
     for (const source of this.playing) {
       try {
@@ -189,13 +180,75 @@ export class CallPlayer {
     this.loudUntil = 0;
   }
 
+  get left(): number {
+    return Math.max(0, this.loudUntil - this.context.currentTime);
+  }
+}
+
+/** The bot's voice, played in order as it arrives: one stream through `public/call-player.js`. */
+export class CallPlayer {
+  readonly analyser: AnalyserNode;
+  private node: AudioWorkletNode | null = null;
+  private fallback: ScheduledVoice | null = null;
+  // What arrives while the worklet loads, played once it has.
+  private waiting: ArrayBuffer[] | null = [];
+  private state = { speaking: false, left: 0, at: 0 };
+
+  constructor(private readonly context: AudioContext) {
+    this.analyser = context.createAnalyser();
+    this.analyser.fftSize = 512;
+    this.analyser.connect(context.destination);
+    void this.load();
+  }
+
+  private async load() {
+    try {
+      if (!this.context.audioWorklet) throw new Error("no AudioWorklet");
+      await this.context.audioWorklet.addModule("/call-player.js");
+      const node = new AudioWorkletNode(this.context, "gond-call-player", { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [1] });
+      node.port.onmessage = (event: MessageEvent<{ speaking: boolean; left: number }>) => {
+        this.state = { ...event.data, at: this.context.currentTime };
+      };
+      node.connect(this.analyser);
+      this.node = node;
+    } catch {
+      if (this.context.state === "closed") return;
+      this.fallback = new ScheduledVoice(this.context, this.analyser);
+    }
+    for (const bytes of this.waiting ?? []) this.playPcm(bytes);
+    this.waiting = null;
+  }
+
+  /** The voice as base64, from the stream the call falls back to. */
+  play(data: string) {
+    this.playPcm(Uint8Array.from(atob(data), (c) => c.charCodeAt(0)).buffer);
+  }
+
+  playPcm(bytes: ArrayBuffer) {
+    if (this.node) this.node.port.postMessage(bytes, [bytes]);
+    else if (this.fallback) this.fallback.play(bytes);
+    else this.waiting?.push(bytes);
+  }
+
+  /** The person spoke over it: what is queued goes, as a person would stop mid-word. */
+  clear() {
+    if (this.waiting) this.waiting.length = 0;
+    this.node?.port.postMessage("clear");
+    this.fallback?.clear();
+    this.state = { speaking: false, left: 0, at: this.context.currentTime };
+  }
+
+  private get left(): number {
+    if (this.fallback) return this.fallback.left;
+    return Math.max(0, this.state.left - (this.context.currentTime - this.state.at));
+  }
+
   get speaking(): boolean {
-    return this.loudUntil > this.context.currentTime;
+    return this.fallback ? this.fallback.left > 0 : this.state.speaking;
   }
 
   /** Resolves once what was said has played, so a goodbye isn't cut off. */
   drained(maxMs: number): Promise<void> {
-    const left = Math.max(0, this.loudUntil - this.context.currentTime) * 1000;
-    return new Promise((resolve) => setTimeout(resolve, Math.min(left, maxMs)));
+    return new Promise((resolve) => setTimeout(resolve, Math.min(this.left * 1000, maxMs)));
   }
 }

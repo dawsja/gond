@@ -96,6 +96,7 @@ export type CliTurnResult = {
   stopReason: string | null;
   error: string | null;
   recovered: boolean;
+  signedOut?: boolean;
 };
 
 type StreamEvent = { type?: string; message?: { content?: unknown }; parent_tool_use_id?: string | null };
@@ -235,5 +236,6 @@ export async function cliTurn(turn: CliTurn): Promise<CliTurnResult> {
     stopReason: result.stopReason,
     error: result.error ?? null,
     recovered: result.recovered,
+    ...(result.signedOut ? { signedOut: true } : {}),
   };
 }

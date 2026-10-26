@@ -81,6 +81,7 @@ export function mobileSignInRoutes() {
   });
 
   app.get(`${BASE}/redeem`, async (c) => {
+    if (!openedByApp(c.req.raw.headers)) return c.redirect("/login?error=oidc", 302);
     const next = safePath(c.req.query("next"));
     const session = redeemCode(c.req.query("code") ?? "", c.req.query("verifier") ?? "");
     if (!session) return c.redirect("/login?error=oidc", 302);
@@ -100,4 +101,16 @@ export function mobileSignInRoutes() {
   });
 
   return app;
+}
+
+/**
+ * The apps load the redeem themselves, as a page of the web view's own (`Sec-Fetch-Site: none`). A link,
+ * image or frame on any other page, a bot's message or a space's line included, would sign the
+ * browser in to whoever made the code, so those are refused. An engine too old to send the headers
+ * is let through.
+ */
+export function openedByApp(headers: Headers): boolean {
+  const site = headers.get("sec-fetch-site");
+  const dest = headers.get("sec-fetch-dest");
+  return (site === null || site === "none") && (dest === null || dest === "document");
 }

@@ -107,15 +107,15 @@ export function SettingsPage({ user, section, index = false }: { user: SessionUs
           {group.sections.map((s) => {
             const Icon = s.icon;
             return (
-              <Link key={s.id} href={settingsHref(s.id)} className="flex min-h-14 items-center gap-3 rounded-xl px-3 py-2 outline-none hover:bg-card/60 focus-visible:ring-3 focus-visible:ring-ring/50">
-                <span className="flex size-9 items-center justify-center rounded-full bg-muted text-foreground">
+              <Link key={s.id} href={settingsHref(s.id)} className="flex min-h-14 items-start gap-3 rounded-xl px-3 py-2 outline-none hover:bg-card/60 focus-visible:ring-3 focus-visible:ring-ring/50">
+                <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-foreground">
                   <Icon className="size-4" aria-hidden="true" />
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block text-[15px] font-medium">{s.label}</span>
                   <span className="line-clamp-2 block text-[12.5px] text-muted-foreground">{s.blurb}</span>
                 </span>
-                <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                <ChevronRight className="size-4 shrink-0 self-center text-muted-foreground" aria-hidden="true" />
               </Link>
             );
           })}

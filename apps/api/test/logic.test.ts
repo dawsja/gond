@@ -97,6 +97,11 @@ describe("approvals", () => {
     for (const slug of ["GITHUB_CREATE_ISSUE", "GMAIL_FETCH_EMAILS", "NOTION_UPDATE_PAGE", "GMAIL_CREATE_EMAIL_DRAFT"]) expect(mustAsk(slug, {}, bot)).toBe(false);
     expect(mustAsk("GMAIL_CREATE_EMAIL_DRAFT", { recipient_email: "john@example.com", subject: "Hello", body: "Hi John" }, bot)).toBe(true);
     expect(mustAsk("OUTLOOK_CREATE_DRAFT", { to_email: "ann@x.com", subject: "s", body: "b" }, bot)).toBe(true);
+    // An MCP server's tools come lowercase, camelCase or dashed, and still ask.
+    for (const tool of ["mcp__gmail__send_email", "mcp__toad__delete_app", "mcp__vercel__deleteProject", "mcp__mail__reply-to-thread", "mcp__shop__cancel_order", "GMAIL_MOVE_TO_TRASH", "mcp__files__purge_bucket"]) expect(mustAsk(tool, {}, bot)).toBe(true);
+    for (const tool of ["mcp__gmail__list_messages", "mcp__toad__poll_process", "mcp__vercel__getDeployment", "mcp__notes__sender_stats"]) expect(mustAsk(tool, {}, bot)).toBe(false);
+    // Gond's own tools are never an app's action, whatever their names say.
+    for (const tool of ["send_file", "delete_routine", "mcp__gond__send_screenshot", "mcp__gond__delete_routine"]) expect(mustAsk(tool, {}, bot)).toBe(false);
     expect(mustAsk("add_mcp_server", { name: "x" }, bot)).toBe(true);
     expect(mustAsk("ask_approval", { summary: "Send the invoice" }, bot)).toBe(true);
     expect(mustAsk("Write", { file_path: "/home/agent/notes.md" }, bot)).toBe(false);
@@ -1098,7 +1103,8 @@ describe("a reply as it is written", () => {
   });
 
   test("a memory says how full it is, warns before its limit, and past it loses the middle, never the newest notes", async () => {
-    const { fitMemory, MAX_MEMORY_BYTES, MAX_TEAM_MEMORY_BYTES } = await import("../src/memory.ts");
+    const memory = await import("../src/memory.ts");
+    const { fitMemory, MAX_MEMORY_BYTES, MAX_TEAM_MEMORY_BYTES } = memory;
     const { systemPromptFor } = await import("../src/souls.ts");
     const bot = { id: "b1", userId: "u1", name: "Scout", title: "", description: "", approval: "auto", primary: true } as never;
     const thread = { id: "t1", kind: "bot", name: "", members: [] } as never;
@@ -1128,6 +1134,12 @@ describe("a reply as it is written", () => {
     expect(team).toContain("of 12 KB)\n[It's over its 12 KB");
     expect(team).toContain("- The office moved.");
     expect(fitMemory("x".repeat(100), 40).text).toContain("x".repeat(40));
+
+    // A memory the computer couldn't hand over isn't empty: the bot hears not to write over it.
+    const unread = systemPromptFor(bot, { ...base, memory: memory.UNREADABLE, teamMemory: memory.UNREADABLE });
+    expect(unread).not.toContain("Empty so far");
+    expect(unread).toContain("Don't call memory_update this turn");
+    expect(unread).toContain("Don't call team_memory_update this turn");
   });
 
   test("how the person wants their bots to talk comes ahead of every other rule, and only when they chose", async () => {
@@ -1556,6 +1568,32 @@ test("a picture's type comes from its bytes", async () => {
   expect(pictureType(new TextEncoder().encode("RIFF\0\0\0\0WEBPVP8 "))).toBe("image/webp");
   expect(pictureType(new TextEncoder().encode("RIFF\0\0\0\0WAVEfmt "))).toBeNull();
   expect(pictureType(new TextEncoder().encode("<svg xmlns='http://www.w3.org/2000/svg'/>"))).toBeNull();
+});
+
+test("an MCP server's icon is a picture by its bytes, never what the remote says", async () => {
+  const { iconType } = await import("../src/mcp-icon.ts");
+  expect(iconType(new Uint8Array([0, 0, 1, 0, 1, 0, 16, 16]))).toBe("image/x-icon");
+  expect(iconType(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0]))).toBe("image/png");
+  expect(iconType(new TextEncoder().encode("<svg xmlns='http://www.w3.org/2000/svg' onload='alert(1)'/>"))).toBeNull();
+  expect(iconType(new TextEncoder().encode("<html><script>alert(1)</script>"))).toBeNull();
+  expect(iconType(new Uint8Array([0, 0, 2, 0, 1, 0]))).toBeNull();
+});
+
+test("the apps' redeem link counts only as a page the app opened", async () => {
+  const { openedByApp } = await import("../src/routes/mobile-sign-in.ts");
+  const h = (site?: string, dest?: string) => new Headers({ ...(site ? { "sec-fetch-site": site } : {}), ...(dest ? { "sec-fetch-dest": dest } : {}) });
+  expect(openedByApp(h("none", "document"))).toBe(true);
+  expect(openedByApp(h())).toBe(true);
+  for (const [site, dest] of [["cross-site", "document"], ["same-site", "document"], ["same-origin", "document"], ["none", "image"], ["cross-site", "iframe"]]) expect(openedByApp(h(site, dest))).toBe(false);
+});
+
+test("a HEIC photo is told by its ftyp box, not its name", async () => {
+  const { isHeic } = await import("../src/images.ts");
+  const ftyp = (brand: string) => new TextEncoder().encode(`\0\0\0\x18ftyp${brand}\0\0\0\0mif1heic`);
+  for (const brand of ["heic", "heix", "hevc", "mif1", "msf1"]) expect(isHeic(ftyp(brand))).toBe(true);
+  expect(isHeic(ftyp("avif"))).toBe(false);
+  expect(isHeic(ftyp("isom"))).toBe(false);
+  expect(isHeic(new TextEncoder().encode("heic"))).toBe(false);
 });
 
 describe("create_image", () => {

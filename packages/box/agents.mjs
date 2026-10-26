@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { BridgedSession, EXIT_GRACE_MS, IDLE_MS, MAX_STDERR, ReplyText, killTree, systemReminder } from "./bridge.mjs";
-import { CLAUDE_BIN, writeSystemPrompt } from "./claude.mjs";
+import { CLAUDE_BIN, NOT_SIGNED_IN, writeSystemPrompt } from "./claude.mjs";
 
 export { IDLE_MS, systemReminder };
 
@@ -178,11 +178,12 @@ export function mcpServersConfig(servers) {
 export function settle(event) {
   if (!event || event.type !== "result") return null;
   if (event.origin?.kind === "task-notification") return null;
-  return {
-    ok: event.is_error !== true,
-    text: typeof event.result === "string" ? event.result : "",
-    stopReason: event.stop_reason ?? event.terminal_reason ?? null,
-  };
+  const ok = event.is_error !== true;
+  const text = typeof event.result === "string" ? event.result : "";
+  const stopReason = event.stop_reason ?? event.terminal_reason ?? null;
+  if (ok) return { ok, text, stopReason };
+  // A signed-out CLI says so only in the result's text ("Not logged in · Please run /login").
+  return { ok, text, stopReason, ...(text.trim() ? { error: text.trim().slice(0, 500) } : {}), signedOut: NOT_SIGNED_IN.test(text) };
 }
 
 const TOKEN_FIELDS = { input: "inputTokens", output: "outputTokens", cacheRead: "cacheReadInputTokens", cacheWrite: "cacheCreationInputTokens" };
@@ -410,7 +411,12 @@ export class AgentSession extends BridgedSession {
         { resume },
       );
     const outcome = await launch(!this.withoutOptional);
-    if (outcome.failed) throw new Error(`Claude Code didn't start: ${outcome.stderr.trim().slice(0, 300) || "no output"}`);
+    if (outcome.failed) {
+      // The code (ENOENT, EACCES) is how the turn route tells a missing CLI from one that broke.
+      const error = new Error(`Claude Code didn't start: ${outcome.stderr.trim().slice(0, 300) || "no output"}`);
+      if (outcome.code) error.code = outcome.code;
+      throw error;
+    }
     this.replays = outcome.replays;
     this.argsKey = argsKey;
     this.sessionId = sessionId;
@@ -478,11 +484,11 @@ export class AgentSession extends BridgedSession {
       this.cleanup();
     });
     return new Promise((resolve) => {
-      const settleLaunch = (failed) => resolve({ failed, stderr: this.stderr, replays: args.includes("--replay-user-messages") });
+      const settleLaunch = (failed, code) => resolve({ failed, code, stderr: this.stderr, replays: args.includes("--replay-user-messages") });
       child.once("error", (error) => {
         this.stderr = error.message;
         this.child = null;
-        settleLaunch(true);
+        settleLaunch(true, error.code);
       });
       child.once("close", () => settleLaunch(true));
       // Written to stdin at once: the pipe holds the prompt until the CLI reads it.
@@ -544,6 +550,8 @@ export class AgentSession extends BridgedSession {
     const result = settle(event);
     if (result) {
       const turn = this.turn;
+      // On a key a refusal is the key's (`keyRefusal`), never a sign-in on the computer.
+      if (this.access?.kind === "api") delete result.signedOut;
 
       if (turn.unread > 0) {
         clearTimeout(turn.held?.timer);

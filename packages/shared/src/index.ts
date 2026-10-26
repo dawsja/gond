@@ -15,7 +15,7 @@ export type ApprovalLevel = (typeof APPROVAL_LEVELS)[number];
 export const APPROVAL_LEVEL_LABELS: Record<ApprovalLevel, { title: string; detail: string }> = {
   ask: { title: "Always ask", detail: "Every shell command, file outside its own folder and connected-app action waits for you." },
   auto: { title: "Auto", detail: "It carries on with routine work and asks before anything it can't undo or that leaves the computer: sending, deleting, paying, forcing." },
-  full: { title: "Always allow", detail: "Nothing asks. Only for a bot you trust with the computer and your apps." },
+  full: { title: "Always allow", detail: "Nothing asks but an email that goes out. Only for a bot you trust with the computer and your apps." },
 };
 
 export const DEFAULT_MODEL = "opus";
@@ -168,6 +168,11 @@ export type Message = {
   replyTo: Quote | null;
   /** For a bot's line, the message it answered, which in a space may be someone's on another Gond. */
   answering?: string | null;
+  /**
+   * A person's line no bot has read yet (not claimed, answered or steered into a turn): it can still be
+   * taken back or edited. Always filled by the API; optional only so cards drawn from other things needn't say.
+   */
+  waiting?: boolean;
   createdAt: string;
 };
 
@@ -229,7 +234,8 @@ export type Approval = {
   revises: { tool: string; input: Record<string, unknown> } | null;
 };
 
-export type ApprovalOutcome = "sent" | "saved" | "changes";
+/** Past yes or no: an email sent from its draft or saved, sent back with a note, or set aside because the person wrote instead. */
+export type ApprovalOutcome = "sent" | "saved" | "changes" | "aside";
 
 export const MAX_APPROVAL_NOTE = 2000;
 
@@ -850,6 +856,17 @@ export type BoxStatus = {
   agents: { id: string; running: boolean; busy: boolean }[];
 
   versions: { node: string | null; bun: string | null; claude: string | null } | null;
+  /**
+   * The admin's alone: how full the computer is and what each person's (and profile's) bots use of it, in bytes.
+   * `disk` per person is measured now and then (`diskAt`); `memory` per person is null when the box can't tell.
+   */
+  health?: {
+    disk: { total: number; free: number };
+    memory: { total: number; used: number };
+    people: { id: string; name: string; bots: number; screens: number; memory: number | null; disk: number | null }[];
+    diskAt: string | null;
+    at: string;
+  };
 };
 
 export type BoxUpdatePhase = "idle" | "pausing" | "pulling" | "restarting" | "resetting" | "patching" | "resuming" | "done" | "failed";
@@ -1379,6 +1396,9 @@ export function joinCommandLine(words: string[]): string {
 }
 
 export const COMPOSIO_CARD = "composio:";
+
+/** The approval id of the card a turn posts when the AI isn't set up or signed in. */
+export const AI_SETUP_CARD = "ai:setup";
 
 export function composioCard(toolkit: string): string {
   return `${COMPOSIO_CARD}${toolkit}`;
@@ -2078,7 +2098,22 @@ export function plainMarkdown(text: string): string {
     })
     .replace(/^[ \t]*::choices\[([^\]\n]*)\][ \t]*$/gm, (_, options: string) => options.split("|").map((option) => option.trim()).filter(Boolean).join(" or ") + "?")
     .replace(/^[ \t]*:::[^\n]*$/gm, "")
+    // A code fence and its language go; the code stays.
+    .replace(/^[ \t]*(?:```|~~~)[^\n]*$/gm, "")
+    .replace(/!\[([^\]\n]*)\]\([^)\s]*(?:\s+"[^"\n]*")?\)/g, "$1")
+    .replace(/\[([^\]\n]+)\]\([^)\s]*(?:\s+"[^"\n]*")?\)/g, "$1")
+    .replace(/<((?:https?:\/\/|mailto:)[^>\s]+)>/g, "$1")
+    .replace(/<\/?[a-zA-Z][a-zA-Z0-9-]*(?:\s[^<>\n]*)?\/?>/g, " ")
+    // A table: its separator row (or a rule) goes, and its cells read one after another.
+    .replace(/^[ \t]*[|:\- \t]*-[|:\- \t]*$/gm, "")
+    .replace(/^[ \t]*\|(.*?)\|?[ \t]*$/gm, (_, cells: string) => cells.split("|").map((cell) => cell.trim()).filter(Boolean).join(" · "))
+    .replace(/^[ \t]*(?:>[ \t]?)+/gm, "")
+    .replace(/^[ \t]*(?:[-*+]|\d{1,9}[.)])[ \t]+(?:\[[ xX]\][ \t]+)?/gm, "")
     .replace(/\*\*/g, "")
+    .replace(/~~/g, "")
+    .replace(/(^|[^\w*])\*(?=\S)([^*\n]*?\S)?\*(?![\w*])/g, "$1$2")
+    .replace(/(^|\W)__(?=\S)([^\n]*?\S)?__(?!\w)/g, "$1$2")
+    .replace(/(^|\W)_(?=[^\s_])([^_\n]*?[^\s_])?_(?!\w)/g, "$1$2")
     .replace(/`/g, "")
     .replace(/^[ \t]*#{1,6}[ \t]+/gm, "")
     .replace(/\s+/g, " ")
@@ -2095,6 +2130,25 @@ const LABEL_MAX = 60;
 
 export function bareToolName(name: string): string {
   return name.replace(BRIDGE_PREFIX, "");
+}
+
+const asSlug = (name: string) =>
+  name
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .replace(/[^A-Za-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .toUpperCase();
+
+/**
+ * What an app's tool does, as one uppercase slug, so one set of words catches it however it is
+ * written: Composio's `GMAIL_SEND_EMAIL` as it is, an MCP server's `send_email`, `sendEmail` or
+ * `send-email` as SEND_EMAIL, with the server's own slug as `server`. Gond's own tools and the
+ * engine's come back as they are named, lowercase or one word, which no app's action word matches.
+ */
+export function appAction(tool: string): { action: string; server: string | null } {
+  const bare = bareToolName(tool);
+  const mcp = MCP_TOOL.exec(bare);
+  return mcp ? { action: asSlug(mcp[2]!), server: asSlug(mcp[1]!) } : { action: bare, server: null };
 }
 
 function short(value: unknown, max = LABEL_MAX): string | null {
@@ -2645,8 +2699,10 @@ export function emailText(body: string): string {
 }
 
 export function emailMode(tool: string): { app: string; mode: EmailDraft["mode"] } | null {
-  const name = bareToolName(tool).toUpperCase();
-  const app = EMAIL_APPS[name.split("_")[0] ?? ""];
+  const { action, server } = appAction(tool);
+  const name = action.toUpperCase();
+  // An MCP server's tool may name the app (gmail_send) or leave it to the server (a "gmail" server's send_email).
+  const app = EMAIL_APPS[name.split("_")[0] ?? ""] ?? (server ? EMAIL_APPS[server.split("_")[0] ?? ""] : undefined);
   if (!app) return null;
   const word = (w: string) => new RegExp(`(^|_)${w}(_|$)`).test(name);
   // A draft reply (Outlook's CREATE_DRAFT_REPLY) only saves; sending a saved draft names nothing to show.

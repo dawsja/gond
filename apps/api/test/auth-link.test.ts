@@ -114,3 +114,19 @@ test("the local account links the provider's sign-in, and signing in with it lan
   const refused = await viaProvider("/api/auth/link-social", { provider: "oidc", callbackURL: "/app/settings/account?linked=1", errorCallbackURL: "/app/settings/account" }, "cy", local);
   expect(refused.location).toContain("error=account_already_linked_to_different_user");
 }, 60_000);
+
+test("another site can't sign the browser in: not through Better Auth, nor through the apps' redeem link", async () => {
+  const signIn = (origin: string) => fetch(`${url}/api/auth/sign-in/username`, { method: "POST", headers: { "Content-Type": "application/json", Origin: origin }, body: JSON.stringify({ username: "dawson", password: "a-long-test-password" }) });
+  const foreign = await signIn("https://evil.example");
+  expect(foreign.status).toBe(403);
+  expect(foreign.headers.getSetCookie()).toHaveLength(0);
+  expect((await signIn(url)).ok).toBe(true);
+
+  // A link or image elsewhere gets the sign-in page and no session; the apps' own load still reaches the code check.
+  const redeem = (headers: Record<string, string>) => fetch(`${url}/api/mobile-sign-in/redeem?code=x&verifier=y`, { redirect: "manual", headers });
+  for (const headers of [{ "Sec-Fetch-Site": "cross-site", "Sec-Fetch-Dest": "document" }, { "Sec-Fetch-Site": "same-origin", "Sec-Fetch-Dest": "document" }, { "Sec-Fetch-Site": "none", "Sec-Fetch-Dest": "image" }]) {
+    const res = await redeem(headers);
+    expect(res.headers.get("location")).toBe("/login?error=oidc");
+    expect(res.headers.getSetCookie()).toHaveLength(0);
+  }
+});

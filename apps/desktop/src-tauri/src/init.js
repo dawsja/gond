@@ -25,6 +25,7 @@
     updateState: () => invoke("update_state"),
     checkForUpdates: () => invoke("check_for_updates"),
     installUpdate: () => invoke("install_update"),
+    showDownload: (id) => invoke("show_download", { id: Number(id) }),
   });
   Object.defineProperty(window, "gondDesktop", { value: bridge, writable: false, configurable: false });
 

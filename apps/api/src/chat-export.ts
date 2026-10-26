@@ -49,7 +49,7 @@ export function uniqueName(name: string, taken: Set<string>): string {
 }
 
 const CARD_STATUS: Record<ApprovalStatus, string> = { pending: "waiting", allowed: "allowed", denied: "turned down", expired: "expired" };
-const CARD_OUTCOME: Record<NonNullable<Approval["outcome"]>, string> = { sent: "sent", saved: "saved as a draft", changes: "changes asked" };
+const CARD_OUTCOME: Record<NonNullable<Approval["outcome"]>, string> = { sent: "sent", saved: "saved as a draft", changes: "changes asked", aside: "set aside when you wrote instead" };
 
 export type ExportChat = { id: string; kind: "bot" | "room"; name: string; members: { id: string; name: string }[] };
 

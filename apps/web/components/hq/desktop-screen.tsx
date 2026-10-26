@@ -406,6 +406,7 @@ export function DesktopScreen({
   const [help, setHelp] = useState(false);
   const [paste, setPaste] = useState(false);
   const typeText = useCallback((text: string) => view.current?.typeText(text), []);
+  const takeControl = useCallback(() => onControlChange("person"), [onControlChange]);
 
   // Leaving hands the screen back, so a bot waiting on it carries on; a recording keeps it, and pauses itself.
   const close = () => {
@@ -421,7 +422,7 @@ export function DesktopScreen({
       bar={showing ? <TeachBar teaching={showing} bot={bot} className="hidden wide:flex" /> : <DesktopToolbar title={wideTitle} icon={icon} driver={driver} report={report} control={control} onControlChange={onControlChange} view={view} onHelp={() => setHelp(true)} onTeach={teach} onStop={onStop} onClose={close} closeLabel={closeLabel} className="hidden wide:flex" />}
       aside={showing ? <TeachSteps teaching={showing} className="max-h-full" /> : undefined}
     >
-      <DesktopView ref={view} botId={botId} viewOnly={control === "bots"} trackpad={trackpad} quality="full" onStatus={setReport} onKeyboard={setKeyboardOpen} />
+      <DesktopView ref={view} botId={botId} viewOnly={control === "bots"} trackpad={trackpad} quality="full" onStatus={setReport} onKeyboard={setKeyboardOpen} name={driver} onTakeControl={takeControl} />
       <PhoneControls
         title={title}
         icon={icon}

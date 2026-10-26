@@ -69,7 +69,9 @@ export function skillBrief(skill: Skill, limit: number = SKILL_LIMITS.instructio
   const files = skill.files.length
     ? `\n\nIts folder is ~/.skills/${skill.slug}/ (read-only; copy a file to your own folder to change it). Files: ${skill.files.map((f) => `${f.path}${f.executable ? " (executable)" : ""}`).join(", ")}. Paths in the instructions are relative to that folder; run scripts from there, like \`python3 ~/.skills/${skill.slug}/scripts/x.py\`.`
     : "";
-  return `${skill.instructions.trim().slice(0, limit)}${files}`;
+  const instructions = skill.instructions.trim();
+  const rest = instructions.length > limit ? `\n\n[${(instructions.length - limit).toLocaleString("en-US")} more characters didn't fit here. Read the rest in ~/.skills/${skill.slug}/SKILL.md before you start.]` : "";
+  return `${instructions.slice(0, limit)}${rest}${files}`;
 }
 
 const SKIPPED = new Set(["node_modules", "__pycache__", ".venv", "venv", ".git", "__MACOSX"]);

@@ -97,8 +97,16 @@ function messageFrom(row: MessageRow, reactions: Reaction[], quote: Quote | null
     reactions,
     replyTo: quote,
     answering: row.answering,
+    waiting: isUnread(row),
     createdAt: row.created_at,
   };
+}
+
+/** The SQL twin of `isUnread`, for a change that must not race the dispatcher's claim. */
+const UNREAD = "kind = 'message' AND author = 'you' AND answered_at IS NULL AND claimed_by IS NULL AND steered = 0";
+
+function isUnread(row: Pick<MessageRow, "kind" | "author" | "answered_at" | "claimed_by" | "steered">): boolean {
+  return row.kind === "message" && row.author === "you" && row.answered_at === null && row.claimed_by === null && row.steered === 0;
 }
 
 function toMessage(row: MessageRow): Message {
@@ -332,6 +340,37 @@ export function setSentTo(id: string, botIds: string[]) {
 export function answeringOf(id: string): Message | null {
   const row = ensureDatabase().query("SELECT answering FROM gond_messages WHERE id = ?").get(id) as { answering: string | null } | null;
   return row?.answering ? getMessage(row.answering) : null;
+}
+
+/**
+ * Takes back a person's line no bot has read yet, with its files; false when a bot already took it.
+ * One statement decides, so it can't race the dispatcher's claim.
+ */
+export function unsendMessage(id: string): boolean {
+  const message = transaction((db) => {
+    const row = db.query(`DELETE FROM gond_messages WHERE id = ? AND ${UNREAD} RETURNING thread_id`).get(id) as { thread_id: string } | null;
+    if (row) db.query("DELETE FROM gond_attachments WHERE message_id = ?").run(id);
+    return row;
+  });
+  if (!message) return false;
+  threadChanged(message.thread_id, true);
+  return true;
+}
+
+/** Rewrites a person's line no bot has read yet; null when a bot already took it. */
+export function editMessage(id: string, body: string): Message | null {
+  const row = ensureDatabase().query(`UPDATE gond_messages SET body = ? WHERE id = ? AND ${UNREAD} RETURNING *`).get(body, id) as MessageRow | null;
+  if (!row) return null;
+  threadChanged(row.thread_id, true);
+  return toMessage(row);
+}
+
+/** The failure lines and setup cards that say a turn couldn't answer this message, for Try again to clear. */
+export function failuresAnswering(message: Pick<Message, "id" | "threadId">, setupCard: string): Message[] {
+  const rows = ensureDatabase()
+    .query("SELECT * FROM gond_messages WHERE thread_id = ? AND answering = ? AND ((kind = 'event' AND author = 'system') OR (kind = 'signin' AND approval_id = ?))")
+    .all(message.threadId, message.id, setupCard) as MessageRow[];
+  return toMessages(rows);
 }
 
 /** Takes a message out of its conversation, as a routine run with nothing to say does. */

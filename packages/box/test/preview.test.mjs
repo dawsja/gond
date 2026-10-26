@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { PREVIEW_EDGE, previewArgv } from "../preview.mjs";
+import { JPEG_FROM_HEIC, PREVIEW_EDGE, previewArgv } from "../preview.mjs";
 
 test("a preview reads the picture as the kind it was sent as, and shrinks only what is too big", () => {
   assert.deepEqual(previewArgv("/home/a/.bots/b/inbox/x.jpg", "image/jpeg", "/home/a/.run/preview/1.jpg"), [
@@ -18,4 +18,8 @@ test("a preview reads the picture as the kind it was sent as, and shrinks only w
   assert.equal(previewArgv("/x.svg", "image/svg+xml", "/o.jpg"), null);
   assert.equal(previewArgv("/x.pdf", "application/pdf", "/o.jpg"), null);
   assert.equal(previewArgv("/x", undefined, "/o.jpg"), null);
+});
+
+test("a HEIC photo becomes a JPEG through pipes, read only as HEIC, rotated upright, its metadata left behind", () => {
+  assert.deepEqual(JPEG_FROM_HEIC, ["convert", "heic:-[0]", "-auto-orient", "-strip", "-quality", "90", "jpeg:-"]);
 });

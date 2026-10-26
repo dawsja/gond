@@ -1,5 +1,5 @@
 import { hasKeyHeader, type Bot, type McpServer, type Thread } from "@gond/shared";
-import { expiredText, requestApproval } from "./approvals.ts";
+import { askApproval, expiredText, setAsideText } from "./approvals.ts";
 import { mcpServerOwner } from "./data/mcp.ts";
 import { injectSecrets } from "./data/secrets.ts";
 import type { DriverTool, ToolPart, ToolResult } from "./driver.ts";
@@ -200,7 +200,8 @@ export async function nativeMcpTools(context: { bot: Bot; thread: Thread; signal
           description: `${server.name}: ${tool.description ?? tool.title ?? tool.name}`.slice(0, 1000),
           inputSchema: tool.inputSchema ?? { type: "object", properties: {} },
           execute: async (input) => {
-            const decision = await requestApproval({ bot: context.bot, threadId: context.thread.id, signal: context.signal, tool: name, input });
+            const { decision, aside } = await askApproval({ bot: context.bot, threadId: context.thread.id, signal: context.signal, tool: name, input });
+            if (aside) return setAsideText(`for ${name}`);
             if (decision === "deny") return "NOT done: the person denied this action.";
             if (decision === "expired") return expiredText(`for ${name}`);
             const signal = AbortSignal.any([AbortSignal.timeout(CALL_TIMEOUT_MS), ...(context.signal ? [context.signal] : [])]);

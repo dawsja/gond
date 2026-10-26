@@ -4,6 +4,7 @@ use sha2::{Digest, Sha256};
 use tauri::window::Color;
 use tauri::{AppHandle, Manager, State, Theme, WebviewWindow};
 use tauri_plugin_notification::{NotificationExt, PermissionState};
+use tauri_plugin_opener::OpenerExt;
 use url::Url;
 
 use crate::updater::{self, UpdateState};
@@ -299,4 +300,23 @@ pub async fn install_update(
         return Err(NOT_HERE.to_string());
     }
     updater::install_now(&app)
+}
+
+/// Shows a finished download in its folder, by the id the page heard; the page never names a path.
+#[tauri::command]
+pub fn show_download(
+    app: AppHandle,
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    id: u32,
+) -> Result<(), String> {
+    if !trusted(&window, &state) {
+        return Err(NOT_HERE.to_string());
+    }
+    let path = state
+        .download(id)
+        .ok_or_else(|| "That download isn't here any more.".to_string())?;
+    app.opener()
+        .reveal_item_in_dir(path)
+        .map_err(|error| error.to_string())
 }

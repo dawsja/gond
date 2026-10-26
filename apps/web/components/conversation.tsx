@@ -2,7 +2,7 @@
 
 import { handleOf, plainMarkdown, REACTIONS, roomTargets, type Approval, type ApprovalAnswer, type Bot, type ChatAttachment, type ImageAspect, type LiveEvent, type Message, type ReactionEmoji, type Thread, type ThreadSpace } from "@gond/shared";
 import { inertChoices, remoteMember, spaceMentionables, spaceSubtitle } from "@/lib/spaces";
-import { ArrowUp, ChevronLeft, Copy, CornerUpLeft, Download, ListEnd, EllipsisVertical, FileText, Lock, Monitor, PanelRight, Paperclip, Pencil, Phone, Plus, TextSelect, X } from "lucide-react";
+import { ArrowUp, ChevronLeft, Copy, CornerUpLeft, Download, ListEnd, EllipsisVertical, File as FileIcon, FileArchive, FileHeadphone, FilePlay, FileSpreadsheet, FileText, Lock, Monitor, PanelRight, Paperclip, Pencil, Phone, Plus, RotateCcw, TextSelect, Undo2, X } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -27,6 +27,7 @@ import { NoticedLinks, noticedRuns, RunMarker, useWatches, WatchesContext, type 
 import { DetailsSheet, RightPanel } from "@/components/right-panel";
 import { ScreenPanel, useScreenDrivers } from "@/components/screen-panel";
 import { SecretCard } from "@/components/secret-card";
+import { failed } from "@/components/failed";
 import { openShellDialog } from "@/components/shell";
 import { SignInCard } from "@/components/signin-card";
 import { matchMentions, matchSkills, MentionFace, mentionOfBot, SlashMenu, slashQuery, useSkillsLibrary, type Mentionable } from "@/components/slash-menu";
@@ -47,6 +48,7 @@ import { Message as MessageRow, MessageContent, MessageFooter, MessageHeader } f
 import { MessageScroller, MessageScrollerButton, MessageScrollerContent, MessageScrollerEdges, MessageScrollerItem, MessageScrollerProvider, MessageScrollerViewport, useMessageScroller, useMessageScrollerScrollable } from "@/components/ui/message-scroller";
 import { toast } from "@/components/ui/toast";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useVoiceInput, VoiceButton } from "@/components/voice-button";
 import { WorkLine, WorkLines } from "@/components/work-log";
@@ -56,6 +58,9 @@ import { REPLY_DISTANCE, useSwipeToReply } from "@/hooks/use-swipe-to-reply";
 import { useStableCallback } from "@/hooks/use-stable-callback";
 import { api, ApiError, post } from "@/lib/api";
 import { readDraft, saveDraft } from "@/lib/drafts";
+import { fileKind, type FileKind } from "@/lib/file-kind";
+import { editUnread, retryTurn, unsend } from "@/lib/message-actions";
+import { botsWaitingOnYou, notReadYet, WAITING_FOR_YOU } from "@/lib/message-state";
 import { historyStep, sentHistory } from "@/lib/sent-history";
 import { TeachCard } from "@/components/teach/teach-card";
 import { TeachPillFor } from "@/components/teach/teach-controls";
@@ -76,6 +81,48 @@ type ThreadInfo = { thread: Thread; bot: Bot | null; busy: string[]; answering?:
 
 function formatBytes(n: number) {
   return n < 1024 ? `${n} B` : n < 1024 * 1024 ? `${(n / 1024).toFixed(0)} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function FileKindIcon({ kind }: { kind: FileKind }) {
+  switch (kind) {
+    case "spreadsheet":
+      return <FileSpreadsheet />;
+    case "document":
+      return <FileText />;
+    case "audio":
+      return <FileHeadphone />;
+    case "video":
+      return <FilePlay />;
+    case "archive":
+      return <FileArchive />;
+    default:
+      return <FileIcon />;
+  }
+}
+
+// A search hit or a tapped quote's message, ringed for a moment; the ring fades as it goes.
+const RING = "transition-shadow duration-500";
+const RINGED = "ring-2 ring-ring/40";
+
+/** A turn that failed on the person's message, with a way to go again. */
+function FailedTurn({ message, highlighted }: { message: Message & { answering: string }; highlighted: boolean }) {
+  const [busy, setBusy] = useState(false);
+  const retry = () => {
+    setBusy(true);
+    // Done, this line goes with the reload; only a failure leaves it here.
+    void retryTurn(message.threadId, message.answering)
+      .catch(failed("Couldn't try again."))
+      .finally(() => setBusy(false));
+  };
+  return (
+    <Marker className="flex-col justify-center gap-2">
+      <MarkerContent className={cn("max-w-[80%] rounded-md text-center text-xs", RING, highlighted && RINGED)}>{message.body}</MarkerContent>
+      <Button variant="outline" size="sm" disabled={busy} onClick={retry}>
+        {busy ? <Spinner data-icon="inline-start" /> : <RotateCcw data-icon="inline-start" aria-hidden="true" />}
+        Try again
+      </Button>
+    </Marker>
+  );
 }
 
 function Handoff({ message, threadId, bots, threads, onOpen }: { message: Message; threadId: string; bots: Bot[]; threads: ThreadRow[]; onOpen: (withThreadId: string) => void }) {
@@ -107,7 +154,7 @@ function selectionIn(node: HTMLElement | null): string {
   return node.contains(range.commonAncestorContainer) ? selection.toString() : "";
 }
 
-function EditBubble({ message, touch, stops, onCancel, onSend }: { message: Message; touch: boolean; stops: boolean; onCancel: () => void; onSend: (text: string) => Promise<boolean> }) {
+function EditBubble({ message, touch, stops, inPlace, onCancel, onSend }: { message: Message; touch: boolean; stops: boolean; inPlace: boolean; onCancel: () => void; onSend: (text: string) => Promise<boolean> }) {
   const [text, setText] = useState(message.body);
   const [sending, setSending] = useState(false);
   const field = useRef<HTMLTextAreaElement>(null);
@@ -118,7 +165,8 @@ function EditBubble({ message, touch, stops, onCancel, onSend }: { message: Mess
     node.focus();
     node.setSelectionRange(node.value.length, node.value.length);
   }, []);
-  const changed = text.trim() && text.trim() !== message.body.trim();
+  // A line with files may lose its words when it changes in place; one sent again needs some.
+  const changed = text.trim() !== message.body.trim() && Boolean(text.trim() || (inPlace && message.attachments.length));
   async function submit() {
     if (!changed || sending) return;
     setSending(true);
@@ -153,13 +201,13 @@ function EditBubble({ message, touch, stops, onCancel, onSend }: { message: Mess
         />
       </InputGroup>
 
-      <p className="px-1 text-right text-[11.5px] text-muted-foreground">{stops ? "Sending stops the work here, then starts again with your fix." : "Sent again as a new message."}</p>
+      <p className="px-1 text-right text-[11.5px] text-muted-foreground">{inPlace ? "Not read yet, so it changes in place." : stops ? "Sending stops the work here, then starts again with your fix." : "Sent again as a new message."}</p>
       <div className="flex gap-2">
         <Button type="button" variant="outline" size="sm" onClick={onCancel} disabled={sending} className="pointer-coarse:h-11 pointer-coarse:px-4">
           Cancel
         </Button>
         <Button type="submit" size="sm" disabled={!changed || sending} className="pointer-coarse:h-11 pointer-coarse:px-4">
-          {sending ? "Sending…" : stops ? "Stop and send" : "Send"}
+          {inPlace ? (sending ? "Saving…" : "Save") : sending ? "Sending…" : stops ? "Stop and send" : "Send"}
         </Button>
       </div>
     </form>
@@ -254,7 +302,8 @@ function quoteText(message: Message): string {
   return plainMarkdown(message.body).slice(0, 280) || message.attachments[0]?.name || "";
 }
 
-const Line = memo(function Line({ message, threadId, bots, threads, bot, approvals, isRoom, space, editing, latestHandOff, stops, touch, answer, inert, sentTo, noticed, reveal, onPick, onView, onDecide, onOpenExchange, onEdit, onSelectText, onReacted, onReply, onJump }: { message: Message; threadId: string; bots: Bot[]; threads: ThreadRow[]; bot: Bot | null; approvals: Map<string, Approval>; isRoom: boolean; space: ThreadSpace | null; editing: boolean; latestHandOff: boolean; stops: boolean; touch: boolean; answer: string | undefined; inert: boolean; sentTo: string | undefined; noticed: Noticed | undefined; reveal: PictureReveal | undefined; onPick: (option: string, from: string) => Promise<void>; onView: (attachmentId: string) => void; onDecide: (id: string, answer: ApprovalAnswer) => Promise<void>; onOpenExchange: (withThreadId: string) => void; onEdit: (message: Message | null, text?: string) => Promise<boolean>; onSelectText: (text: string) => void; onReacted: (message: Message) => void; onReply: (message: Message) => void; onJump: (id: string) => void }) {
+/** `unread` is what shows under the person's line no bot has read yet; only such a line edits in place or unsends. */
+const Line = memo(function Line({ message, threadId, bots, threads, bot, approvals, isRoom, space, editing, latestHandOff, stops, touch, answer, inert, sentTo, noticed, reveal, highlighted, unread, onPick, onView, onDecide, onOpenExchange, onEdit, onUnsend, onSelectText, onReacted, onReply, onJump }: { message: Message; threadId: string; bots: Bot[]; threads: ThreadRow[]; bot: Bot | null; approvals: Map<string, Approval>; isRoom: boolean; space: ThreadSpace | null; editing: boolean; latestHandOff: boolean; stops: boolean; touch: boolean; answer: string | undefined; inert: boolean; sentTo: string | undefined; noticed: Noticed | undefined; reveal: PictureReveal | undefined; highlighted: boolean; unread: string | undefined; onPick: (option: string, from: string) => Promise<void>; onView: (attachmentId: string) => void; onDecide: (id: string, answer: ApprovalAnswer) => Promise<void>; onOpenExchange: (withThreadId: string) => void; onEdit: (message: Message | null, text?: string) => Promise<boolean>; onUnsend: (message: Message) => void; onSelectText: (text: string) => void; onReacted: (message: Message) => void; onReply: (message: Message) => void; onJump: (id: string) => void }) {
   const mine = message.author === "you";
   const bubble = useRef<HTMLDivElement>(null);
   const native = useNativeUi();
@@ -274,9 +323,10 @@ const Line = memo(function Line({ message, threadId, bots, threads, bot, approva
   if (message.kind === "message" && message.fromThreadId && author) return <Handoff message={message} threadId={threadId} bots={bots} threads={threads} onOpen={onOpenExchange} />;
   if (message.author === "routine") return <RunMarker message={message} bot={bot} />;
   if (message.kind === "event") {
+    if (message.author === "system" && message.answering) return <FailedTurn message={{ ...message, answering: message.answering }} highlighted={highlighted} />;
     return (
       <Marker className="justify-center">
-        <MarkerContent className="max-w-[80%] text-center text-xs">{message.body}</MarkerContent>
+        <MarkerContent className={cn("max-w-[80%] rounded-md text-center text-xs", RING, highlighted && RINGED)}>{message.body}</MarkerContent>
       </Marker>
     );
   }
@@ -284,7 +334,9 @@ const Line = memo(function Line({ message, threadId, bots, threads, bot, approva
     return (
       <MessageRow align="start">
         <MessageContent>
-          <TeachCard message={message} bot={author ?? bot ?? undefined} />
+          <div className={cn("w-full max-w-[440px] rounded-3xl", RING, highlighted && RINGED)}>
+            <TeachCard message={message} bot={author ?? bot ?? undefined} />
+          </div>
         </MessageContent>
       </MessageRow>
     );
@@ -293,7 +345,9 @@ const Line = memo(function Line({ message, threadId, bots, threads, bot, approva
     return (
       <MessageRow align="start">
         <MessageContent>
-          <ControlCard message={message} bot={author ?? bot ?? undefined} latest={latestHandOff} />
+          <div className={cn("w-full max-w-[440px] rounded-3xl", RING, highlighted && RINGED)}>
+            <ControlCard message={message} bot={author ?? bot ?? undefined} latest={latestHandOff} />
+          </div>
         </MessageContent>
       </MessageRow>
     );
@@ -302,7 +356,9 @@ const Line = memo(function Line({ message, threadId, bots, threads, bot, approva
     return (
       <MessageRow align="start">
         <MessageContent>
+          <div className={cn("w-full max-w-[440px] rounded-3xl", RING, highlighted && RINGED)}>
           {message.kind === "signin" ? <SignInCard message={message} bot={author ?? bot ?? undefined} /> : message.kind === "secret" ? <SecretCard message={message} bot={author ?? bot ?? undefined} /> : <ApprovalCard message={message} approval={message.approvalId ? approvals.get(message.approvalId) ?? null : null} bot={author ?? bot ?? undefined} noticed={Boolean(noticed)} onDecide={onDecide} />}
+          </div>
         </MessageContent>
       </MessageRow>
     );
@@ -310,8 +366,14 @@ const Line = memo(function Line({ message, threadId, bots, threads, bot, approva
   const showName = !mine && (isRoom || message.author === "routine" || message.author === "system");
   const pictures = message.attachments.filter(isPicture);
   const files = message.attachments.filter((file) => !isPicture(file));
+  const hasBubble = Boolean(message.replyTo || message.body || files.length);
   const editable = mine && Boolean(message.body.trim()) && message.attachments.length === 0;
+  // Not read yet: it changes in place (attachments stay) and can be taken back; otherwise an edit is sent again.
+  const takeBack = Boolean(unread);
+  const editsInPlace = takeBack;
+  const edits = editsInPlace || editable;
   const reactable = canReact(message);
+  const menu = Boolean(message.body) || edits || takeBack || reactable || replyable;
   const reactWith = (emoji: ReactionEmoji) => void react(message, emoji, onReacted);
   // On the iPhone a long press lifts the bubble into the app's own menu, with the reactions above it.
   const openNativeMenu = async () => {
@@ -325,7 +387,8 @@ const Line = memo(function Line({ message, threadId, bots, threads, bot, approva
     if (replyable) items.push({ id: "reply", label: "Reply", symbol: "arrowshape.turn.up.left" });
     if (message.body) items.push({ id: "copy", label: "Copy text", symbol: "doc.on.doc" });
     if (message.body) items.push({ id: "select", label: "Select text", symbol: "character.cursor.ibeam" });
-    if (editable) items.push({ id: "edit", label: "Edit and resend", symbol: "pencil" });
+    if (edits) items.push({ id: "edit", label: editsInPlace ? "Edit" : "Edit and resend", symbol: "pencil" });
+    if (takeBack) items.push({ id: "unsend", label: "Unsend", symbol: "arrow.uturn.backward", destructive: true });
     const picked = await askNative({
       kind: "message",
       rect: { x: box.x, y: box.y, width: box.width, height: box.height },
@@ -339,6 +402,7 @@ const Line = memo(function Line({ message, threadId, bots, threads, bot, approva
     else if (picked?.action === "copy") void copyToClipboard(copyText(message.body)).then((ok) => toast.add(ok ? { title: "Copied." } : { type: "error", title: "Couldn't copy it." }));
     else if (picked?.action === "select") onSelectText(copyText(message.body));
     else if (picked?.action === "edit") void onEdit(message);
+    else if (picked?.action === "unsend") onUnsend(message);
   };
   if (editing) {
     return (
@@ -348,6 +412,7 @@ const Line = memo(function Line({ message, threadId, bots, threads, bot, approva
             message={message}
             touch={touch}
             stops={stops}
+            inPlace={Boolean(unread)}
             onCancel={() => void onEdit(null)}
             onSend={(text) => onEdit(message, text)}
           />
@@ -379,7 +444,7 @@ const Line = memo(function Line({ message, threadId, bots, threads, bot, approva
             if (native && touch) {
               event.preventDefault();
               event.preventBaseUIHandler();
-              if (message.body || editable || reactable || replyable) void openNativeMenu();
+              if (menu) void openNativeMenu();
               return;
             }
             // A right click on a link gets the browser's own menu (open in a new tab, copy the address).
@@ -397,7 +462,7 @@ const Line = memo(function Line({ message, threadId, bots, threads, bot, approva
           {pictures.length ? (
             <div className="flex max-w-80 flex-wrap gap-1.5 group-data-[align=end]/bubble:self-end">
               {pictures.map((file) => (
-                <button key={file.id} type="button" onClick={() => onView(file.id)} aria-label={`View ${file.name}`} className="relative block max-w-full cursor-zoom-in overflow-hidden rounded-3xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+                <button key={file.id} type="button" onClick={() => onView(file.id)} aria-label={`View ${file.name}`} className={cn("relative block max-w-full cursor-zoom-in overflow-hidden rounded-3xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50", RING, highlighted && !hasBubble && RINGED)}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={`/api/attachments/${file.id}`} alt={file.name} className="block max-h-90 w-auto max-w-full" />
                   {reveal?.file === file.id ? <PictureFall reveal={reveal} /> : null}
@@ -405,8 +470,8 @@ const Line = memo(function Line({ message, threadId, bots, threads, bot, approva
               ))}
             </div>
           ) : null}
-          {message.replyTo || message.body || files.length ? (
-          <BubbleContent className="rounded-2xl px-3.5 py-2">
+          {hasBubble ? (
+          <BubbleContent className={cn("rounded-2xl px-3.5 py-2", RING, highlighted && RINGED)}>
             {message.replyTo ? <QuoteInBubble quote={message.replyTo} name={nameOf(message.replyTo.author, bots, space)} color={colorOf(message.replyTo.author, bots, space)} onJump={onJump} /> : null}
             {message.body ? (
               <ChoicesContext.Provider value={choices}>
@@ -419,7 +484,7 @@ const Line = memo(function Line({ message, threadId, bots, threads, bot, approva
                   <Attachment key={file.id} size="sm">
                     <AttachmentTrigger render={<a href={`/api/attachments/${file.id}`} target="_blank" rel="noreferrer" aria-label={`Open ${file.name}`} />} />
                     <AttachmentMedia variant="icon">
-                      <FileText />
+                      <FileKindIcon kind={fileKind(file)} />
                     </AttachmentMedia>
                     <AttachmentContent>
                       <AttachmentTitle>{file.name}</AttachmentTitle>
@@ -438,7 +503,7 @@ const Line = memo(function Line({ message, threadId, bots, threads, bot, approva
           ) : null}
           <ReactionBadges message={message} bots={bots} mine={mine} onReact={reactWith} />
         </ContextMenuTrigger>
-          {message.body || editable || reactable || replyable ? (
+          {menu ? (
             <ContextMenuContent className="w-60 pointer-coarse:w-76">
               {reactable ? <ReactionPicker message={message} onReact={reactWith} /> : null}
               {reactable ? <ContextMenuSeparator /> : null}
@@ -471,16 +536,23 @@ const Line = memo(function Line({ message, threadId, bots, threads, bot, approva
                     Select text
                   </ContextMenuItem>
                 ) : null}
-                {editable ? (
+                {edits ? (
                   <ContextMenuItem onClick={() => void onEdit(message)}>
                     <Pencil aria-hidden="true" />
-                    Edit and resend
+                    {editsInPlace ? "Edit" : "Edit and resend"}
+                  </ContextMenuItem>
+                ) : null}
+                {takeBack ? (
+                  <ContextMenuItem variant="destructive" onClick={() => onUnsend(message)}>
+                    <Undo2 aria-hidden="true" />
+                    Unsend
                   </ContextMenuItem>
                 ) : null}
               </ContextMenuGroup>
             </ContextMenuContent>
           ) : null}
         </ContextMenu>
+        {unread ? <p className="self-end pr-1 text-[11.5px] text-muted-foreground">{unread}</p> : null}
         {noticed?.lead ? <NoticedLinks message={message} watch={noticed.watch} bot={bot} /> : null}
         {timed || message.steered || (message.sentTo && sentTo) ? (
           <MessageFooter className="text-[10.5px] font-normal text-ash">
@@ -492,13 +564,16 @@ const Line = memo(function Line({ message, threadId, bots, threads, bot, approva
   );
 });
 
-function JumpToMessage({ id, ready, loaded, earlier }: { id: string | null; ready: boolean; loaded: boolean; earlier: () => Promise<boolean> }) {
+function JumpToMessage({ id, ready, loaded, earlier, onFound }: { id: string | null; ready: boolean; loaded: boolean; earlier: () => Promise<boolean>; onFound: (id: string) => void }) {
   const { scrollToMessage } = useMessageScroller();
   const [done, setDone] = useState<string | null>(null);
   useEffect(() => {
     if (!id || !ready || done === id) return;
     const timer = window.setTimeout(() => {
-      if (scrollToMessage(id, { align: "center" })) return setDone(id);
+      if (scrollToMessage(id, { align: "center" })) {
+        onFound(id);
+        return setDone(id);
+      }
       if (loaded) return;
       void earlier().then((more) => {
         if (more) return;
@@ -507,7 +582,7 @@ function JumpToMessage({ id, ready, loaded, earlier }: { id: string | null; read
       });
     }, 150);
     return () => window.clearTimeout(timer);
-  }, [id, ready, loaded, done, scrollToMessage, earlier]);
+  }, [id, ready, loaded, done, scrollToMessage, earlier, onFound]);
   return null;
 }
 
@@ -635,13 +710,20 @@ export function Conversation({ threadId }: { threadId: string }) {
   const [replying, setReplying] = useState<Message | null>(null);
   // A tap on a reply's quote; the count makes a second tap on the same quote go again.
   const [jump, setJump] = useState<{ id: string; n: number } | null>(null);
+  // The message a jump landed on, ringed until the ring fades.
   const [flash, setFlash] = useState<string | null>(null);
-  useEffect(() => {
-    if (!jump) return;
-    void Promise.resolve().then(() => setFlash(jump.id));
-    const timer = window.setTimeout(() => setFlash(null), 1600);
-    return () => window.clearTimeout(timer);
-  }, [jump]);
+  const flashTimer = useRef<number | null>(null);
+  const flashOn = useCallback((id: string) => {
+    setFlash(id);
+    if (flashTimer.current !== null) window.clearTimeout(flashTimer.current);
+    flashTimer.current = window.setTimeout(() => setFlash(null), 1600);
+  }, []);
+  useEffect(
+    () => () => {
+      if (flashTimer.current !== null) window.clearTimeout(flashTimer.current);
+    },
+    [],
+  );
   const [sent, setSent] = useState<string | null>(null);
   const [selectText, setSelectText] = useState<string | null>(null);
   const [viewing, setViewing] = useState<string | null>(null);
@@ -862,13 +944,19 @@ export function Conversation({ threadId }: { threadId: string }) {
 
   const working = activity[threadId] ?? {};
   const drawing = new Set(Object.values(making).map((m) => m.botId));
-  const workingBots = Object.entries(working)
+  // A bot holding a card the person hasn't answered is waiting on them, whatever step it last named.
+  const heldOnYou = useMemo(() => botsWaitingOnYou(approvals, threadId), [approvals, threadId]);
+  const workLines = Object.entries(working)
     .filter(([botId]) => !(botId in writing) && !drawing.has(botId))
-    .flatMap(([botId, line]) => {
-      const found = bots.find((b) => b.id === botId);
-      return found ? [{ bot: found, line }] : [];
-    })
+    .map(([botId, line]) => ({ botId, bot: bots.find((b) => b.id === botId), line: heldOnYou.has(botId) ? WAITING_FOR_YOU : line, waiting: heldOnYou.has(botId) }));
+  const workingBots = workLines
+    .flatMap(({ bot: found, line, waiting }) => (found ? [{ bot: found, line, waiting }] : []))
     .sort((a, b) => Number(b.bot.primary) - Number(a.bot.primary));
+  // Which bots work here changes as a turn picks up a line, so the details (what each answers) follow.
+  const workingKey = Object.keys(working).sort().join(" ");
+  useEffect(() => {
+    if (workingKey) void Promise.resolve().then(refreshInfo);
+  }, [workingKey, refreshInfo]);
   const isRoom = info?.thread.kind === "room";
   const bot = info?.bot ?? null;
   // Only the primary bot takes calls.
@@ -893,6 +981,17 @@ export function Conversation({ threadId }: { threadId: string }) {
   const roomWorking = [...new Set([...Object.keys(working), ...(info?.busy ?? [])])];
   const answersNext = roomBots.length && roomWorking.length ? roomTargets("", roomBots, messages, roomWorking).map((b) => b.name) : [];
   const handOff = useMemo(() => messages.findLast((m) => m.kind === "control") ?? null, [messages]);
+  // The person's lines no bot has read yet: `waiting` as loaded, until a turn takes one up or a bot answers it.
+  const botWorking = Boolean(bot && (bot.id in working || info?.busy.includes(bot.id)));
+  const unreadNote = useMemo(() => {
+    const taken = new Set(info?.answering ?? []);
+    for (const m of messages) if (m.answering && m.author !== "you") taken.add(m.answering);
+    const note = notReadYet({ isRoom: Boolean(isRoom), botName: bot?.name ?? null, working: botWorking });
+    const map = new Map<string, string>();
+    if (info?.thread.space) return map;
+    for (const m of messages) if (m.author === "you" && m.waiting && !taken.has(m.id)) map.set(m.id, note);
+    return map;
+  }, [messages, info, isRoom, bot, botWorking]);
   const waitingOnYou = approvals.some((a) => a.threadId === threadId && a.status === "pending") || handOffOpen(handOff, desktop);
 
   async function send(event?: FormEvent, after = false) {
@@ -964,6 +1063,28 @@ export function Conversation({ threadId }: { threadId: string }) {
     }
   }
 
+  async function saveUnread(message: Message, text: string): Promise<boolean> {
+    try {
+      const data = await editUnread(threadId, message.id, text);
+      setMessages((current) => current.map((m) => (m.id === message.id ? (data?.message ?? { ...m, body: text }) : m)));
+      setEditing(null);
+      return true;
+    } catch (failure) {
+      failed("Couldn't change it.")(failure);
+      return false;
+    }
+  }
+
+  function takeBack(message: Message) {
+    void unsend(threadId, message.id)
+      .then(() => {
+        setMessages((current) => current.filter((m) => m.id !== message.id));
+        setEditing((now) => (now === message.id ? null : now));
+        setReplying((now) => (now?.id === message.id ? null : now));
+      })
+      .catch(failed("Couldn't unsend it."));
+  }
+
   async function edit(message: Message | null, text?: string): Promise<boolean> {
     if (!message) {
       setEditing(null);
@@ -973,7 +1094,7 @@ export function Conversation({ threadId }: { threadId: string }) {
       setEditing(message.id);
       return true;
     }
-    return resendEdited(message, text);
+    return unreadNote.has(message.id) ? saveUnread(message, text) : resendEdited(message, text);
   }
 
   async function decide(id: string, answer: ApprovalAnswer) {
@@ -1100,6 +1221,7 @@ export function Conversation({ threadId }: { threadId: string }) {
   const onPick = useStableCallback(pick);
   const onDecide = useStableCallback(decide);
   const onEdit = useStableCallback(edit);
+  const onUnsend = useStableCallback(takeBack);
   const onReply = useStableCallback(replyTo);
   const onJump = useCallback((id: string) => setJump((j) => ({ id, n: (j?.n ?? 0) + 1 })), []);
 
@@ -1155,7 +1277,7 @@ export function Conversation({ threadId }: { threadId: string }) {
                 <Paperclip className="size-6" aria-hidden="true" />
               </span>
               <p className="text-lg font-semibold">Drop to attach</p>
-              <p className="text-sm text-muted-foreground">Pictures, PDFs and text files, up to {MAX_FILES} at a time</p>
+              <p className="text-sm text-muted-foreground">Any file, up to {MAX_FILES} at a time</p>
             </div>
           </div>
         ) : null}
@@ -1220,8 +1342,8 @@ export function Conversation({ threadId }: { threadId: string }) {
         ) : null}
 
         <MessageScrollerProvider autoScroll>
-          <JumpToMessage id={jumpTo} ready={messages.length > 0} loaded={earlier === false} earlier={loadEarlier} />
-          {jump ? <JumpToMessage key={jump.n} id={jump.id} ready={messages.length > 0} loaded={earlier === false} earlier={loadEarlier} /> : null}
+          <JumpToMessage id={jumpTo} ready={messages.length > 0} loaded={earlier === false} earlier={loadEarlier} onFound={flashOn} />
+          {jump ? <JumpToMessage key={jump.n} id={jump.id} ready={messages.length > 0} loaded={earlier === false} earlier={loadEarlier} onFound={flashOn} /> : null}
           <FollowSent id={sent} />
           <FollowComposer height={composerHeight} />
           {nativeChrome ? <NativeJump onCanJump={setCanJump} jumpRev={jumpRev} /> : null}
@@ -1268,8 +1390,8 @@ export function Conversation({ threadId }: { threadId: string }) {
                 ) : null}
                 <WatchesContext.Provider value={watches}>
                 {messages.map((m) => (
-                  <MessageScrollerItem key={m.id} messageId={m.id} className={cn((m.id === jumpTo || m.id === flash) && "rounded-2xl ring-2 ring-ring/40")}>
-                    <Line message={m} threadId={threadId} bots={bots} threads={threads} bot={bot} approvals={approvalMap} isRoom={Boolean(isRoom)} space={info?.thread.space ?? null} editing={editing === m.id} latestHandOff={m.id === handOff?.id} stops={Boolean(info?.answering?.includes(m.id))} touch={touch} answer={answers.get(m.id)} inert={inert.has(m.id)} sentTo={sentTo.get(m.id)} noticed={runs.get(m.id)} reveal={revealIn(m, reveals)} onPick={onPick} onView={setViewing} onDecide={onDecide} onOpenExchange={setExchange} onEdit={onEdit} onSelectText={setSelectText} onReacted={replaceMessage} onReply={onReply} onJump={onJump} />
+                  <MessageScrollerItem key={m.id} messageId={m.id}>
+                    <Line message={m} threadId={threadId} bots={bots} threads={threads} bot={bot} approvals={approvalMap} isRoom={Boolean(isRoom)} space={info?.thread.space ?? null} editing={editing === m.id} latestHandOff={m.id === handOff?.id} stops={Boolean(info?.answering?.includes(m.id))} touch={touch} answer={answers.get(m.id)} inert={inert.has(m.id)} sentTo={sentTo.get(m.id)} noticed={runs.get(m.id)} reveal={revealIn(m, reveals)} highlighted={m.id === flash} unread={unreadNote.get(m.id)} onPick={onPick} onView={setViewing} onDecide={onDecide} onOpenExchange={setExchange} onEdit={onEdit} onUnsend={onUnsend} onSelectText={setSelectText} onReacted={replaceMessage} onReply={onReply} onJump={onJump} />
                   </MessageScrollerItem>
                 ))}
                 </WatchesContext.Provider>
@@ -1289,13 +1411,11 @@ export function Conversation({ threadId }: { threadId: string }) {
                     <WorkLines working={workingBots} label={names(workingBots.map((w) => w.bot.name))} />
                   </MessageScrollerItem>
                 ) : (
-                  Object.entries(working)
-                    .filter(([botId]) => !(botId in writing) && !drawing.has(botId))
-                    .map(([botId, line]) => (
-                      <MessageScrollerItem key={`working-${botId}`}>
-                        <WorkLine bot={bots.find((x) => x.id === botId)} line={line} />
-                      </MessageScrollerItem>
-                    ))
+                  workLines.map(({ botId, bot: found, line, waiting }) => (
+                    <MessageScrollerItem key={`working-${botId}`}>
+                      <WorkLine bot={found} line={line} waiting={waiting} />
+                    </MessageScrollerItem>
+                  ))
                 )}
               </MessageScrollerContent>
             </MessageScrollerViewport>
@@ -1365,7 +1485,7 @@ export function Conversation({ threadId }: { threadId: string }) {
           <Tooltip>
             <TooltipTrigger render={<Button size="icon-xl" aria-label="Attach files" render={<label />} nativeButton={false} className={cn("cursor-pointer", nativeChrome && "invisible")} />}>
               <Plus aria-hidden="true" />
-              <input type="file" multiple className="sr-only" accept="image/*,.pdf,.txt,.md,.csv,.json" onChange={(e) => {
+              <input type="file" multiple className="sr-only" onChange={(e) => {
                 attach([...(e.target.files ?? [])]);
                 e.target.value = "";
               }} />

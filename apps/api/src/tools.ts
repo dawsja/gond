@@ -1,5 +1,5 @@
 import { BOT_LIMITS, isNoteKind, NOTE_KINDS, type NoteKind, AVATAR_MAX_BYTES, CARD_FIELDS, cardLabel, IMAGE_ASPECTS, IMAGE_MODELS, MAX_IMAGE_REFERENCES, isImageAspect, ROOM_MAX_BOTS, draftIdOf, emailDraftOf, emailName, sendDraftAction, QUIET_REPLY, REACTIONS, isReaction, BOT_COLORS, BOT_EXPRESSIONS, BOT_SHAPES, LOGIN_FIELD_KINDS, MAX_SENT_FILE_BYTES, SKILL_LIMITS, botInputSchema, composioCard, handleOf, joinCommandLine, mentionsIn, mediaTypeFor, mcpServerInputSchema, hasKeyHeader, pickBotName, plainMarkdown, skillFilePath, type Bot, type BotExpression, type BotShape, type McpServer, type McpServerInput, type Message, type SkillInput, type Thread } from "@gond/shared";
-import { askApproval, ENGINE_FILES_TEXT, expiredText, requestApproval, SCRIPTED_SCREEN_TEXT, scriptsTheScreen, summarize, touchesEngine } from "./approvals.ts";
+import { askApproval, ENGINE_FILES_TEXT, expiredText, requestApproval, SCRIPTED_SCREEN_TEXT, scriptsTheScreen, setAsideText, summarize, touchesEngine } from "./approvals.ts";
 import { boxHome, previewBoxImage, readBoxFileBytes, uploadBoxFile, writeBoxFile, type BoxConfig } from "./box.ts";
 import { exactApp, searchIndex } from "./catalog.ts";
 import { catalogIndex, composioConfigured, executeAction, isReadOnlyAction, toolsFor, type ComposioTool } from "./composio.ts";
@@ -189,6 +189,20 @@ export function decisionCard(input: Record<string, unknown>) {
   };
 }
 
+const POST_MAX = 4000;
+const NOTE_MAX = 8000;
+const BRIEF_MAX = 12_000;
+const ROUTINE_PROMPT_MAX = 4000;
+const FOLLOW_UP_MAX = 2000;
+
+/**
+ * Text over its limit is refused, never cut: cut, its end goes missing while the bot thinks it went.
+ * Null when it fits.
+ */
+function overLimit(what: string, text: string, limit: number): string | null {
+  return text.length > limit ? `${what} is ${text.length.toLocaleString("en-US")} characters, over the limit of ${limit.toLocaleString("en-US")}` : null;
+}
+
 const schema = (properties: Record<string, unknown>, required: string[] = []) => ({ type: "object", properties, required, additionalProperties: false });
 
 function profilePatch(input: Record<string, unknown>): { name?: string; title?: string; description?: string; color?: string; expression?: BotExpression; shape?: BotShape } | { error: string } {
@@ -336,7 +350,9 @@ function sayInSpaceTool(context: Context): Record<string, DriverTool> {
         if (!space) return `NOT said: no space called "${String(input.space ?? "")}". You may speak in ${spaces.map((s) => `"${s.name}"`).join(", ")}.`;
         const text = String(input.text ?? "").trim();
         if (!text) return "NOT said: empty message.";
-        postMessage({ threadId: space.id, author: bot.id, body: hideSecrets(text.slice(0, 8000)), depth: message.depth + 1, answered: true });
+        const long = overLimit("that message", text, NOTE_MAX);
+        if (long) return `NOT said: ${long}. Make it shorter.`;
+        postMessage({ threadId: space.id, author: bot.id, body: hideSecrets(text), depth: message.depth + 1, answered: true });
         return `Said in "${space.name}" for everyone there to see. Tell your person in a line that it's said.`;
       },
     },
@@ -369,9 +385,11 @@ export function baseTools(context: Context): Record<string, DriverTool> {
     if (containsSecret(Buffer.from(JSON.stringify([input.instructions ?? "", parsed.instructions])))) return { error: "the instructions contain a stored secret. Take it out; a skill asks for secrets with request_secret instead" };
     if (files.some((file) => containsSecret(file.data))) return { error: "a file contains a stored secret. Take it out; a skill asks for secrets with request_secret instead" };
     const name = (typeof input.name === "string" && input.name.trim() ? plainText(input.name).trim() : parsed.name ?? (folderName ? nameFromFolder(folderName) : "")).slice(0, SKILL_LIMITS.name);
-    const description = (typeof input.description === "string" && input.description.trim() ? input.description.trim() : parsed.description).slice(0, SKILL_LIMITS.description);
-    const instructions = (typeof input.instructions === "string" && input.instructions.trim() ? input.instructions.trim() : parsed.instructions).slice(0, SKILL_LIMITS.instructions);
+    const description = typeof input.description === "string" && input.description.trim() ? input.description.trim() : parsed.description;
+    const instructions = typeof input.instructions === "string" && input.instructions.trim() ? input.instructions.trim() : parsed.instructions;
     if (!name || !instructions) return { error: "a skill needs a name and instructions" };
+    const long = overLimit("the description", description, SKILL_LIMITS.description) ?? overLimit("the instructions", instructions, SKILL_LIMITS.instructions);
+    if (long) return { error: `${long}. Make it shorter; detail can go in files in the skill's folder, which the instructions point to` };
     return { input: { name, description, instructions }, files, meta: parsed.meta };
   };
 
@@ -521,7 +539,8 @@ export function baseTools(context: Context): Record<string, DriverTool> {
         const card = decisionCard(input);
         if (pickNotYesNo(summary, card.allow, card.deny))
           return "Not posted: that is a pick between options, and ask_approval is only a yes or no on one act (allow does it, deny means don't). End your reply with ::choices[First option | Second option] and stop; the person's pick comes back as their message. Then call ask_approval for the act they picked, with a yes-or-no question like \"Copy golem's compose files?\", if it still needs one.";
-        const decision = await requestApproval({ bot, threadId: thread.id, signal: context.signal, tool: "ask_approval", input: { summary: hideSecrets(summary.slice(0, 300)), ...card }, summary: summary.slice(0, 300) });
+        const { decision, aside } = await askApproval({ bot, threadId: thread.id, signal: context.signal, tool: "ask_approval", input: { summary: hideSecrets(summary.slice(0, 300)), ...card }, summary: summary.slice(0, 300) });
+        if (aside) return setAsideText(`"${summary.slice(0, 120)}"`);
         if (decision === "allow" || decision === "always") return card.allow ? `The person chose "${card.allow}". Go ahead.` : "Allowed. Go ahead.";
         if (decision === "expired") return expiredText(`"${summary.slice(0, 120)}"`);
         return card.deny ? `The person chose "${card.deny}": don't do it. Do something else, or say what you would need.` : "Denied: the person said no. Do something else, or say what you would need.";
@@ -563,7 +582,9 @@ export function baseTools(context: Context): Record<string, DriverTool> {
       execute: async (input) => {
         const text = String(input.text ?? "").trim();
         if (!text) return "Nothing to post.";
-        const body = hideSecrets(text.slice(0, 4000));
+        const long = overLimit("that message", text, POST_MAX);
+        if (long) return `NOT posted: ${long}. Make it shorter, or post it in parts.`;
+        const body = hideSecrets(text);
         postMessage({ threadId: thread.id, author: bot.id, body, depth, answered: true });
         // The person's own messages and routines push with the final answer; a teammate's never does, so this is the only notice they get.
         const fromTeammate = Boolean(message.fromThreadId) && Boolean(getBot(message.author));
@@ -599,8 +620,10 @@ export function baseTools(context: Context): Record<string, DriverTool> {
         if (containsSecret(data)) return "NOT sent: the file contains a stored secret. Take it out first.";
         const name = relative.split("/").pop() || "file";
         const file = storeAttachment({ name: name.slice(0, 200), mediaType: mediaTypeFor(name), data });
-        const note = hideSecrets(String(input.note ?? "").trim().slice(0, 4000));
-        postMessage({ threadId: thread.id, author: bot.id, body: note, attachments: [file], depth, answered: true });
+        const note = String(input.note ?? "").trim();
+        const long = overLimit("the note", note, POST_MAX);
+        if (long) return `NOT sent: ${long}. Make it shorter.`;
+        postMessage({ threadId: thread.id, author: bot.id, body: hideSecrets(note), attachments: [file], depth, answered: true });
         return `Sent ${name} to the person; it's in the conversation with a download button. Don't repeat the path.`;
       },
     },
@@ -616,8 +639,10 @@ export function baseTools(context: Context): Record<string, DriverTool> {
         ["prompt"],
       ),
       execute: async (input) => {
-        const prompt = String(input.prompt ?? "").trim().slice(0, 4000);
+        const prompt = String(input.prompt ?? "").trim();
         if (!prompt) return "NOT made: what should the picture show?";
+        const long = overLimit("the prompt", prompt, POST_MAX);
+        if (long) return `NOT made: ${long}. Describe the picture in fewer words.`;
         const aspect = isImageAspect(input.aspect) ? input.aspect : "square";
         const given = Array.isArray(input.from) ? input.from.map((path) => String(path ?? "").trim()).filter(Boolean) : [];
         if (given.length > MAX_IMAGE_REFERENCES) return `NOT made: at most ${MAX_IMAGE_REFERENCES} pictures in from.`;
@@ -702,17 +727,19 @@ export function baseTools(context: Context): Record<string, DriverTool> {
         if (target.id === bot.id) return "NOT sent: that's you.";
         const text = String(input.text ?? "").trim();
         if (!text) return "NOT sent: empty message.";
+        const long = overLimit("that message", text, NOTE_MAX);
+        if (long) return `NOT sent: ${long}. Make it shorter, or put the detail in a file and say where it is.`;
         // A note that names no kind is read as an action, as every note was before there were two.
         const kind: NoteKind = isNoteKind(input.kind) ? input.kind : "action";
         if (thread.kind === "room" && thread.members.includes(target.id)) {
           // A group chat, like the person's: what one member tells another there is said where everyone sees it.
-          const body = hideSecrets((mentionsIn(text).includes(handleOf(target.name)) ? text : `@${handleOf(target.name)} ${text}`).slice(0, 8000));
+          const body = hideSecrets(mentionsIn(text).includes(handleOf(target.name)) ? text : `@${handleOf(target.name)} ${text}`);
           const wake = kind === "action" && botLinesSincePerson(thread.id) < MAX_ROOM_LINES;
           postMessage({ threadId: thread.id, author: bot.id, body, depth, answered: !wake, wake, note: kind });
           if (kind === "info") return `Said here for ${target.name} to know, where the person sees it too; it wakes nobody. Don't repeat it in your answer.`;
           return wake ? `${target.name} is in this room, so it was said here, where the person sees it too; ${target.name} answers here. Don't repeat it in your answer.` : `Said here, but the room is waiting for the person before any bot answers. Don't repeat it in your answer.`;
         }
-        const body = hideSecrets(text.slice(0, 8000));
+        const body = hideSecrets(text);
         if (kind === "info") {
           postMessage({ threadId: target.threadId, author: bot.id, body, depth, fromThreadId: thread.id, answered: true, note: "info" });
           const heard = await context.tellWorking?.(target, `${bot.name}, a teammate, sent you this for your information while you were working (it needs no answer, and isn't a request):\n\n${body}\n\nKeep it in mind; if it changes what you're doing, adjust, and carry on.`);
@@ -798,8 +825,10 @@ export function baseTools(context: Context): Record<string, DriverTool> {
           } else {
             const patch: { name?: string; description?: string; instructions?: string } = {};
             if (typeof input.name === "string" && input.name.trim()) patch.name = input.name.trim().slice(0, SKILL_LIMITS.name);
-            if (typeof input.description === "string") patch.description = input.description.trim().slice(0, SKILL_LIMITS.description);
-            if (typeof input.instructions === "string" && input.instructions.trim()) patch.instructions = input.instructions.trim().slice(0, SKILL_LIMITS.instructions);
+            if (typeof input.description === "string") patch.description = input.description.trim();
+            if (typeof input.instructions === "string" && input.instructions.trim()) patch.instructions = input.instructions.trim();
+            const long = overLimit("the description", patch.description ?? "", SKILL_LIMITS.description) ?? overLimit("the instructions", patch.instructions ?? "", SKILL_LIMITS.instructions);
+            if (long) return `NOT changed: ${long}. Make it shorter; detail can go in files in the skill's folder, which the instructions point to.`;
             const files = inlineSkillFiles(input.files);
             if ("error" in files) return `NOT changed: ${files.error}.`;
             if (files.length) {
@@ -1059,7 +1088,10 @@ export function baseTools(context: Context): Record<string, DriverTool> {
         const skill = routineSkill(input.skill);
         if (skill === undefined) return `NOT created: the person has no skill "${String(input.skill)}".`;
         const once = input.once === true;
-        const routine = createRoutine(bot.id, { name: String(input.name ?? "Routine").slice(0, 80), cron, timezone, prompt: String(input.prompt ?? "").slice(0, 4000), enabled: input.enabled === true, watch: input.watch === true && !once, once, skillId: skill });
+        const prompt = String(input.prompt ?? "");
+        const long = overLimit("the prompt", prompt, ROUTINE_PROMPT_MAX);
+        if (long) return `NOT created: ${long}. Make it shorter; a long how-to belongs in a skill the routine uses.`;
+        const routine = createRoutine(bot.id, { name: String(input.name ?? "Routine").slice(0, 80), cron, timezone, prompt, enabled: input.enabled === true, watch: input.watch === true && !once, once, skillId: skill });
         const status = routine.enabled ? "on" : "paused; the person can turn it on under Routines";
         if (once) return `Created the reminder "${routine.name}" (${status}). It runs once, at ${preview[0]}, then removes itself.`;
         return `Created ${routine.watch ? "the watch " : ""}"${routine.name}" (${status}). Next runs: ${preview.join(", ")}.`;
@@ -1089,7 +1121,11 @@ export function baseTools(context: Context): Record<string, DriverTool> {
           patch.skillId = skill;
         }
         if (typeof input.name === "string" && input.name.trim()) patch.name = input.name.trim().slice(0, 80);
-        if (typeof input.prompt === "string" && input.prompt.trim()) patch.prompt = input.prompt.trim().slice(0, 4000);
+        if (typeof input.prompt === "string" && input.prompt.trim()) {
+          const long = overLimit("the prompt", input.prompt.trim(), ROUTINE_PROMPT_MAX);
+          if (long) return `NOT changed: ${long}. Make it shorter; a long how-to belongs in a skill the routine uses.`;
+          patch.prompt = input.prompt.trim();
+        }
         if (typeof input.enabled === "boolean") patch.enabled = input.enabled;
         if (typeof input.watch === "boolean") patch.watch = input.watch;
         if (typeof input.cron === "string" && input.cron.trim()) {
@@ -1141,11 +1177,13 @@ export function baseTools(context: Context): Record<string, DriverTool> {
         if (!Number.isFinite(minutes) || minutes < 1 || minutes > MAX_FOLLOW_UP_MINUTES) return `NOT set: minutes must be between 1 and ${MAX_FOLLOW_UP_MINUTES}.`;
         const note = String(input.note ?? "").trim();
         if (!note) return "NOT set: say what to check then.";
+        const long = overLimit("the note", note, FOLLOW_UP_MAX);
+        if (long) return `NOT set: ${long}. Say in short what to check; the detail can wait in a file.`;
         const waiting = listFollowUps(bot.id);
         if (waiting.length >= MAX_FOLLOW_UPS) return `NOT set: you already have ${waiting.length} follow-ups waiting (list_handoffs shows them). Drop one with cancel first.`;
 
         const where = thread.kind === "room" ? bot.threadId : thread.id;
-        const followUp = createFollowUp({ botId: bot.id, threadId: where, note: `${note.slice(0, 2000)}${thread.kind === "room" ? ` (set in the room "${thread.name}")` : ""}`, dueAt: new Date(Date.now() + Math.round(minutes) * 60_000) });
+        const followUp = createFollowUp({ botId: bot.id, threadId: where, note: `${note}${thread.kind === "room" ? ` (set in the room "${thread.name}")` : ""}`, dueAt: new Date(Date.now() + Math.round(minutes) * 60_000) });
         return `Set (id ${followUp.id}): you'll be woken at ${followUp.dueAt}${where !== thread.id ? " in your own conversation" : ""}.`;
       },
     },
@@ -1222,7 +1260,7 @@ export function teamTools(context: Context): Record<string, DriverTool> {
 
   const handOver = (target: Bot, given: string, parentId = handoffWorkedOn(message.id)?.id ?? null) => {
     const brief = hideSecrets(given);
-    const posted = postMessage({ threadId: target.threadId, author: bot.id, body: brief.slice(0, 12_000), depth, fromThreadId: thread.id });
+    const posted = postMessage({ threadId: target.threadId, author: bot.id, body: brief, depth, fromThreadId: thread.id });
     return createDelegation({ fromBotId: bot.id, fromThreadId: thread.id, toBotId: target.id, toThreadId: target.threadId, messageId: posted.id, brief, parentId });
   };
 
@@ -1257,6 +1295,8 @@ export function teamTools(context: Context): Record<string, DriverTool> {
         if (target.id === bot.id) return "NOT delegated: that's you.";
         const brief = String(input.brief ?? "").trim();
         if (!brief) return "NOT delegated: empty brief.";
+        const long = overLimit("the brief", brief, BRIEF_MAX);
+        if (long) return `NOT delegated: ${long}. Make it shorter, or put the detail in a file and say where it is.`;
         const handoff = handOver(target, brief);
         postMessage({ threadId: thread.id, author: "system", kind: "event", body: `${bot.name} handed a task to ${target.name}.`, answered: true });
         return `Assigned to ${target.name} (handoff ${handoff.id}). Its result will arrive here as a message from ${target.name}. When your handoffs are out, finish with your reply to the person; say what went to whom.`;
@@ -1303,7 +1343,10 @@ export function teamTools(context: Context): Record<string, DriverTool> {
       execute: async (input) => {
         const handoff = openHandoff(String(input.handoff ?? ""));
         if (typeof handoff === "string") return `NOT withdrawn: ${handoff}`;
-        const reason = String(input.reason ?? "").trim().slice(0, 2000) || "it isn't needed any more.";
+        const given = String(input.reason ?? "").trim();
+        const long = overLimit("the reason", given, FOLLOW_UP_MAX);
+        if (long) return `NOT withdrawn: ${long}. Say it in short.`;
+        const reason = given || "it isn't needed any more.";
         const to = await withdraw(handoff, reason);
         postMessage({ threadId: thread.id, author: "system", kind: "event", body: `${bot.name} withdrew a task from ${to?.name ?? "a teammate"}.`, answered: true });
         return `Withdrawn from ${to?.name ?? "the teammate"}; it has been told why.`;
@@ -1318,6 +1361,8 @@ export function teamTools(context: Context): Record<string, DriverTool> {
         if (typeof handoff === "string") return `NOT amended: ${handoff}`;
         const brief = String(input.brief ?? "").trim();
         if (!brief) return "NOT amended: empty brief.";
+        const long = overLimit("the brief", brief, BRIEF_MAX);
+        if (long) return `NOT amended: ${long}. Make it shorter, or put the detail in a file and say where it is.`;
         const target = getBot(handoff.toBotId);
         if (!target) return "NOT amended: that teammate is gone.";
         await withdraw(handoff, "a corrected brief follows and replaces it.");
@@ -1351,11 +1396,13 @@ export function teamTools(context: Context): Record<string, DriverTool> {
         if (unknown.length) return `NOT created: no bot called ${unknown.map((r) => `"${r}"`).join(", ")}. Use list_bots.`;
         if (invited.length === 0) return "NOT created: name at least one teammate besides you.";
         if (invited.length + 1 > ROOM_MAX_BOTS) return `NOT created: a room holds at most ${ROOM_MAX_BOTS} bots, you included. Pick the teammates the job needs.`;
+        const long = overLimit("the opening message", String(input.message ?? "").trim(), NOTE_MAX);
+        if (long) return `NOT created: ${long}. Make it shorter.`;
         const room = createRoom(name, [bot.id, ...invited.map((b) => b.id)], bot.userId);
         postMessage({ threadId: room.id, author: "system", kind: "event", body: `${bot.name} opened this room with ${invited.map((b) => b.name).join(", ")}. Mention a bot with @ to address it.`, answered: true });
         postMessage({ threadId: thread.id, author: "system", kind: "event", body: `${bot.name} opened the room "${name}".`, answered: true });
         const text = String(input.message ?? "").trim();
-        if (text) postMessage({ threadId: room.id, author: bot.id, body: hideSecrets(roomOpener(text, invited).slice(0, 8000)), depth: message.depth, wake: true });
+        if (text) postMessage({ threadId: room.id, author: bot.id, body: hideSecrets(roomOpener(text, invited)), depth: message.depth, wake: true });
         return `Opened the room "${name}" (id ${room.id}) with ${invited.map((b) => b.name).join(", ")} and you.${text ? " Your message is posted; those it names answer there, and you answer there when they @mention you." : " Nothing is said there yet."} What is said there stays in the room: it doesn't come back to this conversation.`;
       },
     },
@@ -1449,9 +1496,9 @@ export function permissionTool(context: Context): DriverTool {
       const input = (raw.input && typeof raw.input === "object" ? raw.input : {}) as Record<string, unknown>;
       if (scriptsTheScreen(tool, input)) return JSON.stringify({ behavior: "deny", message: SCRIPTED_SCREEN_TEXT });
       if (touchesEngine(tool, input, bot)) return JSON.stringify({ behavior: "deny", message: ENGINE_FILES_TEXT });
-      const { decision, note } = await askApproval({ bot, threadId: thread.id, signal: context.signal, tool, input });
+      const { decision, note, aside } = await askApproval({ bot, threadId: thread.id, signal: context.signal, tool, input });
       if (decision === "allow" || decision === "always") return JSON.stringify({ behavior: "allow", updatedInput: input });
-      const message = decision === "expired" ? expiredText(`for "${summarize(tool, input)}"`) : note ? `The person wants changes to "${summarize(tool, input)}" first: "${note}". Make them and try again.` : `The person denied "${summarize(tool, input)}". Do something else, or say what you would need.`;
+      const message = aside ? setAsideText(`for "${summarize(tool, input)}"`) : decision === "expired" ? expiredText(`for "${summarize(tool, input)}"`) : note ? `The person wants changes to "${summarize(tool, input)}" first: "${note}". Make them and try again.` : `The person denied "${summarize(tool, input)}". Do something else, or say what you would need.`;
       return JSON.stringify({ behavior: "deny", message });
     },
   };
@@ -1481,6 +1528,7 @@ export async function appTools(context: Context): Promise<Record<string, DriverT
           const email = emailDraftOf(slug, input);
           const summary = email ? `${tool.name} to ${email.to.map(emailName).join(", ") || "the thread"}${email.subject ? `: ${email.subject.slice(0, 160)}` : ""}` : `${tool.name}${first ? `: ${first[1].slice(0, 160)}` : ""}`;
           const answer = await askApproval({ bot, threadId: thread.id, signal: context.signal, tool: slug, input, summary });
+          if (answer.aside) return setAsideText(`for ${tool.name}`);
           if (answer.decision === "deny" && answer.note) return `NOT done: the person wants changes first: "${answer.note}". Make them and call ${slug} again with the new version; its card shows them what you changed, so don't write it out in your reply.`;
           if (answer.decision === "deny") return "NOT done: the person denied this action.";
           if (answer.decision === "expired") return expiredText(`for ${tool.name}`);
@@ -1494,9 +1542,9 @@ export async function appTools(context: Context): Promise<Record<string, DriverT
         const sending = send ? sendDraftAction(slug) : null;
         if (!sending) return `${changed}${text}`;
         const id = draftIdOf(result);
-        if (!id) return `${changed}The person tapped Send, but the draft was only saved: its id wasn't in the answer, so it couldn't be sent. Tell them it is waiting in their drafts.\n${text}`;
+        if (!id) return `${changed}The person tapped Send now, but the draft was only saved: its id wasn't in the answer, so it couldn't be sent. Tell them it is waiting in their drafts.\n${text}`;
         await executeAction(bot.userId, sending.slug, { [sending.idKey]: id }, tool.toolkit?.slug);
-        return `${changed}Sent: the person tapped Send on the draft's card, so it went out rather than waiting as a draft. Say it was sent, in a line.`;
+        return `${changed}Sent: the person tapped Send now on the draft's card, so it went out rather than waiting as a draft. Say it was sent, in a line.`;
       },
     };
   }

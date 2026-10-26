@@ -425,6 +425,11 @@ One line each: where to start, and what must not change.
 - **Replies** (`reply-quote.tsx`, `use-swipe-to-reply.ts`, `reply_to`,
   `quoteOf`, `replyLine`): the route takes only a message of the same
   conversation; quoting a bot doesn't address it.
+- **Unsend and edit** (`DELETE` and `PATCH /api/threads/:id/messages/:id`,
+  `unsendMessage`, `editMessage`, `Message.waiting`): only the person's
+  own line, only while no bot has read it (unclaimed, unanswered, not
+  steered, checked in the same statement as the change, so it can't race
+  the dispatcher), never in a space; unsending removes its files.
 - **Reactions** (`REACTIONS`, `gond_message_reactions`, `setReaction`,
   `components/reactions.tsx`): one per author per message; the
   `reactions` event carries the message's reactions as they stand,
@@ -489,7 +494,10 @@ One line each: where to start, and what must not change.
   await, or Safari stays silent. Mic as 24 kHz PCM from an AudioWorklet
   (`public/call-capture.js`, `lib/call-audio.ts`; ScriptProcessor
   fallback; wired through a silent gain since some engines only run what
-  reaches the speakers), played by `CallPlayer`. One WebSocket
+  reaches the speakers), played by `CallPlayer` as one stream through
+  `public/call-player.js` (its own resampler, a cushion that grows when
+  audio runs late, fades over gaps), never a buffer per chunk: the joins
+  click at 44.1 kHz. One WebSocket
   `/api/calls/:id/socket`, falling back to SSE and POSTs. No mic or
   speaker setting. In the call's chat the composer is `CallComposer`;
   elsewhere `CallPill` (sets `--call-pill-space`) or `CallBar`. Leaving
@@ -665,6 +673,11 @@ One line each: where to start, and what must not change.
   /agents/:id/steer`; Claude Code reads another stdin message under
   `--replay-user-messages`, Gond's own engines read a `SteerQueue`); a
   driver that can't answers false, never guesses.
+  Neither reads a line while a tool waits on a card, so a line a turn
+  took sets that bot's waiting cards there aside (`setAside`: `expired`,
+  outcome `aside`, "Set aside"), and the tool hears `setAsideText` with
+  the line after it. Its decision is "deny", so a caller that never looks
+  at `aside` still runs nothing.
 - **Streaming** (`createWriting` in `src/writing.ts`): the whole redacted
   text so far, at most every `WRITING_INTERVAL_MS`, only for a turn whose
   answer goes to the person, never while it could still be `NOTHING_NEW`
@@ -704,6 +717,15 @@ One line each: where to start, and what must not change.
 - `NOTHING_NEW` (`QUIET_REPLY`, `isQuietReply`) posts nothing and pushes
   nothing; a trailing one is stripped from an answer
   (`withoutQuietReply`). The word never shows anywhere.
+- **A failed turn can be tried again.** Its grey line names the person's
+  message (`answering`), and the steps that ran are kept
+  (`noteInterrupted` with `failed`); `POST
+  /api/threads/:id/messages/:id/retry` drops those lines and puts the
+  message back to wait. No AI picked or signed in, a missing CLI (the
+  box's 424) or a signed-out one (`signedOut` from the box's `settle`)
+  is `setupProblem`: a `signin` card with `AI_SETUP_CARD`, never an
+  incident, and one per bot and conversation unless each answers a
+  line of the person's (a hidden prompt's adds none beside one).
 
 ### Bots and teammates
 
@@ -744,7 +766,8 @@ One line each: where to start, and what must not change.
   bound for a teammate steers it as an aside (`asideText`), answered with
   `post_message`.
 - **Approvals** (`src/approvals.ts`): `ask` ("Always ask"), `auto`
-  ("Auto", the default) and `full` ("Always allow"). Reading is never
+  ("Auto", the default) and `full` ("Always allow", where only an email
+  that goes out still asks, `sendsEmail`). Reading is never
   gated, nor a change inside the bot's own `~/.bots/<id>` (`inOwnHome`).
   `ask` sends a card for every shell command, outside file change and app
   action; `auto` lets them through unless `mustAsk` says otherwise (forced
@@ -949,8 +972,15 @@ One line each: where to start, and what must not change.
 - **Files the person sends** (`src/inbox.ts`, `deliverAttachments`): each
   is written to `inbox/<id>-<name>` in the bot's folder; the model sees a
   picture's 1568 px preview (`/files/preview`) and a PDF up to 8 MB
-  inline, and `attachmentNote` says what came and where. Text and SVG are
-  inlined as text; the original never goes to a model at full size.
+  inline, and `attachmentNote` says what came and where. Any type is
+  taken (`attachmentType`: the browser's type when Gond knows it, other
+  text as plain text, else by the name, else `application/octet-stream`)
+  and served as a sandboxed download unless it can't run script. Text
+  and SVG are inlined as text (`attachmentText`, never bytes with a NUL);
+  the original never goes to a model at full size. A
+  HEIC or HEIF photo (`isHeic`, told by its bytes) is kept as a JPEG,
+  made at upload by the box's `POST /images/jpeg` (`JPEG_FROM_HEIC`,
+  ImageMagick as the person, stdin to stdout, nothing written to disk).
 - **`send_file`** reads from the box (`/files/raw`, links resolved inside
   the home), refuses a file holding a stored secret, and posts an
   attachment. Anything that could run script (HTML, SVG, unknown) is
@@ -1241,7 +1271,11 @@ a restart resumes (`resumeTeachings`), pictures expire a week after
   `BOTS_HOLD_MS`. Tool results take `content` as a string or
   `ToolPart[]`. `PUT /files/raw` writes up to 30 MB as the person; `GET
   /files/preview` answers a 1568 px JPEG by ImageMagick as the person
-  (`preview.mjs`).
+  (`preview.mjs`). `GET /stats` (`stats.mjs`, even while updating) is
+  disk, memory and per account its bots, screens, browsers, memory (by
+  uid from `/proc`, root only) and home size (a background `du`, kept an
+  hour, never awaited); the API names the accounts (`healthOf`) for the
+  admin's `BoxStatus.health`.
 - **The browser host** (`browser-host.mjs`, started by `browser.mjs` as
   the person): a Playwright persistent context, Chrome headed and
   maximized, JSON lines on stdio so no port is open. It stays up between

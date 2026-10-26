@@ -21,28 +21,36 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { del, patch, post } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
+/** "Aa" stands for the first letter of the name, before there is one. */
+const LETTER = "Aa";
+
 /** A profile's mark: its emoji, or the first letter of its name, in the middle of its own colour. */
 export function ProfileMark({ profile, size = 40, className }: { profile: Pick<Profile, "label" | "accent" | "icon">; size?: number; className?: string }) {
+  const letter = profile.label.trim().charAt(0).toUpperCase() || LETTER;
   return (
     <span
       aria-hidden="true"
       data-mark={profile.accent}
       className={cn("inline-flex shrink-0 items-center justify-center rounded-full bg-(--mark) leading-none font-semibold text-tint-foreground", className)}
-      style={{ width: size, height: size, fontSize: Math.max(9, Math.round(size * (profile.icon ? 0.52 : 0.42))) }}
+      style={{ width: size, height: size, fontSize: Math.max(9, Math.round(size * (profile.icon ? 0.52 : letter === LETTER ? 0.36 : 0.42))) }}
     >
-      {profile.icon ?? profile.label.charAt(0).toUpperCase()}
+      {/* Emoji fonts set their glyphs about 0.06em low in the line, so the icon is lifted to the circle's middle. */}
+      {profile.icon ? <span className="-translate-y-[0.06em]">{profile.icon}</span> : letter}
     </span>
   );
 }
 
-/** One of the five icons, or none for the first letter: tap the picked one again to take it off. */
+/** The first letter, or one of the five icons: tap the picked icon again to go back to the letter. */
 function IconField({ icon, onChange, preview }: { icon: string | null; onChange: (icon: string | null) => void; preview: Pick<Profile, "label" | "accent"> }) {
   return (
     <Field>
       <FieldLabel>Icon</FieldLabel>
       <div className="flex items-center gap-4">
         <ProfileMark profile={{ ...preview, icon }} size={56} />
-        <ToggleGroup variant="pill" size="sm" value={icon ? [icon] : []} onValueChange={(value) => onChange(value[0] ?? null)} aria-label="Icon" className="flex-wrap">
+        <ToggleGroup variant="pill" size="sm" value={[icon ?? LETTER]} onValueChange={(value) => onChange(value[0] && value[0] !== LETTER ? value[0] : null)} aria-label="Icon" className="flex-wrap">
+          <ToggleGroupItem value={LETTER} aria-label="First letter" className="text-[13px] font-semibold">
+            {LETTER}
+          </ToggleGroupItem>
           {PROFILE_ICONS.map((emoji) => (
             <ToggleGroupItem key={emoji} value={emoji} aria-label={emoji} className="text-[17px]">
               {emoji}
@@ -50,7 +58,7 @@ function IconField({ icon, onChange, preview }: { icon: string | null; onChange:
           ))}
         </ToggleGroup>
       </div>
-      <FieldDescription>It sits in the middle of the profile&apos;s circle. With none, the circle shows the first letter of its name.</FieldDescription>
+      <FieldDescription>Aa shows the first letter of its name. Or pick an icon for the middle of its circle.</FieldDescription>
     </Field>
   );
 }
@@ -115,7 +123,7 @@ export function ProfilesDialog({ onClose }: { onClose: () => void }) {
                 <ProfileMark profile={profile} />
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span className="truncate text-[16px] font-semibold">{profile.label}</span>
-                  <span className="truncate text-[13px] font-normal text-muted-foreground">{here ? "Current" : waiting || (profile.muted ? "Notifications off" : " ")}</span>
+                  {here || waiting || profile.muted ? <span className="truncate text-[13px] font-normal text-muted-foreground">{here ? "Current" : waiting || "Notifications off"}</span> : null}
                 </span>
                 {opening === profile.id ? <Spinner /> : here ? <Check aria-label="Current" className="size-5" /> : profile.unread + profile.needsYou > 0 ? <span className="min-w-6 rounded-full bg-control px-2 text-center text-[12px] leading-6 font-semibold text-control-foreground tabular-nums">{profile.unread + profile.needsYou}</span> : null}
               </Button>
@@ -174,7 +182,7 @@ export function AddProfileDialog({ onClose }: { onClose: () => void }) {
               <Input id="profile-label" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Work" maxLength={24} aria-invalid={error ? true : undefined} />
               {error ? <FieldError>{error}</FieldError> : null}
             </Field>
-            <IconField icon={icon} onChange={setIcon} preview={{ label: label.trim() || "?", accent: nextAccent(profiles) }} />
+            <IconField icon={icon} onChange={setIcon} preview={{ label, accent: nextAccent(profiles) }} />
           </FieldGroup>
         </form>
         <DialogFooter>

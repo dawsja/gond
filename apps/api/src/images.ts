@@ -7,3 +7,13 @@ export function pictureType(data: Uint8Array): "image/png" | "image/jpeg" | "ima
   if (starts([0x52, 0x49, 0x46, 0x46]) && starts([0x57, 0x45, 0x42, 0x50], 8)) return "image/webp";
   return null;
 }
+
+// The brands an iPhone's (and others') HEIF photos open with; AVIF's own is left out.
+const HEIF_BRANDS = new Set(["heic", "heix", "heim", "heis", "hevc", "hevx", "hevm", "hevs", "mif1", "msf1"]);
+
+/** Whether the bytes are a HEIC or HEIF photo: an `ftyp` box first, naming a HEIF brand. */
+export function isHeic(data: Uint8Array): boolean {
+  if (data.length < 12) return false;
+  const text = (from: number) => String.fromCharCode(...data.subarray(from, from + 4));
+  return text(4) === "ftyp" && HEIF_BRANDS.has(text(8));
+}

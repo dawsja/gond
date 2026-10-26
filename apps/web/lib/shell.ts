@@ -47,7 +47,12 @@ export type GondDesktop = {
   updateState?: () => Promise<DesktopUpdate>;
   checkForUpdates?: () => Promise<DesktopUpdate>;
   installUpdate?: () => Promise<void>;
+  /** Shows a finished download in its folder, by the id its `gond:download` event carried. */
+  showDownload?: (id: number) => Promise<void>;
 };
+
+/** The desktop app's word that a download finished (`gond:download`); null when it can't tell. */
+export type DesktopDownload = { ok: boolean; id: number | null; name: string | null; folder: string | null };
 
 export type DesktopUpdate = {
   current: string;

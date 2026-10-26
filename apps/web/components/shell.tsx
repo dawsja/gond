@@ -6,6 +6,7 @@ import { ShareBotDialog, SharedTemplate } from "@/components/bot-template";
 import { CallPill } from "@/components/call/call-controls";
 import { CallProvider } from "@/components/call/call-provider";
 import { ComputerPanel } from "@/components/computer-panel";
+import { failed } from "@/components/failed";
 import { ShellNotifications } from "@/components/shell-notifications";
 import { AppSidebar } from "@/components/sidebar";
 import { ViewingReport } from "@/components/viewing-report";
@@ -13,8 +14,9 @@ import { VersionWatch } from "@/components/version-watch";
 import { StoreProvider } from "@/components/store";
 import { TeachingProvider } from "@/components/teach/teaching-store";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { toast } from "@/components/ui/toast";
 import type { SessionUser } from "@/lib/session";
-import { shellBridge } from "@/lib/shell";
+import { desktopShell, shellBridge, type DesktopDownload } from "@/lib/shell";
 
 // Opened now and then, so they load when first opened rather than with every page.
 const BotDialog = dynamic(() => import("@/components/bot-dialog").then((m) => m.BotDialog));
@@ -75,6 +77,7 @@ export function Shell({ user, children }: { user: SessionUser; children: ReactNo
         <StrayDrops />
         <ScopedSelection />
         <OutsideLinks />
+        <DesktopDownloads />
         <CallPill />
       </CallProvider>
       </TeachingProvider>
@@ -161,6 +164,32 @@ function OutsideLinks() {
     };
     document.addEventListener("click", onClick);
     return () => document.removeEventListener("click", onClick);
+  }, []);
+  return null;
+}
+
+// The desktop app saves a download straight to the Downloads folder, so this is how the person hears it went.
+function DesktopDownloads() {
+  useEffect(() => {
+    const onDownload = (event: Event) => {
+      const { ok, id, name, folder } = (event as CustomEvent<DesktopDownload>).detail;
+      if (!ok) {
+        toast.add({ type: "error", title: name ? `Couldn't download ${name}.` : "Couldn't download that file." });
+        return;
+      }
+      const show = desktopShell()?.showDownload;
+      toast.add({
+        type: "success",
+        title: `Saved to ${folder ?? "Downloads"}`,
+        description: name ?? undefined,
+        actionProps:
+          typeof show === "function" && id !== null
+            ? { children: "Show in folder", onClick: () => void show(id).catch(failed("Couldn't open the folder.")) }
+            : undefined,
+      });
+    };
+    window.addEventListener("gond:download", onDownload);
+    return () => window.removeEventListener("gond:download", onDownload);
   }, []);
   return null;
 }

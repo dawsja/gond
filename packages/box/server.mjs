@@ -17,8 +17,9 @@ import { createRecordings, RECORDING_ID } from "./recordings.mjs";
 import { clipText, readXclip, VIEWPORT, writeXclip } from "./browser-host.mjs";
 import { PERSON_HAS_CONTROL, ComputerActionError, buttonLeftDown, controlTransition, describeStep, parseRegion, parseSteps, pngSize, settleMs, STEP_TIMEOUT_MS, stepTimeoutMs, thumbSize, usesInput, xdotoolArgv, xdotoolStdin } from "./computer.mjs";
 import { runFileJob } from "./file-job.mjs";
-import { MAX_UPLOAD_BYTES, previewArgv } from "./preview.mjs";
+import { JPEG_FROM_HEIC, MAX_UPLOAD_BYTES, previewArgv } from "./preview.mjs";
 import { createSessionStore, turnPrompt } from "./sessions.mjs";
+import { createHomeSizes, diskOf, memoryByUid, memoryNow } from "./stats.mjs";
 import { engineModels } from "./models.mjs";
 import { SIGN_IN_COLS, SIGN_IN_KEEP_MS, SIGN_IN_ROWS, SignInJob, needsCode, signInArgv } from "./sign-in.mjs";
 
@@ -619,6 +620,40 @@ async function imagePreview(account, relative, mediaType) {
   } finally {
     fs.rmSync(out, { force: true });
   }
+}
+
+const CONVERT_MS = 60_000;
+
+/** A HEIC or HEIF photo as a JPEG, by ImageMagick as the person, through pipes so no file is written anywhere. */
+async function jpegFromHeic(request, account) {
+  refuseWhileUpdating();
+  const data = await readBytes(request, MAX_UPLOAD_BYTES);
+  const jpeg = await new Promise((resolve, reject) => {
+    const child = spawn(JPEG_FROM_HEIC[0], JPEG_FROM_HEIC.slice(1), { cwd: account.home, env: agentEnv(account), ...asUser(account), stdio: ["pipe", "pipe", "pipe"] });
+    const out = [];
+    let size = 0;
+    let said = "";
+    const timer = setTimeout(() => child.kill("SIGKILL"), CONVERT_MS);
+    child.stdin.on("error", () => undefined);
+    child.stdout.on("data", (chunk) => {
+      size += chunk.length;
+      if (size > MAX_UPLOAD_BYTES) child.kill("SIGKILL");
+      else out.push(chunk);
+    });
+    child.stderr.on("data", (chunk) => (said = (said + chunk).slice(-400)));
+    child.on("error", (error) => {
+      clearTimeout(timer);
+      reject(new HttpError(500, error.message));
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      const made = Buffer.concat(out);
+      if (code === 0 && made.length && size <= MAX_UPLOAD_BYTES) resolve(made);
+      else reject(new HttpError(422, `The photo couldn't be read: ${said.trim().split("\n").pop() || `convert exited ${code}`}`));
+    });
+    child.stdin.end(data);
+  });
+  return { ok: true, data: jpeg.toString("base64"), size: jpeg.length };
 }
 
 function writeFile(account, relative, content) {
@@ -1693,6 +1728,37 @@ function commandVersion(command, args) {
   });
 }
 
+const homeSizes = createHomeSizes();
+
+/** How full the computer is, and what each person's bots hold of it, for the admin's Shared computer. */
+export function stats() {
+  const byUid = isRoot ? memoryByUid() : null;
+  const people = accounts.list().map((account) => {
+    // An agent is a bot in one conversation: a bot counts once however many it has open.
+    const bots = new Set([...agents].filter(([, agent]) => agent.user === account.id && agent.running && !agent.guest).map(([id]) => id.split("--")[0]));
+    const screensRunning = [...screens.values()].filter((screen) => screen.user === account.id).length;
+    const size = homeSizes.of(account.home);
+    return {
+      id: account.id,
+      bots: bots.size,
+      screens: screensRunning,
+      browsers: browsers.count(account.id),
+      memory: byUid && account.uid !== undefined ? (byUid.get(account.uid) ?? 0) : null,
+      disk: size.bytes,
+      at: size.at,
+    };
+  });
+  const measured = people.map((person) => person.at).filter(Boolean).sort();
+  return {
+    disk: diskOf(HOMES_DIR),
+    memory: memoryNow(),
+    load: os.loadavg(),
+    cpus: os.availableParallelism?.() ?? os.cpus().length,
+    people: people.map(({ at: _, ...person }) => person),
+    diskAt: measured[0] ?? null,
+  };
+}
+
 async function versions() {
   if (versionsCache && Date.now() - versionsCache.at < VERSIONS_CACHE_MS) return versionsCache.value;
   const [bun, claude] = await Promise.all([commandVersion("bun", ["--version"]), commandVersion("claude", ["--version"])]);
@@ -1981,6 +2047,7 @@ async function route(request, response, url) {
   }
   if (request.method === "POST" && parts.length === 1 && parts[0] === "reset") return resetHome();
   if (request.method === "GET" && parts.length === 1 && parts[0] === "versions") return versions();
+  if (request.method === "GET" && parts.length === 1 && parts[0] === "stats") return stats();
   if (parts[0] === "accounts") return accountsRoute(request, parts);
 
   if (parts[0] === "skills") {
@@ -2047,6 +2114,7 @@ async function route(request, response, url) {
   }
   if (request.method === "GET" && parts.length === 2 && parts[0] === "files" && parts[1] === "raw") return sendRawFile(response, account, url.searchParams.get("path"));
   if (request.method === "PUT" && parts.length === 2 && parts[0] === "files" && parts[1] === "raw") return uploadFile(request, account, url.searchParams.get("path"));
+  if (request.method === "POST" && parts.length === 2 && parts[0] === "images" && parts[1] === "jpeg") return jpegFromHeic(request, account);
   if (request.method === "GET" && parts.length === 2 && parts[0] === "files" && parts[1] === "preview") return imagePreview(account, url.searchParams.get("path"), url.searchParams.get("type"));
   if (parts.length === 1 && parts[0] === "files") {
     if (request.method === "GET") return readFile(account, url.searchParams.get("path"));

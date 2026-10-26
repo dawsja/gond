@@ -23,6 +23,7 @@ import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupConte
 import { api } from "@/lib/api";
 import { useDrafts } from "@/lib/drafts";
 import { shortTime } from "@/lib/time";
+import { messageSnippet } from "@/lib/snippet";
 import { remoteMember, spaceSubtitle } from "@/lib/spaces";
 import { cn } from "@/lib/utils";
 import { WorthALook } from "@/components/worth-a-look";
@@ -188,6 +189,17 @@ const Row = memo(function Row({ thread, bot, active, bots, activity, draft, onOp
   );
 });
 
+function HitSnippet({ hit, query }: { hit: Message; query: string }) {
+  const { before, match, after } = messageSnippet(hit, query);
+  return (
+    <span className="line-clamp-2 text-[12px] leading-[18px] whitespace-normal text-muted-foreground">
+      {before}
+      {match ? <mark className="rounded-[3px] bg-tint-wash px-0.5 text-tint-ink">{match}</mark> : null}
+      {after}
+    </span>
+  );
+}
+
 export function useBotSearch() {
   const { bots, threads } = useStore();
   const [query, setQuery] = useState("");
@@ -298,7 +310,8 @@ export function BotRows({ rows, hits, query, setQuery, lookAs, onOpen, onAsk }: 
       ) : rows.length === 0 && query.trim() ? (
         hits.length ? null : <p className="px-2.5 py-6 text-center text-[13px] text-muted-foreground">Nothing matches.</p>
       ) : rows.length === 0 ? (
-        <Empty className="py-10">
+        // On a wide screen the main pane's empty state says the same, so only the phone shows this one.
+        <Empty className="py-10 wide:hidden">
           <EmptyHeader>
             <EmptyMedia>
               <GondBot color="#189C47" size={56} expression="wink" greet={false} />
@@ -337,7 +350,7 @@ export function BotRows({ rows, hits, query, setQuery, lookAs, onOpen, onAsk }: 
               const who = hit.author === "you" ? "You" : (bots.find((b) => b.id === hit.author)?.name ?? thread?.name ?? "Bot");
               return (
                 <SidebarMenuItem key={hit.id}>
-                  <SidebarMenuButton size="lg" render={<Link href={`/app/t/${hit.threadId}?m=${hit.id}`} onClick={() => setQuery("")} />} className="h-12 items-start gap-2.5 rounded-xl px-2.5 hover:bg-card/60">
+                  <SidebarMenuButton size="lg" render={<Link href={`/app/t/${hit.threadId}?m=${hit.id}`} onClick={() => setQuery("")} />} className="h-auto items-start gap-2.5 rounded-xl px-2.5 py-2 hover:bg-card/60">
                     <MessageSquareText className="mt-1 text-muted-foreground" aria-hidden="true" />
                     <span className="flex min-w-0 flex-1 flex-col">
                       <span className="truncate text-[12.5px] font-medium">
@@ -345,7 +358,7 @@ export function BotRows({ rows, hits, query, setQuery, lookAs, onOpen, onAsk }: 
                         {thread && thread.kind === "room" ? ` in ${thread.name}` : ""}
                         <span className="ml-1.5 font-normal text-ash">{shortTime(hit.createdAt)}</span>
                       </span>
-                      <span className="truncate text-[12px] text-muted-foreground">{hit.body.replace(/\s+/g, " ")}</span>
+                      <HitSnippet hit={hit} query={query} />
                     </span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>

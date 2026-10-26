@@ -1,5 +1,6 @@
 import type { BoxStatus, ClaudeStatus, Engine } from "@gond/shared";
-import { boxConfig, boxVersions, checkClaude, claudeAuth, engineSignIn, health, listAgents, type BoxConfig, type BoxVersions, type ClaudeCheck } from "./box.ts";
+import { boxConfig, boxStats, boxVersions, checkClaude, claudeAuth, engineSignIn, health, listAgents, type BoxConfig, type BoxStats, type BoxVersions, type ClaudeCheck } from "./box.ts";
+import { getUser } from "./data/users.ts";
 import { emit } from "./events.ts";
 import { composioConfigured } from "./composio.ts";
 import { listConnections } from "./data/settings.ts";
@@ -97,6 +98,7 @@ export async function boxStatus(userId: string, { fresh = false, admin = false }
   let updating = isUpdating();
   let agents: BoxStatus["agents"] = [];
   let versions: BoxVersions | null = null;
+  let computer: BoxStatus["health"];
   try {
     const h = await health(box);
     reachable = true;
@@ -104,7 +106,9 @@ export async function boxStatus(userId: string, { fresh = false, admin = false }
     if (!updating) {
       const all = (await listAgents(box).catch(() => ({ agents: [] }))).agents;
       agents = all.filter((a) => admin || a.user === userId).map(({ id, running, busy }) => ({ id, running, busy }));
-      versions = await versionsCached(box, fresh);
+      const [found, stats] = await Promise.all([versionsCached(box, fresh), admin ? boxStats(box).catch(() => null) : null]);
+      versions = found;
+      if (stats) computer = healthOf(stats);
     }
   } catch {
     reachable = false;
@@ -117,5 +121,21 @@ export async function boxStatus(userId: string, { fresh = false, admin = false }
     composio: { configured: composioConfigured(userId), connected: connections.filter((c) => c.status === "active").length },
     agents,
     versions,
+    ...(computer ? { health: computer } : {}),
+  };
+}
+
+/** The box's numbers with each account named for its person, and its profile when it isn't their default. */
+export function healthOf(stats: BoxStats, at = new Date()): NonNullable<BoxStatus["health"]> {
+  return {
+    disk: stats.disk,
+    memory: stats.memory,
+    people: stats.people.map(({ id, bots, screens, memory, disk }) => {
+      const user = getUser(id);
+      const name = !user ? "Someone no longer on this Gond" : user.profile.isDefault ? user.name : `${user.name} · ${user.profile.label}`;
+      return { id, name, bots, screens, memory, disk };
+    }),
+    diskAt: stats.diskAt,
+    at: at.toISOString(),
   };
 }

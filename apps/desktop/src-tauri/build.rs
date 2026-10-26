@@ -16,6 +16,7 @@ fn main() {
         "update_state",
         "check_for_updates",
         "install_update",
+        "show_download",
     ]);
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(commands))
         .expect("tauri-build failed");

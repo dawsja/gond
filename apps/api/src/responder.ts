@@ -1,4 +1,4 @@
-import { QUIET_REPLY, addressedIn, handleOf, isClosing, isStopRequest, mentionsIn, plainMarkdown, replyLine, roomTargets, withoutQuietReply, type Bot, type ChatAttachment, type DesktopDriver, type Message, type Thread, type ToolLabelContext } from "@gond/shared";
+import { AI_SETUP_CARD, ENGINE_LABELS, QUIET_REPLY, addressedIn, handleOf, isClosing, isStopRequest, mentionsIn, plainMarkdown, replyLine, roomTargets, withoutQuietReply, type Bot, type ChatAttachment, type DesktopDriver, type Message, type Thread, type ToolLabelContext } from "@gond/shared";
 import { createHash } from "node:crypto";
 import { BoxError, boxConfig, boxHome, closeAgent, ensureBotHome, health, interruptAgent, steerAgent, writeBoxFile, type BoxConfig } from "./box.ts";
 import { isUpdating } from "./updater.ts";
@@ -34,7 +34,7 @@ import { createRedactor } from "./redact.ts";
 import { skillsFor, skillsIndex, skillsReady } from "./skills.ts";
 import { renderSoul, skillsInUse, systemPromptFor, talkReminder } from "./souls.ts";
 import { clearWork, clipOutput, createTurnClock, labelStep, recordStep, timingLine, type StepUpdate } from "./work.ts";
-import { boxPermission, endTurnOnExpiry } from "./approvals.ts";
+import { boxPermission, endTurnOnExpiry, setAside } from "./approvals.ts";
 import { noteInterrupted, takeInterrupted, wasInterrupted } from "./resume.ts";
 import { turnTiming } from "./config.ts";
 import { appTools, baseTools, MAX_CHAIN, MAX_ROOM_LINES, permissionTool, resultDepth, teamTools, TOOL_NOTES } from "./tools.ts";
@@ -118,6 +118,17 @@ export function unansweredEnding(name: string, cause: StopCause | null, failure:
   // A card that timed out already said so in the bot's own line (`cardExpired`).
   if (cause === "updating" || cause === "expired") return { event: null, incident: false };
   return { event: failure, incident: !setupError };
+}
+
+/**
+ * What isn't set up when a turn couldn't run, as one sentence for the person's card: no AI picked or
+ * signed in, the CLI missing from the computer (the box's 424) or signed out there. Null for any other failure.
+ */
+export function setupProblem(failure: unknown, engine = ENGINE_LABELS.claude.name): string | null {
+  if (failure instanceof EngineSetupError) return failure.message;
+  if (failure instanceof BoxError && failure.status === 424) return `${engine} isn't set up on the computer.`;
+  if (failure && typeof failure === "object" && "signedOut" in failure && failure.signedOut === true) return `${engine} isn't signed in on the computer.`;
+  return null;
 }
 
 export class TurnNotStarted extends Error {}
@@ -336,8 +347,18 @@ export function steerableTurns(thread: Thread, message: Pick<Message, "author" |
   return { turns, all: targets.length > 0 && turns.length === targets.length };
 }
 
+/**
+ * A person's line into running turns. A turn that took it while waiting on a card can't read it until
+ * the card is answered, so the card is set aside once the line is in, and the turn reads it next.
+ */
 export async function steer(turns: Active[], body: string): Promise<boolean[]> {
-  return Promise.all(turns.map((turn) => turn.steer(turn.route === "person" ? steerText(body) : asideText(body, teammateOf(turn))).catch(() => false)));
+  return Promise.all(
+    turns.map(async (turn) => {
+      const taken = await turn.steer(turn.route === "person" ? steerText(body) : asideText(body, teammateOf(turn))).catch(() => false);
+      if (taken) setAside(turn.botId, turn.threadId);
+      return taken;
+    }),
+  );
 }
 
 function teammateOf(turn: Active): string {
@@ -469,13 +490,25 @@ export async function syncSoul(bot: Bot) {
   }
 }
 
+/**
+ * A file's words for the prompt, when it is text by its type and by its bytes; null for anything else, so
+ * a document, archive or program the person sent stays in the inbox for the bot's own tools.
+ */
+export function attachmentText(mediaType: string, data: Uint8Array): string | null {
+  if (!isTextType(mediaType)) return null;
+  // A browser can call any file text: a NUL byte says it isn't.
+  if (data.subarray(0, 8192).includes(0)) return null;
+  return Buffer.from(data).toString("utf8").slice(0, 60_000);
+}
+
+const isTextType = (mediaType: string) => mediaType.startsWith("text/") || mediaType === "application/json" || mediaType === "image/svg+xml";
+
 function textAttachments(message: Message): string {
   const parts: string[] = [];
   for (const meta of message.attachments) {
-    if (!meta.mediaType.startsWith("text/") && meta.mediaType !== "application/json" && meta.mediaType !== "image/svg+xml") continue;
-    const file = getAttachment(meta.id);
-    if (!file) continue;
-    const text = Buffer.from(file.data).toString("utf8").slice(0, 60_000);
+    const file = isTextType(meta.mediaType) ? getAttachment(meta.id) : null;
+    const text = file ? attachmentText(meta.mediaType, file.data) : null;
+    if (text === null) continue;
     parts.push(`<attachment name="${meta.name}">\n${text}\n</attachment>`);
   }
   return parts.join("\n");
@@ -589,6 +622,7 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
   let stopped = false;
   let summaryRun: EngineRun | null = null;
   let ranOn: string | null = null;
+  let engineName: string = ENGINE_LABELS.claude.name;
 
   let broke: string | null = null;
   // Why a turn ended without an answer, for a Show me how card that waited on it.
@@ -597,7 +631,15 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
   // message goes back to wait and is answered again once the computer is back.
   let again = false;
 
-  const endUnanswered = async (failure: string, detail: string, setupError: boolean) => {
+  // A failure line names the person's message it failed to answer, so Try again can send it again.
+  const retryable = message.author === "you" && message.kind === "message";
+  const answering = retryable ? message.id : null;
+  const failedLine = (body: string) => {
+    if (retryable) noteInterrupted(message.id, done, true);
+    postMessage({ threadId: thread.id, author: "system", kind: "event", body, answered: true, answering });
+  };
+  /** `setup`: what isn't set up (`setupProblem`), posted as a card to fix it rather than an incident. */
+  const endUnanswered = async (failure: string, detail: string, setup: string | null) => {
     unanswered = detail;
     const cause = stopCauseOf(controller.signal);
     stopped = cause === "stopped";
@@ -606,11 +648,23 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
         again = true;
         return;
       }
-      postMessage({ threadId: thread.id, author: "system", kind: "event", body: `The computer didn't come back in time, so ${bot.name} couldn't answer. Send it again once it's up.`, answered: true });
+      failedLine(`The computer didn't come back in time, so ${bot.name} couldn't answer. Send it again once it's up.`);
       return;
     }
-    const ending = unansweredEnding(bot.name, cause, failure, setupError);
-    if (ending.event && !(cause === "stopped" && quietStops.has(thread.id))) postMessage({ threadId: thread.id, author: "system", kind: "event", body: ending.event, answered: true });
+    const ending = unansweredEnding(bot.name, cause, failure, Boolean(setup));
+    if (setup && !cause) {
+      if (retryable) noteInterrupted(message.id, done, true);
+      // One setup card per bot and conversation: the one tied to the person's message, which can be tried again, wins.
+      const open = recentMessages(thread.id, 30).filter((m) => m.kind === "signin" && m.approvalId === AI_SETUP_CARD && m.author === bot.id);
+      if (!answering && open.length) return;
+      for (const old of open) if (!old.answering) dropMessage(old.id);
+      postMessage({ threadId: thread.id, author: bot.id, kind: "signin", approvalId: AI_SETUP_CARD, body: setup, answered: true, answering });
+      return;
+    }
+    if (ending.event && !(cause === "stopped" && quietStops.has(thread.id))) {
+      if (cause === "stopped") postMessage({ threadId: thread.id, author: "system", kind: "event", body: ending.event, answered: true });
+      else failedLine(ending.event);
+    }
     if (!ending.incident) return;
     if (handoffWorkedOn(message.id)) broke = detail;
     else await raiseIncident(bot, thread, message, detail);
@@ -650,6 +704,7 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
     const skills = listSkills(bot.userId);
     const ai = getAi(thread.userId);
     const run = engineRun(ai, thread.userId);
+    engineName = ENGINE_LABELS[run.engine].name;
     const onUsage = usageRecorder(thread.userId, bot.id, thread.id, run);
 
     active.steer = run.native ? async (text) => steers.push(text) : async (text) => (await steerAgent(box, agentId, text).catch(() => ({ steered: false }))).steered;
@@ -759,7 +814,7 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
       }
     } else {
       const detail = hide(result.error ?? (result.stopReason ? `stopped (${result.stopReason})` : "no reply"));
-      await endUnanswered(`${bot.name} couldn't finish: ${detail.slice(0, 500)}`, detail, false);
+      await endUnanswered(`${bot.name} couldn't finish: ${detail.slice(0, 500)}`, detail, setupProblem(result, engineName));
     }
   } catch (error) {
     if (ranOn) seenBy().set(agentId, { run: ranOn, at: null });
@@ -768,7 +823,7 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
       again = true;
     } else {
       const detail = hide(error instanceof Error ? error.message : "unknown error");
-      await endUnanswered(`${bot.name} hit a problem: ${detail.slice(0, 500)}`, detail, error instanceof EngineSetupError);
+      await endUnanswered(`${bot.name} hit a problem: ${detail.slice(0, 500)}`, detail, setupProblem(error, engineName));
     }
   } finally {
     writing?.close();

@@ -7,12 +7,15 @@ import { BotAvatar, RoomAvatar } from "@/components/bot-avatar";
 import { MarkerContent, markerVariants } from "@/components/ui/marker";
 import { cn } from "@/lib/utils";
 
-/** What a bot is doing right now, in one line. Its steps are kept by the API but never shown. */
-export function WorkLine({ bot, line }: { bot: Bot | undefined; line: string }) {
+/**
+ * What a bot is doing right now, in one line. Its steps are kept by the API but never shown. A bot
+ * held on the person (`waiting`) isn't working, so its line doesn't shimmer.
+ */
+export function WorkLine({ bot, line, waiting = false }: { bot: Bot | undefined; line: string; waiting?: boolean }) {
   return (
     <div className={markerVariants()}>
       {bot ? <BotAvatar bot={bot} size={22} /> : null}
-      <MarkerContent className="min-w-0 flex-1 shimmer truncate font-mono text-[12px]">{line}</MarkerContent>
+      <MarkerContent className={cn("min-w-0 flex-1 truncate font-mono text-[12px]", !waiting && "shimmer")}>{line}</MarkerContent>
     </div>
   );
 }
@@ -23,7 +26,7 @@ const CUBES = 5;
  * Several bots working at once: their faces and a row of squares lighting up in each one's colour
  * in turn. A tap opens what each is doing, a line apiece, and taps again to close it.
  */
-export function WorkLines({ working, label }: { working: { bot: Bot; line: string }[]; label: string }) {
+export function WorkLines({ working, label }: { working: { bot: Bot; line: string; waiting?: boolean }[]; label: string }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="flex flex-col gap-2">
@@ -37,10 +40,10 @@ export function WorkLines({ working, label }: { working: { bot: Bot; line: strin
         <ChevronDown aria-hidden="true" className={cn("size-3.5 transition-transform", open && "rotate-180")} />
       </button>
       {open
-        ? working.map(({ bot, line }) => (
+        ? working.map(({ bot, line, waiting }) => (
             <div key={bot.id} className={cn(markerVariants(), "pl-[38px]")}>
               <BotAvatar bot={bot} size={18} />
-              <MarkerContent className="min-w-0 flex-1 shimmer truncate font-mono text-[12px]">{line}</MarkerContent>
+              <MarkerContent className={cn("min-w-0 flex-1 truncate font-mono text-[12px]", !waiting && "shimmer")}>{line}</MarkerContent>
             </div>
           ))
         : null}

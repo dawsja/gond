@@ -66,7 +66,7 @@ export function mcpRoutes() {
     const icon = await resolveMcpIcon(server);
     if (!icon) return c.body(null, 404, { "Cache-Control": "private, max-age=3600" });
     if (icon.kind === "redirect") return c.redirect(icon.url, 302);
-    return new Response(icon.bytes, { status: 200, headers: { "Content-Type": icon.type, "Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff" } });
+    return new Response(icon.bytes, { status: 200, headers: { "Content-Type": icon.type, "Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "sandbox" } });
   });
 
   app.post("/mcp-servers/:id/probe", async (c) => {

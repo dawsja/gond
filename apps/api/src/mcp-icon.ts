@@ -1,4 +1,5 @@
 import { APP_CATALOG, appLogoUrl, type McpServer } from "@gond/shared";
+import { pictureType } from "./images.ts";
 
 export type McpIconResult = { kind: "redirect"; url: string } | { kind: "image"; type: string; bytes: ArrayBuffer } | null;
 
@@ -30,13 +31,14 @@ export function catalogLogoFor(name: string): string | null {
 async function fetchIcon(url: string): Promise<McpIconResult> {
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(8_000), redirect: "follow" });
-    const type = res.headers.get("content-type") ?? "";
-    if (!res.ok || !type.startsWith("image/")) {
+    if (!res.ok) {
       await res.body?.cancel().catch(() => undefined);
       return null;
     }
     const bytes = await res.arrayBuffer();
-    return bytes.byteLength > 0 && bytes.byteLength <= 512 * 1024 ? { kind: "image", type, bytes } : null;
+    // The type comes from the bytes, never the remote's header: an SVG or HTML sent as an image could run script on Gond's own address.
+    const type = iconType(new Uint8Array(bytes));
+    return type && bytes.byteLength > 0 && bytes.byteLength <= 512 * 1024 ? { kind: "image", type, bytes } : null;
   } catch {
     return null;
   }
@@ -59,3 +61,8 @@ export async function resolveMcpIcon(server: Pick<McpServer, "id" | "name" | "tr
   return result;
 }
 
+
+/** PNG, JPEG, GIF and WebP as everywhere else, plus ICO (reserved 0, type 1), which favicons mostly are. */
+export function iconType(data: Uint8Array): string | null {
+  return pictureType(data) ?? (data.length >= 6 && data[0] === 0 && data[1] === 0 && data[2] === 1 && data[3] === 0 && data[4]! + data[5]! > 0 ? "image/x-icon" : null);
+}

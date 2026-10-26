@@ -27,6 +27,10 @@ export const MAX_TEAM_MEMORY_BYTES = 12 * 1024;
 /** From this share of its limit on, a memory's heading tells the bot to move notes out. */
 export const NEARLY_FULL = 0.8;
 
+/** A memory file that is there but couldn't be read this turn, told apart from none so a bot doesn't write over it. */
+export const UNREADABLE = Symbol("unreadable memory");
+export type LoadedMemory = string | null | typeof UNREADABLE;
+
 export type FittedMemory = { text: string; bytes: number; limit: number; cut: number };
 
 export function kb(bytes: number): string {

@@ -73,6 +73,20 @@ describe("plain markdown", () => {
     expect(plainMarkdown("Status :badge[Plain] today")).toBe("Status Plain today");
   });
 
+  test("lists, tables and quotes read as words, with no markers left", () => {
+    const report = "## Quick look\nHere's what I found, with a few notes:\n\n- **All three** finished by 2:14 AM\n- The photo library took longest\n\n| Job | Size |\n|---|---|\n| Photos | 26 GB |";
+    expect(plainMarkdown(report)).toBe("Quick look Here's what I found, with a few notes: All three finished by 2:14 AM The photo library took longest Job · Size Photos · 26 GB");
+    expect(plainMarkdown("> The restic repository was 94% full\n\nThat was the warning.")).toBe("The restic repository was 94% full That was the warning.");
+  });
+
+  test("links, pictures and emphasis keep only their words", () => {
+    const text = "Done. I filed it under [Q4 notes](https://notion.so/q4); see ![chart](https://x/c.png) and _the_ ~~old~~ list:\n1. Rent\n2. Power";
+    expect(plainMarkdown(text)).toBe("Done. I filed it under Q4 notes; see chart and the old list: Rent Power");
+    expect(plainMarkdown("see <https://a.b/c>, a<br>b and <b>this</b>")).toBe("see https://a.b/c, a b and this");
+    expect(plainMarkdown("snake_case_name, 2 * 3 * 4, *it* and __so__")).toBe("snake_case_name, 2 * 3 * 4, it and so");
+    expect(plainMarkdown("```ts\nconst x = 1;\n```\n- [ ] todo\n---\nend")).toBe("const x = 1; todo end");
+  });
+
   test("toolLabel puts a tool call in plain words, verb first", () => {
     expect(toolLabel("Bash", { command: "bun test\necho done" })).toEqual({ verb: "Running", detail: "`bun test`" });
     expect(toolLabel("Bash", { command: `echo ${"x".repeat(80)}` })?.detail).toBe(`\`echo ${"x".repeat(54)}…\``);
@@ -275,6 +289,12 @@ describe("pickVoiceProvider", () => {
     expect(emailDraftOf("GMAIL_DELETE_MESSAGE", { message_id: "m1" })).toBeNull();
     expect(emailDraftOf("SLACK_SEND_MESSAGE", { channel: "c", text: "hi" })).toBeNull();
     expect(emailDraftOf("OUTLOOK_SEND_EMAIL", { to_recipients: [{ emailAddress: { name: "Ann Lee", address: "ann@x.com" } }], subject: "s" })?.to).toEqual(["Ann Lee <ann@x.com>"]);
+    // An MCP server's mail tool is a letter too, named by the tool or by the server.
+    expect(emailDraftOf("mcp__gmail__send_email", { to: "a@b.co", subject: "Hi", body: "x" })).toMatchObject({ app: "Gmail", mode: "send" });
+    expect(emailDraftOf("mcp__workspace__gmailCreateDraft", { to: "a@b.co", subject: "Hi", body: "x" })).toMatchObject({ app: "Gmail", mode: "draft" });
+    expect(emailDraftOf("mcp__outlook__reply-to-message", { body: "On it." })).toMatchObject({ app: "Outlook", mode: "reply" });
+    expect(emailDraftOf("mcp__notes__send_email", { to: "a@b.co", body: "x" })).toBeNull();
+    expect(emailEditable("mcp__gmail__send_email")).toBe(false);
   });
 
   test("a draft reply is a draft, and only an app's own draft can be sent from its card", () => {

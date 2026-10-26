@@ -1,16 +1,28 @@
-import { ATTACHMENT_TYPES, MAX_ATTACHMENTS, MAX_ATTACHMENT_BYTES, isReaction, plainMarkdown, ROOM_MAX_BOTS, ROOM_MIN_BOTS, roomAnswerer, roomNameFor, type Bot, type ChatAttachment, type Thread } from "@gond/shared";
+import { AI_SETUP_CARD, ATTACHMENT_TYPES, MAX_ATTACHMENTS, MAX_ATTACHMENT_BYTES, isReaction, mediaTypeFor, plainMarkdown, ROOM_MAX_BOTS, ROOM_MIN_BOTS, roomAnswerer, roomNameFor, type Bot, type ChatAttachment, type Thread } from "@gond/shared";
 import { Hono } from "hono";
 import { ownThread, ownsThread, userId } from "../access.ts";
 import type { Env } from "../app.ts";
+import { BoxError, boxConfig, jpegFromHeic } from "../box.ts";
 import { getBot, listBots } from "../data/bots.ts";
 import { leaveSpace, mayJoinSpaces } from "../spaces.ts";
 import { spaceOfThread } from "../data/spaces.ts";
-import { attachmentOwner, createRoom, deleteRoom, getAttachment, getMessage, getThread, listExchange, listMessages, listThreads, markThreadRead, postMessage, searchMessages, setReaction, storeAttachment, updateRoom } from "../data/threads.ts";
+import { attachmentOwner, createRoom, deleteRoom, dropMessage, editMessage, failuresAnswering, getAttachment, getMessage, getThread, listExchange, listMessages, listThreads, markThreadRead, postMessage, searchMessages, setReaction, storeAttachment, unsendMessage, unsteer, updateRoom } from "../data/threads.ts";
+import { isHeic } from "../images.ts";
 import { previewOf } from "../pictures.ts";
 import { activeTurns, postFromPerson, stopThread } from "../responder.ts";
 import { workFor } from "../work.ts";
 
 const MAX_BODY = 20_000;
+
+/**
+ * The type a file the person sends is kept as: one Gond knows by what the browser said, any other text
+ * as plain text, else by its name, else bytes to download. HEIC is converted before this.
+ */
+export function attachmentType(file: { name: string; type: string }): string {
+  if ((ATTACHMENT_TYPES as readonly string[]).includes(file.type)) return file.type;
+  if (file.type.startsWith("text/")) return "text/plain";
+  return mediaTypeFor(file.name);
+}
 
 const INLINE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp", "application/pdf", "text/plain", "text/csv", "application/json"]);
 
@@ -91,6 +103,48 @@ export function threadsRoutes() {
     return c.body(null, 204);
   });
 
+  // Try again on a turn that failed: its failure lines go, and the person's message waits to be answered again.
+  app.post("/threads/:id/messages/:messageId/retry", (c) => {
+    const id = c.req.param("id");
+    const message = ownsThread(c, id) ? getMessage(c.req.param("messageId")) : null;
+    if (!message || message.threadId !== id || message.kind !== "message" || message.author !== "you") return c.json({ error: "Couldn't find that message" }, 404);
+    if ([...activeTurns().values()].some((turn) => turn.messageId === message.id)) return c.json({ error: "A bot is already answering that" }, 409);
+    const failures = failuresAnswering(message, AI_SETUP_CARD);
+    if (!failures.length) return c.json({ error: "That message didn't fail, so there's nothing to try again" }, 409);
+    for (const failure of failures) dropMessage(failure.id);
+    unsteer(message.id);
+    return c.json({ ok: true });
+  });
+
+  // Unsend and edit: only the person's own line, only while no bot has read it, never once it crossed to another Gond.
+  const unreadLine = (c: Parameters<typeof ownsThread>[0]) => {
+    const id = c.req.param("id") ?? "";
+    const message = ownsThread(c, id) ? getMessage(c.req.param("messageId") ?? "") : null;
+    if (!message || message.threadId !== id || message.kind !== "message" || message.author !== "you") return { error: "Couldn't find that message", status: 404 as const };
+    if (spaceOfThread(id)) return { error: "Lines in a space can't be taken back", status: 409 as const };
+    return { message };
+  };
+
+  app.delete("/threads/:id/messages/:messageId", (c) => {
+    const found = unreadLine(c);
+    if (!found.message) return c.json({ error: found.error }, found.status);
+    if (!unsendMessage(found.message.id)) return c.json({ error: "The bot already read it" }, 409);
+    return c.body(null, 204);
+  });
+
+  app.patch("/threads/:id/messages/:messageId", async (c) => {
+    const found = unreadLine(c);
+    if (!found.message) return c.json({ error: found.error }, found.status);
+    const json = (await c.req.json().catch(() => null)) as { body?: unknown } | null;
+    if (typeof json?.body !== "string") return c.json({ error: "Say something" }, 400);
+    const body = json.body.trim();
+    if (!body && found.message.attachments.length === 0) return c.json({ error: "Say something" }, 400);
+    if (body.length > MAX_BODY) return c.json({ error: "That message is too long" }, 400);
+    const message = editMessage(found.message.id, body);
+    if (!message) return c.json({ error: "The bot already read it" }, 409);
+    return c.json({ message });
+  });
+
   app.get("/threads/:id/exchange", (c) => {
     const thread = ownThread(c, c.req.param("id"));
     const other = ownThread(c, c.req.query("with") ?? "");
@@ -116,9 +170,17 @@ export function threadsRoutes() {
       if (files.length > MAX_ATTACHMENTS) return c.json({ error: `At most ${MAX_ATTACHMENTS} files per message` }, 400);
       for (const file of files) {
         if (file.size > MAX_ATTACHMENT_BYTES) return c.json({ error: `${file.name} is larger than ${MAX_ATTACHMENT_BYTES / 1024 / 1024} MB` }, 400);
-        const mediaType = (ATTACHMENT_TYPES as readonly string[]).includes(file.type) ? file.type : file.type.startsWith("text/") ? "text/plain" : "";
-        if (!mediaType) return c.json({ error: `${file.name}: images, PDFs and text files only` }, 400);
-        attachments.push(storeAttachment({ name: file.name.slice(0, 200), mediaType, data: new Uint8Array(await file.arrayBuffer()) }));
+        const data = new Uint8Array(await file.arrayBuffer());
+        // An iPhone's photo: no browser but Safari shows HEIC, so it is kept as the JPEG every page and model reads.
+        if (isHeic(data)) {
+          const box = boxConfig(userId(c));
+          const jpeg = box ? await jpegFromHeic(box, data).catch((error: unknown) => (error instanceof BoxError && error.status === 503 ? "away" : null)) : null;
+          if (jpeg === "away") return c.json({ error: `The computer is updating, so ${file.name} can't be opened right now. Try again in a few minutes, or send it as a JPEG.` }, 503);
+          if (!jpeg) return c.json({ error: `Couldn't open ${file.name}. Try again, or send it as a JPEG.` }, 422);
+          attachments.push(storeAttachment({ name: `${file.name.replace(/\.(heic|heif)$/i, "").slice(0, 195)}.jpg`, mediaType: "image/jpeg", data: jpeg }));
+          continue;
+        }
+        attachments.push(storeAttachment({ name: file.name.slice(0, 200), mediaType: attachmentType(file), data }));
       }
     } else {
       const json = (await c.req.json().catch(() => ({}))) as { body?: string; after?: boolean; replyTo?: unknown };

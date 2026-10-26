@@ -14,6 +14,8 @@ const answeredHere = new Set<string>();
 
 /** Under an expired card's title: why it closed. */
 export const NOBODY_ANSWERED = "Nobody answered in time";
+/** A card the person wrote past instead of answering: nothing ran, and the bot read what they wrote. */
+export const SET_ASIDE = { status: "Set aside", by: "You wrote instead, so nothing ran" };
 
 /** Call as the person answers a card, so its folded line hops. */
 export function cheerOnFold(id: string) {

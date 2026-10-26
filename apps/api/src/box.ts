@@ -162,6 +162,20 @@ export function boxVersions(config: BoxConfig): Promise<BoxVersions> {
   return call(config, "GET", "/versions", undefined, 30_000);
 }
 
+/** What the computer holds, in bytes: its disk and memory, and per account what its bots run and use. */
+export type BoxStats = {
+  disk: { total: number; free: number };
+  memory: { total: number; used: number };
+  load: number[];
+  cpus: number;
+  people: { id: string; bots: number; screens: number; browsers: number; memory: number | null; disk: number | null }[];
+  diskAt: string | null;
+};
+
+export function boxStats(config: BoxConfig): Promise<BoxStats> {
+  return call({ ...config, user: null }, "GET", "/stats", undefined, 10_000);
+}
+
 /** `env` carries stored secrets for run_with_secrets: in the body only, never in the command line or a log. */
 /** Runs a command as the person; aborting `signal` hangs up, which kills it on the box. */
 export function execOnBox(config: BoxConfig, command: string, options: { cwd?: string | null; timeoutMs?: number; env?: Record<string, string>; signal?: AbortSignal } = {}): Promise<ExecResult> {
@@ -192,6 +206,14 @@ export async function uploadBoxFile(config: BoxConfig, filePath: string, data: U
   const body = (await res.json().catch(() => ({}))) as { error?: string; code?: string; size?: number };
   if (!res.ok) throw new BoxError(body.error ?? `Upload failed (${res.status})`, res.status, typeof body.code === "string" ? body.code : null);
   return { ok: true, size: body.size ?? data.byteLength };
+}
+
+/** A HEIC or HEIF photo as a JPEG, made on the computer as the person. */
+export async function jpegFromHeic(config: BoxConfig, data: Uint8Array): Promise<Uint8Array> {
+  const res = await request(config, "/images/jpeg", { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: new Uint8Array(data), signal: AbortSignal.timeout(90_000) });
+  const body = (await res.json().catch(() => ({}))) as { error?: string; code?: string; data?: string };
+  if (!res.ok || typeof body.data !== "string") throw new BoxError(body.error ?? `Converting the photo failed (${res.status})`, res.status, typeof body.code === "string" ? body.code : null);
+  return Buffer.from(body.data, "base64");
 }
 
 /** A JPEG of a picture in the home, its long edge at most 1568 px, for a model to look at. */
@@ -322,6 +344,8 @@ export type AgentTurnResult = {
   text: string;
   stopReason: string | null;
   error?: string;
+  /** The CLI said it isn't signed in (on a plan, never a key's refusal). */
+  signedOut?: boolean;
   sessionId: string | null;
   launched: boolean;
   resumed: boolean;

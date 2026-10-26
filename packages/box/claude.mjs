@@ -108,7 +108,7 @@ export function spawnClaude({
   });
 }
 
-const NOT_SIGNED_IN = /not logged in|please run \/login|invalid api key|authentication|unauthori[sz]ed|oauth token/i;
+export const NOT_SIGNED_IN = /not logged in|please run \/login|invalid api key|authentication|unauthori[sz]ed|oauth token/i;
 
 export function classifyCheck({ spawnError, exitCode, output }) {
   if (spawnError) {

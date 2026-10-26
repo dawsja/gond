@@ -1,5 +1,5 @@
 import { posix } from "node:path";
-import { QUIET_REPLY, approvalLine, editedEmailInput, emailDraftOf, emailEditable, emailMode, sendDraftAction, type Approval, type ApprovalAnswer, type ApprovalLevel, type Bot } from "@gond/shared";
+import { QUIET_REPLY, appAction, approvalLine, editedEmailInput, emailDraftOf, emailEditable, emailMode, sendDraftAction, type Approval, type ApprovalAnswer, type ApprovalLevel, type Bot } from "@gond/shared";
 import { boxHome } from "./box.ts";
 import { approvalTimeoutMs } from "./config.ts";
 import { addRule, createApproval, getApproval, listApprovals, listRules, resolveApproval } from "./data/approvals.ts";
@@ -12,8 +12,12 @@ import { sendPush } from "./push.ts";
 type Pending = { resolve: (answer: Answer) => void; timer: ReturnType<typeof setTimeout> };
 export type Decision = "allow" | "deny" | "always" | "expired";
 
-/** A decision and what came with it on an email's card: the letter as the person left it, Send on a draft, a note on a no. */
-export type Answer = { decision: Decision; input: Record<string, unknown>; edited: boolean; send: boolean; note: string | null };
+/**
+ * A decision and what came with it on an email's card: the letter as the person left it, Send on a draft, a note on a no.
+ * `aside` is a card the person wrote past instead of answering (`setAside`); its decision is "deny", so a caller that
+ * doesn't look for it still does nothing.
+ */
+export type Answer = { decision: Decision; input: Record<string, unknown>; edited: boolean; send: boolean; note: string | null; aside: boolean };
 
 const holder = globalThis as typeof globalThis & { __gondPendingApprovals?: Map<string, Pending> };
 
@@ -137,11 +141,35 @@ export function expiredText(card: string): string {
   return `NOT done: nobody answered the card ${card} in time, so it expired, and the person has been told so in the chat. Don't ask again: if this was a teammate's errand, say in your answer that the person didn't answer the card; otherwise answer exactly ${QUIET_REPLY}.`;
 }
 
+/** What a bot hears when the person wrote to it while its card waited: their line reaches it straight after. */
+export function setAsideText(card: string): string {
+  return `NOT done: the person wrote to you while the card ${card} waited, so it was set aside unanswered and nothing ran. Their message comes next: read it and do what it says. If they still want this done, call it again and a new card goes up.`;
+}
+
+/**
+ * The person wrote to a bot whose card was waiting in that conversation: each such card closes
+ * unanswered (`expired`, outcome `aside`) and the turn goes on with nothing done, so it reads what
+ * they wrote now instead of once they tap. How many it closed.
+ */
+export function setAside(botId: string, threadId: string): number {
+  let closed = 0;
+  for (const approval of listApprovals({ threadId, status: "pending" })) {
+    const waiter = approval.botId === botId ? pending().get(approval.id) : undefined;
+    if (!waiter) continue;
+    clearTimeout(waiter.timer);
+    pending().delete(approval.id);
+    resolveApproval(approval.id, "expired", null, { outcome: "aside" });
+    waiter.resolve({ decision: "deny", input: approval.input, edited: false, send: false, note: null, aside: true });
+    closed += 1;
+  }
+  return closed;
+}
+
 export function boxPermission(level: ApprovalLevel): "ask" | "full" {
   return level === "full" ? "full" : "ask";
 }
 
-const OUTWARD_ACTION = /(^|_)(SEND|SENDS|REPLY|FORWARD|DELETE|REMOVE|PAY|PAYMENT|TRANSFER|PUBLISH)(_|$)/;
+const OUTWARD_ACTION = /(^|_)(SEND|SENDS|REPLY|FORWARD|DELETE|REMOVE|TRASH|DESTROY|PURGE|ERASE|WIPE|CANCEL|PAY|PAYMENT|TRANSFER|PUBLISH)(_|$)/;
 
 const PIPED_INSTALL = /\b(?:curl|wget)\b[^|]*\|\s*(?:sudo\s+(?:-\S+\s+)*)?(?:sh|bash|zsh|dash)(?=\s|$)|\b(?:sh|bash|zsh|dash)\s+<\(\s*(?:curl|wget)\b/;
 const ESCALATES = new Set(["sudo", "su", "doas"]);
@@ -151,7 +179,12 @@ export function mustAsk(tool: string, input: Record<string, unknown>, bot: Pick<
   if (tool === "ask_approval" || tool === "add_mcp_server" || tool === "request_login" || tool === "type_secret" || tool === "forget_secret") return true;
   if (tool === "Bash") return typeof input.command === "string" && riskyCommand(input.command, bot);
   // A draft goes nowhere, but the letter card is how the person sees what was written, so it asks too.
-  return OUTWARD_ACTION.test(tool) || emailDraftOf(tool, input)?.mode === "draft";
+  return OUTWARD_ACTION.test(appAction(tool).action) || emailDraftOf(tool, input)?.mode === "draft";
+}
+
+function sendsEmail(tool: string): boolean {
+  const mode = emailMode(tool)?.mode;
+  return mode === "send" || mode === "reply" || mode === "forward";
 }
 
 function riskyCommand(command: string, bot: Pick<Bot, "id" | "userId">): boolean {
@@ -235,7 +268,7 @@ function redrafting(botId: string, threadId: string, tool: string): Approval["re
 
 export async function askApproval(input: { bot: Bot; threadId: string; tool: string; input: Record<string, unknown>; summary?: string; signal?: AbortSignal }): Promise<Answer> {
   const { tool } = input;
-  const answer = (decision: Decision): Answer => ({ decision, input: input.input, edited: false, send: false, note: null });
+  const answer = (decision: Decision): Answer => ({ decision, input: input.input, edited: false, send: false, note: null, aside: false });
 
   /*
    * The level as it is right now, not as it was when the turn started: a
@@ -243,7 +276,8 @@ export async function askApproval(input: { bot: Bot; threadId: string; tool: str
    * exactly when a person does it.
    */
   const bot = getBot(input.bot.id) ?? input.bot;
-  if (bot.approval === "full") return answer("allow");
+  // An email that goes out can't be called back, so even Always allow shows the letter first.
+  if (bot.approval === "full" && !sendsEmail(tool)) return answer("allow");
   if (READ_ONLY.has(tool)) return answer("allow");
   if (inOwnHome(bot, tool, input.input)) return answer("allow");
   for (const rule of listRules(bot.id)) {
@@ -263,7 +297,7 @@ export function askOwner(input: { bot: Bot; threadId: string; input: Record<stri
 
 function postCard(input: { bot: Bot; threadId: string; tool: string; input: Record<string, unknown>; summary?: string; signal?: AbortSignal }): Promise<Answer> {
   const { bot, threadId, tool } = input;
-  const answer = (decision: Decision): Answer => ({ decision, input: input.input, edited: false, send: false, note: null });
+  const answer = (decision: Decision): Answer => ({ decision, input: input.input, edited: false, send: false, note: null, aside: false });
   const approval = createApproval({ botId: bot.id, threadId, tool, summary: hideSecrets(input.summary ?? summarize(tool, input.input)), input: input.input, revises: redrafting(bot.id, threadId, tool) });
   postMessage({ threadId, author: bot.id, kind: "approval", body: approval.summary, approvalId: approval.id, answered: true });
   if (bot.notify) void sendPush({ title: `${bot.name} needs your approval`, body: approval.summary.slice(0, 140), url: `/app/t/${threadId}`, tag: threadId, threadId }, bot.userId);
@@ -317,7 +351,7 @@ export function decide(id: string, given: ApprovalAnswer): Approval | null {
   if (waiter) {
     clearTimeout(waiter.timer);
     pending().delete(id);
-    waiter.resolve({ decision, input, edited: Boolean(edited), send: Boolean(given.send) && decision === "allow", note });
+    waiter.resolve({ decision, input, edited: Boolean(edited), send: Boolean(given.send) && decision === "allow", note, aside: false });
   }
   return resolved;
 }

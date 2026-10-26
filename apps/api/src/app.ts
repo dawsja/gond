@@ -40,6 +40,9 @@ export function createApp() {
   app.get("/api/health", (c) => c.json({ ok: true }));
 
   app.on(["GET", "POST"], "/api/auth/*", async (c) => {
+    // Better Auth checks the origin only when a session cookie is present, so another site could sign
+    // the browser in to an account of its own. A provider's callback may be a form post from its site.
+    if (!c.req.path.includes("/callback/") && !isSameOrigin(c.req.raw)) return c.json({ error: "Cross-site request blocked" }, 403);
     const auth = await getAuth();
     return auth.handler(c.req.raw);
   });

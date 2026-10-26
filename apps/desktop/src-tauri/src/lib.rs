@@ -4,14 +4,16 @@ mod loopback;
 mod menu;
 mod updater;
 
+use std::collections::VecDeque;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
-use tauri::webview::{NewWindowResponse, PermissionKind, PermissionResponse};
+use tauri::webview::{DownloadEvent, NewWindowResponse, PermissionKind, PermissionResponse};
 use tauri::window::Color;
 use tauri::{
-    AppHandle, Manager, RunEvent, Theme, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
+    AppHandle, Manager, RunEvent, Theme, Webview, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
     WindowEvent, Wry,
 };
 use tauri_plugin_opener::OpenerExt;
@@ -25,6 +27,7 @@ const PROBE_TIMEOUT: Duration = Duration::from_secs(8);
 const INIT_SCRIPT: &str = include_str!("init.js");
 const LIGHT: Color = Color(0xf5, 0xf3, 0xee, 0xff);
 const DARK: Color = Color(0x12, 0x12, 0x12, 0xff);
+const DOWNLOADS_KEPT: usize = 16;
 
 pub struct PendingSignIn {
     pub verifier: String,
@@ -36,6 +39,8 @@ pub struct AppState {
     pending_sign_in: Mutex<Option<PendingSignIn>>,
     children: AtomicU32,
     zoom: Mutex<f64>,
+    downloads: Mutex<VecDeque<(u32, PathBuf)>>,
+    download_ids: AtomicU32,
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -49,6 +54,8 @@ impl AppState {
             pending_sign_in: Mutex::new(None),
             children: AtomicU32::new(0),
             zoom: Mutex::new(1.0),
+            downloads: Mutex::new(VecDeque::new()),
+            download_ids: AtomicU32::new(0),
         }
     }
 
@@ -76,6 +83,24 @@ impl AppState {
         let mut zoom = lock(&self.zoom);
         *zoom = factor.map_or(1.0, |factor| (*zoom * factor).clamp(0.5, 3.0));
         *zoom
+    }
+
+    /// A finished download's path stays here; the page gets an id to ask for it to be shown.
+    fn keep_download(&self, path: PathBuf) -> u32 {
+        let id = self.download_ids.fetch_add(1, Ordering::Relaxed) + 1;
+        let mut downloads = lock(&self.downloads);
+        if downloads.len() == DOWNLOADS_KEPT {
+            downloads.pop_front();
+        }
+        downloads.push_back((id, path));
+        id
+    }
+
+    pub fn download(&self, id: u32) -> Option<PathBuf> {
+        lock(&self.downloads)
+            .iter()
+            .find(|(kept, _)| *kept == id)
+            .map(|(_, path)| path.clone())
     }
 
     fn next_child_label(&self) -> String {
@@ -164,6 +189,35 @@ pub async fn probe(origin: &str) -> Result<(), String> {
     }
 }
 
+fn on_server(webview: &Webview) -> bool {
+    webview
+        .url()
+        .ok()
+        .zip(webview.state::<AppState>().server())
+        .is_some_and(|(url, server)| server_url::same_origin(url.as_str(), &server))
+}
+
+/// The webview saves a download to the Downloads folder on its own and says nothing, so the page
+/// hears that it finished and shows where it went.
+fn downloaded(webview: &Webview, path: Option<PathBuf>, success: bool) {
+    if !on_server(webview) {
+        return;
+    }
+    let name_of = |path: Option<&Path>| {
+        path.and_then(Path::file_name)
+            .map(|name| name.to_string_lossy().into_owned())
+    };
+    let name = name_of(path.as_deref());
+    let folder = name_of(path.as_deref().and_then(Path::parent));
+    let id = path
+        .filter(|_| success)
+        .map(|path| webview.state::<AppState>().keep_download(path));
+    let detail = serde_json::json!({ "ok": success, "id": id, "name": name, "folder": folder });
+    let _ = webview.eval(format!(
+        "window.dispatchEvent(new CustomEvent('gond:download', {{ detail: {detail} }}))"
+    ));
+}
+
 pub fn navigate(window: &WebviewWindow, url: Url) {
     if let Err(error) = window.navigate(url) {
         eprintln!("[gond] navigation failed: {error}");
@@ -225,12 +279,14 @@ fn page_builder<'a>(
             }
             NewWindowResponse::Deny
         })
+        .on_download(|webview, event| {
+            if let DownloadEvent::Finished { path, success, .. } = event {
+                downloaded(&webview, path, success);
+            }
+            true
+        })
         .on_permission_request(|webview, kind| {
-            let own = webview
-                .url()
-                .ok()
-                .zip(webview.state::<AppState>().server())
-                .is_some_and(|(url, server)| server_url::same_origin(url.as_str(), &server));
+            let own = on_server(&webview);
             match kind {
                 PermissionKind::Notifications
                 | PermissionKind::ClipboardRead
@@ -250,7 +306,10 @@ pub fn hide_menu_bar(window: &WebviewWindow) {
 }
 
 // WebKitGTK ships with media capture off, so getUserMedia isn't there for the composer's mic or a
-// call until it is turned on; who may use it is still on_permission_request's to say.
+// call until it is turned on; who may use it is still on_permission_request's to say. The clipboard
+// is the same: WebKitGTK asks for it with a request wry passes on as Other, which is refused, so
+// readText fails and a paste into a bot's screen has nothing to send. Only the server's pages and
+// the bundled Connect screen ever load in a window (on_navigation).
 #[cfg(target_os = "linux")]
 fn allow_media(window: &WebviewWindow) {
     let _ = window.with_webview(|webview| {
@@ -258,6 +317,7 @@ fn allow_media(window: &WebviewWindow) {
         if let Some(settings) = WebViewExt::settings(&webview.inner()) {
             settings.set_enable_media_stream(true);
             settings.set_enable_webrtc(true);
+            settings.set_javascript_can_access_clipboard(true);
         }
     });
 }
@@ -377,6 +437,7 @@ pub fn run() {
             bridge::update_state,
             bridge::check_for_updates,
             bridge::install_update,
+            bridge::show_download,
         ])
         .setup(|app| {
             let handle = app.handle().clone();

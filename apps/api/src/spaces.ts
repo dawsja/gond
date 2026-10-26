@@ -715,7 +715,8 @@ async function answerAsGuest(bot: Bot, thread: Thread, message: Message, rule: S
 async function loadGuestMemory(bot: Bot): Promise<string | null> {
   const box = boxConfig(bot.userId);
   if (!box) return null;
-  return (await loadMemory(box, bot.id).catch(() => null)) || null;
+  const memory = await loadMemory(box, bot.id);
+  return typeof memory === "string" && memory ? memory : null;
 }
 
 const ASK_CHARS = 2000;

@@ -1,5 +1,5 @@
 import { mediaTypeFor, type Bot, type Thread } from "@gond/shared";
-import { ENGINE_FILES_TEXT, expiredText, requestApproval, SCRIPTED_SCREEN_TEXT, scriptsTheScreen, summarize, touchesEngine } from "./approvals.ts";
+import { askApproval, ENGINE_FILES_TEXT, expiredText, SCRIPTED_SCREEN_TEXT, scriptsTheScreen, setAsideText, summarize, touchesEngine } from "./approvals.ts";
 import { execOnBox, previewBoxImage, readBoxFile, writeBoxFile, type BoxConfig } from "./box.ts";
 import type { DriverTool, ToolPart } from "./driver.ts";
 import { hideSecrets, readSecret } from "./data/secrets.ts";
@@ -39,7 +39,8 @@ type Context = { box: BoxConfig; bot: Bot; thread: Thread; signal?: AbortSignal 
 async function allowed(context: Context, tool: string, input: Record<string, unknown>): Promise<string | null> {
   if (scriptsTheScreen(tool, input)) return SCRIPTED_SCREEN_TEXT;
   if (touchesEngine(tool, input, context.bot)) return ENGINE_FILES_TEXT;
-  const decision = await requestApproval({ bot: context.bot, threadId: context.thread.id, tool, input, signal: context.signal });
+  const { decision, aside } = await askApproval({ bot: context.bot, threadId: context.thread.id, tool, input, signal: context.signal });
+  if (aside) return setAsideText(`for "${summarize(tool, input)}"`);
   if (decision === "allow" || decision === "always") return null;
   if (decision === "expired") return expiredText(`for "${summarize(tool, input)}"`);
   return `The person denied "${summarize(tool, input)}". Do something else, or say what you would need.`;

@@ -81,6 +81,24 @@ describe("data", () => {
     expect(claimPendingMessages("test", () => 1000).map((m) => m.id)).toEqual([prompt.id]);
   });
 
+  test("a memory that isn't there is none, and one the computer couldn't hand over is unreadable", async () => {
+    const { loadMemory, loadTeamMemory } = await import("../src/transcript.ts");
+    const memory = await import("../src/memory.ts");
+    let status = 404;
+    const server = Bun.serve({ port: 0, fetch: () => Response.json(status === 200 ? { content: "- Likes tea." } : { error: "No such file" }, { status }) });
+    const box = { url: `http://127.0.0.1:${server.port}`, token: "t", user: null };
+    try {
+      expect(await loadMemory(box, "b1")).toBeNull();
+      status = 503;
+      expect(await loadMemory(box, "b1")).toBe(memory.UNREADABLE);
+      expect(await loadTeamMemory(box, "u-nobody")).toBe(memory.UNREADABLE);
+      status = 200;
+      expect(await loadMemory(box, "b1")).toBe("- Likes tea.");
+    } finally {
+      server.stop(true);
+    }
+  });
+
   test("an approval reads the bot's level now, not as the turn started", async () => {
     const { listBots, updateBot } = await import("../src/data/bots.ts");
     const { listMessages } = await import("../src/data/threads.ts");
@@ -141,7 +159,67 @@ describe("data", () => {
     const after = count();
     expect(await ask("ask_approval", { summary: "Pay the invoice" }, "Pay the invoice")).toBe("allow");
     expect(count()).toBe(after);
+    // An email that goes out still shows its letter on Always allow; saving a draft doesn't ask.
+    for (const tool of ["GMAIL_SEND_EMAIL", "mcp__gmail__reply_to_thread"]) {
+      const sending = ask(tool, { recipient_email: "a@b.co", subject: "s", body: "b" }, "Send it");
+      const card = listMessages(bot.threadId).at(-1)!;
+      expect(card.kind).toBe("approval");
+      decide(card.approvalId!, { decision: "deny" });
+      expect(await sending).toBe("deny");
+    }
+    const cards = count();
+    expect(await ask("GMAIL_CREATE_EMAIL_DRAFT", { recipient_email: "a@b.co", subject: "s", body: "b" })).toBe("allow");
+    expect(await ask("mcp__toad__delete_app", { id: "x" })).toBe("allow");
+    expect(count()).toBe(cards);
     deleteBot(bot.id);
+  });
+
+  test("a card the person writes past is set aside: nothing runs, and only that bot's card in that chat closes", async () => {
+    const { createBot, deleteBot } = await import("../src/data/bots.ts");
+    const { getApproval } = await import("../src/data/approvals.ts");
+    const { listMessages } = await import("../src/data/threads.ts");
+    const { askApproval, decide, requestApproval, setAside, setAsideText } = await import("../src/approvals.ts");
+    const { botInputSchema } = await import("@gond/shared");
+    const one = createBot(botInputSchema.parse({ name: "Waiter", approval: "ask" }), "u-admin");
+    const two = createBot(botInputSchema.parse({ name: "Other", approval: "ask" }), "u-admin");
+    const cardIn = (threadId: string) => listMessages(threadId).at(-1)!.approvalId!;
+
+    const mine = askApproval({ bot: one, threadId: one.threadId, tool: "Bash", input: { command: "rm -rf build" } });
+    const mineId = cardIn(one.threadId);
+    const plain = requestApproval({ bot: one, threadId: one.threadId, tool: "mcp__toad__delete_app", input: { id: "a1" } });
+    const plainId = cardIn(one.threadId);
+    // Another bot's card in this chat, and this bot's card in another, stay open.
+    const theirs = askApproval({ bot: two, threadId: one.threadId, tool: "Bash", input: { command: "ls" } });
+    const theirsId = cardIn(one.threadId);
+    const elsewhere = askApproval({ bot: one, threadId: two.threadId, tool: "Bash", input: { command: "ls" } });
+    const elsewhereId = cardIn(two.threadId);
+
+    expect(setAside(one.id, one.threadId)).toBe(2);
+    expect(await mine).toMatchObject({ decision: "deny", aside: true });
+    // A caller that only reads the decision sees a no, so nothing it guards can run.
+    expect(await plain).toBe("deny");
+    for (const id of [mineId, plainId]) expect(getApproval(id)).toMatchObject({ status: "expired", outcome: "aside" });
+    for (const id of [theirsId, elsewhereId]) expect(getApproval(id)?.status).toBe("pending");
+    expect(setAside(one.id, one.threadId)).toBe(0);
+    // A tap that lands after it was set aside changes nothing.
+    expect(decide(mineId, { decision: "allow" })?.status).toBe("expired");
+    expect(setAsideText("for \"run `ls`\"")).toContain("Their message comes next");
+
+    decide(theirsId, { decision: "deny" });
+    decide(elsewhereId, { decision: "deny" });
+    await Promise.all([theirs, elsewhere]);
+
+    // The person's line sets the card aside only once the turn has taken it.
+    const { steer } = await import("../src/responder.ts");
+    const turn = (took: boolean) => ({ botId: one.id, threadId: one.threadId, route: "person", messageId: "m", steer: async () => took }) as unknown as Parameters<typeof steer>[0][number];
+    const waiting = askApproval({ bot: one, threadId: one.threadId, tool: "Bash", input: { command: "make deploy" } });
+    const waitingId = cardIn(one.threadId);
+    expect(await steer([turn(false)], "Actually, deploy to staging")).toEqual([false]);
+    expect(getApproval(waitingId)?.status).toBe("pending");
+    expect(await steer([turn(true)], "Actually, deploy to staging")).toEqual([true]);
+    expect(await waiting).toMatchObject({ aside: true });
+    deleteBot(one.id);
+    deleteBot(two.id);
   });
 
   test("an email card sends what the person edited, sends a draft on Send, and sends one back with their note", async () => {
@@ -1546,7 +1624,9 @@ describe("data", () => {
         const name = new URL(req.url).pathname.slice(1);
         asked.push(name);
 
-        if (name === "robinhood.com.ico") return new Response(new Uint8Array([137, 80, 78, 71]), { headers: { "content-type": "image/png" } });
+        if (name === "robinhood.com.ico") return new Response(new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 0]), { headers: { "content-type": "image/png" } });
+        // Labelled a picture, but a script: never relayed from Gond's own address.
+        if (name === "evil.example.ico") return new Response("<svg xmlns='http://www.w3.org/2000/svg' onload='alert(1)'/>", { headers: { "content-type": "image/svg+xml" } });
         return new Response(new Uint8Array([137, 80, 78, 71]), { status: 404, headers: { "content-type": "image/png" } });
       },
     });
@@ -1559,6 +1639,9 @@ describe("data", () => {
 
       await resolveMcpIcon(robinhood, { iconService });
       expect(asked).toHaveLength(2);
+      const evil = createMcpServer({ name: "evil", transport: "http", url: "https://evil.example/mcp", headers: {}, args: [], env: {}, enabled: true }, "u-admin");
+      expect(await resolveMcpIcon(evil, { iconService })).toBeNull();
+      deleteMcpServer(evil.id);
       const nowhere = createMcpServer({ name: "nowhere", transport: "http", url: "https://nonexistent.example/mcp", headers: {}, args: [], env: {}, enabled: true }, "u-admin");
       expect(await resolveMcpIcon(nowhere, { iconService })).toBeNull();
       const notion = createMcpServer({ name: "notion", transport: "http", url: "https://mcp.notion.com/mcp", headers: {}, args: [], env: {}, enabled: true }, "u-admin");
@@ -2169,9 +2252,80 @@ describe("data", () => {
       const servedSvg = await app.request(`/api/attachments/${svg.id}`);
       expect(servedSvg.headers.get("content-disposition")).toStartWith("attachment;");
       expect(servedSvg.headers.get("content-security-policy")).toBe("sandbox");
-      expect((await send(new File(["MZ"], "setup.exe", { type: "application/x-msdownload" }))).status).toBe(400);
+      // Any file goes; one Gond can't show is kept as bytes to download.
+      const exe = await send(new File(["MZ"], "setup.exe", { type: "application/x-msdownload" }));
+      expect(exe.status).toBe(201);
+      const program = ((await exe.json()) as { message: { attachments: { id: string; mediaType: string }[] } }).message.attachments[0]!;
+      expect(program.mediaType).toBe("application/octet-stream");
+      expect((await app.request(`/api/attachments/${program.id}`)).headers.get("content-disposition")).toStartWith("attachment;");
     } finally {
       box.stop(true);
+    }
+  });
+
+  test("a HEIC photo is sent on as a JPEG the computer made, and says so when it can't be", async () => {
+    const { createBot } = await import("../src/data/bots.ts");
+    const { getAttachment } = await import("../src/data/threads.ts");
+    const { threadsRoutes } = await import("../src/routes/threads.ts");
+    const { Hono } = await import("hono");
+    const { botInputSchema } = await import("@gond/shared");
+    const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]);
+    const heic = new Uint8Array([...new TextEncoder().encode("\0\0\0\x18ftypheic\0\0\0\0mif1heic"), 9, 9, 9]);
+    let answer: "jpeg" | "updating" | "unreadable" = "jpeg";
+    const got: { path: string; user: string | null; bytes: number }[] = [];
+    const fake = Bun.serve({
+      port: 0,
+      async fetch(request: Request): Promise<Response> {
+        const url = new URL(request.url);
+        got.push({ path: url.pathname, user: request.headers.get("x-gond-user"), bytes: (await request.arrayBuffer()).byteLength });
+        if (answer === "updating") return Response.json({ error: "The computer is updating; try again in a few minutes." }, { status: 503 });
+        if (answer === "unreadable") return Response.json({ error: "The photo couldn't be read: no images defined" }, { status: 422 });
+        return Response.json({ ok: true, data: Buffer.from(jpeg).toString("base64"), size: jpeg.length });
+      },
+    });
+    const boxUrl = process.env.GOND_BOX_URL;
+    const boxToken = process.env.GOND_BOX_TOKEN;
+    process.env.GOND_BOX_URL = `http://127.0.0.1:${fake.port}`;
+    process.env.GOND_BOX_TOKEN = "box-token";
+    try {
+      const bot = createBot(botInputSchema.parse({ name: "Photos" }), "u-admin");
+      const app = new Hono<{ Variables: { session: { user: { id: string } } } }>();
+      app.use("*", async (c, next) => {
+        c.set("session", { user: { id: "u-admin" } });
+        await next();
+      });
+      app.route("/api", threadsRoutes());
+      const send = (type = "image/heic") => {
+        const form = new FormData();
+        form.append("files", new File([heic], "IMG_4021.HEIC", { type }));
+        form.append("after", "1");
+        return app.request(`/api/threads/${bot.threadId}/messages`, { method: "POST", body: form });
+      };
+
+      // Whatever type the browser gave it, the bytes say HEIC.
+      for (const type of ["image/heic", "", "application/octet-stream"]) {
+        const sent = await send(type);
+        expect(sent.status).toBe(201);
+        const file = ((await sent.json()) as { message: { attachments: { id: string; name: string; mediaType: string }[] } }).message.attachments[0]!;
+        expect(file).toMatchObject({ name: "IMG_4021.jpg", mediaType: "image/jpeg" });
+        expect(getAttachment(file.id)!.data).toEqual(jpeg);
+      }
+      expect(got.at(-1)).toEqual({ path: "/images/jpeg", user: "u-admin", bytes: heic.length });
+
+      answer = "updating";
+      const away = await send();
+      expect(away.status).toBe(503);
+      expect(((await away.json()) as { error: string }).error).toBe("The computer is updating, so IMG_4021.HEIC can't be opened right now. Try again in a few minutes, or send it as a JPEG.");
+      answer = "unreadable";
+      const broken = await send();
+      expect(broken.status).toBe(422);
+      expect(((await broken.json()) as { error: string }).error).toBe("Couldn't open IMG_4021.HEIC. Try again, or send it as a JPEG.");
+    } finally {
+      fake.stop(true);
+      if (boxUrl === undefined) delete process.env.GOND_BOX_URL;
+      else process.env.GOND_BOX_URL = boxUrl;
+      if (boxToken === undefined) delete process.env.GOND_BOX_TOKEN;
+      else process.env.GOND_BOX_TOKEN = boxToken;
     }
   });
 
@@ -3249,6 +3403,11 @@ describe("tools for running the work", () => {
     const { getDelegation } = await import("../src/data/delegations.ts");
     const { claimPendingMessages, listMessages, releaseClaim } = await import("../src/data/threads.ts");
     const { primary, dev, run, stopped } = await setup("u-waves");
+    // Too long is refused, never cut, so a teammate doesn't get a brief missing its end.
+    const posts = listMessages(dev.threadId).length;
+    expect(await run("delegate_bot", { bot: dev.name, brief: "Build it. ".repeat(1300) })).toStartWith("NOT delegated: the brief is 12,999 characters, over the limit of 12,000");
+    expect(await run("post_message", { text: "x".repeat(4001) })).toStartWith("NOT posted: that message is 4,001 characters");
+    expect(listMessages(dev.threadId)).toHaveLength(posts);
     const sent = await run("delegate_bot", { bot: dev.name, brief: "Build the monthly clock" });
     const first = /handoff (d[^)\s]+)/.exec(sent)![1]!;
     expect(await run("list_handoffs", {})).toContain(`${first} · to ${dev.name} · open`);
@@ -5584,5 +5743,291 @@ describe("profiles", () => {
     expect(res.status).toBe(201);
     expect(listSubscriptions("u-pf-dev").map((s) => s.endpoint)).toEqual(["https://push.example/pf-dev"]);
     expect(listSubscriptions(work.id)).toEqual([]);
+  });
+});
+
+describe("failed turns, Try again, and taking lines back", () => {
+  async function withBox<T>(fetch: (request: Request) => Response | Promise<Response>, run: () => Promise<T>): Promise<T> {
+    const fake = Bun.serve({ port: 0, fetch });
+    const boxUrl = process.env.GOND_BOX_URL;
+    const boxToken = process.env.GOND_BOX_TOKEN;
+    process.env.GOND_BOX_URL = `http://127.0.0.1:${fake.port}`;
+    process.env.GOND_BOX_TOKEN = "box-token";
+    try {
+      return await run();
+    } finally {
+      fake.stop(true);
+      if (boxUrl === undefined) delete process.env.GOND_BOX_URL;
+      else process.env.GOND_BOX_URL = boxUrl;
+      if (boxToken === undefined) delete process.env.GOND_BOX_TOKEN;
+      else process.env.GOND_BOX_TOKEN = boxToken;
+    }
+  }
+  const sse = (event: unknown) => new Response(`data: ${JSON.stringify(event)}\n\n`, { headers: { "Content-Type": "text/event-stream" } });
+
+  async function routes(person: string) {
+    const { threadsRoutes } = await import("../src/routes/threads.ts");
+    const { Hono } = await import("hono");
+    return asPerson(new Hono(), person).route("/api", threadsRoutes());
+  }
+
+  test("no CLI, a signed-out plan and no AI each post a card to set it up, never an incident", async () => {
+    await seedUsers(["u-setup", "user"]);
+    const { createBot, setPrimary } = await import("../src/data/bots.ts");
+    const { postMessage, getThread, listMessages, markAnswered } = await import("../src/data/threads.ts");
+    const { updateAi } = await import("../src/data/ai.ts");
+    const { botTurn } = await import("../src/responder.ts");
+    const { AI_SETUP_CARD, botInputSchema } = await import("@gond/shared");
+    let mode: "missing" | "signedOut" | "broken" = "missing";
+    await withBox(
+      (request) => {
+        const path = new URL(request.url).pathname;
+        if (path === "/health") return Response.json({ ok: true, agents: 0 });
+        if (!path.endsWith("/turn")) return Response.json({});
+        if (mode === "missing") return sse({ type: "error", missing: true, message: "The claude CLI isn't installed in the box" });
+        if (mode === "signedOut") return sse({ type: "result", ok: false, text: "Not logged in · Please run /login", error: "Not logged in · Please run /login", signedOut: true, stopReason: null, recovered: false });
+        return sse({ type: "result", ok: false, text: "", error: "boom", stopReason: null, recovered: false });
+      },
+      async () => {
+        const primary = createBot(botInputSchema.parse({ name: "Setup Primary" }), "u-setup");
+        const worker = createBot(botInputSchema.parse({ name: "Setup Worker" }), "u-setup");
+        setPrimary("u-setup", primary.id);
+        const thread = getThread(worker.threadId)!;
+        const incidents = () => listMessages(primary.threadId).filter((m) => m.body.startsWith("Incident")).length;
+
+        const turn = async () => {
+          const asked = postMessage({ threadId: thread.id, author: "you", body: "Check the backups" });
+          await botTurn(worker, thread, asked);
+          markAnswered(asked.id);
+          return { asked, last: listMessages(thread.id).at(-1)! };
+        };
+
+        const missing = await turn();
+        expect(missing.last).toMatchObject({ author: worker.id, kind: "signin", approvalId: AI_SETUP_CARD, body: "Claude Code isn't set up on the computer.", answering: missing.asked.id });
+        mode = "signedOut";
+        const signedOut = await turn();
+        expect(signedOut.last).toMatchObject({ kind: "signin", approvalId: AI_SETUP_CARD, body: "Claude Code isn't signed in on the computer.", answering: signedOut.asked.id });
+        updateAi("u-setup", { engine: "api", enabled: ["api"] });
+        const noKey = await turn();
+        expect(noKey.last).toMatchObject({ kind: "signin", approvalId: AI_SETUP_CARD, answering: noKey.asked.id });
+        expect(noKey.last.body).toContain("Settings → AI");
+        updateAi("u-setup", { engine: "claude", enabled: ["claude"] });
+        expect(incidents()).toBe(0);
+
+        // One card per bot and conversation: a hidden prompt's failure adds none beside one, and the person's replaces it.
+        mode = "missing";
+        const fresh = createBot(botInputSchema.parse({ name: "Setup Fresh" }), "u-setup");
+        const freshThread = getThread(fresh.threadId)!;
+        const cards = () => listMessages(freshThread.id).filter((m) => m.approvalId === AI_SETUP_CARD);
+        const hidden = postMessage({ threadId: freshThread.id, author: "system", kind: "prompt", body: "Introduce yourself" });
+        await botTurn(fresh, freshThread, hidden);
+        markAnswered(hidden.id);
+        expect(cards()).toHaveLength(1);
+        expect(cards()[0]!.answering).toBeNull();
+        const again = postMessage({ threadId: freshThread.id, author: "system", kind: "prompt", body: "Introduce yourself" });
+        await botTurn(fresh, freshThread, again);
+        markAnswered(again.id);
+        expect(cards()).toHaveLength(1);
+        const asked = postMessage({ threadId: freshThread.id, author: "you", body: "Hi" });
+        await botTurn(fresh, freshThread, asked);
+        markAnswered(asked.id);
+        expect(cards()).toHaveLength(1);
+        expect(cards()[0]!.answering).toBe(asked.id);
+
+        // Anything else is a grey line that names the message, and still reaches the primary bot.
+        mode = "broken";
+        const broken = await turn();
+        expect(broken.last).toMatchObject({ author: "system", kind: "event", body: "Setup Worker couldn't finish: boom", answering: broken.asked.id });
+        expect(incidents()).toBe(1);
+      },
+    );
+  });
+
+  test("Try again clears the failure and puts the message back to wait, telling the bot what ran", async () => {
+    await seedUsers(["u-retry", "user"], ["u-retry-other", "user"]);
+    const { createBot } = await import("../src/data/bots.ts");
+    const { postMessage, getMessage, listMessages, markAnswered } = await import("../src/data/threads.ts");
+    const { noteInterrupted, takeInterrupted } = await import("../src/resume.ts");
+    const { AI_SETUP_CARD, botInputSchema } = await import("@gond/shared");
+    const bot = createBot(botInputSchema.parse({ name: "Retry Bot" }), "u-retry");
+    const asked = postMessage({ threadId: bot.threadId, author: "you", body: "Send the invoice" });
+    markAnswered(asked.id);
+    noteInterrupted(asked.id, ["Opened the invoices folder"], true);
+    postMessage({ threadId: bot.threadId, author: "system", kind: "event", body: "Retry Bot couldn't finish: boom", answered: true, answering: asked.id });
+    postMessage({ threadId: bot.threadId, author: bot.id, kind: "signin", approvalId: AI_SETUP_CARD, body: "Claude Code isn't signed in on the computer.", answered: true, answering: asked.id });
+    const kept = postMessage({ threadId: bot.threadId, author: "system", kind: "event", body: "Room created.", answered: true });
+    const app = await routes("u-retry");
+    const retry = (id: string, thread = bot.threadId, on = app) => on.request(`/api/threads/${thread}/messages/${id}/retry`, { method: "POST" });
+
+    expect((await retry(asked.id, bot.threadId, await routes("u-retry-other"))).status).toBe(404);
+    const done = await retry(asked.id);
+    expect(done.status).toBe(200);
+    expect(await done.json()).toEqual({ ok: true });
+    expect(listMessages(bot.threadId).map((m) => m.id)).toEqual([asked.id, kept.id]);
+    expect(getMessage(asked.id)!.waiting).toBe(true);
+    expect(takeInterrupted(asked.id)).toContain("- Opened the invoices folder");
+    markAnswered(asked.id);
+
+    // Nothing failed, so there's nothing to try again; and only the person's own line takes it.
+    expect((await retry(asked.id)).status).toBe(409);
+    const said = postMessage({ threadId: bot.threadId, author: bot.id, body: "Done.", answered: true });
+    expect((await retry(said.id)).status).toBe(404);
+  });
+
+  test("a line no bot has read can be unsent or edited, and nothing else can", async () => {
+    await seedUsers(["u-unsend", "user"], ["u-unsend-other", "user"]);
+    const { createBot } = await import("../src/data/bots.ts");
+    const { createRoom, getAttachment, getMessage, listMessages, postMessage, searchMessages, storeAttachment, markAnswered } = await import("../src/data/threads.ts");
+    const { createSpace } = await import("../src/data/spaces.ts");
+    const { ensureDatabase } = await import("../src/db/init.ts");
+    const { botInputSchema } = await import("@gond/shared");
+    const bot = createBot(botInputSchema.parse({ name: "Unsend Bot" }), "u-unsend");
+    const app = await routes("u-unsend");
+    const url = (m: { id: string; threadId: string }) => `/api/threads/${m.threadId}/messages/${m.id}`;
+    const unsend = (m: { id: string; threadId: string }, on = app) => on.request(url(m), { method: "DELETE" });
+    const edit = (m: { id: string; threadId: string }, body: unknown, on = app) => on.request(url(m), { method: "PATCH", body: JSON.stringify({ body }) });
+
+    const file = storeAttachment({ name: "notes.txt", mediaType: "text/plain", data: new TextEncoder().encode("hello") });
+    const typo = postMessage({ threadId: bot.threadId, author: "you", body: "Book the tabel", attachments: [file] });
+    expect(getMessage(typo.id)!.waiting).toBe(true);
+    expect((await edit(typo, "x", await routes("u-unsend-other"))).status).toBe(404);
+    expect((await unsend(typo, await routes("u-unsend-other"))).status).toBe(404);
+    expect((await edit(typo, "   ")).status).toBe(200);
+    expect(getMessage(typo.id)!.body).toBe("");
+    const fixed = await edit(typo, "Book the table for four");
+    expect(fixed.status).toBe(200);
+    expect(((await fixed.json()) as { message: { body: string; waiting: boolean } }).message).toMatchObject({ body: "Book the table for four", waiting: true });
+    expect(searchMessages("table for four", "u-unsend").map((m) => m.id)).toEqual([typo.id]);
+    expect((await edit(typo, "x".repeat(20_001))).status).toBe(400);
+
+    expect((await unsend(typo)).status).toBe(204);
+    expect(getMessage(typo.id)).toBeNull();
+    expect(getAttachment(file.id)).toBeNull();
+    expect(searchMessages("table for four", "u-unsend")).toEqual([]);
+    expect((await unsend(typo)).status).toBe(404);
+
+    // Once a bot took it (claimed, steered into a turn or answered), it's the bot's.
+    const claimed = postMessage({ threadId: bot.threadId, author: "you", body: "Claimed line" });
+    ensureDatabase().query("UPDATE gond_messages SET claimed_by = 'test' WHERE id = ?").run(claimed.id);
+    const steered = postMessage({ threadId: bot.threadId, author: "you", body: "Steered line", steered: true });
+    const answered = postMessage({ threadId: bot.threadId, author: "you", body: "Answered line" });
+    markAnswered(answered.id);
+    for (const line of [claimed, steered, answered]) {
+      expect(getMessage(line.id)!.waiting).toBe(false);
+      const refused = await unsend(line);
+      expect(refused.status).toBe(409);
+      expect(await refused.json()).toEqual({ error: "The bot already read it" });
+      expect((await edit(line, "changed")).status).toBe(409);
+    }
+    expect(getMessage(claimed.id)!.body).toBe("Claimed line");
+    ensureDatabase().query("UPDATE gond_messages SET claimed_by = NULL, answered_at = ? WHERE id = ?").run(new Date().toISOString(), claimed.id);
+
+    // A bot's line isn't the person's to take back.
+    const said = postMessage({ threadId: bot.threadId, author: bot.id, body: "On it.", answered: true });
+    expect(getMessage(said.id)!.waiting).toBe(false);
+    expect((await unsend(said)).status).toBe(404);
+
+    // A line in a space already crossed to other Gonds.
+    const other = createBot(botInputSchema.parse({ name: "Unsend Two" }), "u-unsend");
+    const room = createRoom("Trip", [bot.id, other.id], "u-unsend");
+    createSpace({ threadId: room.id, userId: "u-unsend", hostKey: "u".repeat(64), status: "active" });
+    const crossed = postMessage({ threadId: room.id, author: "you", body: "Hi all" });
+    const spaced = await unsend(crossed);
+    expect(spaced.status).toBe(409);
+    expect(await spaced.json()).toEqual({ error: "Lines in a space can't be taken back" });
+    expect((await edit(crossed, "Hello all")).status).toBe(409);
+    markAnswered(crossed.id);
+    expect(listMessages(room.id).some((m) => m.id === crossed.id)).toBe(true);
+  });
+
+  test("any file can be sent: its type comes from the browser, the name, or it's bytes to download", async () => {
+    const { createBot } = await import("../src/data/bots.ts");
+    const { getMessage, markAnswered } = await import("../src/data/threads.ts");
+    const { attachmentText } = await import("../src/responder.ts");
+    const { attachmentType } = await import("../src/routes/threads.ts");
+    const { botInputSchema } = await import("@gond/shared");
+    expect(attachmentType({ name: "report.docx", type: "" })).toBe("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    expect(attachmentType({ name: "photos.zip", type: "application/x-zip-compressed" })).toBe("application/zip");
+    expect(attachmentType({ name: "setup.exe", type: "application/x-msdownload" })).toBe("application/octet-stream");
+    expect(attachmentType({ name: "server.log", type: "text/x-log" })).toBe("text/plain");
+    expect(attachmentType({ name: "a.png", type: "image/png" })).toBe("image/png");
+
+    // Only text is put in the prompt, and never bytes that only claim to be text.
+    expect(attachmentText("text/plain", new TextEncoder().encode("line one"))).toBe("line one");
+    expect(attachmentText("text/plain", new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0, 0]))).toBeNull();
+    expect(attachmentText("application/zip", new TextEncoder().encode("PK"))).toBeNull();
+    expect(attachmentText("application/octet-stream", new TextEncoder().encode("MZ"))).toBeNull();
+
+    const bot = createBot(botInputSchema.parse({ name: "Files Bot" }), "u-admin");
+    const app = await routes("u-admin");
+    const form = new FormData();
+    form.append("files", new File(["PK\u0003\u0004"], "report.docx", { type: "" }));
+    form.append("files", new File(["PK\u0003\u0004"], "photos.zip", { type: "application/zip" }));
+    form.append("after", "1");
+    const sent = await app.request(`/api/threads/${bot.threadId}/messages`, { method: "POST", body: form });
+    expect(sent.status).toBe(201);
+    const { message } = (await sent.json()) as { message: { id: string; attachments: { id: string; name: string; mediaType: string }[] } };
+    expect(message.attachments.map((f) => f.mediaType)).toEqual(["application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/zip"]);
+    for (const file of message.attachments) expect((await app.request(`/api/attachments/${file.id}`)).headers.get("content-disposition")).toStartWith("attachment;");
+    if (getMessage(message.id)) markAnswered(message.id);
+  });
+
+  test("the admin's computer status names each account's person and profile", async () => {
+    await seedUsers(["u-health", "user"]);
+    const { createProfile } = await import("../src/profiles.ts");
+    const { boxStatus, healthOf } = await import("../src/status.ts");
+    const work = createProfile("u-health", "Work");
+    if ("error" in work) throw new Error(work.error);
+    const stats = {
+      disk: { total: 100, free: 40 },
+      memory: { total: 64, used: 16 },
+      load: [0.5, 0.4, 0.3],
+      cpus: 4,
+      people: [
+        { id: "u-health", bots: 2, screens: 1, browsers: 1, memory: 1024, disk: 2048 },
+        { id: work.id, bots: 0, screens: 0, browsers: 0, memory: null, disk: null },
+        { id: "u-gone", bots: 0, screens: 0, browsers: 0, memory: 0, disk: 10 },
+      ],
+      diskAt: "2026-10-26T09:00:00.000Z",
+    };
+    const at = new Date("2026-10-26T10:00:00.000Z");
+    expect(healthOf(stats, at)).toEqual({
+      disk: { total: 100, free: 40 },
+      memory: { total: 64, used: 16 },
+      people: [
+        { id: "u-health", name: "u-health", bots: 2, screens: 1, memory: 1024, disk: 2048 },
+        { id: work.id, name: "u-health · Work", bots: 0, screens: 0, memory: null, disk: null },
+        { id: "u-gone", name: "Someone no longer on this Gond", bots: 0, screens: 0, memory: 0, disk: 10 },
+      ],
+      diskAt: "2026-10-26T09:00:00.000Z",
+      at: "2026-10-26T10:00:00.000Z",
+    });
+
+    let statsUp = true;
+    const asked: (string | null)[] = [];
+    await withBox(
+      (request) => {
+        const path = new URL(request.url).pathname;
+        if (path === "/health") return Response.json({ ok: true, agents: 0 });
+        if (path === "/agents") return Response.json({ agents: [] });
+        if (path === "/versions") return Response.json({ node: "24", bun: "1.3", claude: "2.1" });
+        if (path === "/stats") {
+          asked.push(request.headers.get("x-gond-user"));
+          return statsUp ? Response.json(stats) : Response.json({ error: "down" }, { status: 500 });
+        }
+        return Response.json({});
+      },
+      async () => {
+        const admin = await boxStatus("u-admin", { admin: true });
+        expect(admin.health?.people.map((p) => p.name)).toEqual(["u-health", "u-health · Work", "Someone no longer on this Gond"]);
+        // Asked as the computer, not as any one person.
+        expect(asked).toEqual([null]);
+        expect((await boxStatus("u-health")).health).toBeUndefined();
+        statsUp = false;
+        const down = await boxStatus("u-admin", { admin: true });
+        expect(down.reachable).toBe(true);
+        expect(down.health).toBeUndefined();
+      },
+    );
   });
 });

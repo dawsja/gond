@@ -3,7 +3,7 @@
 import { bareToolName, emailDraftOf, ruleLabel, type Approval, type ApprovalAnswer, type Bot, type Message } from "@gond/shared";
 import { CreditCard, FilePen, Globe, KeyRound, LogIn, Monitor, Plug, Send, ShieldQuestion, SquareTerminal, Trash2 } from "lucide-react";
 import { useState, type ReactNode } from "react";
-import { ActionCard, ActionCardDone, ActionCode, ActionRows, cheerOnFold, type ActionItem, type ActionRow, NOBODY_ANSWERED } from "@/components/action-card";
+import { ActionCard, ActionCardDone, ActionCode, ActionRows, cheerOnFold, type ActionItem, type ActionRow, NOBODY_ANSWERED, SET_ASIDE } from "@/components/action-card";
 import { EmailApprovalCard } from "@/components/email-card";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -116,9 +116,9 @@ function ToolApprovalCard({ message, approval, bot, noticed, onDecide }: { messa
         ? { status: approval?.rule ? "Always" : (shape.allowed ?? (custom ? shape.allow : "Allowed")), tone: "ok" as const }
         : status === "denied"
           ? { status: shape.denied ?? (custom ? shape.deny : "Denied"), tone: shape.denied ? ("neutral" as const) : ("bad" as const) }
-          : { status: "Expired", tone: "neutral" as const };
+          : { status: approval?.outcome === "aside" ? SET_ASIDE.status : "Expired", tone: "neutral" as const };
     const title = shape.title;
-    const by = approval?.rule ? `From now on: ${ruleLabel(approval.rule)}` : status === "expired" ? NOBODY_ANSWERED : shape.by;
+    const by = approval?.rule ? `From now on: ${ruleLabel(approval.rule)}` : approval?.outcome === "aside" ? SET_ASIDE.by : status === "expired" ? NOBODY_ANSWERED : shape.by;
     return <ActionCardDone id={message.id} bot={bot} icon={shape.icon} title={title} by={by} status={done.status} tone={done.tone} />;
   }
   return (
