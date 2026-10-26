@@ -22,6 +22,8 @@ const RoomDialog = dynamic(() => import("@/components/room-dialog").then((m) => 
 const InviteSpaceDialog = dynamic(() => import("@/components/spaces/space-dialogs").then((m) => m.InviteSpaceDialog));
 const JoinSpace = dynamic(() => import("@/components/spaces/join-space").then((m) => m.JoinSpace));
 const NewSpace = dynamic(() => import("@/components/spaces/join-space").then((m) => m.NewSpace));
+const ProfilesDialog = dynamic(() => import("@/components/profiles").then((m) => m.ProfilesDialog));
+const AddProfileDialog = dynamic(() => import("@/components/profiles").then((m) => m.AddProfileDialog));
 
 export type ShellDialog =
   | { kind: "new-bot" }
@@ -33,6 +35,8 @@ export type ShellDialog =
   | { kind: "invite-space"; threadId: string }
   | { kind: "join-space"; link?: string }
   | { kind: "new-space" }
+  | { kind: "profiles" }
+  | { kind: "add-profile" }
   | null;
 
 export function Shell({ user, children }: { user: SessionUser; children: ReactNode }) {
@@ -59,6 +63,8 @@ export function Shell({ user, children }: { user: SessionUser; children: ReactNo
         {dialog?.kind === "invite-space" ? <InviteSpaceDialog threadId={dialog.threadId} onClose={() => setDialog(null)} /> : null}
         {dialog?.kind === "join-space" ? <JoinSpace link={dialog.link} onClose={() => setDialog(null)} /> : null}
         {dialog?.kind === "new-space" ? <NewSpace onClose={() => setDialog(null)} /> : null}
+        {dialog?.kind === "profiles" ? <ProfilesDialog onClose={() => setDialog(null)} /> : null}
+        {dialog?.kind === "add-profile" ? <AddProfileDialog onClose={() => setDialog(null)} /> : null}
         <Suspense>
           <SharedTemplate />
         </Suspense>

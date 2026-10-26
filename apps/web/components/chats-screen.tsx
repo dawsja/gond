@@ -1,10 +1,9 @@
 "use client";
 
 import { Search } from "lucide-react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { PersonAvatar } from "@/components/bot-avatar";
+import { ProfileMark, useOthersWaiting } from "@/components/profiles";
 import { useCovered } from "@/components/conversation-chrome";
 import type { ShellDialog } from "@/components/shell";
 import { openShellDialog } from "@/components/shell";
@@ -20,8 +19,9 @@ import { cn } from "@/lib/utils";
 const onOpen = (dialog: ShellDialog) => dialog && openShellDialog(dialog);
 
 export function ChatsScreen({ className }: { className?: string }) {
-  const { me, bots } = useStore();
-  const router = useRouter();
+  const { me, bots, profiles } = useStore();
+  const othersWaiting = useOthersWaiting();
+  const current = profiles.find((p) => p.id === me.profile.id);
   // In the iPhone app the header's buttons are the app's own, in Liquid Glass; the page keeps its own in place, unseen.
   const native = useNativeUi();
   const [ask, setAsk] = useState<Ask | null>(null);
@@ -32,7 +32,7 @@ export function ChatsScreen({ className }: { className?: string }) {
     setSearching(false);
   }
   const onEvent = useStableCallback((event: ChromeEvent) => {
-    if (event.type === "settings") router.push("/app/settings");
+    if (event.type === "settings") onOpen({ kind: "profiles" });
     else if (event.type === "search") setSearching(true);
     else if (event.type === "query") setQuery(event.value);
     else if (event.type === "cancel-search") closeSearch();
@@ -55,9 +55,18 @@ export function ChatsScreen({ className }: { className?: string }) {
           </>
         ) : (
           <>
-            <Link href="/app/settings" aria-label="Settings" data-native-me="" className={cn("pointer-events-auto rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50", native && "invisible")}>
+            {/* Your picture opens your profiles, and Settings from there. With more than one it wears the open one's mark, and a dot when another has something waiting. */}
+            <button
+              type="button"
+              onClick={() => onOpen({ kind: "profiles" })}
+              aria-label={othersWaiting ? "Profiles and settings, another profile has something new" : "Profiles and settings"}
+              data-native-me=""
+              className={cn("pointer-events-auto relative rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50", native && "invisible")}
+            >
               <PersonAvatar name={me.name} avatar={me.avatar} size={44} />
-            </Link>
+              {profiles.length > 1 && current ? <ProfileMark profile={current} size={20} className="absolute -right-1 -bottom-1 ring-2 ring-background" /> : null}
+              {othersWaiting ? <span aria-hidden="true" className="absolute -top-0.5 -right-0.5 size-3 rounded-full bg-foreground ring-2 ring-background" /> : null}
+            </button>
             <span className="flex-1" />
             <span className={cn("pointer-events-auto flex items-center gap-2", native && "invisible")}>
               <Button size="icon-xl" aria-label="Search" onClick={() => setSearching(true)}>

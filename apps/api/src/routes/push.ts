@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { userId } from "../access.ts";
+import { personId, userId } from "../access.ts";
 import type { Env } from "../app.ts";
 import { setUserTimezone } from "../data/prefs.ts";
 import { countSubscriptions, removeSubscription, saveSubscription } from "../data/push.ts";
@@ -9,20 +9,20 @@ import { vapidKeys } from "../push.ts";
 export function pushRoutes() {
   const app = new Hono<Env>();
 
-  app.get("/push", (c) => c.json({ publicKey: vapidKeys().publicKey, subscriptions: countSubscriptions(userId(c)) }));
+  app.get("/push", (c) => c.json({ publicKey: vapidKeys().publicKey, subscriptions: countSubscriptions(personId(c)) }));
 
   app.post("/push/subscriptions", async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as { endpoint?: string; keys?: { p256dh?: string; auth?: string } };
     if (!body.endpoint || !body.keys?.p256dh || !body.keys.auth) return c.json({ error: "This browser sent an incomplete push subscription. Turn notifications off and on again." }, 400);
-    saveSubscription({ endpoint: body.endpoint, keys: { p256dh: body.keys.p256dh, auth: body.keys.auth } }, userId(c), c.req.header("user-agent") ?? "");
-    return c.json({ ok: true, subscriptions: countSubscriptions(userId(c)) }, 201);
+    saveSubscription({ endpoint: body.endpoint, keys: { p256dh: body.keys.p256dh, auth: body.keys.auth } }, personId(c), c.req.header("user-agent") ?? "");
+    return c.json({ ok: true, subscriptions: countSubscriptions(personId(c)) }, 201);
   });
 
   app.delete("/push/subscriptions", async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as { endpoint?: string };
     if (!body.endpoint) return c.json({ error: "Say which subscription to remove" }, 400);
-    removeSubscription(body.endpoint, userId(c));
-    return c.json({ ok: true, subscriptions: countSubscriptions(userId(c)) });
+    removeSubscription(body.endpoint, personId(c));
+    return c.json({ ok: true, subscriptions: countSubscriptions(personId(c)) });
   });
 
   app.post("/push/viewing", async (c) => {

@@ -4,7 +4,16 @@ import { getBot } from "./data/bots.ts";
 import { getThread, threadOwner } from "./data/threads.ts";
 import { isAdmin } from "./data/users.ts";
 
+/**
+ * Whose things a request reads and writes: the profile this device has open, which is the person
+ * themselves on their default profile. Everything a person owns is keyed by it.
+ */
 export function userId(c: Context<Env>): string {
+  return c.get("profile") ?? c.get("session").user.id;
+}
+
+/** Who is signed in, whichever profile is open: for what is the person's across profiles. */
+export function personId(c: Context<Env>): string {
   return c.get("session").user.id;
 }
 

@@ -1,11 +1,11 @@
 "use client";
 
-import type { Approval, Bot, BoxUpdate, DesktopState, Me, Thread } from "@gond/shared";
+import type { Approval, Bot, BoxUpdate, DesktopState, Me, Profile, Thread } from "@gond/shared";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { pollInterval, useLiveEvents } from "@/components/hq/live-events";
 import { useStableCallback } from "@/hooks/use-stable-callback";
 import { singleFlight } from "@/lib/single-flight";
-import { api } from "@/lib/api";
+import { api, post } from "@/lib/api";
 import { applyAccent } from "@/lib/theme/theme";
 
 export type ThreadRow = Thread & { busy?: boolean };
@@ -18,6 +18,8 @@ type Store = {
   approvals: Approval[];
   me: Me;
   setMe: (me: Me) => void;
+  /** Every profile of the person's, the open one included (`me.profile`). */
+  profiles: Profile[];
 
   admin: boolean;
 
@@ -45,6 +47,7 @@ export function StoreProvider({ user, children }: { user: Me; children: ReactNod
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [activity, setActivity] = useState<Activity>({});
   const [me, setMe] = useState<Me>(user);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
   const [boxUpdate, setBoxUpdate] = useState<BoxUpdate | null>(null);
   const [desktop, setDesktop] = useState<DesktopState | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -62,6 +65,16 @@ export function StoreProvider({ user, children }: { user: Me; children: ReactNod
     if (data?.desktop) setDesktop(data.desktop);
   }, []);
 
+  // This device moved to another profile (another tab switched, or the open one was deleted): everything
+  // on the page is the old profile's while requests already reach the new one, so start over in it.
+  const loadProfilesNow = useCallback(async () => {
+    const data = await api<{ profiles: Profile[]; active: string }>("/api/profiles");
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+    if (data.active !== user.profile.id) return window.location.assign("/app");
+    setProfiles(data.profiles);
+  }, [user.profile.id]);
+  const loadProfiles = useMemo(() => singleFlight(loadProfilesNow), [loadProfilesNow]);
+
   const loadBotsNow = useCallback(async () => {
     const [b, t] = await Promise.all([api<{ bots: Bot[] }>("/api/bots"), api<{ threads: ThreadRow[] }>("/api/threads")]);
     setBots(b.bots);
@@ -76,9 +89,22 @@ export function StoreProvider({ user, children }: { user: Me; children: ReactNod
     setApprovals(a.approvals);
   }, []);
   const refresh = useCallback(async () => {
-    await Promise.all([loadBots(), loadApprovals(), loadBoxUpdate().catch(() => undefined), loadDesktop()]).catch(() => undefined);
+    await Promise.all([loadBots(), loadApprovals(), loadBoxUpdate().catch(() => undefined), loadDesktop(), loadProfiles().catch(() => undefined)]).catch(() => undefined);
     setLoaded(true);
-  }, [loadBots, loadApprovals, loadBoxUpdate, loadDesktop]);
+  }, [loadBots, loadApprovals, loadBoxUpdate, loadDesktop, loadProfiles]);
+
+  // A notice from another profile opens with `?profile=`: open that profile here first.
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const wanted = url.searchParams.get("profile");
+    if (!wanted) return;
+    url.searchParams.delete("profile");
+    const clean = `${url.pathname}${url.search}${url.hash}`;
+    if (wanted === user.profile.id) return window.history.replaceState(window.history.state, "", clean);
+    void post(`/api/profiles/${encodeURIComponent(wanted)}/open`)
+      .then(() => window.location.replace(clean))
+      .catch(() => window.history.replaceState(window.history.state, "", clean));
+  }, [user.profile.id]);
 
   useEffect(() => {
     applyAccent(me.accent);
@@ -107,6 +133,7 @@ export function StoreProvider({ user, children }: { user: Me; children: ReactNod
     else if (message.topic === "bots" || message.topic === "thread") loadBotsSoon();
     else if (message.topic === "approvals") void loadApprovals().catch(() => undefined);
     else if (message.topic === "me") void loadMe().catch(() => undefined);
+    else if (message.topic === "profiles") void loadProfiles().catch(() => undefined);
     else if (message.topic === "box") void loadBoxUpdate().catch(() => undefined);
     else if (message.topic === "desktop") setDesktop(message.desktop);
     else if (message.topic === "activity") {
@@ -127,8 +154,8 @@ export function StoreProvider({ user, children }: { user: Me; children: ReactNod
   }, [live]);
 
   const value = useMemo<Store>(
-    () => ({ bots, threads, approvals, me, setMe, admin: me.role === "admin", boxUpdate, boxUpdating: Boolean(boxUpdate && UPDATING.has(boxUpdate.phase)), desktop, loaded, live, refresh, botById: (id) => bots.find((b) => b.id === id) }),
-    [bots, threads, approvals, me, boxUpdate, desktop, loaded, live, refresh],
+    () => ({ bots, threads, approvals, me, setMe, profiles, admin: me.role === "admin", boxUpdate, boxUpdating: Boolean(boxUpdate && UPDATING.has(boxUpdate.phase)), desktop, loaded, live, refresh, botById: (id) => bots.find((b) => b.id === id) }),
+    [bots, threads, approvals, me, profiles, boxUpdate, desktop, loaded, live, refresh],
   );
   return (
     <StoreContext.Provider value={value}>

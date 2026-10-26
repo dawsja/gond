@@ -511,6 +511,13 @@ One line each: where to start, and what must not change.
 - **Notifications** (`notifications-section.tsx`, `public/sw.js`,
   `viewing-report.tsx`).
 - **Linked sign-in** (`linked-sign-in.tsx`).
+- **Profiles** (`profiles.tsx`): your picture on Chats opens
+  `ProfilesDialog` (wearing the open one's `ProfileMark`, a dot when
+  another has something waiting); on a desktop they are a group in
+  `ProfileMenu`; Settings → Profiles is `ProfilesCard`. Switching is
+  `openProfile`, a full load, so nothing of the old profile stays in
+  memory; the store starts over when the session's profile changed under
+  it. A mark's colour is `data-mark` in `globals.css`.
 
 ## API
 
@@ -556,13 +563,29 @@ One line each: where to start, and what must not change.
   `searchMessages` and the push functions take the user; the responder
   and bot tools use the conversation's or bot's owner. A live event about
   a conversation or person reaches only its owner (`routes/events.ts`).
-- **Everything is each person's own**: bots, conversations, push
-  subscriptions, connected apps, the Composio key, MCP servers, secrets,
-  skills, the AI and its providers, the computer account. Nothing is
-  shared and nobody falls back to the admin's, except `COMPOSIO_API_KEY`
-  for the admin alone.
+- **Everything is each profile's own**: bots, conversations, connected
+  apps, the Composio key, MCP servers, secrets, skills, the AI and its
+  providers, the computer account. Nothing is shared and nobody falls back
+  to the admin's, except `COMPOSIO_API_KEY` for the admin's default
+  profile alone.
+- **Profiles** (`src/data/profiles.ts`, `src/profiles.ts`,
+  `routes/profiles.ts`, `gond_profiles`): each profile but the default is
+  a `"user"` row nobody signs in to, owned by a person (`personOf`); the
+  default is the person's own id, "Default" until renamed, and never
+  deleted. A profile may wear one of `PROFILE_ICONS` (`icon`, `isProfileIcon`) in
+  the middle of its mark instead of its initial. `userId(c)` is the profile the session has open
+  (`gond_session_profiles`, per device, `activeProfile`), `personId(c)` the
+  login. Only the person's: name, sign-in, time zone, push subscriptions,
+  the notification service and the admin role (`/api/me` takes the
+  person's role); everything else switches. A profile's role is never
+  admin. Notices are labelled and open in their profile (`fromProfile`,
+  `?profile=`), a muted one sends none. Other profiles reach a page's
+  live events only as `notify` and a `profiles` nudge. `deleteProfile`
+  removes everything, its computer account too, and is checked by a test
+  that sweeps every table. At most `MAX_PROFILES` (5); a new one copies
+  nothing.
 - **Time is the person's browser's.** `gond_user_prefs` keeps each
-  person's zone (reported by `viewing-report.tsx`); `userTimezone(userId)`
+  person's zone, shared by their profiles (reported by `viewing-report.tsx`); `userTimezone(userId)`
   in `src/data/prefs.ts` is the only reader; routines, prompts and
   templates use the bot owner's, and a change rewrites their routines.
   No team time zone. Only ISO strings cross the wire; the browser formats.
@@ -591,7 +614,7 @@ One line each: where to start, and what must not change.
   tick is every 2 s, but a new message or a bot coming free wakes it
   (`wake`). While the computer updates or resets (`src/updater.ts`)
   nothing new starts. Stalled handoffs are chased by `src/nudges.ts`.
-  Three of each person's bots answer at once (`TURNS_PER_PERSON`), no
+  Five of each profile's bots answer at once (`TURNS_PER_PERSON`), no
   setting. A turn's setup runs side by side (SOUL.md only when changed,
   `soulsWritten`; memory; skills; apps; MCP listings cached five minutes,
   `listings`). `GOND_TURN_TIMING=1` logs one timing line per turn
@@ -1281,10 +1304,10 @@ list saying what changed and why, written for the person reading the log.
   on it (home, bots' files, CLI sign-ins, a screen per bot). Separate
   bots are not a security boundary; separate people are Unix permissions
   inside one container, not a hard boundary either. The container and the
-  unprivileged users are. In the database every bot, conversation, push
-  subscription, connected app, Composio key, MCP server, secret, skill,
-  AI setting and provider belongs to a user, and a route never returns
-  another person's.
+  unprivileged users are. In the database every bot, conversation,
+  connected app, Composio key, MCP server, secret, skill, AI setting and
+  provider belongs to a profile, push subscriptions to a person, and a
+  route never returns another profile's.
 - Everyone's bots run on their own plan or key. Nothing about the AI is
   shared, and nobody falls back to the admin's.
 - The web app never talks to the box; the API does, with a bearer token,

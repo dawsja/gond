@@ -2,6 +2,7 @@ import { DEFAULT_ACCENT, isAccent, isEmojiLevel, isReplyStyle, type Accent, type
 import { ensureDatabase } from "../db/init.ts";
 import { emit, settingsChanged } from "../events.ts";
 import { now } from "../ids.ts";
+import { personOf, profileIds } from "./profiles.ts";
 import { nextRun } from "./routines.ts";
 import { getSettings } from "./settings.ts";
 
@@ -16,24 +17,27 @@ export function validTimezone(timezone: unknown): timezone is string {
   }
 }
 
+/** A person is in one place, whichever profile: the zone is kept on the person and read through any of their profiles. */
 export function userTimezone(userId: string | null | undefined): string {
   if (userId) {
-    const row = ensureDatabase().query("SELECT timezone FROM gond_user_prefs WHERE user_id = ?").get(userId) as { timezone: string | null } | null;
+    const row = ensureDatabase().query("SELECT timezone FROM gond_user_prefs WHERE user_id = ?").get(personOf(userId)) as { timezone: string | null } | null;
     if (row?.timezone) return row.timezone;
   }
   return getSettings().timezone || "UTC";
 }
 
-export function setUserTimezone(userId: string, timezone: unknown): boolean {
+export function setUserTimezone(profileId: string, timezone: unknown): boolean {
   if (!validTimezone(timezone)) return false;
+  const userId = personOf(profileId);
   const db = ensureDatabase();
   const current = db.query("SELECT timezone FROM gond_user_prefs WHERE user_id = ?").get(userId) as { timezone: string | null } | null;
   if (current?.timezone === timezone) return false;
   const at = now();
   db.query("INSERT INTO gond_user_prefs (user_id, timezone, updated_at) VALUES (?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET timezone = excluded.timezone, updated_at = excluded.updated_at").run(userId, timezone, at);
+  const profiles = profileIds(userId);
   const routines = db
-    .query("SELECT r.id, r.cron, r.enabled FROM gond_routines r JOIN gond_bots b ON b.id = r.bot_id WHERE b.user_id = ? AND r.timezone != ?")
-    .all(userId, timezone) as { id: string; cron: string; enabled: number }[];
+    .query(`SELECT r.id, r.cron, r.enabled FROM gond_routines r JOIN gond_bots b ON b.id = r.bot_id WHERE b.user_id IN (${profiles.map(() => "?").join(", ")}) AND r.timezone != ?`)
+    .all(...profiles, timezone) as { id: string; cron: string; enabled: number }[];
   for (const routine of routines) {
     let next: string | null = null;
     if (routine.enabled === 1) {

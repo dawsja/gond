@@ -24,7 +24,7 @@ export function apiPort() {
   return Number(process.env.PORT || 8790);
 }
 
-export const TURNS_PER_PERSON = 3;
+export const TURNS_PER_PERSON = 5;
 
 export function turnTiming() {
   return ["1", "true", "yes", "on"].includes((env("TURN_TIMING") ?? "").trim().toLowerCase());

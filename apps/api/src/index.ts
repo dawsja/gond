@@ -2,6 +2,7 @@ import { createApp } from "./app.ts";
 import { getAuth } from "./auth.ts";
 import { apiPort } from "./config.ts";
 import { ensureDatabase } from "./db/init.ts";
+import { forgetEndedSessions } from "./data/profiles.ts";
 import { startDispatcher } from "./dispatcher.ts";
 import { syncSkills } from "./skills.ts";
 import { resumeTeachings } from "./teach.ts";
@@ -11,6 +12,7 @@ import { callSocket, upgradeCallSocket, type CallSocketData } from "./routes/cal
 
 ensureDatabase();
 await getAuth();
+forgetEndedSessions();
 void syncSkills();
 startDispatcher();
 void resumeTeachings().catch((error: unknown) => console.error("[gond] picking up Show me how failed:", error));

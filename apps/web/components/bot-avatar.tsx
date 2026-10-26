@@ -1,7 +1,7 @@
 "use client";
 
 import type { Bot } from "@gond/shared";
-import { Users } from "lucide-react";
+import { Globe, Users } from "lucide-react";
 import { GondBot } from "@/components/hq/gond-bot";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
@@ -67,9 +67,24 @@ export function roomMembers(thread: { members: string[] }, bots: Bot[]): Bot[] {
 /**
  * A room as its bots: two faces on the diagonal, the one that answers when nobody's named in
  * front, cut out of the back one by a ring of whatever it sits on (`--surface`), and a pill with
- * how many more there are. Too small for two to read, it shows the front one alone.
+ * how many more there are. Too small for two to read, it shows the front one alone. A space wears
+ * an ink globe on its top corner, where neither face sits, so it never reads as a room.
  */
-export function RoomAvatar({ bots, size = 40, className }: { bots: Face[]; size?: number; className?: string }) {
+export function RoomAvatar({ bots, size = 40, space = false, className }: { bots: Face[]; size?: number; space?: boolean; className?: string }) {
+  if (!space || size < 28) return <RoomFaces bots={bots} size={size} className={className} />;
+  const chip = Math.round(size * 0.42);
+  const lift = Math.round(size / 16);
+  return (
+    <span data-slot="space-avatar" className={cn("relative inline-block shrink-0", className)} style={{ width: size, height: size }}>
+      <RoomFaces bots={bots} size={size} className="absolute top-0 left-0" />
+      <span role="img" aria-label="Space" className="absolute flex items-center justify-center rounded-full bg-control text-control-foreground ring-2 ring-(--surface)" style={{ width: chip, height: chip, top: -lift, right: -lift }}>
+        <Globe strokeWidth={2.25} style={{ width: Math.round(chip * 0.6), height: Math.round(chip * 0.6) }} aria-hidden="true" />
+      </span>
+    </span>
+  );
+}
+
+function RoomFaces({ bots, size, className }: { bots: Face[]; size: number; className?: string }) {
   const [front, back] = [...bots].sort((a, b) => Number(b.primary) - Number(a.primary)).map((bot) => ({ ...bot, primary: false }));
   if (!front) return <RoomIcon size={size} className={className} />;
   if (!back || size < 28) return <BotAvatar bot={front} size={size} className={className} />;

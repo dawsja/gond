@@ -11,6 +11,7 @@ import { AccountSection } from "@/components/account-section";
 import { ExportCard } from "@/components/export-card";
 import { AppearanceCard } from "@/components/appearance-card";
 import { PersonalizationCard } from "@/components/personalization-card";
+import { ProfilesCard } from "@/components/profiles";
 import { AppsCard } from "@/components/apps-card";
 import { ComposioCard } from "@/components/composio-card";
 import { ComputerCard } from "@/components/computer-card";
@@ -168,6 +169,9 @@ export function SettingsPage({ user, section, index = false }: { user: SessionUs
           <ExportCard />
         </>
       );
+      break;
+    case "profiles":
+      body = <ProfilesCard />;
       break;
     case "notifications":
       body = <NotificationsSection />;

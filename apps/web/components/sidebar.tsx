@@ -122,8 +122,8 @@ const PinnedTile = memo(function PinnedTile({ thread, bot, active, onOpen, onAsk
           </>
         ) : (
           <>
-            <RoomAvatar bots={roomMembers(thread, bots)} size={96} className="wide:hidden" />
-            <RoomAvatar bots={roomMembers(thread, bots)} size={64} className="hidden wide:inline-block" />
+            <RoomAvatar bots={roomMembers(thread, bots)} size={96} space={Boolean(thread.space)} className="wide:hidden" />
+            <RoomAvatar bots={roomMembers(thread, bots)} size={64} space={Boolean(thread.space)} className="hidden wide:inline-block" />
           </>
         )}
         <span className={cn("max-w-full truncate text-[16px] wide:text-[13px]", active ? "font-medium text-foreground" : "text-muted-foreground")}>{bot?.name ?? thread.name}</span>
@@ -148,8 +148,8 @@ const Row = memo(function Row({ thread, bot, active, bots, activity, draft, onOp
             </>
           ) : (
             <>
-              <RoomAvatar bots={roomMembers(thread, bots)} size={48} className="wide:hidden" />
-              <RoomAvatar bots={roomMembers(thread, bots)} size={40} className="hidden wide:inline-block" />
+              <RoomAvatar bots={roomMembers(thread, bots)} size={48} space={Boolean(thread.space)} className="wide:hidden" />
+              <RoomAvatar bots={roomMembers(thread, bots)} size={40} space={Boolean(thread.space)} className="hidden wide:inline-block" />
             </>
           )}
           <span className="flex min-w-0 flex-1 flex-col">
@@ -162,7 +162,6 @@ const Row = memo(function Row({ thread, bot, active, bots, activity, draft, onOp
                     <span className="truncate">{bot.title}</span>
                   </Badge>
                 ) : null}
-                {thread.space ? <Link2 className="size-3.5 shrink-0 text-muted-foreground" aria-label={spaceSubtitle(thread.space)} /> : null}
                 {bot?.pinned || thread.pinned ? <Pin className="size-3 shrink-0 text-muted-foreground" aria-label="Pinned" /> : null}
               </span>
               {thread.lastMessage ? <span className="shrink-0 text-[13px] text-ash wide:text-[11px]">{shortTime(thread.lastMessage.at)}</span> : null}
@@ -360,7 +359,7 @@ export function BotRows({ rows, hits, query, setQuery, lookAs, onOpen, onAsk }: 
 }
 
 export function AppSidebar({ onOpen }: { onOpen: (dialog: ShellDialog) => void }) {
-  const { me } = useStore();
+  const { me, profiles } = useStore();
   const pathname = usePathname();
   const [ask, setAsk] = useState<Ask | null>(null);
   const { query, setQuery, rows, hits } = useBotSearch();
@@ -388,6 +387,7 @@ export function AppSidebar({ onOpen }: { onOpen: (dialog: ShellDialog) => void }
             <ProfileMenu trigger={<SidebarMenuButton isActive={pathname.startsWith("/app/settings")} aria-label="Your menu" className="h-10 gap-3 rounded-xl px-2.5 text-[13.5px] font-medium data-active:bg-card data-active:shadow-subtle hover:bg-card/60" />}>
               <PersonAvatar name={me.name} avatar={me.avatar} size={24} />
               <span className="truncate">{me.name}</span>
+              {profiles.length > 1 ? <span className="ml-auto truncate text-[12px] font-normal text-muted-foreground">{me.profile.label}</span> : null}
             </ProfileMenu>
           </SidebarMenuItem>
         </SidebarMenu>

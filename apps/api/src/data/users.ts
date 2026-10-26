@@ -6,6 +6,7 @@ import { adoptLegacyAi } from "./ai.ts";
 import { ensurePrimary } from "./bots.ts";
 import { pictureType } from "../images.ts";
 import { userAccent, userTalk } from "./prefs.ts";
+import { isExtraProfile, personOf, profileOf } from "./profiles.ts";
 
 type UserRow = { id: string; name: string; email: string; role: string | null; createdAt: string | number };
 
@@ -29,10 +30,27 @@ function toIso(value: string | number): string {
   return Number.isNaN(date.getTime()) ? String(value) : date.toISOString();
 }
 
+/**
+ * A person, or one of their profiles: a profile has the person's name, address and sign-in, and its
+ * own role (never the admin's), picture, colour and way of talking.
+ */
 export function getUser(id: string): Me | null {
-  const row = ensureDatabase().query('SELECT id, name, email, role, createdAt FROM "user" WHERE id = ?').get(id) as UserRow | null;
-  if (!row) return null;
-  return { id: row.id, name: row.name, email: row.email, role: toRole(row.role), provider: providerOf(row.id), avatar: avatarUrl(row.id), accent: userAccent(row.id), ...userTalk(row.id) };
+  const db = ensureDatabase();
+  const row = db.query('SELECT id, name, email, role, createdAt FROM "user" WHERE id = ?').get(id) as UserRow | null;
+  const profile = row ? profileOf(row.id) : null;
+  if (!row || !profile) return null;
+  const person = profile.isDefault ? row : ((db.query('SELECT id, name, email, role, createdAt FROM "user" WHERE id = ?').get(profile.personId) as UserRow | null) ?? row);
+  return {
+    id: row.id,
+    name: person.name,
+    email: person.email,
+    role: toRole(row.role),
+    provider: providerOf(person.id),
+    avatar: avatarUrl(row.id),
+    accent: userAccent(row.id),
+    ...userTalk(row.id),
+    profile: { id: profile.id, label: profile.label, isDefault: profile.isDefault, icon: profile.icon },
+  };
 }
 
 export function isAdmin(user: object | null | undefined): boolean {
@@ -41,10 +59,11 @@ export function isAdmin(user: object | null | undefined): boolean {
 
 export function listUsers(): UserSummary[] {
   const db = ensureDatabase();
-  const rows = db.query('SELECT id, name, email, role, createdAt FROM "user" ORDER BY createdAt ASC').all() as UserRow[];
+  const rows = (db.query('SELECT id, name, email, role, createdAt FROM "user" ORDER BY createdAt ASC').all() as UserRow[]).filter((row) => !isExtraProfile(row.id));
   return rows.map((row) => {
     const bots = db.query("SELECT COUNT(*) AS n FROM gond_bots WHERE user_id = ? AND hidden = 0").get(row.id) as { n: number };
-    return { id: row.id, name: row.name, email: row.email, role: toRole(row.role), provider: providerOf(row.id), avatar: avatarUrl(row.id), accent: userAccent(row.id), ...userTalk(row.id), createdAt: toIso(row.createdAt), bots: Number(bots.n) };
+    const profiles = db.query("SELECT COUNT(*) AS n FROM gond_profiles WHERE person_id = ? AND id != person_id").get(row.id) as { n: number };
+    return { id: row.id, name: row.name, email: row.email, role: toRole(row.role), provider: providerOf(row.id), avatar: avatarUrl(row.id), accent: userAccent(row.id), ...userTalk(row.id), createdAt: toIso(row.createdAt), bots: Number(bots.n), profiles: Number(profiles.n) + 1 };
   });
 }
 
@@ -88,6 +107,9 @@ export function deleteUserData(userId: string): { bots: string[] } {
       db.query("DELETE FROM gond_approval_rules WHERE bot_id = ?").run(id);
       db.query("DELETE FROM gond_delegations WHERE from_bot_id = ? OR to_bot_id = ?").run(id, id);
     }
+    for (const id of bots) db.query("DELETE FROM gond_secret_requests WHERE bot_id = ?").run(id);
+    // Attachments hang off messages without a cascade, so they go before the conversations take the messages.
+    db.query("DELETE FROM gond_attachments WHERE message_id IN (SELECT m.id FROM gond_messages m JOIN gond_threads t ON t.id = m.thread_id WHERE t.user_id = ?)").run(userId);
     db.query("DELETE FROM gond_thread_members WHERE thread_id IN (SELECT id FROM gond_threads WHERE user_id = ?)").run(userId);
     db.query("DELETE FROM gond_threads WHERE user_id = ?").run(userId);
     db.query("DELETE FROM gond_bots WHERE user_id = ?").run(userId);
@@ -107,6 +129,8 @@ export function deleteUserData(userId: string): { bots: string[] } {
     db.query("DELETE FROM gond_teachings WHERE user_id = ?").run(userId);
     db.query("DELETE FROM gond_usage WHERE user_id = ?").run(userId);
     db.query("DELETE FROM gond_plan_limits WHERE user_id = ?").run(userId);
+    db.query("DELETE FROM gond_peer_checks WHERE user_id = ?").run(userId);
+    db.query("DELETE FROM gond_space_invites WHERE user_id = ?").run(userId);
     return { bots };
   });
 }
@@ -115,13 +139,22 @@ export { AVATAR_MAX_BYTES };
 
 type AvatarRow = { media_type: string; data: Uint8Array; updated_at: string };
 
+/** A profile without a picture of its own wears the person's. */
+function avatarRow(userId: string): AvatarRow | null {
+  const query = ensureDatabase().query("SELECT media_type, data, updated_at FROM gond_user_avatars WHERE user_id = ?");
+  const own = query.get(userId) as AvatarRow | null;
+  if (own) return own;
+  const person = personOf(userId);
+  return person === userId ? null : (query.get(person) as AvatarRow | null);
+}
+
 export function getAvatar(userId: string): { mediaType: string; data: Uint8Array; updatedAt: string } | null {
-  const row = ensureDatabase().query("SELECT media_type, data, updated_at FROM gond_user_avatars WHERE user_id = ?").get(userId) as AvatarRow | null;
+  const row = avatarRow(userId);
   return row ? { mediaType: row.media_type, data: row.data, updatedAt: row.updated_at } : null;
 }
 
 export function avatarUrl(userId: string): string | null {
-  const row = ensureDatabase().query("SELECT updated_at FROM gond_user_avatars WHERE user_id = ?").get(userId) as { updated_at: string } | null;
+  const row = avatarRow(userId);
   return row ? `/api/me/avatar?v=${encodeURIComponent(row.updated_at)}` : null;
 }
 

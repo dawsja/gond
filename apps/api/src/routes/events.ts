@@ -1,7 +1,8 @@
 import type { LiveEvent } from "@gond/shared";
 import { Hono } from "hono";
-import { userId } from "../access.ts";
+import { personId, userId } from "../access.ts";
 import type { Env } from "../app.ts";
+import { personOf } from "../data/profiles.ts";
 import { threadOwner } from "../data/threads.ts";
 import { subscribe } from "../events.ts";
 
@@ -25,10 +26,21 @@ function frame(event: LiveEvent): string {
   return text;
 }
 
+const NUDGE_MS = 1_500;
+
 export function eventsRoutes() {
   const app = new Hono<Env>();
   app.get("/events", (c) => {
     const me = userId(c);
+    const person = personId(c);
+    // The person's other profiles reach this page only as their notices and a nudge that something
+    // there changed, for the switcher's badges; never what they hold.
+    const mine = new Map<string, boolean>();
+    const isMine = (owner: string) => {
+      let known = mine.get(owner);
+      if (known === undefined) mine.set(owner, (known = personOf(owner) === person));
+      return known;
+    };
     const encoder = new TextEncoder();
     let cleanup = () => {};
     const stream = new ReadableStream<Uint8Array>({
@@ -41,15 +53,29 @@ export function eventsRoutes() {
           }
         };
         send(`retry: ${RETRY_MS}\n: connected\n\n`);
+        let nudging: ReturnType<typeof setTimeout> | null = null;
+        const nudge = () => {
+          nudging ??= setTimeout(() => {
+            nudging = null;
+            send(frame({ topic: "profiles", userId: person }));
+          }, NUDGE_MS);
+        };
         const unsubscribe = subscribe((event) => {
-          if ("userId" in event && event.userId !== me) return;
-          if ("threadId" in event && event.threadId && ownerOf(event.threadId) !== me) return;
-          send(frame(event));
+          if (event.topic === "profiles") {
+            if (event.userId === person) send(frame(event));
+            return;
+          }
+          const owner = "userId" in event ? event.userId : "threadId" in event && event.threadId ? ownerOf(event.threadId) : me;
+          if (owner === me) return send(frame(event));
+          if (!owner || !isMine(owner)) return;
+          if (event.topic === "notify") send(frame(event));
+          else if (event.topic === "thread") nudge();
         });
 
         const keepalive = setInterval(() => send("event: ping\ndata: {}\n\n"), KEEPALIVE_MS);
         cleanup = () => {
           clearInterval(keepalive);
+          if (nudging) clearTimeout(nudging);
           unsubscribe();
           try {
             controller.close();

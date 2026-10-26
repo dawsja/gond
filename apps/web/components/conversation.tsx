@@ -1166,7 +1166,7 @@ export function Conversation({ threadId }: { threadId: string }) {
           </Button>
           <h1 className="sr-only">{info?.thread.name ?? "Conversation"}</h1>
           <Button size="xl" onClick={openPill} aria-label={bot ? `${bot.name}'s details` : "Room details"} data-native-avatar="" className="pointer-events-auto min-w-0 shrink gap-2 pl-1.5 text-left">
-            {bot ? <BotAvatar bot={bot} size={32} /> : <RoomAvatar bots={roomBots} size={32} />}
+            {bot ? <BotAvatar bot={bot} size={32} /> : <RoomAvatar bots={roomBots} size={32} space={Boolean(space)} />}
             <span className="flex min-w-0 flex-col">
               <span className="truncate text-[15px] leading-5 font-semibold">{info?.thread.name ?? "…"}</span>
               <span className={cn("truncate text-[11px] leading-3.5 font-normal opacity-70", (busy || boxUpdating) && "shimmer")}>
@@ -1259,7 +1259,7 @@ export function Conversation({ threadId }: { threadId: string }) {
                   <MessageScrollerItem className="m-auto">
                     <Empty>
                       <EmptyHeader>
-                        <EmptyMedia>{bot ? <BotAvatar bot={bot} size={56} greet /> : <RoomAvatar bots={members} size={64} />}</EmptyMedia>
+                        <EmptyMedia>{bot ? <BotAvatar bot={bot} size={56} greet /> : <RoomAvatar bots={members} size={64} space={Boolean(space)} />}</EmptyMedia>
                         <EmptyTitle>{bot ? `${bot.name} is ready.` : "Say what needs doing."}</EmptyTitle>
                         <EmptyDescription>{bot ? "Give it a task with the outcome, the sources, what it must avoid, and what to return." : "Mention a bot with @ to address it. With nobody named, your primary bot answers."}</EmptyDescription>
                       </EmptyHeader>
@@ -1446,6 +1446,7 @@ export function Conversation({ threadId }: { threadId: string }) {
           screens={driving.length && !screen ? driving.map((b) => ({ id: b.id, label: driving.length > 1 ? `${b.name}'s screen` : "Watching the screen" })) : []}
           call={onCall ? { label: callLabel(onCall, bot ?? undefined), since: Date.parse(onCall.info.startedAt), connecting: onCall.phase === "connecting", muted: onCall.muted, speaking: onCall.speaking, color: bot?.color ?? "" } : null}
           primary={Boolean(bot?.primary)}
+          space={Boolean(space)}
           menu={actions}
           composer={{
             text: draft,

@@ -381,6 +381,8 @@ export type Me = {
   accent: Accent;
   style: ReplyStyle;
   emoji: EmojiLevel;
+  /** The profile this is: on `/api/me`, the one open on this device. */
+  profile: ProfileRef;
 };
 
 /** How every bot of a person's talks to them (Settings → Personalization), read into each bot's prompt. */
@@ -417,7 +419,47 @@ export function isAccent(value: unknown): value is Accent {
   return typeof value === "string" && (ACCENTS as readonly string[]).includes(value);
 }
 
-export type UserSummary = Me & { createdAt: string; bots: number };
+export type UserSummary = Omit<Me, "profile"> & { createdAt: string; bots: number; profiles: number };
+
+/**
+ * A person's profiles: each a world of its own (bots, chats, memories, keys, apps, its account on the
+ * computer), opened one at a time on each device. The first is the person's own id: called "Default"
+ * until renamed, and never deleted but with the person.
+ */
+export const MAX_PROFILES = 5;
+export const DEFAULT_PROFILE_LABEL = "Default";
+export const PROFILE_LABEL_MAX = 24;
+
+/** `icon` is one emoji worn in the middle of the profile's mark, or null for its initial. */
+export type ProfileRef = { id: string; label: string; isDefault: boolean; icon: string | null };
+
+/** The emoji a profile's icon is picked from; nothing else is taken. */
+export const PROFILE_ICONS = ["💼", "🏠", "🎮", "📚", "❤️"] as const;
+export type ProfileIcon = (typeof PROFILE_ICONS)[number];
+
+export type Profile = ProfileRef & {
+  accent: Accent;
+  avatar: string | null;
+  /** Its bots finish and ask in silence: no push, no notification service. */
+  muted: boolean;
+  /** Conversations with something new, and cards waiting on the person. */
+  unread: number;
+  needsYou: number;
+};
+
+/** What a profile may be called: a name none of the person's other profiles has. */
+export function profileLabelError(label: string, taken: string[]): string | null {
+  const name = label.trim();
+  if (!name) return "Give the profile a name";
+  if (name.length > PROFILE_LABEL_MAX) return `Keep the name under ${PROFILE_LABEL_MAX + 1} characters`;
+  const lower = name.toLowerCase();
+  if (taken.some((other) => other.toLowerCase() === lower)) return "You already have a profile with that name";
+  return null;
+}
+
+export function isProfileIcon(value: unknown): value is ProfileIcon {
+  return typeof value === "string" && (PROFILE_ICONS as readonly string[]).includes(value);
+}
 
 export const OIDC_PROVIDER_ID = "oidc";
 
@@ -1069,6 +1111,8 @@ export type LiveEvent =
    * to show on its own. Quiet when that conversation is in front of you.
    */
   | { topic: "notify"; userId: string; title: string; body: string; url: string; tag: string; threadId: string }
+  /** One of your other profiles has something new, or your profiles changed: `userId` is the person. */
+  | { topic: "profiles"; userId: string }
   /** Your desktop on the computer: who is driving it, and whether it is up. */
   | { topic: "desktop"; userId: string; desktop: DesktopState }
   /** Something you're showing a bot, or showed it, as it now stands. */

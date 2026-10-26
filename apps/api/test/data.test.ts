@@ -5388,3 +5388,201 @@ describe("calls", () => {
     expect(answerOnCall("m-not-on-a-call", "Hello")).toBe(false);
   });
 });
+
+describe("profiles", () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function asProfile<T extends { use: (...args: any[]) => unknown }>(app: T, person: string, profile: string): T {
+    app.use("*", async (c: { set: (key: string, value: unknown) => void }, next: () => Promise<void>) => {
+      c.set("session", { user: { id: person }, session: { id: `s-${person}` } });
+      c.set("profile", profile);
+      await next();
+    });
+    return app;
+  }
+
+  async function made(person: string, label: string) {
+    const { createProfile } = await import("../src/profiles.ts");
+    const profile = createProfile(person, label);
+    if ("error" in profile) throw new Error(profile.error);
+    return profile;
+  }
+
+  test("a profile is the person's, with their name and none of the admin's role", async () => {
+    await seedUsers(["u-pf-admin", "admin"]);
+    const { listProfiles } = await import("../src/profiles.ts");
+    const { getUser, isAdmin, listUsers } = await import("../src/data/users.ts");
+    const { personOf } = await import("../src/data/profiles.ts");
+    const work = await made("u-pf-admin", "Work");
+    expect(personOf(work.id)).toBe("u-pf-admin");
+    expect(getUser(work.id)!.name).toBe("u-pf-admin");
+    expect(isAdmin(getUser(work.id))).toBe(false);
+    expect(getUser(work.id)!.profile).toEqual({ id: work.id, label: "Work", isDefault: false, icon: null });
+    expect(getUser("u-pf-admin")!.profile).toEqual({ id: "u-pf-admin", label: "Default", isDefault: true, icon: null });
+    const profiles = listProfiles("u-pf-admin");
+    expect(profiles.map((p) => [p.label, p.isDefault])).toEqual([["Default", true], ["Work", false]]);
+    expect(work.accent).not.toBe(profiles[0]!.accent);
+    expect(listUsers().some((u) => u.id === work.id)).toBe(false);
+    expect(listUsers().find((u) => u.id === "u-pf-admin")!.profiles).toBe(2);
+  });
+
+  test("a profile needs a name of its own, and there are five at most", async () => {
+    await seedUsers(["u-pf-names", "user"]);
+    const { createProfile, editProfile, listProfiles } = await import("../src/profiles.ts");
+    await made("u-pf-names", "Work");
+    expect("error" in createProfile("u-pf-names", "work")).toBe(true);
+    expect("error" in createProfile("u-pf-names", "Default")).toBe(true);
+    expect("error" in createProfile("u-pf-names", "  ")).toBe(true);
+    // The default can be renamed, and then its old name is free.
+    expect("error" in editProfile("u-pf-names", { label: "Work" })).toBe(true);
+    expect(editProfile("u-pf-names", { label: "Home" })).toMatchObject({ label: "Home", isDefault: true });
+    expect(listProfiles("u-pf-names")[0]!.label).toBe("Home");
+    for (const label of ["Default", "Side", "Family"]) await made("u-pf-names", label);
+    expect(createProfile("u-pf-names", "Sixth")).toEqual({ error: "You can have up to 5 profiles. Delete one to make another." });
+  });
+
+  test("a profile's icon is one of those on offer, and comes off with null", async () => {
+    await seedUsers(["u-pf-icon", "user"]);
+    const { createProfile, editProfile } = await import("../src/profiles.ts");
+    const { getUser } = await import("../src/data/users.ts");
+    expect(createProfile("u-pf-icon", "Work", "💼")).toMatchObject({ label: "Work", icon: "💼" });
+    for (const icon of ["🇨🇦", "💼💼", "W", ""]) expect(createProfile("u-pf-icon", "Bad", icon)).toEqual({ error: "Pick one of the icons on offer" });
+    expect(editProfile("u-pf-icon", { icon: "🦄" })).toEqual({ error: "Pick one of the icons on offer" });
+    expect(editProfile("u-pf-icon", { icon: "❤️" })).toMatchObject({ icon: "❤️" });
+    expect(getUser("u-pf-icon")!.profile.icon).toBe("❤️");
+    expect(editProfile("u-pf-icon", { icon: null })).toMatchObject({ icon: null, label: "Default" });
+  });
+
+  test("a profile sees none of another profile's bots or conversations", async () => {
+    await seedUsers(["u-pf-iso", "user"]);
+    const { Hono } = await import("hono");
+    const { createBot } = await import("../src/data/bots.ts");
+    const { botsRoutes } = await import("../src/routes/bots.ts");
+    const { threadsRoutes } = await import("../src/routes/threads.ts");
+    const { botInputSchema } = await import("@gond/shared");
+    const work = await made("u-pf-iso", "Work");
+    const sage = createBot(botInputSchema.parse({ name: "Sage" }), "u-pf-iso");
+    const patch = createBot(botInputSchema.parse({ name: "Patch" }), work.id);
+    const as = (profile: string) => asProfile(new Hono(), "u-pf-iso", profile).route("/api", botsRoutes()).route("/api", threadsRoutes());
+    const names = async (profile: string) => ((await (await as(profile).request("/api/bots")).json()) as { bots: { name: string }[] }).bots.map((b) => b.name);
+    expect(await names("u-pf-iso")).toEqual(["Sage"]);
+    expect(await names(work.id)).toEqual(["Patch"]);
+    expect((await as("u-pf-iso").request(`/api/threads/${patch.threadId}/messages`)).status).toBe(404);
+    expect((await as(work.id).request(`/api/threads/${sage.threadId}/messages`)).status).toBe(404);
+    expect((await as(work.id).request(`/api/bots/${sage.id}`, { method: "PATCH", body: JSON.stringify({ name: "Mine" }) })).status).toBe(404);
+  });
+
+  test("a device opens only its own person's profiles, and falls back when one goes", async () => {
+    await seedUsers(["u-pf-open", "user"], ["u-pf-stranger", "user"]);
+    const { Hono } = await import("hono");
+    const { profilesRoutes } = await import("../src/routes/profiles.ts");
+    const { activeProfile, profileOf, setActiveProfile } = await import("../src/data/profiles.ts");
+    const { deleteProfile } = await import("../src/profiles.ts");
+    const work = await made("u-pf-open", "Work");
+    const theirs = await made("u-pf-stranger", "Theirs");
+    const app = asProfile(new Hono(), "u-pf-open", "u-pf-open").route("/api", profilesRoutes());
+    expect((await app.request(`/api/profiles/${theirs.id}/open`, { method: "POST" })).status).toBe(404);
+    expect((await app.request(`/api/profiles/${theirs.id}`, { method: "DELETE" })).status).toBe(404);
+    expect((await app.request("/api/profiles/u-pf-open", { method: "DELETE" })).status).toBe(400);
+    expect((await app.request(`/api/profiles/${work.id}/open`, { method: "POST" })).status).toBe(200);
+    expect(activeProfile("s-u-pf-open", "u-pf-open")).toBe(work.id);
+    // Another person's session can never land on it, whatever its row says.
+    setActiveProfile("s-u-pf-stranger", profileOf(work.id)!);
+    expect(activeProfile("s-u-pf-stranger", "u-pf-stranger")).toBe("u-pf-stranger");
+    await deleteProfile(work.id);
+    expect(activeProfile("s-u-pf-open", "u-pf-open")).toBe("u-pf-open");
+  });
+
+  test("deleting a profile leaves no row of it anywhere", async () => {
+    await seedUsers(["u-pf-gone", "user"]);
+    const { ensureDatabase } = await import("../src/db/init.ts");
+    const { createBot } = await import("../src/data/bots.ts");
+    const { postMessage, storeAttachment } = await import("../src/data/threads.ts");
+    const { createApproval } = await import("../src/data/approvals.ts");
+    const { createRoom } = await import("../src/data/threads.ts");
+    const { deleteProfile } = await import("../src/profiles.ts");
+    const { profileOf } = await import("../src/data/profiles.ts");
+    const { botInputSchema } = await import("@gond/shared");
+    const db = ensureDatabase();
+    const work = await made("u-pf-gone", "Work");
+    const kept = createBot(botInputSchema.parse({ name: "Stays" }), "u-pf-gone");
+    const bot = createBot(botInputSchema.parse({ name: "Goes" }), work.id);
+    const other = createBot(botInputSchema.parse({ name: "Also goes" }), work.id);
+    const room = createRoom("Desk", [bot.id, other.id], work.id);
+    const file = storeAttachment({ name: "note.txt", mediaType: "text/plain", data: new TextEncoder().encode("hi") });
+    postMessage({ threadId: bot.threadId, author: "you", body: "here", attachments: [file] });
+    postMessage({ threadId: room.id, author: bot.id, body: "done", answered: true });
+    createApproval({ botId: bot.id, threadId: bot.threadId, tool: "Bash", summary: "ls", input: {} });
+    db.query("INSERT INTO gond_peer_checks (user_id, peer_key, checked_at) VALUES (?, ?, ?)").run(work.id, "k".repeat(64), "2026-01-01T00:00:00Z");
+    const bots = [bot.id, other.id];
+    const threads = [bot.threadId, other.threadId, room.id];
+
+    await deleteProfile(work.id);
+
+    expect(profileOf(work.id)).toBeNull();
+    expect(db.query('SELECT 1 FROM "user" WHERE id = ?').get(work.id)).toBeNull();
+    expect(db.query("SELECT 1 FROM gond_attachments WHERE id = ?").get(file.id)).toBeNull();
+    const tables = (db.query("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'gond\\_%' ESCAPE '\\' AND name NOT LIKE '%fts%'").all() as { name: string }[]).map((t) => t.name);
+    const left: string[] = [];
+    for (const table of tables) {
+      const columns = (db.query(`PRAGMA table_info(${table})`).all() as { name: string }[]).map((c) => c.name);
+      const look = (column: string, values: string[]) => {
+        if (!columns.includes(column)) return;
+        const n = (db.query(`SELECT COUNT(*) AS n FROM ${table} WHERE ${column} IN (${values.map(() => "?").join(", ")})`).get(...values) as { n: number }).n;
+        if (n > 0) left.push(`${table}.${column}`);
+      };
+      for (const column of ["user_id", "person_id", "profile_id"]) look(column, [work.id]);
+      for (const column of ["bot_id", "from_bot_id", "to_bot_id"]) look(column, bots);
+      look("thread_id", threads);
+    }
+    expect(left).toEqual([]);
+    expect(db.query("SELECT 1 FROM gond_bots WHERE id = ?").get(kept.id)).not.toBeNull();
+  });
+
+  test("the time zone is the person's, and moves every profile's routines", async () => {
+    await seedUsers(["u-pf-tz", "user"]);
+    const { userTimezone, setUserTimezone } = await import("../src/data/prefs.ts");
+    const { createBot } = await import("../src/data/bots.ts");
+    const { createRoutine, getRoutine } = await import("../src/data/routines.ts");
+    const { botInputSchema } = await import("@gond/shared");
+    const work = await made("u-pf-tz", "Work");
+    const home = createBot(botInputSchema.parse({ name: "Home" }), "u-pf-tz");
+    const routine = createRoutine(home.id, { name: "Morning", cron: "0 8 * * *", prompt: "Say hi", enabled: true, timezone: "UTC" });
+    expect(setUserTimezone(work.id, "Europe/Paris")).toBe(true);
+    expect(userTimezone("u-pf-tz")).toBe("Europe/Paris");
+    expect(userTimezone(work.id)).toBe("Europe/Paris");
+    expect(getRoutine(routine.id)!.timezone).toBe("Europe/Paris");
+  });
+
+  test("a notice says which profile it is from and opens in it; a muted profile stays quiet", async () => {
+    await seedUsers(["u-pf-push", "user"], ["u-pf-solo", "user"]);
+    const { fromProfile, sendPush } = await import("../src/push.ts");
+    const { setProfileMuted } = await import("../src/data/profiles.ts");
+    const { subscribe } = await import("../src/events.ts");
+    const payload = { title: "Patch", body: "Done", url: "/app/t/t-1", tag: "t-1", threadId: "t-1" };
+    expect(fromProfile(payload, "u-pf-solo")).toEqual(payload);
+    const work = await made("u-pf-push", "Work");
+    expect(fromProfile(payload, work.id)).toMatchObject({ title: "Work · Patch", url: `/app/t/t-1?profile=${work.id}` });
+    expect(fromProfile(payload, "u-pf-push").title).toBe("Default · Patch");
+    setProfileMuted(work.id, true);
+    const heard: unknown[] = [];
+    const stop = subscribe((event) => {
+      if (event.topic === "notify") heard.push(event);
+    });
+    expect(await sendPush(payload, work.id)).toBe(0);
+    stop();
+    expect(heard).toEqual([]);
+  });
+
+  test("a device's notifications are the person's, whichever profile turned them on", async () => {
+    await seedUsers(["u-pf-dev", "user"]);
+    const { Hono } = await import("hono");
+    const { pushRoutes } = await import("../src/routes/push.ts");
+    const { listSubscriptions } = await import("../src/data/push.ts");
+    const work = await made("u-pf-dev", "Work");
+    const app = asProfile(new Hono(), "u-pf-dev", work.id).route("/api", pushRoutes());
+    const res = await app.request("/api/push/subscriptions", { method: "POST", body: JSON.stringify({ endpoint: "https://push.example/pf-dev", keys: { p256dh: "p", auth: "a" } }) });
+    expect(res.status).toBe(201);
+    expect(listSubscriptions("u-pf-dev").map((s) => s.endpoint)).toEqual(["https://push.example/pf-dev"]);
+    expect(listSubscriptions(work.id)).toEqual([]);
+  });
+});

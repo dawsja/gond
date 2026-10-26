@@ -5,6 +5,7 @@ import path from "node:path";
 import { ensureDataDir } from "./config.ts";
 import { deleteProvider, endPlanSession, planSession, savePlanSession, type PlanSession } from "./data/providers.ts";
 import { chatGptClient, setChatGptClient } from "./data/prefs.ts";
+import { personOf } from "./data/profiles.ts";
 
 /*
  * Sign in with ChatGPT, the open-source flow (developers.openai.com/siwc):
@@ -151,7 +152,7 @@ const text = (value: unknown) => (typeof value === "string" && value.trim() ? va
 export async function completeChatGptLogin(query: { code?: string | null; state?: string | null; error?: string | null; errorDescription?: string | null; clientId?: string | null }, userId: string): Promise<{ ok: boolean; reason?: string }> {
   const login = query.state ? logins().get(query.state) : undefined;
   if (!login) return { ok: false, reason: "This sign-in link is stale. Start again from Settings → AI." };
-  if (login.userId !== userId) return { ok: false, reason: "That sign-in was started by someone else." };
+  if (login.userId !== userId) return { ok: false, reason: personOf(login.userId) === personOf(userId) ? "That sign-in was started in another profile. Switch back to it and start again." : "That sign-in was started by someone else." };
   logins().delete(query.state!);
   if (query.error || !query.code) return { ok: false, reason: query.errorDescription || query.error || "The sign-in didn't complete." };
 

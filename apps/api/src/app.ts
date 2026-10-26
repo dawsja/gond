@@ -1,11 +1,12 @@
 import { isAccent, isEmojiLevel, isReplyStyle, type SignIns } from "@gond/shared";
 import { Hono } from "hono";
 import type { Session } from "./auth.ts";
-import { requireAdmin, userId } from "./access.ts";
+import { personId, requireAdmin, userId } from "./access.ts";
 import { countAccounts, getAuth, getSession, isSameOrigin, registerAccount } from "./auth.ts";
 import { AVATAR_MAX_BYTES, clearAvatar, getAvatar, getUser, setAvatar, signInsOf } from "./data/users.ts";
 import { getOidcSettings, oidcReady } from "./data/oidc.ts";
 import { setUserAccent, setUserTalk, userTalk } from "./data/prefs.ts";
+import { activeProfile } from "./data/profiles.ts";
 import { approvalsRoutes } from "./routes/approvals.ts";
 import { botsRoutes } from "./routes/bots.ts";
 import { boxRoutes } from "./routes/box.ts";
@@ -18,6 +19,7 @@ import { llmProxyRoutes, providerRoutes } from "./routes/llm.ts";
 import { mcpHandBack, mcpProxyRoutes, mcpRoutes } from "./routes/mcp.ts";
 import { mobileSignInRoutes } from "./routes/mobile-sign-in.ts";
 import { notifyRoutes } from "./routes/notify.ts";
+import { profilesRoutes } from "./routes/profiles.ts";
 import { pushRoutes } from "./routes/push.ts";
 import { secretsRoutes } from "./routes/secrets.ts";
 import { skillsRoutes } from "./routes/skills.ts";
@@ -30,7 +32,7 @@ import { voiceRoutes } from "./routes/voice.ts";
 import { callsRoutes } from "./routes/calls.ts";
 import { usageRoutes } from "./routes/usage.ts";
 
-export type Env = { Variables: { session: Session } };
+export type Env = { Variables: { session: Session; profile?: string } };
 
 export function createApp() {
   const app = new Hono<Env>();
@@ -69,6 +71,7 @@ export function createApp() {
     const session = await getSession(c.req.raw.headers);
     if (!session) return c.json({ error: "Sign in to continue" }, 401);
     c.set("session", session);
+    c.set("profile", activeProfile(session.session.id, session.user.id));
     await next();
   });
 
@@ -77,10 +80,11 @@ export function createApp() {
   }
   app.on(["POST", "PATCH", "PUT", "DELETE"], ["/api/settings"], requireAdmin);
 
+  // The person, as the open profile shows them: its picture, colour and talk, the person's own role.
   app.get("/api/me", (c) => {
-    const session = c.get("session");
-    const user = getUser(session.user.id);
-    return user ? c.json({ user }) : c.json({ error: "Sign in to continue" }, 401);
+    const person = getUser(personId(c));
+    const user = getUser(userId(c));
+    return person && user ? c.json({ user: { ...user, id: person.id, role: person.role } }) : c.json({ error: "Sign in to continue" }, 401);
   });
 
   app.get("/api/me/avatar", (c) => {
@@ -110,7 +114,7 @@ export function createApp() {
   });
 
   app.get("/api/me/sign-ins", (c) => {
-    const has = signInsOf(userId(c));
+    const has = signInsOf(personId(c));
     const oidc = oidcReady() ? { name: getOidcSettings().name, linked: has.oidc } : null;
     return c.json({ password: has.password, oidc } satisfies SignIns);
   });
@@ -132,6 +136,7 @@ export function createApp() {
     return c.json(next);
   });
 
+  app.route("/api", profilesRoutes());
   app.route("/api", botsRoutes());
   app.route("/api", threadsRoutes());
   app.route("/api", approvalsRoutes());

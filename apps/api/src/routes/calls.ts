@@ -2,6 +2,7 @@ import type { Server, ServerWebSocket, WebSocketHandler } from "bun";
 import { Hono } from "hono";
 import type { Env } from "../app.ts";
 import { ownThread, userId } from "../access.ts";
+import { activeProfile } from "../data/profiles.ts";
 import { getSession, trustedOriginsFor } from "../auth.ts";
 import { callOf, endCall, listen, muteCall, ownCall, sendAudio, startCall } from "../calls.ts";
 
@@ -95,8 +96,10 @@ const SOCKET_PATH = /^\/api\/calls\/([\w-]{1,80})\/socket$/;
 
 export type CallSocketData = { callId: string; stop: () => void };
 
+// The socket is the open profile's, as every route is: a call belongs to the profile's primary bot.
 async function signedInUser(headers: Headers): Promise<string | null> {
-  return (await getSession(headers))?.user.id ?? null;
+  const session = await getSession(headers);
+  return session ? activeProfile(session.session.id, session.user.id) : null;
 }
 
 /** A proxy may say the socket's scheme (ws, wss) where the page's origin has http or https. */

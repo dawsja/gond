@@ -69,7 +69,7 @@ export function UsersCard() {
                     {user.id === me.id ? <span className="text-[12px] text-muted-foreground">(you)</span> : null}
                   </span>
                   <span className="block truncate text-[12px] text-muted-foreground">
-                    {user.provider === "local" ? user.name : user.email} · {user.bots} {user.bots === 1 ? "bot" : "bots"} · since {new Date(user.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+                    {user.provider === "local" ? user.name : user.email} · {user.bots} {user.bots === 1 ? "bot" : "bots"}{user.profiles > 1 ? ` · ${user.profiles} profiles` : ""} · since {new Date(user.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
                   </span>
                 </span>
                 {user.role !== "admin" ? (
@@ -89,7 +89,7 @@ export function UsersCard() {
         open={Boolean(removing)}
         onOpenChange={(open) => !open && setRemoving(null)}
         title={`Remove ${shownRemoving?.name ?? ""}?`}
-        description={`Their ${shownRemoving?.bots ?? 0} ${shownRemoving?.bots === 1 ? "bot" : "bots"}, every conversation and the bots' files on the computer are deleted. This can't be undone.`}
+        description={`Their ${shownRemoving?.bots ?? 0} ${shownRemoving?.bots === 1 ? "bot" : "bots"}, every conversation and the bots' files on the computer are deleted${(shownRemoving?.profiles ?? 1) > 1 ? `, and so is everything in their other ${(shownRemoving?.profiles ?? 1) - 1 === 1 ? "profile" : "profiles"}` : ""}. This can't be undone.`}
         action="Remove"
         cancel="Keep them"
         onConfirm={async () => removing && (await remove(removing))}

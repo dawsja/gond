@@ -97,7 +97,9 @@ export async function ensureBoxAccount(config: BoxConfig): Promise<BoxAccount> {
   if (!config.user) throw new BoxError("No person to make an account for", 400);
   const user = getUser(config.user);
   if (!user) throw new BoxError("No such person", 404);
-  const { account } = await call<{ ok: true; account: BoxAccount }>({ ...config, user: null }, "POST", "/accounts", { id: user.id, name: user.name, email: user.email, admin: isAdmin(user) }, 30_000);
+  // A profile's account is named for the person and the profile, so its home reads as whose it is.
+  const name = user.profile.isDefault ? user.name : `${user.name} ${user.profile.label}`;
+  const { account } = await call<{ ok: true; account: BoxAccount }>({ ...config, user: null }, "POST", "/accounts", { id: user.id, name, email: user.email, admin: isAdmin(user) }, 30_000);
   knownAccounts.set(user.id, account);
   return account;
 }

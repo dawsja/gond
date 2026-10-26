@@ -4,6 +4,7 @@ import { appUrl, env } from "./config.ts";
 import { getMcpOAuth, getMcpServer, mcpServerOwner, setMcpAuthStatus, setMcpOAuth, type McpOAuthState } from "./data/mcp.ts";
 import { injectSecrets } from "./data/secrets.ts";
 import { postMessage } from "./data/threads.ts";
+import { personOf } from "./data/profiles.ts";
 
 /*
  * Sign-in for HTTP MCP servers, the way the MCP authorization spec lays it
@@ -207,7 +208,8 @@ export async function finishMcpLogin(nonce: string, code: string): Promise<strin
 
 export async function completeMcpLogin(query: { code?: string | null; state?: string | null; error?: string | null; errorDescription?: string | null }, userId: string): Promise<{ ok: boolean; name?: string; reason?: string; threadId: string | null }> {
   const login = query.state ? logins().get(query.state) : undefined;
-  if (login && mcpServerOwner(login.serverId) !== userId) return { ok: false, reason: "That sign-in was started by someone else.", threadId: null };
+  const owner = login ? mcpServerOwner(login.serverId) : null;
+  if (login && owner !== userId) return { ok: false, reason: owner && personOf(owner) === personOf(userId) ? "That sign-in was started in another profile. Switch back to it and start again." : "That sign-in was started by someone else.", threadId: null };
   const threadId = query.state ? mcpLoginThread(query.state) : null;
   const failed = (reason: string) => {
     if (threadId) postMessage({ threadId, author: "system", kind: "event", body: `The sign-in didn't complete: ${reason}`, answered: true });

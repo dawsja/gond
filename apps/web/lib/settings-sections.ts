@@ -1,5 +1,5 @@
 import type { UserRole } from "@gond/shared";
-import { Bell, Gauge, Globe, Link2, Blocks, BrainCircuit, Info, KeyRound, LogIn, MessageCircleHeart, Mic, Monitor, Palette, Server, Sparkles, UserRound } from "lucide-react";
+import { Bell, Gauge, Globe, Layers, Link2, Blocks, BrainCircuit, Info, KeyRound, LogIn, MessageCircleHeart, Mic, Monitor, Palette, Server, Sparkles, UserRound } from "lucide-react";
 
 /** The headings Settings' list is grouped under; a section with no group sits on its own at the end. */
 export const SETTINGS_GROUPS = [
@@ -12,6 +12,7 @@ export type SettingsGroup = (typeof SETTINGS_GROUPS)[number]["id"];
 
 export const SETTINGS_SECTIONS = [
   { id: "account", group: "you", label: "Account", blurb: "Your picture, your password, and exporting your chats.", icon: UserRound, admin: false },
+  { id: "profiles", group: "you", label: "Profiles", blurb: "Separate worlds, like Work and home: each with its own bots, chats, keys and computer.", icon: Layers, admin: false },
   { id: "notifications", group: "you", label: "Notifications", blurb: "Where Gond tells you a bot finished or needs you: this browser or app, and a service like ntfy or Pushover.", icon: Bell, admin: false },
   { id: "appearance", group: "you", label: "Appearance", blurb: "Light or dark, and the color of your chats.", icon: Palette, admin: false },
   { id: "personalization", group: "you", label: "Personalization", blurb: "How your bots talk to you: their style, and how many emoji.", icon: MessageCircleHeart, admin: false },

@@ -905,6 +905,27 @@ const MIGRATIONS: Array<string | ((db: Database) => void)> = [
     PRIMARY KEY (user_id, peer_key)
   );
   `,
+  // A person's profiles: each one but the default is a "user" row of its own that nobody signs in to,
+  // so everything keyed by user is the profile's. The default is the person's own id. Which one a
+  // session has open is kept per session, so each device stays where it was.
+  `
+  CREATE TABLE gond_profiles (
+    id TEXT PRIMARY KEY,
+    person_id TEXT NOT NULL,
+    label TEXT NOT NULL,
+    muted INTEGER NOT NULL DEFAULT 0,
+    last_active_at TEXT,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX gond_profiles_person ON gond_profiles (person_id);
+  CREATE TABLE gond_session_profiles (
+    session_id TEXT PRIMARY KEY,
+    profile_id TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  `,
+  // One emoji a profile may wear in the middle of its mark.
+  `ALTER TABLE gond_profiles ADD COLUMN icon TEXT;`,
 ];
 
 /**

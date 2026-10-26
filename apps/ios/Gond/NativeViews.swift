@@ -347,7 +347,7 @@ struct ChromeView: View {
 
                 Button { ui.send(["type": "details"]) } label: {
                     HStack(spacing: 8) {
-                        FacesView(faces: ui.faces, more: state.more, primary: state.primary)
+                        FacesView(faces: ui.faces, more: state.more, primary: state.primary, space: state.space ?? false)
                             .frame(width: 32, height: 32)
                         VStack(alignment: .leading, spacing: 0) {
                             Text(state.title)
@@ -720,11 +720,12 @@ private struct Subtitle: View {
     }
 }
 
-/// A bot's face, or a room's two on the diagonal with a +N for the rest, and the primary bot's crown.
+/// A bot's face, or a room's two on the diagonal with a +N for the rest, the primary bot's crown, and a space's globe on the top corner as on the page.
 struct FacesView: View {
     let faces: [UIImage]
     let more: Int
     let primary: Bool
+    var space = false
 
     var body: some View {
         GeometryReader { proxy in
@@ -755,6 +756,14 @@ struct FacesView: View {
                         .frame(width: size * 0.42, height: size * 0.42)
                         .background(Circle().fill(Color(hex: 0xF2C14E)))
                         .offset(x: size * 0.6, y: size * 0.6)
+                }
+                if space {
+                    Image(systemName: "globe")
+                        .font(.system(size: size * 0.26, weight: .semibold))
+                        .foregroundStyle(Theme.background)
+                        .frame(width: size * 0.42, height: size * 0.42)
+                        .background(Circle().fill(Theme.foreground))
+                        .offset(x: size * 0.64, y: -size * 0.06)
                 }
             }
         }

@@ -102,6 +102,8 @@ export type ChromeState = {
   faces: string[];
   more: number;
   primary: boolean;
+  /** The conversation is a space, so the faces wear its globe. */
+  space: boolean;
   tint: string;
   menu: NativeMenuItem[][];
   /** Something of the page's is open over the conversation (a sheet, a dialog, a menu), so the chrome steps aside. */

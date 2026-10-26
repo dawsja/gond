@@ -23,7 +23,7 @@ function Party({ thread, bot, size = 22 }: { thread: Thread; bot: Bot | undefine
   const { bots } = useStore();
   return (
     <span className="flex min-w-0 items-center gap-1.5">
-      {bot ? <BotAvatar bot={bot} size={size} /> : <RoomAvatar bots={roomMembers(thread, bots)} size={size} />}
+      {bot ? <BotAvatar bot={bot} size={size} /> : <RoomAvatar bots={roomMembers(thread, bots)} size={size} space={Boolean(thread.space)} />}
       <span className="truncate" title={bot?.name ?? thread.name}>{bot?.name ?? thread.name}</span>
     </span>
   );
