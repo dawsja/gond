@@ -15,6 +15,8 @@ import { eventsRoutes } from "./routes/events.ts";
 import { exportsRoutes } from "./routes/exports.ts";
 import { teachingsRoutes } from "./routes/teachings.ts";
 import { spacesRoutes } from "./routes/spaces.ts";
+import { householdsRoutes, refuseForMembers } from "./routes/households.ts";
+import { meHousehold } from "./households.ts";
 import { llmProxyRoutes, providerRoutes } from "./routes/llm.ts";
 import { mcpHandBack, mcpProxyRoutes, mcpRoutes } from "./routes/mcp.ts";
 import { mobileSignInRoutes } from "./routes/mobile-sign-in.ts";
@@ -82,12 +84,14 @@ export function createApp() {
     app.use(path, requireAdmin);
   }
   app.on(["POST", "PATCH", "PUT", "DELETE"], ["/api/settings"], requireAdmin);
+  // A household member runs on the household's AI: nothing they do changes or signs in to one of their own.
+  app.on(["POST", "PATCH", "PUT", "DELETE"], ["/api/ai", "/api/box/engines/*", "/api/providers/*"], refuseForMembers);
 
   // The person, as the open profile shows them: its picture, colour and talk, the person's own role.
   app.get("/api/me", (c) => {
     const person = getUser(personId(c));
     const user = getUser(userId(c));
-    return person && user ? c.json({ user: { ...user, id: person.id, role: person.role } }) : c.json({ error: "Sign in to continue" }, 401);
+    return person && user ? c.json({ user: { ...user, id: person.id, role: person.role, household: meHousehold(person.id) } }) : c.json({ error: "Sign in to continue" }, 401);
   });
 
   app.get("/api/me/avatar", (c) => {
@@ -151,6 +155,7 @@ export function createApp() {
   app.route("/api", exportsRoutes());
   app.route("/api", teachingsRoutes());
   app.route("/api", spacesRoutes());
+  app.route("/api", householdsRoutes());
   app.route("/api", skillsRoutes());
   app.route("/api", mcpRoutes());
   app.route("/api", secretsRoutes());

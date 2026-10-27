@@ -28,7 +28,9 @@ const INVITE_ITEMS = [
   { value: "everyone", label: "Everyone on this Gond" },
   { value: "admin", label: "Only the admin" },
 ];
-const LEVEL_ITEMS = SPACE_LEVELS.map((value) => ({ value, label: SPACE_LEVEL_LABELS[value].label }));
+// Always allow is chosen for one bot in one space, never as what every bot joins on.
+const DEFAULT_LEVELS = SPACE_LEVELS.filter((level) => level !== "full");
+const LEVEL_ITEMS = DEFAULT_LEVELS.map((value) => ({ value, label: SPACE_LEVEL_LABELS[value].label }));
 
 const STATE_LABELS: Record<Federation["state"], { label: string; tone: "ok" | "warn" | "neutral" }> = {
   ready: { label: "Connected", tone: "ok" },
@@ -291,7 +293,7 @@ export function SpaceDefaultsCard() {
               </SelectTrigger>
               <SelectContent>
                 <SelectGroup>
-                  {SPACE_LEVELS.map((level) => (
+                  {DEFAULT_LEVELS.map((level) => (
                     <SelectItem key={level} value={level}>
                       {SPACE_LEVEL_LABELS[level].label}
                     </SelectItem>

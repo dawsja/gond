@@ -84,7 +84,7 @@ function SelectContent({
           data-slot="select-content"
           data-align-trigger={alignItemWithTrigger}
           className={cn(
-            "relative isolate z-[100] max-h-[min(var(--available-height),24rem)] w-max max-w-[min(var(--available-width),28rem)] min-w-(--anchor-width) origin-(--transform-origin) overflow-x-hidden overflow-y-auto overscroll-contain rounded-2xl border border-primary-edge bg-popover text-popover-foreground shadow-subtle-3 duration-100 outline-none pointer-coarse:rounded-3xl pointer-coarse:shadow-subtle-3 data-[align-trigger=true]:animate-none data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+            "relative isolate z-[100] max-h-[min(var(--available-height),24rem)] w-max max-w-[min(var(--available-width),28rem)] min-w-(--anchor-width) pointer-coarse:w-(--anchor-width) pointer-coarse:max-w-(--anchor-width) origin-(--transform-origin) overflow-x-hidden overflow-y-auto overscroll-contain rounded-2xl border border-primary-edge bg-popover text-popover-foreground shadow-subtle-3 duration-100 outline-none pointer-coarse:rounded-3xl pointer-coarse:shadow-subtle-3 data-[align-trigger=true]:animate-none data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
             className
           )}
           {...props}
@@ -125,7 +125,7 @@ function SelectItem({
       )}
       {...props}
     >
-      <SelectPrimitive.ItemText className="flex min-w-0 flex-1 gap-2 truncate">
+      <SelectPrimitive.ItemText className="flex min-w-0 flex-1 gap-2 truncate pointer-coarse:whitespace-normal">
         {children}
       </SelectPrimitive.ItemText>
       <SelectPrimitive.ItemIndicator

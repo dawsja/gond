@@ -183,6 +183,9 @@ export function deleteBot(id: string): Bot | null {
     db.query("DELETE FROM gond_routines WHERE bot_id = ?").run(id);
     db.query("DELETE FROM gond_follow_ups WHERE bot_id = ?").run(id);
     db.query("DELETE FROM gond_bot_avatars WHERE bot_id = ?").run(id);
+    db.query("DELETE FROM gond_household_shares WHERE bot_id = ?").run(id);
+    db.query("DELETE FROM gond_household_errands WHERE bot_id = ? OR from_bot_id = ?").run(id, id);
+    db.query("DELETE FROM gond_threads WHERE errand_bot = ?").run(id);
     db.query("DELETE FROM gond_bots WHERE id = ?").run(id);
     keepOnePrimary(db, bot.userId);
   });

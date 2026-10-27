@@ -23,7 +23,7 @@ export async function requestSecret(input: { bot: Bot; threadId: string; name: s
   const line = target === "login" ? `Sign in to ${input.site}: ${input.reason}` : target === "card" ? `Pay on ${input.site}${input.total ? `, ${input.total}` : ""}: ${input.reason}` : `${input.name}: ${input.reason}`;
   postMessage({ threadId: input.threadId, author: input.bot.id, kind: "secret", body: line, approvalId: request.id, answered: true });
   const title = target === "login" ? `${input.bot.name} needs you to sign in` : target === "card" ? `${input.bot.name} needs a card to pay` : `${input.bot.name} needs a secret`;
-  if (input.bot.notify) void sendPush({ title, body: line.slice(0, 140), url: `/app/t/${input.threadId}`, tag: input.threadId, threadId: input.threadId }, input.bot.userId);
+  if (input.bot.notify) void sendPush({ title, body: line.slice(0, 140), url: `/app/t/${input.threadId}`, tag: input.threadId, threadId: input.threadId, botId: input.bot.id }, input.bot.userId);
   return new Promise((resolve) => {
     const timer = setTimeout(() => {
       pending().delete(request.id);

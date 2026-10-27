@@ -4,6 +4,7 @@ import { failed } from "@/components/failed";
 import { LoadFailed } from "@/components/load-failed";
 import { APPROVAL_LEVEL_LABELS, screenOf, type Bot, type Routine, type Thread } from "@gond/shared";
 import { Clock } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BotAvatar } from "@/components/bot-avatar";
 import { BotFiles } from "@/components/bot-files";
@@ -22,6 +23,7 @@ import { spaceSubtitle } from "@/lib/spaces";
 import { api } from "@/lib/api";
 import { describeRoutine } from "@/lib/schedule";
 import { cn } from "@/lib/utils";
+import { settingsHref } from "@/lib/settings-sections";
 
 /** The bot's screen in the panel: live while a bot or the person uses it and for a while after, asleep otherwise. */
 function ComputerSlot({ thread, bot, screen }: { thread: Thread; bot: Bot; screen?: ScreenProps }) {
@@ -98,9 +100,20 @@ export function RightPanelContent({ thread, bot, screen }: { thread: Thread; bot
               </li>
             ))}
           </ul>
-          <Button variant="outline" size="sm" onClick={() => openShellDialog({ kind: "edit-room", threadId: thread.id })} className="mt-3 w-full">
-            {thread.space ? "Edit your bots here" : "Edit room"}
-          </Button>
+          {thread.errand ? (
+            <>
+              <p className="mt-3 text-[12.5px] text-muted-foreground">
+                {thread.errand.memberName}&apos;s bots ask {members[0]?.name ?? "this bot"} for things here. What they may ask is set in Settings → Household.
+              </p>
+              <Button variant="outline" size="sm" render={<Link href={settingsHref("household")} />} className="mt-3 w-full">
+                Household settings
+              </Button>
+            </>
+          ) : (
+            <Button variant="outline" size="sm" onClick={() => openShellDialog({ kind: "edit-room", threadId: thread.id })} className="mt-3 w-full">
+              {thread.space ? "Edit your bots here" : "Edit room"}
+            </Button>
+          )}
         </section>
         <SpaceSection thread={thread} />
         {drivers.map((driver) => (

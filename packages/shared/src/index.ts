@@ -103,9 +103,13 @@ export type Thread = {
   noticed: { watch: string; body: string; at: string } | null;
   /** A room shared with people on other Gonds: who is there from where. Null for any other conversation. */
   space: ThreadSpace | null;
+  /** Where one of the head's shared bots does a household member's errands; null for any other conversation. */
+  errand?: ThreadErrand | null;
   createdAt: string;
   updatedAt: string;
 };
+
+export type ThreadErrand = { botId: string; memberId: string; memberName: string };
 
 export type MessageAuthor = "you" | "system" | "routine" | string;
 
@@ -390,6 +394,8 @@ export type Me = {
   emoji: EmojiLevel;
   /** The profile this is: on `/api/me`, the one open on this device. */
   profile: ProfileRef;
+  /** The household the person heads, is in, or is asked to join. */
+  household?: MeHousehold | null;
 };
 
 /** How every bot of a person's talks to them (Settings → Personalization), read into each bot's prompt. */
@@ -1028,14 +1034,19 @@ export function isRemoteAuthor(author: string): boolean {
 }
 
 /** What one of your bots may do for a line written on another Gond. */
-export const SPACE_LEVELS = ["talk", "look", "act"] as const;
+export const SPACE_LEVELS = ["talk", "look", "act", "full"] as const;
 export type SpaceLevel = (typeof SPACE_LEVELS)[number];
 
 export const SPACE_LEVEL_LABELS: Record<SpaceLevel, { label: string; blurb: string }> = {
   talk: { label: "Talk only", blurb: "Answers from what's said in the space. No web, no tools." },
   look: { label: "Look things up", blurb: "Can search the web and read pages. Never your accounts, files or the computer." },
   act: { label: "Do things, with my OK", blurb: "What they ask comes to you as a card first. On a yes, your bot does it with its tools." },
+  full: { label: "Always allow", blurb: "Does what they ask with its tools and your sign-ins, with no card to you first. An email that goes out and a card payment still ask." },
 };
+
+export function isSpaceLevel(value: unknown): value is SpaceLevel {
+  return typeof value === "string" && (SPACE_LEVELS as readonly string[]).includes(value);
+}
 
 /** Your bot's rules in one space, which only you see and set. */
 /**
@@ -1128,7 +1139,9 @@ export type LiveEvent =
    * push notification, for a client without Web Push (the Android app)
    * to show on its own. Quiet when that conversation is in front of you.
    */
-  | { topic: "notify"; userId: string; title: string; body: string; url: string; tag: string; threadId: string }
+  | { topic: "notify"; userId: string; title: string; body: string; url: string; tag: string; threadId: string; botId?: string | null }
+  /** Your household changed: someone joined or left, a bot was shared, its AI changed. */
+  | { topic: "household"; userId: string }
   /** One of your other profiles has something new, or your profiles changed: `userId` is the person. */
   | { topic: "profiles"; userId: string }
   /** Your desktop on the computer: who is driving it, and whether it is up. */
@@ -1807,6 +1820,60 @@ export type PushSubscriptionInput = {
   keys: { p256dh: string; auth: string };
 };
 
+/**
+ * A household: the admin as its head, people from the OIDC provider as members, who run on the
+ * household's API keys and whose bots can ask the head's shared bots for help.
+ */
+export type HouseholdRole = "head" | "member" | "asked";
+
+/** The AI a household's members run on: an API on one of the head's keys, or Claude Code on an Anthropic key. Never a plan. */
+export type MembersAi = { engine: "api" | "claude"; provider: KeyProviderKind; model: string };
+
+export type HouseholdMember = { id: string; name: string; email: string; image: string | null; status: "asked" | "joined"; tokens: number };
+
+/** One of the head's bots as a household's members' bots reach it, and what each member's bots may have it do. */
+export type SharedBot = { bot: Pick<Bot, "id" | "name" | "title" | "color" | "expression" | "shape" | "avatar">; levels: { memberId: string; level: SpaceLevel; memory: boolean }[] };
+
+export type Household = {
+  id: string;
+  name: string;
+  head: { id: string; name: string };
+  role: HouseholdRole;
+  /** The head sees everyone; a member sees the head and themselves. */
+  members: HouseholdMember[];
+  ai: MembersAi;
+  /** Whether the key the members' AI names is saved. */
+  aiReady: boolean;
+  /** For the head, every share; for a member, the bots shared with them. */
+  shared: SharedBot[];
+};
+
+/** What the admin still needs before Household can be turned on. */
+export type HouseholdSetup = { oidc: string | null; linked: boolean; keys: KeyProviderKind[] };
+
+/** The household as `/api/me` tells the web: enough for Settings and a join card. */
+export type MeHousehold = { id: string; name: string; role: HouseholdRole; headName: string };
+
+export const HOUSEHOLD_NAME_MAX = 60;
+
+/** What one browser or app is told about: every bot but the muted ones, and `other` for notices about no bot (exports, spaces). */
+export type DeviceNotices = { mutedBots: string[]; other: boolean };
+
+export const ALL_NOTICES: DeviceNotices = { mutedBots: [], other: true };
+
+/** Whether a device that chose `notices` gets a notice about `botId` (null: about no bot). */
+export function noticeWanted(notices: DeviceNotices, botId: string | null | undefined): boolean {
+  return botId ? !notices.mutedBots.includes(botId) : notices.other;
+}
+
+export function readDeviceNotices(value: unknown): DeviceNotices | null {
+  if (!value || typeof value !== "object") return null;
+  const { mutedBots, other } = value as { mutedBots?: unknown; other?: unknown };
+  if (!Array.isArray(mutedBots) || mutedBots.length > 500 || !mutedBots.every((id) => typeof id === "string" && /^[\w-]{1,64}$/.test(id))) return null;
+  if (typeof other !== "boolean") return null;
+  return { mutedBots: [...new Set(mutedBots as string[])], other };
+}
+
 export type BotTemplate = {
   id: string;
   name: string;
@@ -2413,6 +2480,8 @@ export function describeTool(name: string, input: Record<string, unknown> = {}, 
     case "delegate_bot":
       return { verb: "Delegating to", detail: short(input.bot) };
     case "ask_bot":
+      return { verb: "Asking", detail: short(input.bot) };
+    case "ask_shared_bot":
       return { verb: "Asking", detail: short(input.bot) };
     case "create_bot":
       return { verb: "Creating a bot", detail: short(input.name) };

@@ -15,10 +15,11 @@ function callVoiceOf(raw: string | null | undefined): VoiceSettings["callVoice"]
   }
 }
 
-export function getVoice(userId: string): VoiceSettings {
+/** `keys` is whose provider keys serve the person: their own, or a household member's household's. */
+export function getVoice(userId: string, keys = userId): VoiceSettings {
   const row = ensureDatabase().query("SELECT voice, voice_model, call_voice FROM gond_user_prefs WHERE user_id = ?").get(userId) as Row | null;
   const preference: VoicePreference = isVoicePreference(row?.voice) ? row.voice : "auto";
-  const available = VOICE_PROVIDERS.filter((kind) => Boolean(getProvider(userId, kind)));
+  const available = VOICE_PROVIDERS.filter((kind) => Boolean(getProvider(keys, kind)));
   return { preference, using: pickVoiceProvider(preference, (kind) => available.includes(kind)), available, openaiModel: row?.voice_model || VOICE_MODELS.openai.model, callVoice: callVoiceOf(row?.call_voice) };
 }
 

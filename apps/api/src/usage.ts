@@ -1,5 +1,5 @@
 import { ENGINE_LABELS, GROK_API_URL, isCliEngine, type PlanWindow, type UsageRange, type UsageReport, type UsageSource } from "@gond/shared";
-import { getAi } from "./data/ai.ts";
+import { turnAi } from "./households.ts";
 import { userTimezone } from "./data/prefs.ts";
 import { providerBaseUrl } from "./data/providers.ts";
 import { botTotals, planLimits, rangeStart, recordUsage, savePlanLimits, sourceTotals, type ModelUsage } from "./data/usage.ts";
@@ -88,11 +88,11 @@ async function freshGrok(userId: string): Promise<void> {
 
 /** What the person's bots run on now, read without failing when it isn't set up. */
 export function currentSource(userId: string): UsageSource {
-  const ai = getAi(userId);
+  const { ai, keys } = turnAi(userId);
   if (isCliEngine(ai.engine)) return ai.engines[ai.engine].access === "api" ? "anthropic" : "claude";
   const config = ai.engines[ai.engine];
   const info = ENGINE_LABELS[ai.engine];
-  return config.provider && info.providers.includes(config.provider) ? config.provider : providerFor(ai.engine, userId);
+  return config.provider && info.providers.includes(config.provider) ? config.provider : providerFor(ai.engine, keys);
 }
 
 function hostOf(url: string | null): string | null {

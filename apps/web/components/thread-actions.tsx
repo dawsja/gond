@@ -37,7 +37,8 @@ export function threadActions({ thread, bot, bots, onOpen, onAsk, refresh }: { t
     }
   } else if (thread.kind === "room") {
     groups.push([
-      { id: "edit", label: "Edit room", icon: Pencil, symbol: "pencil", run: () => onOpen({ kind: "edit-room", threadId: thread.id }) },
+      // An errand conversation's bot and name follow from the share, so there is nothing to edit.
+      ...(thread.errand ? [] : [{ id: "edit", label: "Edit room", icon: Pencil, symbol: "pencil", run: () => onOpen({ kind: "edit-room", threadId: thread.id }) }]),
       {
         id: "pin",
         label: thread.pinned ? "Unpin" : "Pin to the top",

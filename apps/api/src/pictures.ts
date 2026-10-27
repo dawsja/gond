@@ -2,6 +2,7 @@ import { IMAGE_MODELS, IMAGE_SHAPES, IMAGE_SOURCES, PROVIDER_LABELS, type ImageA
 import { planSession, providerBaseUrl, providerKey } from "./data/providers.ts";
 import type { StepUsage } from "./data/usage.ts";
 import { GROK_MEDIA_HEADERS, grokAccessToken } from "./grok.ts";
+import { keyHolder } from "./households.ts";
 import { pictureType } from "./images.ts";
 import { authHeaders, upstreamUrl } from "./providers.ts";
 import { sseStream } from "./sse.ts";
@@ -18,15 +19,17 @@ export type ImageRequest = { prompt: string; aspect: ImageAspect; references: Im
 
 /** The person's first way to make pictures, in `IMAGE_SOURCES` order; null when they have none. */
 export async function imageAccess(userId: string): Promise<ImageAccess | null> {
+  // A household member makes pictures on the household's keys, never on anyone's plan.
+  const keys = keyHolder(userId);
   for (const source of IMAGE_SOURCES) {
     if (source === "grok") {
-      if (!planSession(userId, "grok")) continue;
+      if (keys !== userId || !planSession(userId, "grok")) continue;
       const token = await grokAccessToken(userId).catch(() => null);
       if (token) return { source, baseUrl: XAI_API_URL, headers: { authorization: `Bearer ${token}`, ...GROK_MEDIA_HEADERS } };
       continue;
     }
-    const baseUrl = providerBaseUrl(userId, source);
-    const key = providerKey(userId, source);
+    const baseUrl = providerBaseUrl(keys, source);
+    const key = providerKey(keys, source);
     if (baseUrl && key) return { source, baseUrl, headers: authHeaders(source, baseUrl, key) };
   }
   return null;

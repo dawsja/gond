@@ -1,5 +1,5 @@
 import type { UserRole } from "@gond/shared";
-import { Bell, Gauge, Globe, Layers, Link2, Blocks, BrainCircuit, Info, KeyRound, LogIn, MessageCircleHeart, Mic, Monitor, Palette, Server, Sparkles, UserRound } from "lucide-react";
+import { Bell, Gauge, Globe, House, Layers, Link2, Blocks, BrainCircuit, Info, KeyRound, LogIn, MessageCircleHeart, Mic, Monitor, Palette, Server, Sparkles, UserRound } from "lucide-react";
 
 /** The headings Settings' list is grouped under; a section with no group sits on its own at the end. */
 export const SETTINGS_GROUPS = [
@@ -13,6 +13,7 @@ export type SettingsGroup = (typeof SETTINGS_GROUPS)[number]["id"];
 export const SETTINGS_SECTIONS = [
   { id: "account", group: "you", label: "Account", blurb: "Your picture, your password, and exporting your chats.", icon: UserRound, admin: false },
   { id: "profiles", group: "you", label: "Profiles", blurb: "Separate worlds, like Work and home: each with its own bots, chats, keys and computer.", icon: Layers, admin: false },
+  { id: "household", group: "you", label: "Household", blurb: "One AI for the people you live with, and the bots of yours their bots can ask for help.", icon: House, admin: false },
   { id: "notifications", group: "you", label: "Notifications", blurb: "Where Gond tells you a bot finished or needs you: this browser or app, and a service like ntfy or Pushover.", icon: Bell, admin: false },
   { id: "appearance", group: "you", label: "Appearance", blurb: "Light or dark, and the color of your chats.", icon: Palette, admin: false },
   { id: "personalization", group: "you", label: "Personalization", blurb: "How your bots talk to you: their style, and how many emoji.", icon: MessageCircleHeart, admin: false },
@@ -40,9 +41,12 @@ export function sectionsFor(role: UserRole) {
   return SETTINGS_SECTIONS.filter((s) => role === "admin" || !s.admin);
 }
 
-/** The person's sections under their headings, in order; the ungrouped ones last, under none. */
-export function groupedSections(role: UserRole, skip?: SettingsSection) {
-  const sections = sectionsFor(role).filter((s) => s.id !== skip);
+/**
+ * The person's sections under their headings, in order; the ungrouped ones last, under none. Household is
+ * listed for the admin, who turns it on, and for anyone it asked or has.
+ */
+export function groupedSections(role: UserRole, skip?: SettingsSection, inHousehold = false) {
+  const sections = sectionsFor(role).filter((s) => s.id !== skip && (s.id !== "household" || role === "admin" || inHousehold));
   const groups = SETTINGS_GROUPS.map((g) => ({ id: g.id as SettingsGroup | null, label: g.label as string | null, sections: sections.filter((s) => s.group === g.id) }));
   groups.push({ id: null, label: null, sections: sections.filter((s) => s.group === null) });
   return groups.filter((g) => g.sections.length > 0);

@@ -5,6 +5,7 @@ import { ownThread, userId } from "../access.ts";
 import { getBot } from "../data/bots.ts";
 import { providerBaseUrl, providerKey } from "../data/providers.ts";
 import { getVoice, setCallVoice, setVoice } from "../data/voice.ts";
+import { keyHolder } from "../households.ts";
 import { authHeaders, upstreamUrl } from "../providers.ts";
 
 // Both APIs read the format from the file name, and Bun's multipart parser drops a part's own
@@ -39,7 +40,7 @@ async function voicesFor(provider: VoiceProvider, baseUrl: string, key: string):
 export function voiceRoutes() {
   const app = new Hono<Env>();
 
-  app.get("/voice", (c) => c.json(getVoice(userId(c))));
+  app.get("/voice", (c) => c.json(getVoice(userId(c), keyHolder(userId(c)))));
 
   app.put("/voice", async (c) => {
     const body = (await c.req.json().catch(() => null)) as { preference?: unknown; openaiModel?: unknown } | null;
@@ -47,15 +48,16 @@ export function voiceRoutes() {
     if (preference === undefined && openaiModel === undefined) return c.json({ error: "There was nothing to change" }, 400);
     if (preference !== undefined && !isVoicePreference(preference)) return c.json({ error: "Pick Automatic, xAI or OpenAI" }, 400);
     if (openaiModel !== undefined && (typeof openaiModel !== "string" || (openaiModel.trim() && !VOICE_MODEL_ID.test(openaiModel.trim())))) return c.json({ error: "That isn't a model id" }, 400);
-    return c.json(setVoice(userId(c), { preference, openaiModel }));
+    setVoice(userId(c), { preference, openaiModel });
+    return c.json(getVoice(userId(c), keyHolder(userId(c))));
   });
 
   app.get("/voice/voices", async (c) => {
     const who = userId(c);
-    const voice = getVoice(who);
+    const voice = getVoice(who, keyHolder(who));
     const provider = voice.using;
-    const baseUrl = provider ? providerBaseUrl(who, provider) : null;
-    const key = provider ? providerKey(who, provider) : null;
+    const baseUrl = provider ? providerBaseUrl(keyHolder(who), provider) : null;
+    const key = provider ? providerKey(keyHolder(who), provider) : null;
     if (!provider || !baseUrl || !key) return c.json({ provider: null, voices: [], chosen: null });
     const voices = await voicesFor(provider, baseUrl, key);
     if (!voices) return c.json({ error: `${VOICE_MODELS[provider].label} didn't list its voices. Try again.` }, 502);
@@ -65,7 +67,7 @@ export function voiceRoutes() {
   app.put("/voice/call-voice", async (c) => {
     const who = userId(c);
     const body = (await c.req.json().catch(() => null)) as { voice?: unknown } | null;
-    const provider = getVoice(who).using;
+    const provider = getVoice(who, keyHolder(who)).using;
     if (!provider) return c.json({ error: "Add an xAI or OpenAI key first" }, 409);
     if (body?.voice !== null && (typeof body?.voice !== "string" || !CALL_VOICE_ID.test(body.voice))) return c.json({ error: "That isn't a voice" }, 400);
     return c.json(setCallVoice(who, provider, body.voice === CALL_MODELS[provider].voice ? null : body.voice));
@@ -76,9 +78,9 @@ export function voiceRoutes() {
     const who = userId(c);
     const id = c.req.query("voice") ?? "";
     if (!CALL_VOICE_ID.test(id)) return c.json({ error: "That isn't a voice" }, 400);
-    const provider = getVoice(who).using;
-    const baseUrl = provider ? providerBaseUrl(who, provider) : null;
-    const key = provider ? providerKey(who, provider) : null;
+    const provider = getVoice(who, keyHolder(who)).using;
+    const baseUrl = provider ? providerBaseUrl(keyHolder(who), provider) : null;
+    const key = provider ? providerKey(keyHolder(who), provider) : null;
     if (!provider || !baseUrl || !key) return c.json({ error: "Add an xAI or OpenAI key first" }, 409);
     const request =
       provider === "xai"
@@ -103,10 +105,10 @@ export function voiceRoutes() {
     const extension = audioExtension(file.name);
     if (!extension) return c.json({ error: "That isn't a recording this can read" }, 400);
     if (file.size > TRANSCRIBE_MAX_BYTES) return c.json({ error: "The recording is too long" }, 413);
-    const voice = getVoice(who);
+    const voice = getVoice(who, keyHolder(who));
     const kind = voice.using;
-    const baseUrl = kind ? providerBaseUrl(who, kind) : null;
-    const key = kind ? providerKey(who, kind) : null;
+    const baseUrl = kind ? providerBaseUrl(keyHolder(who), kind) : null;
+    const key = kind ? providerKey(keyHolder(who), kind) : null;
     if (!kind || !baseUrl || !key) return c.json({ error: "Add an xAI or OpenAI key to talk to your bots" }, 409);
 
     const { path, label } = VOICE_MODELS[kind];

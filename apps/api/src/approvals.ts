@@ -300,7 +300,7 @@ function postCard(input: { bot: Bot; threadId: string; tool: string; input: Reco
   const answer = (decision: Decision): Answer => ({ decision, input: input.input, edited: false, send: false, note: null, aside: false });
   const approval = createApproval({ botId: bot.id, threadId, tool, summary: hideSecrets(input.summary ?? summarize(tool, input.input)), input: input.input, revises: redrafting(bot.id, threadId, tool) });
   postMessage({ threadId, author: bot.id, kind: "approval", body: approval.summary, approvalId: approval.id, answered: true });
-  if (bot.notify) void sendPush({ title: `${bot.name} needs your approval`, body: approval.summary.slice(0, 140), url: `/app/t/${threadId}`, tag: threadId, threadId }, bot.userId);
+  if (bot.notify) void sendPush({ title: `${bot.name} needs your approval`, body: approval.summary.slice(0, 140), url: `/app/t/${threadId}`, tag: threadId, threadId, botId: bot.id }, bot.userId);
   return new Promise<Answer>((resolve) => {
     // Nobody answered in time, or the turn that asked was stopped: the card
     // closes, so a late tap can't run something for work that's over.

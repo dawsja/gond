@@ -2,7 +2,6 @@ import { AI_SETUP_CARD, ENGINE_LABELS, QUIET_REPLY, addressedIn, handleOf, isClo
 import { createHash } from "node:crypto";
 import { BoxError, boxConfig, boxHome, closeAgent, ensureBotHome, health, interruptAgent, steerAgent, writeBoxFile, type BoxConfig } from "./box.ts";
 import { isUpdating } from "./updater.ts";
-import { getAi } from "./data/ai.ts";
 import { getBot, getPrimary, listBots } from "./data/bots.ts";
 import { type Delegation, finishDelegation, handoffWorkedOn, isDelegationResult, openChildren, openDelegationsFrom, openDelegationsTo } from "./data/delegations.ts";
 import { cancelFollowUpsIn } from "./data/follow-ups.ts";
@@ -40,6 +39,7 @@ import { turnTiming } from "./config.ts";
 import { appTools, baseTools, MAX_CHAIN, MAX_ROOM_LINES, permissionTool, resultDepth, teamTools, TOOL_NOTES } from "./tools.ts";
 import { guestWorkers, hasGuestWork, isSpace, keepHere, memoryAllowed, postInSpace, SPACE_TURN, spaceNote, spaceTargets, stopGuestWork } from "./spaces.ts";
 import { saveClaudeLimits, usageRecorder } from "./usage.ts";
+import { sharedBotsNote, stopErrandsIn, threadAi } from "./households.ts";
 import { loadMemory, loadTeamMemory, transcript } from "./transcript.ts";
 
 const CONTEXT_LINES = 30;
@@ -210,7 +210,9 @@ export async function stopThread(threadId: string, options: { quiet?: boolean } 
   } finally {
     quietStops.delete(threadId);
   }
-  // A space's answers to another Gond's lines run outside the turns, each with its own stop.
+  // A space's answers to another Gond's lines run outside the turns, each with its own stop, and so do a
+  // shared bot's errands for a household member.
+  report.stopped += stopErrandsIn(threadId);
   const guests = stopGuestWork(threadId);
   report.stopped += guests.stopped;
   report.tasks.push(...guests.tasks);
@@ -616,7 +618,8 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
 
     return botTurn(target, targetThread, posted, controller.signal).catch((error: unknown) => `(${target.name} could not answer: ${error instanceof Error ? error.message : "error"})`);
   };
-  const context = { box, bot, thread, message, askBot, syncSoul, stopWork: interruptMessage, isWorking: isBusy, tellWorking, reportTo, signal: controller.signal };
+  const errandTurn = (target: Bot, targetThread: Thread, posted: Message, signal: AbortSignal) => botTurn(target, targetThread, posted, AbortSignal.any([controller.signal, signal]));
+  const context = { box, bot, thread, message, askBot, errandTurn, stopTurns: (id: string) => stopThread(id, { quiet: true }), syncSoul, stopWork: interruptMessage, isWorking: isBusy, tellWorking, reportTo, signal: controller.signal };
   let reply = "";
   let quiet = false;
   let stopped = false;
@@ -702,10 +705,10 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
   try {
     const mcpServers = boxMcpServers(bot);
     const skills = listSkills(bot.userId);
-    const ai = getAi(thread.userId);
-    const run = engineRun(ai, thread.userId);
+    const { ai, keys, usageUserId } = threadAi(thread);
+    const run = engineRun(ai, keys);
     engineName = ENGINE_LABELS[run.engine].name;
-    const onUsage = usageRecorder(thread.userId, bot.id, thread.id, run);
+    const onUsage = usageRecorder(usageUserId, bot.id, thread.id, run);
 
     active.steer = run.native ? async (text) => steers.push(text) : async (text) => (await steerAgent(box, agentId, text).catch(() => ({ steered: false }))).steered;
 
@@ -739,6 +742,7 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
       talk: userTalk(thread.userId),
       logins: [...new Set(listSecrets(bot.userId).flatMap((s) => (s.site ? [s.site] : [])))],
       space: inSpace ? { note: inSpace, memoryLeftOut: !memoryAllowed(thread, bot) } : null,
+      shared: thread.errand ? null : sharedBotsNote(bot.userId),
       mcpServers: nativeMcp?.servers ?? mcpServersFor(bot).map((m) => ({ name: m.name, note: m.authStatus === "needed" ? `not attached yet: it waits for the person to sign in, from its card or Settings → Apps → MCP servers → ${m.name} → Sign in, and its tools arrive on your next reply after that` : m.authStatus === "error" ? `sign-in problem (${m.authError ?? "unknown"}); its tools may fail` : undefined })),
     });
 
@@ -809,7 +813,7 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
         deliverReply(bot, thread, message, reply);
 
         if (bot.notify && (message.author === "you" || message.author === "routine")) {
-          void sendPush({ title: bot.name, body: plainMarkdown(reply).slice(0, 140), url: `/app/t/${thread.id}`, tag: thread.id, threadId: thread.id }, thread.userId);
+          void sendPush({ title: bot.name, body: plainMarkdown(reply).slice(0, 140), url: `/app/t/${thread.id}`, tag: thread.id, threadId: thread.id, botId: bot.id }, thread.userId);
         }
       }
     } else {

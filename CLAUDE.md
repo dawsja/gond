@@ -233,7 +233,8 @@ The address rules are mirrored in each app with the same tests.
   `rounded-2xl` card with the same edge, `h-9` rows, kept off the edges
   (`collisionPadding`). A `Select`'s list is never a sheet and never over
   its box: it drops below from its left edge (`alignItemWithTrigger` off
-  in `ui/select.tsx`), at least as wide as the box.
+  in `ui/select.tsx`), at least as wide as the box, and on a touch screen
+  exactly as wide, its items wrapping.
   The picture viewer (`image-viewer.tsx`) is the one exception: the
   picture itself over `bg-black/90`, pills floating like a header.
 - **Layers are fixed**: dialogs and sheets `z-50`, the computer's window
@@ -517,7 +518,15 @@ One line each: where to start, and what must not change.
 - **About** (`server-update-card.tsx`, `about-card.tsx`). `VersionWatch`
   reloads a page whose server version changed.
 - **Notifications** (`notifications-section.tsx`, `public/sw.js`,
-  `viewing-report.tsx`).
+  `viewing-report.tsx`). Each browser or app mutes bots of its own
+  (`DeviceNoticesCard`, `DeviceNotices`, `noticeWanted`): a subscription's
+  `muted_bots` and `other` for Web Push, `shellNotices` on the device for
+  the apps, so every notice names its `botId`.
+- **Household** (`household-section.tsx`, `level-select.tsx`):
+  `TurnOnCard` for the admin, `HeadView`, `JoinCard`, `MemberView`;
+  `HouseholdAsk` on Chats; `HouseholdAiCard` stands in for Settings → AI
+  for a member. Always allow is picked only through `LevelSelect`, which
+  confirms it every time, in Household and Spaces alike.
 - **Linked sign-in** (`linked-sign-in.tsx`).
 - **Profiles** (`profiles.tsx`): your picture on Chats opens
   `ProfilesDialog` (wearing the open one's `ProfileMark`, a dot when
@@ -575,7 +584,25 @@ One line each: where to start, and what must not change.
   apps, the Composio key, MCP servers, secrets, skills, the AI and its
   providers, the computer account. Nothing is shared and nobody falls back
   to the admin's, except `COMPOSIO_API_KEY` for the admin's default
-  profile alone.
+  profile alone, and a household member's AI, which is the household's.
+- **Household** (`src/households.ts`, `data/households.ts`,
+  `routes/households.ts`): one per install, turned on only by the admin
+  once OIDC is ready, the admin's account is linked to it and a key
+  exists; the admin is its head. Members are OIDC users who accepted a
+  join card, per person, so all their profiles. A member runs on the
+  household's keys and never a plan (`turnAi`, `threadAi`, `keyHolder` for
+  pictures, calls and voice); `refuseForMembers` guards every route that
+  would change their own AI. The head keeps their own AI. Shared bots
+  (`gond_household_shares`, the four `SPACE_LEVELS`) are reached only by a
+  member's bot with `ask_shared_bot` (`runErrand`), never by a member: an
+  errand runs in the head's conversation for that bot and member
+  (`errandThreadFor`, `Thread.errand`, where only cards count as unread),
+  on the household's keys and the member's usage. Talk and Look answer
+  with `guestReply`; Act asks the head with `askOwner` first; Always allow
+  (`full`) needs `confirmed: true` and posts a line. Stop on either side
+  ends it (`stopErrandsIn`), a restart fails open errands without rerunning
+  their prompt (`releaseClaims`), and `deleteBot` and `deleteUserData`
+  take every household row with them.
 - **Profiles** (`src/data/profiles.ts`, `src/profiles.ts`,
   `routes/profiles.ts`, `gond_profiles`): each profile but the default is
   a `"user"` row nobody signs in to, owned by a person (`personOf`); the
@@ -1085,7 +1112,8 @@ One line each: where to start, and what must not change.
   in the data directory) on every subscription, plus one notification
   service per person, keys encrypted and never returned (an empty key on
   change keeps the saved one). Push only when a bot finishes for the
-  person or needs them, and only when `bot.notify` is on. `sendPush` also
+  person or needs them, only when `bot.notify` is on, and only to devices
+  that didn't mute that bot (`muted_bots`, `other`). `sendPush` also
   emits a `notify` event for the shells. Nothing is pushed about a
   conversation on screen (`src/presence.ts`, since the service worker
   can't tell on an iPhone). Service addresses are the person's own (a LAN
@@ -1136,11 +1164,15 @@ members, leave, closed, gond.
   (`wokenFromAfar`), `botsWake` (by @handle, within `MAX_ROOM_LINES`).
   `talk` and `look` answer as a guest (`answerAsGuest`,
   `guestInstructions`, memory only with `memory` on, a box guest session
-  with no tools or only web). `act` asks the owner (`askOwner`) whatever
-  the bot's level; on a yes a hidden prompt has it do the task as Gond's
-  own word with the request set apart (a yes inside quoted remote text
-  reads like injected permission), the same words the card showed
-  (`askedText`) and the asker's names only inside the quote.
+  with no tools or only web, `guestReply`). `act` asks the owner
+  (`askOwner`) whatever the bot's level; on a yes a hidden prompt has it do
+  the task as Gond's own word with the request set apart (a yes inside
+  quoted remote text reads like injected permission), the same words the
+  card showed (`askedText`) and the asker's names only inside the quote
+  (`actPrompt`). `full`, Always allow, skips the card: set per bot and
+  space only, confirmed (`confirmed: true`), never a default, and put
+  back to `act` with a line when someone new joins
+  (`newcomersEndAlwaysAllow`).
 - A line counts only from a member the Gond it's from declared in that
   space (`mayTakeLine`, on the host and every guest, the welcome's lines
   too; members are keyed by Gond, so one can't overwrite another's), and
@@ -1346,13 +1378,15 @@ list saying what changed and why, written for the person reading the log.
   provider belongs to a profile, push subscriptions to a person, and a
   route never returns another profile's.
 - Everyone's bots run on their own plan or key. Nothing about the AI is
-  shared, and nobody falls back to the admin's.
+  shared, and nobody falls back to the admin's, except a household
+  member, who runs on the household's keys: never on anyone's plan.
 - The web app never talks to the box; the API does, with a bearer token,
   over the Compose network.
 - Another Gond only ever gets what is said in a space it is in, the
   members' names and colours and this Gond's name, sealed end to end
   through a relay. A line from it is untrusted: it can't make a bot act
-  without its owner's yes.
+  without its owner's yes, unless the owner confirmed Always allow for
+  that bot in that space.
 - The Docker socket on the API exists only for updating (Shared computer
   → Update and Reset, and Settings → About). Nothing else may use it.
 - A stored secret is never returned by a route, never written in plain

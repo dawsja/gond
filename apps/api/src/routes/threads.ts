@@ -227,6 +227,8 @@ export function threadsRoutes() {
     const body = (await c.req.json().catch(() => ({}))) as { name?: unknown; members?: unknown; pinned?: unknown };
     const before = ownThread(c, c.req.param("id"));
     if (!before || before.kind !== "room") return c.json({ error: "Couldn't find that room" }, 404);
+    // An errand conversation is one shared bot's for one member: who is in it and its name follow from that.
+    if (before.errand && (body.members !== undefined || body.name !== undefined)) return c.json({ error: "This is where a shared bot does a household member's errands, so it can't be changed. Change what they may ask under Settings → Household" }, 409);
     const bots = listBots({ includeHidden: true, userId: userId(c) });
     const known = new Set(bots.map((b) => b.id));
     const members = Array.isArray(body.members) ? [...new Set(body.members.map(String).filter((id) => known.has(id)))] : undefined;

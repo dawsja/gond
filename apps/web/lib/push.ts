@@ -1,3 +1,4 @@
+import { ALL_NOTICES, readDeviceNotices, type DeviceNotices } from "@gond/shared";
 import { api, post } from "@/lib/api";
 
 export function pushSupported(): boolean {
@@ -57,4 +58,37 @@ export async function disablePush(): Promise<void> {
   if (!subscription) return;
   await api("/api/push/subscriptions", { method: "DELETE", body: JSON.stringify({ endpoint: subscription.endpoint }) }).catch(() => undefined);
   await subscription.unsubscribe();
+}
+
+// The apps get notices as live events rather than Web Push, so which bots this one hears about is kept on it.
+const SHELL_NOTICES = "gond-shell-notices";
+
+export function shellNotices(): DeviceNotices {
+  try {
+    const raw = localStorage.getItem(SHELL_NOTICES);
+    return (raw ? readDeviceNotices(JSON.parse(raw)) : null) ?? ALL_NOTICES;
+  } catch {
+    return ALL_NOTICES;
+  }
+}
+
+function setShellNotices(notices: DeviceNotices) {
+  try {
+    localStorage.setItem(SHELL_NOTICES, JSON.stringify(notices));
+  } catch {}
+}
+
+/** What this browser or app is told about; null when this browser has no subscription to choose for. */
+export async function deviceNotices(inShell: boolean): Promise<DeviceNotices | null> {
+  if (inShell) return shellNotices();
+  const subscription = await currentSubscription();
+  if (!subscription) return null;
+  return (await post<{ notices: DeviceNotices }>("/api/push/notices", { endpoint: subscription.endpoint })).notices;
+}
+
+export async function saveDeviceNotices(inShell: boolean, notices: DeviceNotices): Promise<void> {
+  if (inShell) return setShellNotices(notices);
+  const subscription = await currentSubscription();
+  if (!subscription) throw new Error("Notifications aren't on for this browser. Turn them on first.");
+  await api("/api/push/notices", { method: "PUT", body: JSON.stringify({ endpoint: subscription.endpoint, notices }) });
 }

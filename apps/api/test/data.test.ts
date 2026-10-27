@@ -6103,3 +6103,221 @@ describe("failed turns, Try again, and taking lines back", () => {
     );
   });
 });
+
+describe("household", () => {
+  const json = { "Content-Type": "application/json" };
+
+  async function household() {
+    await seedUsers(["u-hh-head", "user"], ["u-hh-member", "user"], ["u-hh-asked", "user"]);
+    const { createHousehold, askMember, joinMember, deleteHousehold, getHousehold } = await import("../src/data/households.ts");
+    const { saveProvider } = await import("../src/data/providers.ts");
+    const existing = getHousehold();
+    if (existing) deleteHousehold(existing.id);
+    saveProvider("u-hh-head", "anthropic", { baseUrl: "https://api.anthropic.com", apiKey: "sk-ant-household-1234567890" });
+    const row = createHousehold("u-hh-head", "Hall household", { engine: "api", provider: "anthropic", model: "claude-sonnet-5-5" });
+    askMember(row.id, "u-hh-member");
+    joinMember("u-hh-member");
+    askMember(row.id, "u-hh-asked");
+    return row;
+  }
+
+  test("a member runs on the household's keys, never their own AI, and can't change it", async () => {
+    const home = await household();
+    const { turnAi, keyHolder, memberHousehold, householdView, meHousehold } = await import("../src/households.ts");
+    const { engineRun } = await import("../src/engines.ts");
+    const { updateAi } = await import("../src/data/ai.ts");
+    const { Hono } = await import("hono");
+    const { refuseForMembers } = await import("../src/routes/households.ts");
+    updateAi("u-hh-member", { engine: "claude" });
+
+    const member = turnAi("u-hh-member");
+    expect(member.keys).toBe("u-hh-head");
+    expect(member.ai.engine).toBe("api");
+    const run = engineRun(member.ai, member.keys);
+    expect(run.native?.kind).toBe("anthropic");
+    expect(run.model).toBe("claude-sonnet-5-5");
+    expect(keyHolder("u-hh-member")).toBe("u-hh-head");
+    // Someone only asked isn't in it yet, and the head runs on their own AI.
+    expect(memberHousehold("u-hh-asked")).toBeNull();
+    expect(turnAi("u-hh-asked").keys).toBe("u-hh-asked");
+    expect(turnAi("u-hh-head").keys).toBe("u-hh-head");
+
+    expect(householdView("u-hh-head")?.members.map((m) => [m.id, m.status])).toEqual([["u-hh-member", "joined"], ["u-hh-asked", "asked"]]);
+    expect(householdView("u-hh-member")?.members.map((m) => m.id)).toEqual(["u-hh-member"]);
+    expect(householdView("u-hh-member")?.aiReady).toBe(true);
+    expect(meHousehold("u-hh-asked")).toMatchObject({ id: home.id, role: "asked" });
+    expect(meHousehold("u-nobody")).toBeNull();
+
+    const app = asPerson(new Hono(), "u-hh-member");
+    app.use("*", async (c: { set: (key: string, value: unknown) => void }, next: () => Promise<void>) => (c.set("profile", "u-hh-member"), next()));
+    app.on(["PATCH"], ["/api/ai"], refuseForMembers);
+    app.patch("/api/ai", (c: { json: (v: unknown) => Response }) => c.json({ ok: true }));
+    const refused = await app.request("/api/ai", { method: "PATCH", headers: json, body: "{}" });
+    expect(refused.status).toBe(409);
+    expect(((await refused.json()) as { error: string }).error).toContain("sets the AI for your household");
+  });
+
+  test("the head shares a bot at a level, and Always allow must be confirmed", async () => {
+    await household();
+    const { Hono } = await import("hono");
+    const { householdsRoutes } = await import("../src/routes/households.ts");
+    const { createBot } = await import("../src/data/bots.ts");
+    const { botInputSchema } = await import("@gond/shared");
+    const { sharedBotsFor, sharedBotsNote } = await import("../src/households.ts");
+    const steve = createBot(botInputSchema.parse({ name: "Steve", title: "IT" }), "u-hh-head");
+    const theirs = createBot(botInputSchema.parse({ name: "Jasper" }), "u-hh-member");
+    const head = asPerson(new Hono(), "u-hh-head").route("/api", householdsRoutes());
+    const member = asPerson(new Hono(), "u-hh-member").route("/api", householdsRoutes());
+    const share = (app: typeof head, botId: string, body: Record<string, unknown>) => app.request(`/api/household/shares/${botId}`, { method: "PUT", headers: json, body: JSON.stringify({ memberId: "u-hh-member", memory: false, ...body }) });
+
+    expect((await share(member, steve.id, { level: "act" })).status).toBe(403);
+    expect((await share(head, theirs.id, { level: "act" })).status).toBe(404);
+    expect((await share(head, steve.id, { level: "act", memberId: "u-hh-asked" })).status).toBe(404);
+    expect((await share(head, steve.id, { level: "act" })).status).toBe(200);
+    expect(sharedBotsFor(theirs.userId).map((s) => [s.bot.name, s.share.level])).toEqual([["Steve", "act"]]);
+    expect(sharedBotsNote("u-hh-member")).toContain("Steve (@steve)");
+    expect(sharedBotsNote("u-hh-head")).toBeNull();
+
+    const quiet = await share(head, steve.id, { level: "full" });
+    expect(quiet.status).toBe(400);
+    expect(((await quiet.json()) as { error: string }).error).toBe("Confirm Always allow before turning it on");
+    expect((await share(head, steve.id, { level: "full", confirmed: true })).status).toBe(200);
+    expect(sharedBotsFor("u-hh-member")[0]!.share.level).toBe("full");
+    expect((await share(head, steve.id, { level: null })).status).toBe(200);
+    expect(sharedBotsFor("u-hh-member")).toEqual([]);
+
+    const view = (await (await head.request("/api/household")).json()) as { household: { role: string }; candidates: { id: string }[] };
+    expect(view.household.role).toBe("head");
+    expect((await (await member.request("/api/household")).json()) as { household: { role: string } }).toMatchObject({ household: { role: "member" } });
+  });
+
+  test("an errand runs in the head's own conversation, asks the head first on Do things, and only the answer comes back", async () => {
+    await household();
+    const { createBot } = await import("../src/data/bots.ts");
+    const { setShare, getErrand } = await import("../src/data/households.ts");
+    const { getThread, listMessages } = await import("../src/data/threads.ts");
+    const { decide } = await import("../src/approvals.ts");
+    const { runErrand, threadAi } = await import("../src/households.ts");
+    const { botInputSchema } = await import("@gond/shared");
+    const reel = createBot(botInputSchema.parse({ name: "Reel", title: "Movies" }), "u-hh-head");
+    const jasper = createBot(botInputSchema.parse({ name: "Jasper" }), "u-hh-member");
+    const askerThread = getThread(jasper.threadId)!;
+    const turns: string[] = [];
+    const turn = async (bot: typeof reel, thread: NonNullable<ReturnType<typeof getThread>>, message: { body: string }) => {
+      turns.push(`${bot.name}@${thread.id}: ${message.body.slice(0, 40)}`);
+      return "Requested Dune: Part Two.";
+    };
+    const errand = (request: string) => runErrand({ asker: jasper, askerThread, target: "@reel", request, signal: new AbortController().signal, turn, stopTurns: async () => undefined });
+
+    expect(await errand("anything")).toContain("NOT asked: no bots are shared");
+
+    setShare({ botId: reel.id, memberId: "u-hh-member", level: "full", memory: false });
+    expect(await errand("Request Dune Part Two")).toBe("Reel (u-hh-head's) did it and says:\n\nRequested Dune: Part Two.");
+    const thread = getThread(turns[0]!.split("@")[1]!.split(":")[0]!);
+    expect(thread?.userId).toBe("u-hh-head");
+    expect(thread?.name).toBe("Reel · for u-hh-member");
+    expect(thread?.errand).toEqual({ botId: reel.id, memberId: "u-hh-member", memberName: "u-hh-member" });
+    // It runs on the household's keys and counts as the member's, though it's the head's bot.
+    expect(threadAi(thread!)).toMatchObject({ keys: "u-hh-head", usageUserId: "u-hh-member" });
+    expect(listMessages(thread!.id).find((m) => m.kind === "event")?.body).toBe('Jasper, u-hh-member\'s bot, asked Reel: "Request Dune Part Two"');
+
+    setShare({ botId: reel.id, memberId: "u-hh-member", level: "act", memory: false });
+    const asked = errand("Request Arrival too");
+    await Bun.sleep(5);
+    const card = listMessages(thread!.id).filter((m) => m.kind === "approval").at(-1)!;
+    expect(card.body).toBe("Let Reel do what u-hh-member's bot asked?");
+    // A card is the only thing in an errand conversation that counts as unread for the head.
+    expect(getThread(thread!.id)!.unread).toBe(1);
+    decide(card.approvalId!, { decision: "deny" });
+    expect(await asked).toBe("u-hh-head said no to that, so Reel won't do it. Tell your person.");
+    expect(turns).toHaveLength(1);
+
+    const allowed = errand("Request Arrival too");
+    await Bun.sleep(5);
+    decide(listMessages(thread!.id).filter((m) => m.kind === "approval").at(-1)!.approvalId!, { decision: "allow" });
+    expect(await allowed).toContain("did it and says");
+    expect(turns).toHaveLength(2);
+    expect(listMessages(thread!.id).filter((m) => m.kind === "prompt").at(-1)!.body).toContain('u-hh-head tapped "Do it"');
+    const latest = (await import("../src/db/init.ts")).ensureDatabase().query("SELECT id FROM gond_household_errands WHERE errand_thread_id = ? ORDER BY rowid DESC LIMIT 1").get(thread!.id) as { id: string };
+    expect(getErrand(latest.id)).toMatchObject({ status: "done", answer: "Requested Dune: Part Two." });
+  });
+
+  test("a restart closes open errands and never reruns their prompt", async () => {
+    await household();
+    const { ensureDatabase, releaseClaims } = await import("../src/db/init.ts");
+    const { createBot } = await import("../src/data/bots.ts");
+    const { createErrand, errandThreadFor, getErrand, setErrandPrompt } = await import("../src/data/households.ts");
+    const { getMessage, postMessage } = await import("../src/data/threads.ts");
+    const { botInputSchema } = await import("@gond/shared");
+    const steve = createBot(botInputSchema.parse({ name: "Steve Restart" }), "u-hh-head");
+    const jasper = createBot(botInputSchema.parse({ name: "Jasper Restart" }), "u-hh-member");
+    const thread = errandThreadFor(steve.id, steve.name, steve.userId, "u-hh-member", "Jaimee");
+    const errand = createErrand({ botId: steve.id, memberId: "u-hh-member", fromBotId: jasper.id, fromThreadId: jasper.threadId, errandThreadId: thread.id, request: "Fix the printer", level: "act" });
+    const prompt = postMessage({ threadId: thread.id, author: "system", kind: "prompt", body: "@steve do it" });
+    setErrandPrompt(errand.id, prompt.id);
+    releaseClaims(ensureDatabase());
+    expect(getErrand(errand.id)?.status).toBe("failed");
+    expect(ensureDatabase().query("SELECT answered_at FROM gond_messages WHERE id = ?").get(prompt.id)).toMatchObject({ answered_at: expect.any(String) });
+    expect(getMessage(prompt.id)).not.toBeNull();
+  });
+
+  test("a person who goes takes every household row of theirs with them", async () => {
+    const home = await household();
+    const { ensureDatabase } = await import("../src/db/init.ts");
+    const { createBot } = await import("../src/data/bots.ts");
+    const { errandThreadFor, getHousehold, setShare } = await import("../src/data/households.ts");
+    const { deleteUserData } = await import("../src/data/users.ts");
+    const { getThread } = await import("../src/data/threads.ts");
+    const { botInputSchema } = await import("@gond/shared");
+    const db = ensureDatabase();
+    const steve = createBot(botInputSchema.parse({ name: "Steve Gone" }), "u-hh-head");
+    setShare({ botId: steve.id, memberId: "u-hh-member", level: "talk", memory: false });
+    const thread = errandThreadFor(steve.id, steve.name, steve.userId, "u-hh-member", "Jaimee");
+    deleteUserData("u-hh-member");
+    expect(db.query("SELECT 1 FROM gond_household_members WHERE person_id = ?").get("u-hh-member")).toBeNull();
+    expect(db.query("SELECT 1 FROM gond_household_shares WHERE member_id = ?").get("u-hh-member")).toBeNull();
+    expect(getThread(thread.id)).toBeNull();
+    deleteUserData("u-hh-head");
+    expect(getHousehold()?.id === home.id).toBe(false);
+    expect(db.query("SELECT 1 FROM gond_household_members WHERE household_id = ?").get(home.id)).toBeNull();
+  });
+});
+
+describe("notices per device", () => {
+  test("a device leaves out the bots it muted and, if it says so, notices about no bot", async () => {
+    await seedUsers(["u-dev", "user"]);
+    const { noticeWanted, readDeviceNotices } = await import("@gond/shared");
+    const { saveSubscription, setSubscriptionNotices, subscriptionNotices, listSubscriptions } = await import("../src/data/push.ts");
+    saveSubscription({ endpoint: "https://push.example/dev-1", keys: { p256dh: "p", auth: "a" } }, "u-dev");
+    expect(subscriptionNotices("https://push.example/dev-1", "u-dev")).toEqual({ mutedBots: [], other: true });
+    expect(subscriptionNotices("https://push.example/dev-1", "u-someone-else")).toBeNull();
+    expect(setSubscriptionNotices("https://push.example/dev-1", "u-someone-else", { mutedBots: ["b-1"], other: true })).toBe(false);
+    expect(setSubscriptionNotices("https://push.example/dev-1", "u-dev", { mutedBots: ["b-1"], other: false })).toBe(true);
+    const notices = listSubscriptions("u-dev")[0]!.notices;
+    expect(noticeWanted(notices, "b-1")).toBe(false);
+    expect(noticeWanted(notices, "b-2")).toBe(true);
+    expect(noticeWanted(notices, null)).toBe(false);
+    expect(readDeviceNotices({ mutedBots: ["../x"], other: true })).toBeNull();
+    expect(readDeviceNotices({ mutedBots: ["b-1", "b-1"], other: true })).toEqual({ mutedBots: ["b-1"], other: true });
+  });
+});
+
+describe("always allow in a space", () => {
+  test("it is a level of its own, never a default, and someone new puts it back to asking", async () => {
+    await seedUsers(["u-aa", "user"]);
+    const { createBot } = await import("../src/data/bots.ts");
+    const { createRoom } = await import("../src/data/threads.ts");
+    const { createSpace, endAlwaysAllow, ruleOf, setRule, setSpaceDefaults, spaceDefaults } = await import("../src/data/spaces.ts");
+    const { botInputSchema } = await import("@gond/shared");
+    const bot = createBot(botInputSchema.parse({ name: "Open" }), "u-aa");
+    const other = createBot(botInputSchema.parse({ name: "Other" }), "u-aa");
+    const room = createRoom("Weekend", [bot.id, other.id], "u-aa");
+    const space = createSpace({ threadId: room.id, userId: "u-aa", hostKey: "h".repeat(43), status: "active" });
+    setRule(space.id, { botId: bot.id, level: "full", memory: false, peopleWake: true, botsWake: false, relay: false });
+    expect(ruleOf(space.id, bot.id, "u-aa").level).toBe("full");
+    expect(endAlwaysAllow(space.id)).toEqual([bot.id]);
+    expect(ruleOf(space.id, bot.id, "u-aa").level).toBe("act");
+    setSpaceDefaults("u-aa", { level: "full", bots: null });
+    expect(spaceDefaults("u-aa").level).toBe("act");
+  });
+});

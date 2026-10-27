@@ -4,6 +4,7 @@ import { boxHome, previewBoxImage, readBoxFileBytes, uploadBoxFile, writeBoxFile
 import { exactApp, searchIndex } from "./catalog.ts";
 import { catalogIndex, composioConfigured, executeAction, isReadOnlyAction, toolsFor, type ComposioTool } from "./composio.ts";
 import { clearBotAvatar, createBot, findBot, getBot, listBots, setBotAvatar, updateBot } from "./data/bots.ts";
+import { runErrand, sharedBotsFor, type ErrandTurn } from "./households.ts";
 import { pictureType } from "./images.ts";
 import { emit } from "./events.ts";
 import { createImage, imageAccess, keepPreview, type ImageReference } from "./pictures.ts";
@@ -125,6 +126,12 @@ type Context = {
   message: Message;
 
   askBot: (bot: Bot, prompt: string, depth: number) => Promise<string>;
+
+  /** Runs a shared bot's turn on an errand for this bot's household member, in the head's conversation. */
+  errandTurn?: ErrandTurn;
+
+  /** Stops what runs in a conversation, quietly: a member's Stop reaching the errand it started. */
+  stopTurns?: (threadId: string) => Promise<unknown>;
 
   syncSoul: (bot: Bot) => Promise<void>;
 
@@ -591,7 +598,7 @@ export function baseTools(context: Context): Record<string, DriverTool> {
         postMessage({ threadId: thread.id, author: bot.id, body, depth, answered: true });
         // The person's own messages and routines push with the final answer; a teammate's never does, so this is the only notice they get.
         const fromTeammate = Boolean(message.fromThreadId) && Boolean(getBot(message.author));
-        if (fromTeammate && bot.notify) void sendPush({ title: bot.name, body: plainMarkdown(body).slice(0, 140), url: `/app/t/${thread.id}`, tag: thread.id, threadId: thread.id }, thread.userId);
+        if (fromTeammate && bot.notify) void sendPush({ title: bot.name, body: plainMarkdown(body).slice(0, 140), url: `/app/t/${thread.id}`, tag: thread.id, threadId: thread.id, botId: bot.id }, thread.userId);
         return "Posted.";
       },
     },
@@ -1471,6 +1478,7 @@ export function teamTools(context: Context): Record<string, DriverTool> {
         return `${updated.name}'s profile updated (${[...changed, ...Object.keys(patch)].join(", ")}). It reads its new SOUL on its next turn.`;
       },
     },
+    ...(context.errandTurn && sharedBotsFor(bot.userId).length ? { ask_shared_bot: sharedBotTool(context, depth) } : {}),
     ask_bot: {
       description: "Ask a teammate a short question and wait for the answer.",
       inputSchema: schema({ bot: { type: "string" }, question: { type: "string" } }, ["bot", "question"]),
@@ -1484,6 +1492,20 @@ export function teamTools(context: Context): Record<string, DriverTool> {
         const answer = await askBot(target, `${bot.name} (${bot.title || "teammate"}) asks you, briefly: ${question}`, depth);
         return clip(answer || "(no answer)");
       },
+    },
+  };
+}
+
+/** Asks one of the household head's shared bots for something, waiting for what came of it. */
+function sharedBotTool(context: Context, depth: number): DriverTool {
+  const { bot, thread, signal } = context;
+  return {
+    description: "Ask one of your household head's shared bots (listed in your instructions) to answer or do something, and wait for what came of it. Self-contained: it doesn't see this conversation.",
+    inputSchema: schema({ bot: { type: "string", description: "The shared bot's name or @handle." }, request: { type: "string", description: "What you need, with the details it needs, in a few lines." } }, ["bot", "request"]),
+    execute: async (input) => {
+      if (depth > MAX_CHAIN) return "NOT asked: too many bot-to-bot hops.";
+      if (!context.errandTurn || !context.stopTurns) return "NOT asked: shared bots can't be asked from here.";
+      return clip(await runErrand({ asker: bot, askerThread: thread, target: String(input.bot ?? ""), request: hideSecrets(String(input.request ?? "")), signal: signal ?? new AbortController().signal, turn: context.errandTurn, stopTurns: context.stopTurns }));
     },
   };
 }

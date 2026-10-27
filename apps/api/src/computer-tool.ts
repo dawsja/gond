@@ -414,7 +414,7 @@ export function computerTool(context: Context): { computer: DriverTool; browser:
         depth: (context.message?.depth ?? 0) + 1,
         answered: true,
       });
-      if (bot.notify) void sendPush({ title: `${bot.name} needs you on its screen`, body: site ? `Something on ${site} needs a person. Open the screen to finish it.` : "Something on its screen needs a person. Open it to finish.", url: `/app/t/${thread.id}`, tag: thread.id, threadId: thread.id }, bot.userId);
+      if (bot.notify) void sendPush({ title: `${bot.name} needs you on its screen`, body: site ? `Something on ${site} needs a person. Open the screen to finish it.` : "Something on its screen needs a person. Open it to finish.", url: `/app/t/${thread.id}`, tag: thread.id, threadId: thread.id, botId: bot.id }, bot.userId);
       return "Posted the Take Control card and gave the person the mouse and keyboard. End your turn now: they will open the computer and finish it, and you'll be woken when they give it back. Don't keep clicking.";
     },
   };

@@ -926,6 +926,73 @@ const MIGRATIONS: Array<string | ((db: Database) => void)> = [
   `,
   // One emoji a profile may wear in the middle of its mark.
   `ALTER TABLE gond_profiles ADD COLUMN icon TEXT;`,
+  // What each browser or app gets: every bot but the ones muted on it, and the notices about no bot.
+  `
+  ALTER TABLE gond_push_subscriptions ADD COLUMN muted_bots TEXT NOT NULL DEFAULT '[]';
+  ALTER TABLE gond_push_subscriptions ADD COLUMN other INTEGER NOT NULL DEFAULT 1;
+  `,
+  // A bot's level in a space may now be "full", Always allow: the CHECK only changes by rebuilding.
+  `
+  CREATE TABLE gond_space_rules_next (
+    space_id TEXT NOT NULL REFERENCES gond_spaces (id) ON DELETE CASCADE,
+    bot_id TEXT NOT NULL,
+    level TEXT NOT NULL CHECK (level IN ('talk', 'look', 'act', 'full')),
+    memory INTEGER NOT NULL DEFAULT 0,
+    bots_wake INTEGER NOT NULL DEFAULT 0,
+    relay INTEGER NOT NULL DEFAULT 0,
+    people_wake INTEGER NOT NULL DEFAULT 1,
+    PRIMARY KEY (space_id, bot_id)
+  );
+  INSERT INTO gond_space_rules_next (space_id, bot_id, level, memory, bots_wake, relay, people_wake)
+    SELECT space_id, bot_id, level, memory, bots_wake, relay, people_wake FROM gond_space_rules;
+  DROP TABLE gond_space_rules;
+  ALTER TABLE gond_space_rules_next RENAME TO gond_space_rules;
+  `,
+  // A household: the admin heads it, people from the OIDC provider join it and run on its keys, and the
+  // head's shared bots do errands for members' bots in conversations of the head's (errand_bot, errand_for).
+  `
+  CREATE TABLE gond_households (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    head_id TEXT NOT NULL UNIQUE,
+    members_ai TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL
+  );
+  CREATE TABLE gond_household_members (
+    household_id TEXT NOT NULL REFERENCES gond_households (id) ON DELETE CASCADE,
+    person_id TEXT NOT NULL UNIQUE,
+    status TEXT NOT NULL CHECK (status IN ('asked', 'joined')),
+    asked_at TEXT NOT NULL,
+    joined_at TEXT,
+    PRIMARY KEY (household_id, person_id)
+  );
+  CREATE TABLE gond_household_shares (
+    bot_id TEXT NOT NULL,
+    member_id TEXT NOT NULL,
+    level TEXT NOT NULL CHECK (level IN ('talk', 'look', 'act', 'full')),
+    memory INTEGER NOT NULL DEFAULT 0,
+    set_at TEXT NOT NULL,
+    PRIMARY KEY (bot_id, member_id)
+  );
+  CREATE TABLE gond_household_errands (
+    id TEXT PRIMARY KEY,
+    bot_id TEXT NOT NULL,
+    member_id TEXT NOT NULL,
+    from_bot_id TEXT NOT NULL,
+    from_thread_id TEXT NOT NULL,
+    errand_thread_id TEXT NOT NULL,
+    request TEXT NOT NULL,
+    level TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('open', 'done', 'denied', 'cancelled', 'failed')),
+    prompt_id TEXT,
+    answer TEXT,
+    created_at TEXT NOT NULL,
+    finished_at TEXT
+  );
+  CREATE INDEX gond_household_errands_open ON gond_household_errands (status) WHERE status = 'open';
+  ALTER TABLE gond_threads ADD COLUMN errand_bot TEXT;
+  ALTER TABLE gond_threads ADD COLUMN errand_for TEXT;
+  `,
 ];
 
 /**

@@ -142,6 +142,8 @@ export type PromptContext = {
   talk: { style: ReplyStyle; emoji: EmojiLevel };
   /** In a space: what the bot is told about it, and whether its owner left its memory out there. */
   space?: { note: string; memoryLeftOut: boolean } | null;
+  /** In a household: the head's bots this bot may ask, as `sharedBotsNote` words it. */
+  shared?: string | null;
 };
 
 export function systemPromptFor(bot: Bot, context: PromptContext): string {
@@ -168,6 +170,7 @@ export function systemPromptFor(bot: Bot, context: PromptContext): string {
     context.toolNotes ? `## Tools\n${context.toolNotes}` : "",
     renderSoul(bot).trim(),
     `## Team\n${roster(context.bots, bot)}`,
+    context.shared ?? "",
     `## Connected apps\n${apps.length ? `${apps.map((a) => `- ${a.name}: tools named ${a.toolkit.toUpperCase()}_…`).join("\n")}\nCall an app's tools directly for anything in it (on Claude Code they are mcp__gond__<NAME>; search your tools for the app's name if they aren't listed). Never look through files or the shell for an app's data.` : "- None connected to you yet. Ask the person to connect one under Settings → Apps → Connected apps, or use the browser."}`,
     context.logins.length ? `## Saved sign-ins\n${context.logins.map((site) => `- ${site}`).join("\n")}\nThe person saved their details for these sites. When one of them asks you to sign in, call request_login with the site named as it is here: the saved details are used after one tap, with no form to fill in.` : "",
     `## Skills (the person's library, ~/.skills)\n${context.skillsIndex}`,

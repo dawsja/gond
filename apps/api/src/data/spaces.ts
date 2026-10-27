@@ -207,7 +207,9 @@ export function threadSpace(threadId: string, ownKey: string | null): ThreadSpac
 
 export function spaceDefaults(userId: string): SpaceDefaults {
   const row = ensureDatabase().query("SELECT space_level, space_bots FROM gond_user_prefs WHERE user_id = ?").get(userId) as { space_level: string | null; space_bots: string | null } | null;
-  const level = SPACE_LEVELS.includes(row?.space_level as SpaceLevel) ? (row!.space_level as SpaceLevel) : "talk";
+  const stored = SPACE_LEVELS.includes(row?.space_level as SpaceLevel) ? (row!.space_level as SpaceLevel) : "talk";
+  // Always allow is never a default: it is chosen for one bot in one space.
+  const level = stored === "full" ? "act" : stored;
   // No bot joins a space until the person picks it; "*" is every bot, new ones included.
   if (row?.space_bots === ALL_BOTS) return { level, bots: null };
   try {
@@ -238,6 +240,12 @@ export function setRule(spaceId: string, rule: SpaceRule) {
   ensureDatabase()
     .query("INSERT INTO gond_space_rules (space_id, bot_id, level, memory, people_wake, bots_wake, relay) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (space_id, bot_id) DO UPDATE SET level = excluded.level, memory = excluded.memory, people_wake = excluded.people_wake, bots_wake = excluded.bots_wake, relay = excluded.relay")
     .run(spaceId, rule.botId, rule.level, rule.memory ? 1 : 0, rule.peopleWake ? 1 : 0, rule.botsWake ? 1 : 0, rule.relay ? 1 : 0);
+}
+
+/** Puts every bot on Always allow in a space back to asking first; the bots it changed. */
+export function endAlwaysAllow(spaceId: string): string[] {
+  const rows = ensureDatabase().query("UPDATE gond_space_rules SET level = 'act' WHERE space_id = ? AND level = 'full' RETURNING bot_id").all(spaceId) as { bot_id: string }[];
+  return rows.map((r) => r.bot_id);
 }
 
 export function saveInvite(input: { hash: string; spaceId: string; userId: string; expiresAt: string }) {

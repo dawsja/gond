@@ -73,6 +73,7 @@ export function spacesRoutes() {
   app.put("/spaces/defaults", async (c) => {
     const given = await body(c);
     if (!SPACE_LEVELS.includes(given.level as SpaceLevel)) return c.json({ error: "Pick what your bots may do" }, 400);
+    if (given.level === "full") return c.json({ error: "Always allow is chosen for one bot in one space, never for every space" }, 400);
     const mine = new Set(listBots({ userId: userId(c) }).map((b) => b.id));
     const bots = given.bots === null ? null : Array.isArray(given.bots) ? [...new Set(given.bots.map(String))].filter((id) => mine.has(id)) : undefined;
     if (bots === undefined) return c.json({ error: "Pick which bots may join spaces" }, 400);
@@ -144,6 +145,9 @@ export function spacesRoutes() {
     try {
       // A page from before a switch doesn't send it, and leaves it as it was.
       const now = currentRule(thread, c.req.param("botId"));
+      // Always allow lets people on other Gonds have the bot act with no card first, so it is only ever set
+      // on purpose: the page confirms it, and says so here, so nothing sets it quietly.
+      if (given.level === "full" && now?.level !== "full" && given.confirmed !== true) return c.json({ error: "Confirm Always allow before turning it on" }, 400);
       const relay = typeof given.relay === "boolean" ? given.relay : (now?.relay ?? false);
       const peopleWake = typeof given.peopleWake === "boolean" ? given.peopleWake : (now?.peopleWake ?? true);
       changeRule(thread, { botId: c.req.param("botId"), level: given.level as SpaceLevel, memory: given.memory, peopleWake, botsWake: given.botsWake, relay });

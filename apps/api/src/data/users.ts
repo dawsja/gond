@@ -106,7 +106,23 @@ export function deleteUserData(userId: string): { bots: string[] } {
       db.query("DELETE FROM gond_approvals WHERE bot_id = ?").run(id);
       db.query("DELETE FROM gond_approval_rules WHERE bot_id = ?").run(id);
       db.query("DELETE FROM gond_delegations WHERE from_bot_id = ? OR to_bot_id = ?").run(id, id);
+      db.query("DELETE FROM gond_household_shares WHERE bot_id = ?").run(id);
+      db.query("DELETE FROM gond_household_errands WHERE bot_id = ? OR from_bot_id = ?").run(id, id);
     }
+    // A person who leaves takes their place in a household with them; a head takes the household, and a
+    // member the errands done for them in the head's conversations.
+    const headed = db.query("SELECT id FROM gond_households WHERE head_id = ?").get(userId) as { id: string } | null;
+    if (headed) {
+      db.query("DELETE FROM gond_household_shares WHERE member_id IN (SELECT person_id FROM gond_household_members WHERE household_id = ?)").run(headed.id);
+      db.query("DELETE FROM gond_household_members WHERE household_id = ?").run(headed.id);
+      db.query("DELETE FROM gond_households WHERE id = ?").run(headed.id);
+    }
+    db.query("DELETE FROM gond_household_members WHERE person_id = ?").run(userId);
+    db.query("DELETE FROM gond_household_shares WHERE member_id = ?").run(userId);
+    db.query("DELETE FROM gond_household_errands WHERE member_id = ?").run(userId);
+    db.query("DELETE FROM gond_attachments WHERE message_id IN (SELECT m.id FROM gond_messages m JOIN gond_threads t ON t.id = m.thread_id WHERE t.errand_for = ?)").run(userId);
+    db.query("DELETE FROM gond_thread_members WHERE thread_id IN (SELECT id FROM gond_threads WHERE errand_for = ?)").run(userId);
+    db.query("DELETE FROM gond_threads WHERE errand_for = ?").run(userId);
     for (const id of bots) db.query("DELETE FROM gond_secret_requests WHERE bot_id = ?").run(id);
     // Attachments hang off messages without a cascade, so they go before the conversations take the messages.
     db.query("DELETE FROM gond_attachments WHERE message_id IN (SELECT m.id FROM gond_messages m JOIN gond_threads t ON t.id = m.thread_id WHERE t.user_id = ?)").run(userId);

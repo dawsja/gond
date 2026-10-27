@@ -1,8 +1,9 @@
 "use client";
 
-import { SPACE_LEVEL_LABELS, SPACE_LEVELS, type Bot, type Space, type SpaceLevel, type SpaceRule, type Thread } from "@gond/shared";
+import type { Bot, Space, SpaceRule, Thread } from "@gond/shared";
 import { Lock, UserPlus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { LevelSelect } from "@/components/level-select";
 import { BotAvatar, PersonAvatar } from "@/components/bot-avatar";
 import { Confirm } from "@/components/confirm-dialog";
 import { failed } from "@/components/failed";
@@ -13,13 +14,10 @@ import { Words } from "@/components/spaces/space-dialogs";
 import { useFederation } from "@/components/spaces/use-federation";
 import { useStore } from "@/components/store";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { api, post } from "@/lib/api";
 import { spaceSubtitle } from "@/lib/spaces";
-
-const LEVEL_ITEMS = SPACE_LEVELS.map((value) => ({ value, label: SPACE_LEVEL_LABELS[value].label }));
 
 const heading = "text-[12px] font-medium uppercase tracking-wide text-muted-foreground";
 
@@ -65,8 +63,8 @@ function SpaceDetails({ thread, canInvite }: { thread: Thread; canInvite: boolea
 
   const open = space.status === "active";
   const verify = (key: string, verified: boolean) => post(`/api/spaces/gonds/${encodeURIComponent(key)}/verify`, { verified }).then(load).catch(failed("Couldn't save that."));
-  const changeRule = (rule: SpaceRule) =>
-    api<{ space: Space }>(`/api/spaces/threads/${thread.id}/rules/${rule.botId}`, { method: "PUT", body: JSON.stringify(rule) })
+  const changeRule = (rule: SpaceRule, confirmed = false) =>
+    api<{ space: Space }>(`/api/spaces/threads/${thread.id}/rules/${rule.botId}`, { method: "PUT", body: JSON.stringify({ ...rule, confirmed }) })
       .then((data) => setSpace(data.space))
       .catch(failed("Couldn't change that rule."));
 
@@ -168,7 +166,7 @@ function SpaceDetails({ thread, canInvite }: { thread: Thread; canInvite: boolea
   );
 }
 
-function RuleRow({ bot, rule, onChange }: { bot: Bot; rule: SpaceRule; onChange: (rule: SpaceRule) => Promise<void> }) {
+function RuleRow({ bot, rule, onChange }: { bot: Bot; rule: SpaceRule; onChange: (rule: SpaceRule, confirmed?: boolean) => Promise<void> }) {
   const id = `space-rule-${bot.id}`;
   return (
     <li className="flex flex-col gap-2">
@@ -176,23 +174,15 @@ function RuleRow({ bot, rule, onChange }: { bot: Bot; rule: SpaceRule; onChange:
         <BotAvatar bot={bot} size={22} />
         {bot.name}
       </span>
-      <Select items={LEVEL_ITEMS} value={rule.level} onValueChange={(value) => value && void onChange({ ...rule, level: value as SpaceLevel })}>
-        <SelectTrigger aria-labelledby={id} className="w-full">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectGroup>
-            {SPACE_LEVELS.map((level) => (
-              <SelectItem key={level} value={level}>
-                <span className="flex flex-col">
-                  <span>{SPACE_LEVEL_LABELS[level].label}</span>
-                  <span className="text-[12px] text-muted-foreground">{SPACE_LEVEL_LABELS[level].blurb}</span>
-                </span>
-              </SelectItem>
-            ))}
-          </SelectGroup>
-        </SelectContent>
-      </Select>
+      <LevelSelect
+        value={rule.level}
+        labelledBy={id}
+        onChange={(level, confirmed) => onChange({ ...rule, level }, confirmed)}
+        confirm={{
+          title: `Always allow ${bot.name} in this space?`,
+          description: `Anyone in this space, on any Gond in it, could have ${bot.name} act for them with your sign-ins, apps and computer, with no card to you first. That includes people and bots who join later until someone new arrives, and a line from another Gond can carry instructions written to trick a bot. An email that goes out and a card payment still ask you. Only do this in a space you trust completely.`,
+        }}
+      />
       <label className="flex items-center justify-between gap-3 text-[12.5px]">
         <span>Use what {bot.name} remembers</span>
         <Switch size="sm" checked={rule.memory} onCheckedChange={(on) => void onChange({ ...rule, memory: on })} />

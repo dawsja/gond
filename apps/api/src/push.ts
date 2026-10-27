@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import webpush from "web-push";
+import { noticeWanted } from "@gond/shared";
 import { appUrl, ensureDataDir } from "./config.ts";
 import { personOf, profileIds, profileOf } from "./data/profiles.ts";
 import { listSubscriptions, removeSubscription } from "./data/push.ts";
@@ -33,6 +34,8 @@ export type PushPayload = {
 
   tag: string;
   threadId: string;
+  /** The bot it is about, so each device can leave out the bots it muted; none for an export or a person in a space. */
+  botId?: string | null;
 };
 
 /**
@@ -58,7 +61,7 @@ export async function sendPush(raw: PushPayload, userId: string): Promise<number
   emit({ topic: "notify", userId, ...payload });
   if (payload.threadId && isViewing(userId, payload.threadId)) return 0;
   void notifyService(person, payload);
-  const subscriptions = listSubscriptions(person);
+  const subscriptions = listSubscriptions(person).filter((sub) => noticeWanted(sub.notices, payload.botId));
   if (subscriptions.length === 0) return 0;
   const keys = vapidKeys();
   const contact = `mailto:gond@${new URL(appUrl()).hostname || "localhost"}`;
