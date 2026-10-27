@@ -3,7 +3,7 @@
 import { Camera } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { PersonAvatar } from "@/components/bot-avatar";
-import { LinkedSignIn } from "@/components/linked-sign-in";
+import { LinkedSignIn, MoveSignIn } from "@/components/linked-sign-in";
 import { failed } from "@/components/failed";
 import { useStore } from "@/components/store";
 import { Button } from "@/components/ui/button";
@@ -122,7 +122,7 @@ export function AccountSection({ user }: { user: SessionUser }) {
           </FieldGroup>
         </form>
         ) : null}
-        {local ? <LinkedSignIn /> : null}
+        {local ? <LinkedSignIn /> : <MoveSignIn />}
       </CardContent>
     </Card>
   );

@@ -52,20 +52,25 @@ export function canRoute(userId: string): boolean {
   }
 }
 
-async function ask(userId: string, speaker: Bot, threadId: string, prompt: string, signal: AbortSignal): Promise<string> {
+/**
+ * One turn on the person's own AI as `speaker`, with no tools, on the small model: the router's pick and
+ * a check-in's look. It runs on an agent of its own that is closed after, so it never lands in the bot's
+ * session, and outside the turns a person's bots share.
+ */
+export async function askOnce(input: { userId: string; speaker: Bot; threadId: string; purpose: string; instructions: string; prompt: string; timeoutMs: number; signal: AbortSignal }): Promise<string> {
+  const { userId, speaker, threadId } = input;
   const { ai, keys } = turnAi(userId);
   const run = engineRun(ai, keys);
   const onUsage = usageRecorder(userId, speaker.id, threadId, run);
   if (run.native) {
-    const result = await nativeTurn({ access: run.native, model: routerModel(run), instructions: ROUTER_INSTRUCTIONS, prompt, tools: {}, maxSteps: 1, signal, onUsage });
+    const result = await nativeTurn({ access: run.native, model: routerModel(run), instructions: input.instructions, prompt: input.prompt, tools: {}, maxSteps: 1, signal: input.signal, onUsage });
     return result.ok ? result.text : "";
   }
   const box = boxConfig(userId);
   if (!box) return "";
-  // An agent of its own, closed after: the question never lands in a bot's session.
-  const agentId = `${speaker.id}--route-${threadId}`;
+  const agentId = `${speaker.id}--${input.purpose}-${threadId}`;
   try {
-    const result = await cliTurn({ box, agentId, botId: speaker.id, engine: run.engine, access: run.access, modelId: routerModel(run), maxTurns: 1, permission: "ask", instructions: ROUTER_INSTRUCTIONS, prompt, tools: {}, timeoutMs: ROUTE_TIMEOUT_MS, signal, onUsage });
+    const result = await cliTurn({ box, agentId, botId: speaker.id, engine: run.engine, access: run.access, modelId: routerModel(run), maxTurns: 1, permission: "ask", instructions: input.instructions, prompt: input.prompt, tools: {}, timeoutMs: input.timeoutMs, signal: input.signal, onUsage });
     return result.ok ? result.text : "";
   } finally {
     await closeAgent(box, agentId).catch(() => undefined);
@@ -84,7 +89,7 @@ export async function routeLine(thread: Thread, message: Message, members: Bot[]
   if (!speaker || members.length < 2) return { targets: byRules(), routed: false };
   const lines = transcriptLines(before.filter((m) => m.kind === "message").slice(-ROUTE_LINES), bots, null, ROUTE_LINE_CHARS);
   try {
-    const answer = await ask(thread.userId, speaker, thread.id, routerPrompt(members, lines, message.body), AbortSignal.timeout(ROUTE_TIMEOUT_MS));
+    const answer = await askOnce({ userId: thread.userId, speaker, threadId: thread.id, purpose: "route", instructions: ROUTER_INSTRUCTIONS, prompt: routerPrompt(members, lines, message.body), timeoutMs: ROUTE_TIMEOUT_MS, signal: AbortSignal.timeout(ROUTE_TIMEOUT_MS) });
     const picked = parseRoute(answer, members);
     if (picked) return { targets: picked, routed: true };
   } catch (error) {

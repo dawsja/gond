@@ -1,6 +1,7 @@
 import { getBot } from "./data/bots.ts";
 import { claimDueFollowUps } from "./data/follow-ups.ts";
 import { claimDueRoutines, recordRoutineRun, routinePrompt } from "./data/routines.ts";
+import { runDueCheckIns } from "./check-ins.ts";
 import { TURNS_PER_PERSON } from "./config.ts";
 import { claimPendingMessages, postMessage, releaseClaim } from "./data/threads.ts";
 import { randomString } from "./ids.ts";
@@ -73,6 +74,7 @@ export async function tick() {
       current.lastChase = Date.now();
       chaseStalledDelegations();
       expireTeachingFrames();
+      if (!isUpdating() && !computerAway()) runDueCheckIns();
     }
 
     if (isUpdating() || computerAway()) return;

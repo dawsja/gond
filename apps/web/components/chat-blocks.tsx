@@ -76,7 +76,8 @@ export function Choices({ options }: { options: string[] }) {
             key={option}
             type="button"
             size="lg"
-            variant={on ? "default" : "outline"}
+            // Open, each is a filled pill so it reads on any bubble; the one picked is pressed, the rest fade.
+            variant={on ? "control" : open ? "default" : "outline"}
             disabled={!open || Boolean(sending)}
             aria-pressed={on}
             className={cn("h-auto min-h-9 max-w-full py-1.5 text-left leading-5 whitespace-normal [overflow-wrap:anywhere]", on && "disabled:opacity-100")}

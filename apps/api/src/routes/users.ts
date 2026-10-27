@@ -3,14 +3,10 @@ import { Hono } from "hono";
 import { personId } from "../access.ts";
 import type { Env } from "../app.ts";
 import { getAuth, invalidateAuth, oidcCallbackUrl, oidcLogoutUrl } from "../auth.ts";
-import { boxConfig, removeBoxAccount } from "../box.ts";
 import { clearOidcSecret, getOidcSettings, oidcReady, updateOidcSettings } from "../data/oidc.ts";
 import { isExtraProfile } from "../data/profiles.ts";
-import { deleteUserData, getUser, listUsers } from "../data/users.ts";
-import { deleteProfilesOf } from "../profiles.ts";
-import { stopAll } from "../responder.ts";
-import { endCallsOf } from "../calls.ts";
-import { leaveAllSpaces } from "../spaces.ts";
+import { getUser, listUsers } from "../data/users.ts";
+import { removePerson } from "../profiles.ts";
 
 export function authConfig(local: boolean): AuthConfig {
   const oidc = getOidcSettings();
@@ -50,13 +46,7 @@ export function usersRoutes() {
     const user = isExtraProfile(id) ? null : getUser(id);
     if (!user) return c.json({ error: "Couldn't find that person" }, 404);
     if (user.role === "admin") return c.json({ error: "The admin can't be removed" }, 400);
-    await deleteProfilesOf(id);
-    endCallsOf(id);
-    await stopAll(id).catch(() => undefined);
-    leaveAllSpaces(id);
-    deleteUserData(id);
-    const box = boxConfig();
-    if (box) await removeBoxAccount(box, id).catch((error: unknown) => console.warn(`[gond] could not remove ${id}'s account on the box: ${error instanceof Error ? error.message : error}`));
+    await removePerson(id);
     const auth = await getAuth();
     await auth.api.removeUser({ body: { userId: id }, headers: c.req.raw.headers });
     return c.body(null, 204);

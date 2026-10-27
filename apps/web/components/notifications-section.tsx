@@ -1,9 +1,8 @@
 "use client";
 
-import { NOTIFY_SERVICE_KINDS, NOTIFY_SERVICES, type DeviceNotices, type NotifyService, type NotifyServiceKind } from "@gond/shared";
+import { NOTIFY_SERVICE_KINDS, NOTIFY_SERVICES, type NotifyService, type NotifyServiceKind } from "@gond/shared";
 import { Ellipsis, Globe, Monitor, Pencil, Send, Smartphone, Trash2, Webhook } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { BotAvatar } from "@/components/bot-avatar";
 import { failed } from "@/components/failed";
 import { LoadFailed } from "@/components/load-failed";
 import { Confirm } from "@/components/confirm-dialog";
@@ -14,16 +13,14 @@ import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/c
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
-import { useStore } from "@/components/store";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "@/components/ui/toast";
+import { NOTIFICATIONS_EVENT, useDeviceNotices } from "@/hooks/use-device-notices";
 import { useHeld } from "@/hooks/use-held";
 import { api, del, patch, post } from "@/lib/api";
-import { currentSubscription, deviceNotices, disablePush, enablePush, pushPermission, pushSupported, saveDeviceNotices, setShellNotificationsOff, shellNotificationsOff } from "@/lib/push";
+import { currentSubscription, disablePush, enablePush, pushPermission, pushSupported, setShellNotificationsOff, shellNotificationsOff } from "@/lib/push";
 import { isPhoneShell, shellBridge, useNativeShell } from "@/lib/shell";
 import { cn } from "@/lib/utils";
-
-const NOTIFICATIONS_EVENT = "gond:notifications";
 
 /** Settings → Notifications: everywhere a notice goes, and the one service (ntfy, Pushover and the rest) a person can add. */
 export function NotificationsSection() {
@@ -51,7 +48,7 @@ export function NotificationsSection() {
       <Card>
         <CardHeader>
           <CardTitle>Where notices go</CardTitle>
-          <CardDescription>Everywhere on this list gets the notices when a bot finishes or needs you, except about the conversation you have open and the bots you turned off on a device. Each bot also has its own switch in its profile.</CardDescription>
+          <CardDescription>Everywhere on this list gets the notices when a bot finishes or needs you, except about the conversation you have open. The bells in each bot&apos;s profile turn its notices off everywhere or only on one device.</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <ul className="flex flex-col divide-y">
@@ -203,39 +200,18 @@ function DeviceRow() {
   );
 }
 
-/** Which bots this browser or app hears about, once notifications are on here: a muted bot's notices go only to the person's other devices. */
+/** What else this browser or app hears about, once notifications are on here; each bot's are in its own profile. */
 function DeviceNoticesCard() {
-  const shell = useNativeShell();
-  const { bots } = useStore();
-  const [notices, setNotices] = useState<DeviceNotices | null>(null);
-
-  useEffect(() => {
-    const read = async () => {
-      const bridge = shellBridge();
-      if (bridge) {
-        const granted = typeof bridge.notificationsState === "function" && (await bridge.notificationsState()) === "granted";
-        return setNotices(granted && !shellNotificationsOff() ? await deviceNotices(true) : null);
-      }
-      if (!pushSupported()) return setNotices(null);
-      setNotices(await deviceNotices(false).catch(() => null));
-    };
-    void Promise.resolve().then(read);
-    const onChange = () => void read();
-    window.addEventListener(NOTIFICATIONS_EVENT, onChange);
-    return () => window.removeEventListener(NOTIFICATIONS_EVENT, onChange);
-  }, []);
-
+  const { notices, setNotices, save, here } = useDeviceNotices();
   if (!notices) return null;
-  const shown = bots.filter((bot) => !bot.hidden);
-  const phone = isPhoneShell(shell);
-  const here = phone ? "this phone" : shell === "desktop" ? "this computer" : "this browser";
 
-  function change(next: DeviceNotices, what: string) {
+  function change(other: boolean) {
+    if (!notices) return;
     const before = notices;
-    setNotices(next);
-    saveDeviceNotices(Boolean(shellBridge()), next).catch((failure: unknown) => {
+    setNotices({ ...notices, other });
+    save({ ...notices, other }).catch((failure: unknown) => {
       setNotices(before);
-      failed(`Couldn't change ${what} on ${here}.`)(failure);
+      failed(`Couldn't change other notices on ${here}.`)(failure);
     });
   }
 
@@ -243,36 +219,16 @@ function DeviceNoticesCard() {
     <Card>
       <CardHeader>
         <CardTitle>On {here}</CardTitle>
-        <CardDescription>Turn a bot off here and its notices go only to your other devices.</CardDescription>
+        <CardDescription>To quiet a bot here, tap the bell in its profile.</CardDescription>
       </CardHeader>
       <CardContent>
-        <ul className="flex flex-col divide-y">
-          {shown.map((bot) => {
-            const on = !notices.mutedBots.includes(bot.id);
-            return (
-              <li key={bot.id} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
-                <BotAvatar bot={bot} size={32} />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[14.5px] font-medium">{bot.name}</p>
-                  {!on ? <p className="text-[13px] text-muted-foreground">Notices go to your other devices</p> : bot.notify ? null : <p className="text-[13px] text-muted-foreground">Off in its profile, so it sends none</p>}
-                </div>
-                <Switch
-                  size="sm"
-                  checked={on}
-                  onCheckedChange={(next) => change({ ...notices, mutedBots: next ? notices.mutedBots.filter((id) => id !== bot.id) : [...notices.mutedBots, bot.id] }, `${bot.name}'s notices`)}
-                  aria-label={`${bot.name}'s notices on ${here}`}
-                />
-              </li>
-            );
-          })}
-          <li className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
-            <div className="min-w-0 flex-1">
-              <p className="text-[14.5px] font-medium">Other notices</p>
-              <p className="text-[13px] text-muted-foreground">Exports, people in spaces, your household</p>
-            </div>
-            <Switch size="sm" checked={notices.other} onCheckedChange={(next) => change({ ...notices, other: next }, "other notices")} aria-label={`Other notices on ${here}`} />
-          </li>
-        </ul>
+        <div className="flex items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-[14.5px] font-medium">Other notices</p>
+            <p className="text-[13px] text-muted-foreground">Exports, people in spaces, your household</p>
+          </div>
+          <Switch size="sm" checked={notices.other} onCheckedChange={change} aria-label={`Other notices on ${here}`} />
+        </div>
       </CardContent>
     </Card>
   );

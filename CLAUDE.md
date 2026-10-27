@@ -320,8 +320,9 @@ The address rules are mirrored in each app with the same tests.
   a link (files go through `send_file`), headings are styled text with
   `role="heading"`, never h1–h6. Chat directives
   (`components/chat-blocks.tsx`): `:badge[…]{tone=}`, `::meter{…}` and
-  `::choices[A | B]` (two to six options; a tap sends the option; the row
-  closes once the person says anything after it; only the conversation
+  `::choices[A | B]` (two to six options, filled pills while open, the
+  picked one pressed; a tap sends the option; the row closes once the
+  person says anything after it; only the conversation
   provides `ChoicesContext`, so it is inert elsewhere). `prepareMarkdown`
   moves a trailing `::choices` onto its own line; `badgeOf` / `meterOf` /
   `choicesOf` validate; anything else renders as raw source. Copy leaves
@@ -519,15 +520,27 @@ One line each: where to start, and what must not change.
   reloads a page whose server version changed.
 - **Notifications** (`notifications-section.tsx`, `public/sw.js`,
   `viewing-report.tsx`). Each browser or app mutes bots of its own
-  (`DeviceNoticesCard`, `DeviceNotices`, `noticeWanted`): a subscription's
+  (`useDeviceNotices`, `DeviceNotices`, `noticeWanted`): a subscription's
   `muted_bots` and `other` for Web Push, `shellNotices` on the device for
-  the apps, so every notice names its `botId`.
+  the apps, so every notice names its `botId`. A bot's two bells live in
+  its Edit dialog (`BellField`, the `bell` toggle): Notify me (`notify`,
+  everywhere, the service too) and this device, saved with the dialog.
+  Settings keeps only the device's Other notices, never a list of bots.
+- **Check-ins** (`check-ins-fields.tsx` in the primary bot's Edit dialog,
+  `Message.checkIn`): a check-in line wears the person's colour (the
+  `tint` bubble) under "Checked in". It is the primary bot's alone.
 - **Household** (`household-section.tsx`, `level-select.tsx`):
   `TurnOnCard` for the admin, `HeadView`, `JoinCard`, `MemberView`;
   `HouseholdAsk` on Chats; `HouseholdAiCard` stands in for Settings → AI
   for a member. Always allow is picked only through `LevelSelect`, which
   confirms it every time, in Household and Spaces alike.
-- **Linked sign-in** (`linked-sign-in.tsx`).
+- **Linked sign-in** (`linked-sign-in.tsx`): the local account links the
+  provider (`LinkedSignIn`), and an account the provider made moves its
+  sign-in to the local one (`MoveSignIn`, `POST /api/me/sign-ins/move` in
+  `routes/sign-ins.ts`): proven by that account's password, rate limited,
+  refused when it's already linked, and only with `confirm` when the
+  provider's account has bots or chats (`contentsOf`), which `removePerson`
+  then deletes with every profile.
 - **Profiles** (`profiles.tsx`): your picture on Chats opens
   `ProfilesDialog` (wearing the open one's `ProfileMark`, a dot when
   another has something waiting); on a desktop they are a group in
@@ -1119,6 +1132,19 @@ One line each: where to start, and what must not change.
   can't tell on an iPhone). Service addresses are the person's own (a LAN
   ntfy is the point), called as given, and only a short reason comes
   back, never the response.
+- **Check-ins** (`src/check-ins.ts`, `data/check-ins.ts`,
+  `routes/check-ins.ts`, `gond_check_ins`, on by default per profile): the
+  primary bot offers them once (`offerCheckIns`, fixed words from Gond,
+  only after it has answered the person and nothing of theirs waits).
+  Every `everyHours` outside the quiet hours, from the dispatcher's minute
+  and outside `TURNS_PER_PERSON`, plain code gathers what's new in every
+  conversation, cards waiting, stalled handoffs, the person's own lines
+  (promises) and unread Gmail through Composio; only when that changed
+  (`worthALook`) does one tool-less turn on the small model (`askOnce`,
+  shared with the router) answer `NOTHING_NEW` or a line posted
+  `check_in`. Nothing new means nothing is said. Email is set apart as
+  outside text and never acted on. Stop in the primary bot's chat ends one
+  (`stopCheckIn`); `set_check_ins` is the primary bot's tool.
 - **OIDC** (`data/oidc.ts`, Better Auth's `genericOAuth` in `auth.ts`, a
   change calls `invalidateAuth()`): the first account is `admin`
   (`ensureAdmin`), everyone from the provider `user`; pre-user rows are

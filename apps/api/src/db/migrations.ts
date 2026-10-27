@@ -993,6 +993,21 @@ const MIGRATIONS: Array<string | ((db: Database) => void)> = [
   ALTER TABLE gond_threads ADD COLUMN errand_bot TEXT;
   ALTER TABLE gond_threads ADD COLUMN errand_for TEXT;
   `,
+  `
+  CREATE TABLE gond_check_ins (
+    user_id TEXT PRIMARY KEY,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    every_hours INTEGER NOT NULL DEFAULT 3,
+    quiet_from INTEGER NOT NULL DEFAULT 21,
+    quiet_to INTEGER NOT NULL DEFAULT 8,
+    email INTEGER NOT NULL DEFAULT 1,
+    offered_at TEXT,
+    last_run_at TEXT,
+    last_looked_at TEXT,
+    last_seen TEXT
+  );
+  ALTER TABLE gond_messages ADD COLUMN check_in INTEGER NOT NULL DEFAULT 0;
+  `,
 ];
 
 /**

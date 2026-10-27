@@ -15,6 +15,8 @@ const toggleVariants = cva(
         pill: "rounded-full border border-primary-edge bg-transparent hover:border-primary-edge-focus hover:bg-primary data-pressed:border-control data-pressed:bg-control data-pressed:text-control-foreground aria-pressed:border-control aria-pressed:bg-control aria-pressed:text-control-foreground",
         // A face to pick (a bot for a room): pressed shows its `tile-check`, nothing more.
         tile: "flex-col rounded-2xl bg-transparent hover:bg-muted aria-pressed:bg-transparent data-pressed:bg-transparent aria-pressed:hover:bg-muted [&_[data-slot=tile-face]]:relative [&_[data-slot=tile-check]]:hidden aria-pressed:[&_[data-slot=tile-check]]:flex",
+        // A bell that is on or off: off sinks into the card, on is a pill like a field.
+        bell: "rounded-full border border-transparent bg-muted text-muted-foreground hover:border-primary-edge-focus hover:bg-primary-hover hover:text-foreground data-pressed:border-primary-edge data-pressed:bg-primary data-pressed:text-foreground aria-pressed:border-primary-edge aria-pressed:bg-primary aria-pressed:text-foreground",
       },
       size: {
         default:
@@ -22,6 +24,7 @@ const toggleVariants = cva(
         sm: "h-7 min-w-7 rounded-[min(var(--radius-md),12px)] px-2.5 text-[0.8rem] has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3.5",
         lg: "h-9 min-w-9 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
         tile: "h-auto w-full min-w-0 gap-1.5 px-1 py-2 whitespace-normal",
+        icon: "size-10 shrink-0 pointer-coarse:size-11 [&_svg:not([class*='size-'])]:size-4.5",
       },
     },
     defaultVariants: {

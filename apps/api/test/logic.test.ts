@@ -2155,3 +2155,64 @@ describe("speaking on xAI", () => {
     queue.stop();
   });
 });
+
+describe("check-ins", () => {
+  test("quiet hours run over midnight, and equal ends mean none", async () => {
+    const { inQuietHours } = await import("../src/check-ins.ts");
+    expect([21, 23, 0, 7].map((h) => inQuietHours(h, 21, 8))).toEqual([true, true, true, true]);
+    expect([8, 12, 20].map((h) => inQuietHours(h, 21, 8))).toEqual([false, false, false]);
+    expect([1, 5].map((h) => inQuietHours(h, 1, 6))).toEqual([true, true]);
+    expect(inQuietHours(6, 1, 6)).toBe(false);
+    expect(inQuietHours(3, 9, 9)).toBe(false);
+  });
+
+  test("one is due only when on, offered, outside quiet hours and its time has passed", async () => {
+    const { hourIn, isDue } = await import("../src/check-ins.ts");
+    const now = Date.parse("2026-10-27T15:00:00Z");
+    const state = { enabled: true, offeredAt: "2026-10-27T09:00:00Z", everyHours: 3 as const, quietFrom: 21, quietTo: 8, lastRunAt: "2026-10-27T11:30:00Z" };
+    expect(isDue(state, 15, now)).toBe(true);
+    expect(isDue({ ...state, lastRunAt: "2026-10-27T12:30:00Z" }, 15, now)).toBe(false);
+    expect(isDue({ ...state, lastRunAt: null }, 15, now)).toBe(true);
+    expect(isDue({ ...state, offeredAt: null }, 15, now)).toBe(false);
+    expect(isDue({ ...state, enabled: false }, 15, now)).toBe(false);
+    expect(isDue(state, 22, now)).toBe(false);
+    expect(hourIn("America/Toronto", new Date(now))).toBe(11);
+    expect(hourIn("UTC", new Date("2026-10-27T00:30:00Z"))).toBe(0);
+  });
+
+  test("the model is asked only when something changed, or a day on for promises coming due", async () => {
+    const { seenOf, worthALook } = await import("../src/check-ins.ts");
+    const now = Date.parse("2026-10-27T15:00:00Z");
+    const line = { id: "m1" } as unknown as import("@gond/shared").Message;
+    const base = { now: new Date(now), timezone: "UTC", bot, bots: [bot], chats: [], waiting: [], stalled: [], promises: [], emails: [], earlier: [] };
+    const fresh = { ...base, chats: [{ thread: {} as Thread, lines: [line] }] };
+    expect(worthALook(base, { lastSeen: null, lastLookedAt: null }, now)).toBe(false);
+    expect(worthALook(fresh, { lastSeen: null, lastLookedAt: "2026-10-27T14:00:00Z" }, now)).toBe(true);
+    expect(worthALook(fresh, { lastSeen: seenOf(fresh), lastLookedAt: "2026-10-27T14:00:00Z" }, now)).toBe(false);
+    const promised = { ...base, promises: [{ threadId: "t1", body: "I'll send Jo the lease tomorrow", at: "2026-10-26T15:00:00Z" }] };
+    expect(worthALook(promised, { lastSeen: "", lastLookedAt: "2026-10-27T14:00:00Z" }, now)).toBe(false);
+    expect(worthALook(promised, { lastSeen: "", lastLookedAt: "2026-10-26T14:00:00Z" }, now)).toBe(true);
+  });
+
+  test("email is read loosely, set apart in the prompt, and the prompt says how to stay quiet", async () => {
+    const { checkInInstructions, checkInPrompt, emailsFrom } = await import("../src/check-ins.ts");
+    const emails = emailsFrom({ messages: [{ messageId: "e1", sender: "Sam <sam@example.com>", subject: "Friday", preview: { body: "Can we move to 3?" } }, { subject: "no id" }, "junk"] });
+    expect(emails).toEqual([{ id: "e1", from: "Sam <sam@example.com>", subject: "Friday", preview: "Can we move to 3?" }]);
+    expect(emailsFrom(null)).toEqual([]);
+    const prompt = checkInPrompt({ now: new Date("2026-10-27T15:00:00Z"), timezone: "UTC", bot, bots: [bot], chats: [], waiting: [], stalled: [], promises: [], emails, earlier: [] });
+    expect(prompt).toContain("<email>\n- From Sam <sam@example.com>: \"Friday\". Can we move to 3?\n</email>");
+    expect(prompt).not.toContain("Cards waiting");
+    expect(checkInInstructions(bot, "")).toContain("answer exactly NOTHING_NEW");
+  });
+
+  test("the offer names email only when Gmail is connected, and never has an em dash", async () => {
+    const { checkInsText, offerText } = await import("../src/check-ins.ts");
+    expect(offerText(true, false)).toBe("One more thing: want me to keep an eye on things for you? Every few hours I'll look over what your bots are working on and anything left unfinished, and I'll only message you when something needs you.\n\n::choices[Sounds good | Not now]");
+    expect(offerText(true, true)).toContain("anything left unfinished and your email, and");
+    expect(offerText(false, true)).toContain("::choices[Sounds good | Leave out my email | Turn it off]");
+    expect(offerText(false, false)).toContain("::choices[Sounds good | Turn it off]");
+    for (const text of [offerText(true, true), offerText(false, true)]) expect(text).not.toContain("—");
+    expect(checkInsText("Sentry", { enabled: true, everyHours: 3, quietFrom: 21, quietTo: 8, email: true }, true)).toBe("Check-ins are on: every 3 hours except from 9 PM to 8 AM, looking at the bots and loose ends and their Gmail.");
+    expect(checkInsText("Sentry", { enabled: false, everyHours: 3, quietFrom: 21, quietTo: 8, email: true }, true)).toStartWith("Check-ins are off.");
+  });
+});

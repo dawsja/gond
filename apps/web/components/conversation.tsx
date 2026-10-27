@@ -2,7 +2,7 @@
 
 import { handleOf, plainMarkdown, REACTIONS, roomTargets, type Approval, type ApprovalAnswer, type Bot, type ChatAttachment, type ImageAspect, type LiveEvent, type Message, type ReactionEmoji, type Thread, type ThreadSpace } from "@gond/shared";
 import { inertChoices, remoteMember, spaceMentionables, spaceSubtitle } from "@/lib/spaces";
-import { ArrowUp, ChevronLeft, Copy, CornerUpLeft, Download, ListEnd, EllipsisVertical, File as FileIcon, FileArchive, FileHeadphone, FilePlay, FileSpreadsheet, FileText, Lock, Monitor, PanelRight, Paperclip, Pencil, Phone, Plus, RotateCcw, TextSelect, Undo2, X } from "lucide-react";
+import { ArrowUp, ChevronLeft, Copy, CornerUpLeft, Download, Eye, ListEnd, EllipsisVertical, File as FileIcon, FileArchive, FileHeadphone, FilePlay, FileSpreadsheet, FileText, Lock, Monitor, PanelRight, Paperclip, Pencil, Phone, Plus, RotateCcw, TextSelect, Undo2, X } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -436,6 +436,14 @@ const Line = memo(function Line({ message, threadId, bots, threads, bot, approva
           </MessageHeader>
         ) : null}
 
+        {message.checkIn ? (
+          <p className="flex items-center gap-1.5 pl-1 text-xs text-muted-foreground">
+            <Eye className="size-3.5 shrink-0 text-tint-ink" aria-hidden="true" />
+            <span>
+              <span className="font-semibold text-tint-ink">Checked in</span> · {shortTime(message.createdAt)}
+            </span>
+          </p>
+        ) : null}
         <ContextMenu onOpenChange={(open) => setSelected(open ? selectionIn(bubble.current) : "")}>
         <ContextMenuTrigger
           ref={bubble}
@@ -452,7 +460,7 @@ const Line = memo(function Line({ message, threadId, bots, threads, bot, approva
           }}
           className={cn("group/lift touch-pan-y select-text pointer-coarse:select-none", !swipe && "transition-transform duration-200")}
           style={swipe ? { transform: `translateX(${swipe}px)` } : undefined}
-          render={<Bubble variant={mine ? "default" : "outline"} align={mine ? "end" : "start"} className={cn("max-w-[86%] sm:max-w-[78%]", message.reactions.length > 0 && "mb-2.5")} />}
+          render={<Bubble variant={mine ? "default" : message.checkIn ? "tint" : "outline"} align={mine ? "end" : "start"} className={cn("max-w-[86%] sm:max-w-[78%]", message.reactions.length > 0 && "mb-2.5")} />}
         >
           {swipe ? (
             <span aria-hidden="true" className="absolute top-1/2 -left-9 grid size-7 -translate-y-1/2 place-items-center rounded-full bg-primary text-foreground" style={{ opacity: Math.min(1, swipe / REPLY_DISTANCE), scale: swipe >= REPLY_DISTANCE ? "1.1" : "1" }}>

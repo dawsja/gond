@@ -1,10 +1,9 @@
-import { isAccent, isEmojiLevel, isReplyStyle, type SignIns } from "@gond/shared";
+import { isAccent, isEmojiLevel, isReplyStyle } from "@gond/shared";
 import { Hono } from "hono";
 import type { Session } from "./auth.ts";
 import { personId, requireAdmin, userId } from "./access.ts";
 import { countAccounts, getAuth, getSession, isSameOrigin, registerAccount } from "./auth.ts";
-import { AVATAR_MAX_BYTES, clearAvatar, getAvatar, getUser, setAvatar, signInsOf } from "./data/users.ts";
-import { getOidcSettings, oidcReady } from "./data/oidc.ts";
+import { AVATAR_MAX_BYTES, clearAvatar, getAvatar, getUser, setAvatar } from "./data/users.ts";
 import { setUserAccent, setUserTalk, userTalk } from "./data/prefs.ts";
 import { activeProfile } from "./data/profiles.ts";
 import { approvalsRoutes } from "./routes/approvals.ts";
@@ -20,8 +19,10 @@ import { meHousehold } from "./households.ts";
 import { llmProxyRoutes, providerRoutes } from "./routes/llm.ts";
 import { mcpHandBack, mcpProxyRoutes, mcpRoutes } from "./routes/mcp.ts";
 import { mobileSignInRoutes } from "./routes/mobile-sign-in.ts";
+import { checkInsRoutes } from "./routes/check-ins.ts";
 import { notifyRoutes } from "./routes/notify.ts";
 import { profilesRoutes } from "./routes/profiles.ts";
+import { signInsRoutes } from "./routes/sign-ins.ts";
 import { pushRoutes } from "./routes/push.ts";
 import { secretsRoutes } from "./routes/secrets.ts";
 import { skillsRoutes } from "./routes/skills.ts";
@@ -120,12 +121,6 @@ export function createApp() {
     return c.body(null, 204);
   });
 
-  app.get("/api/me/sign-ins", (c) => {
-    const has = signInsOf(personId(c));
-    const oidc = oidcReady() ? { name: getOidcSettings().name, linked: has.oidc } : null;
-    return c.json({ password: has.password, oidc } satisfies SignIns);
-  });
-
   app.put("/api/me/accent", async (c) => {
     const body = (await c.req.json().catch(() => null)) as { accent?: unknown } | null;
     if (!isAccent(body?.accent)) return c.json({ error: "Pick one of the colors on offer" }, 400);
@@ -143,6 +138,7 @@ export function createApp() {
     return c.json(next);
   });
 
+  app.route("/api", signInsRoutes());
   app.route("/api", profilesRoutes());
   app.route("/api", botsRoutes());
   app.route("/api", threadsRoutes());
@@ -165,6 +161,7 @@ export function createApp() {
   app.route("/api", usageRoutes());
   app.route("/api", pushRoutes());
   app.route("/api", notifyRoutes());
+  app.route("/api", checkInsRoutes());
   app.route("/api", usersRoutes());
   app.route("/api", releaseRoutes());
 

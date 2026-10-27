@@ -57,6 +57,7 @@ type MessageRow = {
   sent_to: string | null;
   reply_to: string | null;
   answering: string | null;
+  check_in: number;
   created_at: string;
 };
 
@@ -100,6 +101,7 @@ function messageFrom(row: MessageRow, reactions: Reaction[], quote: Quote | null
     replyTo: quote,
     answering: row.answering,
     waiting: isUnread(row),
+    ...(row.check_in === 1 ? { checkIn: true } : {}),
     createdAt: row.created_at,
   };
 }
@@ -316,6 +318,8 @@ export type NewMessage = {
   answering?: string | null;
   /** A room line for the router: held back from the dispatcher until `routed` says whom it is for. */
   routing?: boolean;
+  /** The primary bot's line from a check-in. */
+  checkIn?: boolean;
 };
 
 export function postMessage(input: NewMessage): Message {
@@ -325,9 +329,9 @@ export function postMessage(input: NewMessage): Message {
   const needsAnswer = !input.answered && !input.steered && ((kind === "message" && (input.author === "you" || input.author === "routine" || Boolean(input.fromThreadId) || Boolean(input.wake))) || kind === "prompt");
   transaction((db) => {
     db.query(
-      `INSERT INTO gond_messages (id, thread_id, author, kind, body, attachments, depth, approval_id, from_thread_id, answered_at, steered, spoken, note, reply_to, answering, claimed_by, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(id, input.threadId, input.author, kind, input.body, JSON.stringify(input.attachments ?? []), input.depth ?? 0, input.approvalId ?? null, input.fromThreadId ?? null, needsAnswer ? null : at, input.steered ? 1 : 0, input.spoken ? 1 : 0, input.note ?? null, input.replyTo ?? null, input.answering ?? null, needsAnswer && input.routing ? ROUTING : null, at);
+      `INSERT INTO gond_messages (id, thread_id, author, kind, body, attachments, depth, approval_id, from_thread_id, answered_at, steered, spoken, note, reply_to, answering, claimed_by, check_in, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(id, input.threadId, input.author, kind, input.body, JSON.stringify(input.attachments ?? []), input.depth ?? 0, input.approvalId ?? null, input.fromThreadId ?? null, needsAnswer ? null : at, input.steered ? 1 : 0, input.spoken ? 1 : 0, input.note ?? null, input.replyTo ?? null, input.answering ?? null, needsAnswer && input.routing ? ROUTING : null, input.checkIn ? 1 : 0, at);
     db.query("UPDATE gond_threads SET updated_at = ? WHERE id = ?").run(at, input.threadId);
     if (input.author === "you") db.query("UPDATE gond_threads SET last_read_at = ? WHERE id = ?").run(at, input.threadId);
     for (const file of input.attachments ?? []) db.query("UPDATE gond_attachments SET message_id = ? WHERE id = ?").run(id, file.id);

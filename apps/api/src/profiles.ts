@@ -77,6 +77,18 @@ export function editProfile(id: string, change: { label?: string; icon?: string 
 export async function deleteProfile(id: string): Promise<void> {
   const profile = profileOf(id);
   if (!profile || profile.isDefault) return;
+  await wipe(id);
+  removeProfileRows(id);
+  emit({ topic: "profiles", userId: profile.personId });
+}
+
+/** A person and every profile of theirs, as deleting a profile is; their sign-ins and account are the caller's to remove. */
+export async function removePerson(personId: string): Promise<void> {
+  await deleteProfilesOf(personId);
+  await wipe(personId);
+}
+
+async function wipe(id: string): Promise<void> {
   endCallsOf(id);
   await stopAll(id).catch(() => undefined);
   leaveAllSpaces(id);
@@ -86,9 +98,7 @@ export async function deleteProfile(id: string): Promise<void> {
   forgetComposioCache(id);
   deleteUserData(id);
   const box = boxConfig();
-  if (box) await removeBoxAccount(box, id).catch((error: unknown) => console.warn(`[gond] could not remove profile ${id}'s account on the box: ${error instanceof Error ? error.message : error}`));
-  removeProfileRows(id);
-  emit({ topic: "profiles", userId: profile.personId });
+  if (box) await removeBoxAccount(box, id).catch((error: unknown) => console.warn(`[gond] could not remove ${id}'s account on the box: ${error instanceof Error ? error.message : error}`));
 }
 
 /** A person's other profiles, gone before the person is. */

@@ -5744,6 +5744,8 @@ describe("profiles", () => {
     postMessage({ threadId: room.id, author: bot.id, body: "done", answered: true });
     createApproval({ botId: bot.id, threadId: bot.threadId, tool: "Bash", summary: "ls", input: {} });
     db.query("INSERT INTO gond_peer_checks (user_id, peer_key, checked_at) VALUES (?, ?, ?)").run(work.id, "k".repeat(64), "2026-01-01T00:00:00Z");
+    const { setCheckIns } = await import("../src/data/check-ins.ts");
+    setCheckIns(work.id, { everyHours: 4 });
     const bots = [bot.id, other.id];
     const threads = [bot.threadId, other.threadId, room.id];
 
@@ -6319,5 +6321,113 @@ describe("always allow in a space", () => {
     expect(ruleOf(space.id, bot.id, "u-aa").level).toBe("act");
     setSpaceDefaults("u-aa", { level: "full", bots: null });
     expect(spaceDefaults("u-aa").level).toBe("act");
+  });
+});
+
+describe("check-ins", () => {
+  test("settings round-trip, the offer is claimed once, and a check-in line keeps its mark", async () => {
+    await seedUsers(["u-ci", "user"]);
+    const { checkInsOf, claimOffer, personLinesIn, setCheckIns, earlierCheckIns } = await import("../src/data/check-ins.ts");
+    const { createBot } = await import("../src/data/bots.ts");
+    const { postMessage, getMessage, markAnswered } = await import("../src/data/threads.ts");
+    const { offerCheckIns } = await import("../src/check-ins.ts");
+    const { botInputSchema, DEFAULT_CHECK_INS } = await import("@gond/shared");
+    expect(checkInsOf("u-ci")).toMatchObject({ ...DEFAULT_CHECK_INS, offeredAt: null });
+    expect(setCheckIns("u-ci", { everyHours: 6, email: false })).toEqual({ ...DEFAULT_CHECK_INS, everyHours: 6, email: false });
+    const sentry = createBot(botInputSchema.parse({ name: "Sentry" }), "u-ci");
+    expect(personLinesIn(sentry.threadId)).toEqual({ said: 0, waiting: 0 });
+    const hello = postMessage({ threadId: sentry.threadId, author: "you", body: "Hi!" });
+    expect(personLinesIn(sentry.threadId)).toEqual({ said: 1, waiting: 1 });
+    markAnswered(hello.id);
+    // The bot hasn't answered yet (and there's no AI): nothing is offered, and the offer is still to make.
+    expect(offerCheckIns("u-ci")).toBe(false);
+    expect(checkInsOf("u-ci").offeredAt).toBeNull();
+    expect(claimOffer("u-ci")).toBe(true);
+    expect(claimOffer("u-ci")).toBe(false);
+    const line = postMessage({ threadId: sentry.threadId, author: sentry.id, body: "Scout is waiting on you.", answered: true, checkIn: true });
+    expect(getMessage(line.id)!.checkIn).toBe(true);
+    expect(getMessage(hello.id)!.checkIn).toBeUndefined();
+    expect(earlierCheckIns(sentry.threadId).map((c) => c.body)).toEqual(["Scout is waiting on you."]);
+  });
+
+  test("the offer comes once after the first answer; a look posts only when something changed", async () => {
+    await seedUsers(["u-ci-run", "user"]);
+    const { saveProvider } = await import("../src/data/providers.ts");
+    const { updateAi } = await import("../src/data/ai.ts");
+    const { createBot } = await import("../src/data/bots.ts");
+    const { listMessages, postMessage } = await import("../src/data/threads.ts");
+    const { checkIn, offerCheckIns } = await import("../src/check-ins.ts");
+    const { checkInsOf } = await import("../src/data/check-ins.ts");
+    const { botInputSchema } = await import("@gond/shared");
+    const asked: string[] = [];
+    let answer = "A couple of things:\n\n- Scout found three flights and is waiting on your pick.\n\n::choices[Show me the flights]";
+    const fake = Bun.serve({
+      port: 0,
+      async fetch(request: Request) {
+        const body = (await request.json()) as { messages: { content: string }[] };
+        asked.push(body.messages.map((m) => m.content).join("\n"));
+        return Response.json({ choices: [{ message: { role: "assistant", content: answer }, finish_reason: "stop" }] });
+      },
+    });
+    const internal = process.env.GOND_API_INTERNAL_URL;
+    process.env.GOND_API_INTERNAL_URL = `http://127.0.0.1:${fake.port}`;
+    try {
+      saveProvider("u-ci-run", "openai", { baseUrl: "https://api.openai.com/v1", apiKey: "sk-checkin-1234567890" });
+      updateAi("u-ci-run", { engine: "api", enabled: ["api"], engines: { api: { access: "api", model: "small-model", provider: "openai" } } });
+      const sentry = createBot(botInputSchema.parse({ name: "Sentry" }), "u-ci-run");
+      const scout = createBot(botInputSchema.parse({ name: "Scout", title: "Travel" }), "u-ci-run");
+      postMessage({ threadId: sentry.threadId, author: "you", body: "Hi!", answered: true });
+      expect(offerCheckIns("u-ci-run")).toBe(false);
+      postMessage({ threadId: sentry.threadId, author: sentry.id, body: "Hi, I'm Sentry.", answered: true });
+      expect(offerCheckIns("u-ci-run")).toBe(true);
+      expect(offerCheckIns("u-ci-run")).toBe(false);
+      const offer = listMessages(sentry.threadId).at(-1)!;
+      expect(offer.body).toStartWith("One more thing: want me to keep an eye on things for you?");
+      expect(offer.checkIn).toBeUndefined();
+      expect(checkInsOf("u-ci-run").offeredAt).not.toBeNull();
+
+      postMessage({ threadId: scout.threadId, author: scout.id, body: "I found three flights to Denver. Which one?", answered: true });
+      expect(await checkIn("u-ci-run")).toBe("posted");
+      expect(asked.at(-1)).toContain("Scout: I found three flights to Denver");
+      expect(asked.at(-1)).toContain("answer exactly NOTHING_NEW");
+      const said = listMessages(sentry.threadId).at(-1)!;
+      expect(said.checkIn).toBe(true);
+      expect(said.author).toBe(sentry.id);
+      expect(said.body).toContain("Scout found three flights");
+
+      // Nothing new since: the model isn't asked at all.
+      const calls = asked.length;
+      expect(await checkIn("u-ci-run")).toBe("skipped");
+      expect(asked.length).toBe(calls);
+
+      // Something new, but nothing that needs the person: nothing is posted.
+      answer = "NOTHING_NEW";
+      postMessage({ threadId: scout.threadId, author: scout.id, body: "Booked the hotel you picked.", answered: true });
+      const count = listMessages(sentry.threadId).length;
+      expect(await checkIn("u-ci-run")).toBe("quiet");
+      expect(listMessages(sentry.threadId).length).toBe(count);
+      expect(checkInsOf("u-ci-run").lastLookedAt).not.toBeNull();
+    } finally {
+      process.env.GOND_API_INTERNAL_URL = internal;
+      fake.stop(true);
+    }
+  });
+
+  test("the route checks what it is given", async () => {
+    await seedUsers(["u-ci-route", "user"]);
+    const { Hono } = await import("hono");
+    const { checkInsRoutes } = await import("../src/routes/check-ins.ts");
+    const app = new Hono();
+    app.use("*", async (c: { set: (key: string, value: unknown) => void }, next: () => Promise<void>) => {
+      c.set("session", { user: { id: "u-ci-route" }, session: { id: "s-u-ci-route" } });
+      await next();
+    });
+    app.route("/api", checkInsRoutes());
+    const put = (body: unknown) => app.request("/api/check-ins", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    expect((await put({ everyHours: 5 })).status).toBe(400);
+    expect((await put({ quietFrom: 24 })).status).toBe(400);
+    const ok = await put({ enabled: false, quietFrom: 22 });
+    expect(ok.status).toBe(200);
+    expect(((await ok.json()) as { checkIns: { enabled: boolean; quietFrom: number } }).checkIns).toMatchObject({ enabled: false, quietFrom: 22 });
   });
 });

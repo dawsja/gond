@@ -1,4 +1,4 @@
-import { BOT_LIMITS, isNoteKind, NOTE_KINDS, type NoteKind, AVATAR_MAX_BYTES, CARD_FIELDS, cardLabel, IMAGE_ASPECTS, IMAGE_MODELS, MAX_IMAGE_REFERENCES, isImageAspect, ROOM_MAX_BOTS, draftIdOf, emailDraftOf, emailName, sendDraftAction, QUIET_REPLY, REACTIONS, isReaction, BOT_COLORS, BOT_EXPRESSIONS, BOT_SHAPES, LOGIN_FIELD_KINDS, MAX_SENT_FILE_BYTES, SKILL_LIMITS, botInputSchema, composioCard, handleOf, joinCommandLine, mentionsIn, mediaTypeFor, mcpServerInputSchema, hasKeyHeader, pickBotName, plainMarkdown, skillFilePath, type Bot, type BotExpression, type BotShape, type McpServer, type McpServerInput, type Message, type SkillInput, type Thread } from "@gond/shared";
+import { BOT_LIMITS, CHECK_IN_HOURS, isCheckInHours, type CheckIns, isNoteKind, NOTE_KINDS, type NoteKind, AVATAR_MAX_BYTES, CARD_FIELDS, cardLabel, IMAGE_ASPECTS, IMAGE_MODELS, MAX_IMAGE_REFERENCES, isImageAspect, ROOM_MAX_BOTS, draftIdOf, emailDraftOf, emailName, sendDraftAction, QUIET_REPLY, REACTIONS, isReaction, BOT_COLORS, BOT_EXPRESSIONS, BOT_SHAPES, LOGIN_FIELD_KINDS, MAX_SENT_FILE_BYTES, SKILL_LIMITS, botInputSchema, composioCard, handleOf, joinCommandLine, mentionsIn, mediaTypeFor, mcpServerInputSchema, hasKeyHeader, pickBotName, plainMarkdown, skillFilePath, type Bot, type BotExpression, type BotShape, type McpServer, type McpServerInput, type Message, type SkillInput, type Thread } from "@gond/shared";
 import { askApproval, ENGINE_FILES_TEXT, expiredText, requestApproval, SCRIPTED_SCREEN_TEXT, scriptsTheScreen, setAsideText, summarize, touchesEngine } from "./approvals.ts";
 import { boxHome, previewBoxImage, readBoxFileBytes, uploadBoxFile, writeBoxFile, type BoxConfig } from "./box.ts";
 import { exactApp, searchIndex } from "./catalog.ts";
@@ -14,6 +14,8 @@ import { cancelFollowUp, createFollowUp, listFollowUps } from "./data/follow-ups
 import { createMcpServer, getMcpServer, listMcpServers, markMcpRefreshed, updateMcpServer } from "./data/mcp.ts";
 import { allSecretValues, containsSecret, deleteSecret, hasSecret, hideSecrets, listSecrets, readLogin, secretHider } from "./data/secrets.ts";
 import { userTimezone } from "./data/prefs.ts";
+import { checkInsText, gmailConnected } from "./check-ins.ts";
+import { setCheckIns } from "./data/check-ins.ts";
 import { listConnections } from "./data/settings.ts";
 import { createSkill, getSkill, getSkillBySlug, listSkills, skillFiles, updateSkill } from "./data/skills.ts";
 import { createRoutine, deleteRoutine, listRoutines, previewRuns, recordRoutineRun, routinePrompt, updateRoutine } from "./data/routines.ts";
@@ -106,6 +108,7 @@ export const TOOL_NOTES = [
   "Those are every bot's, not only the primary bot's: who adds teammates and hands out work is a matter of the job, not of what you are allowed to call. Unless you are the primary bot, use them when the person asks you to, not on your own.",
   `Routines are yours to make and change: the person can only see them and switch them on or off, so when they want one made, changed, removed or run, you do it. create_routine schedules a prompt for yourself on a cron in the person's time zone, optionally with one of their skills, paused until they turn it on unless they asked for it in this conversation. list_routines shows yours; update_routine changes or pauses one, delete_routine removes it, run_routine runs it once now. When a routine fires (a message that starts [Routine: …] or [Watch: …]) and there is nothing new worth telling the person since its last run, answer with exactly ${QUIET_REPLY} and nothing else: the run then leaves no trace in the chat and nobody is notified. Anything they would want to know, say as usual.`,
   `Speak up before you're asked. A watch is a routine with watch: true that checks something for a change (a calendar clash, a flight, a price, a reply they're waiting on, a status page, a charge on an account) and speaks only when the change matters to the person; its run shows them "<your name> noticed". When the person asks about the same thing a second time, or about anything that will change later, offer once to keep an eye on it, in one line ending with ::choices (like "Want me to watch your calendar for clashes like this?" ::choices[Yes, always | Work only | No thanks]); on a yes, create_routine with watch: true and enabled: true, a cron no more often than the thing changes, and a prompt that says exactly what counts as worth telling. Don't offer again for something they turned down. When a watch speaks, lead with what changed and what it means for them, in a line or two, then the one thing you can do about it (draft the reply and ask_approval to send it, say). A morning briefing is a plain routine, not a watch. "Less like this" on something you noticed means it wasn't worth it: tighten that watch's prompt with update_routine so it won't come up again.`,
+  `Check-ins are the primary bot's alone: every few hours Gond looks over the person's bots, what's left unfinished and their unread email, and the primary bot posts a short message only when something needs them, marked as a check-in. If you are the primary bot and the person answers your offer of check-ins or asks to change them (off, on, how often, quiet hours, leaving out their email), call set_check_ins, then say what changed in a line; "Sounds good" changes nothing, since they're on. When they tap a next step from a check-in, do it: read_conversation and list_handoffs show where the work is.`,
   `Something with a date and time is a reminder, not just a note: when the person mentions an appointment, a deadline, a bill, a flight or anything they mustn't miss ("I have the dentist tomorrow at 2"), create_routine with once: true and enabled: true at a sensible time before it (the morning of, or an hour ahead for something later today; earlier for what needs getting ready), a prompt that says what to tell them, and say in a line when you'll remind them. If you can't tell when it is, ask. When it runs, tell them plainly, in a line or two, with anything useful (when to leave, what to bring); it then removes itself. A run of a reminder is never ${QUIET_REPLY}.`,
   "ask_approval posts a decision card and waits for the person. Whenever you need a yes or no before you act, use it rather than asking in a sentence and ending your turn: the question as summary, where and what as why, the rows that matter as details (items and prices, with total; recipients; files), and buttons named for the act (allow \"Place order\", deny \"Not yet\"). Both buttons are about one act: allow does it, deny doesn't, and deny tells you to stop. It is never a way to pick between options (A or B, this host or every host): for that, end your reply with ::choices[A | B], wait for the pick, and only then ask_approval for the act it settled on, if it still needs a yes. On Auto, call it before anything you can't undo or that leaves the computer: sending a message or email as the person, deleting or overwriting files outside your home, a payment or purchase, a forced push, changing settings for other people, typing a password you weren't given, anything they would want to know first. On Always ask the broker already asks; on Always allow it answers at once.",
   "Connected-app tools (names starting with the app, like GMAIL_SEND_EMAIL) act on the person's real accounts. Reads go through; writes may wait for the person's approval. Say what you sent, created or changed.",
@@ -1065,6 +1068,36 @@ export function baseTools(context: Context): Record<string, DriverTool> {
         return afterSave(server, "Added");
       },
     },
+    ...(bot.primary
+      ? {
+          set_check_ins: {
+            description: "Change your check-ins for the person: on or off, how often, their quiet hours, and whether you look at their email. Leave out what stays.",
+            inputSchema: schema({
+              enabled: { type: "boolean" },
+              every_hours: { type: "number", enum: [...CHECK_IN_HOURS] },
+              quiet_from: { type: "number", description: "The hour quiet starts, 0 to 23, in their time zone." },
+              quiet_to: { type: "number", description: "The hour quiet ends, 0 to 23." },
+              email: { type: "boolean", description: "Whether to look at their unread email." },
+            }),
+            execute: async (input) => {
+              const change: Partial<CheckIns> = {};
+              if (typeof input.enabled === "boolean") change.enabled = input.enabled;
+              if (typeof input.email === "boolean") change.email = input.email;
+              if (input.every_hours !== undefined) {
+                if (!isCheckInHours(input.every_hours)) return `NOT changed: every_hours is one of ${CHECK_IN_HOURS.join(", ")}.`;
+                change.everyHours = input.every_hours;
+              }
+              for (const [key, field] of [["quiet_from", "quietFrom"], ["quiet_to", "quietTo"]] as const) {
+                if (input[key] === undefined) continue;
+                const hour = input[key];
+                if (typeof hour !== "number" || !Number.isInteger(hour) || hour < 0 || hour > 23) return `NOT changed: ${key} is an hour from 0 to 23.`;
+                change[field] = hour;
+              }
+              return checkInsText(bot.name, setCheckIns(bot.userId, change), gmailConnected(bot.userId));
+            },
+          },
+        }
+      : {}),
     list_routines: {
       description: "Your scheduled routines.",
       inputSchema: schema({}),

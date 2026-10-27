@@ -2,6 +2,7 @@ import { AI_SETUP_CARD, ENGINE_LABELS, QUIET_REPLY, addressedIn, handleOf, isClo
 import { createHash } from "node:crypto";
 import { BoxError, boxConfig, boxHome, closeAgent, ensureBotHome, health, interruptAgent, steerAgent, writeBoxFile, type BoxConfig } from "./box.ts";
 import { isUpdating } from "./updater.ts";
+import { offerCheckIns, stopCheckIn } from "./check-ins.ts";
 import { getBot, getPrimary, listBots } from "./data/bots.ts";
 import { type Delegation, finishDelegation, handoffWorkedOn, isDelegationResult, openChildren, openDelegationsFrom, openDelegationsTo } from "./data/delegations.ts";
 import { cancelFollowUpsIn } from "./data/follow-ups.ts";
@@ -220,6 +221,7 @@ export async function stopThread(threadId: string, options: { quiet?: boolean } 
   report.recordings = await stopTeachingsIn(threadId);
   await stopWorkFrom(threadId, null, new Set([threadId]), report);
 
+  if (owner && getPrimary(owner)?.threadId === threadId && stopCheckIn(owner)) report.stopped += 1;
   if (owner) forgetHandBack(owner, threadId);
   for (const handoff of openDelegationsTo(threadId)) closeStopped(handoff, getBot(handoff.toBotId)?.name ?? "The teammate");
   if (report.dropped && !options.quiet) postMessage({ threadId, author: "system", kind: "event", body: `Stopped. ${report.dropped} waiting message${report.dropped === 1 ? " was" : "s were"} dropped.`, answered: true });
@@ -851,6 +853,7 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
   if (!reply) closeCallTurn(message.id, stopped ? "stopped" : unanswered ? "failed" : "quiet");
   await reportBack(bot, message, reply, stopped, broke);
   if (message.author === "routine") finishRoutineRun(message.id, Boolean(reply) || quiet);
+  if (reply && bot.primary && message.author === "you" && thread.id === bot.threadId) offerCheckIns(thread.userId);
   if (quiet) dropMessage(message.id);
   if (reply && summaryRun) void summarizeThread({ box, bot, thread, bots, run: summaryRun, window: CONTEXT_LINES });
   return reply;

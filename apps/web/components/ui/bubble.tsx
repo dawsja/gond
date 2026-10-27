@@ -28,6 +28,9 @@ const bubbleVariants = cva(
         tinted:
           "*:data-[slot=bubble-content]:bg-[oklch(from_var(--primary)_0.93_calc(c*0.4)_h)] *:data-[slot=bubble-content]:text-foreground dark:*:data-[slot=bubble-content]:bg-[oklch(from_var(--primary)_0.3_calc(c*0.4)_h)] [&>[data-slot=bubble-content]:is(button,a):hover]:bg-[oklch(from_var(--primary)_0.88_calc(c*0.5)_h)] dark:[&>[data-slot=bubble-content]:is(button,a):hover]:bg-[oklch(from_var(--primary)_0.35_calc(c*0.5)_h)]",
 
+        // A bot's line of its own, nobody having asked: the person's colour, as on a card a watch posts.
+        tint:
+          "*:data-[slot=bubble-content]:bg-tint-wash *:data-[slot=bubble-content]:text-foreground [&>[data-slot=bubble-content]:is(button,a):hover]:bg-[color-mix(in_oklch,var(--tint-wash),var(--foreground)_5%)]",
         outline:
           "*:data-[slot=bubble-content]:bg-bubble-bot *:data-[slot=bubble-content]:text-foreground [&>[data-slot=bubble-content]:is(button,a):hover]:bg-[color-mix(in_oklch,var(--bubble-bot),var(--foreground)_5%)]",
         ghost:

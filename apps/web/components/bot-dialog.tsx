@@ -2,22 +2,24 @@
 
 import { APPROVAL_LEVELS, APPROVAL_LEVEL_LABELS, BOT_COLORS, BOT_EXPRESSIONS, BOT_LIMITS, BOT_SHAPES, BOT_SHAPE_LABELS, type Bot, type BotExpression, type BotShape } from "@gond/shared";
 import { useRouter } from "next/navigation";
-import { ImagePlus, Upload } from "lucide-react";
+import { Bell, BellOff, ImagePlus, Upload } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
+import { CheckInsFields, useCheckIns } from "@/components/check-ins-fields";
 import { useDiscardChanges } from "@/components/discard-changes";
 import { GondBot } from "@/components/hq/gond-bot";
 import { usePicturePicker } from "@/components/picture-crop-dialog";
 import { useStore } from "@/components/store";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field";
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
-import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { Toggle } from "@/components/ui/toggle";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { useDeviceNotices } from "@/hooks/use-device-notices";
 import { cn } from "@/lib/utils";
 import { api, del, patch, post } from "@/lib/api";
 
@@ -49,7 +51,15 @@ export function BotDialog({ botId, onClose }: { botId: string | null; onClose: (
   const shown = photo === undefined ? (existing?.avatar ?? null) : (photo?.url ?? null);
   const picture = usePicturePicker("The bot's picture", async (blob) => setPhoto({ blob, url: URL.createObjectURL(blob) }));
   useEffect(() => () => void (photo && URL.revokeObjectURL(photo.url)), [photo]);
-  const dirty = photo !== undefined || (existing ? JSON.stringify(form) !== JSON.stringify(pick(existing)) : Boolean(form.title.trim() || form.description.trim()));
+  // Whether this device hears the bot is the device's, kept apart from the bot and saved with it.
+  const device = useDeviceNotices();
+  const mutedHere = Boolean(existing && device.notices?.mutedBots.includes(existing.id));
+  const [here, setHere] = useState<boolean | null>(null);
+  const hereOn = here ?? !mutedHere;
+  const hereChanged = here !== null && here === mutedHere;
+  // Check-ins are the primary bot's, kept for the profile and saved with the dialog.
+  const checkIns = useCheckIns(Boolean(existing?.primary));
+  const dirty = photo !== undefined || hereChanged || checkIns.changed || (existing ? JSON.stringify(form) !== JSON.stringify(pick(existing)) : Boolean(form.title.trim() || form.description.trim()));
   const discard = useDiscardChanges(dirty && !busy, onClose);
 
   useEffect(() => {
@@ -70,6 +80,17 @@ export function BotDialog({ botId, onClose }: { botId: string | null; onClose: (
         await api(`/api/bots/${bot.id}/avatar`, { method: "PUT", body: upload });
       } else if (photo === null && existing?.avatar) {
         await del(`/api/bots/${bot.id}/avatar`);
+      }
+      if (hereChanged && device.notices) {
+        const others = device.notices.mutedBots.filter((id) => id !== bot.id);
+        await device.save({ ...device.notices, mutedBots: hereOn ? others : [...others, bot.id] }).catch(() => {
+          throw new Error(`Couldn't change ${bot.name}'s notices on ${device.here}. Try again.`);
+        });
+      }
+      if (checkIns.changed) {
+        await checkIns.save().catch(() => {
+          throw new Error(`Couldn't change ${bot.name}'s check-ins. Try again.`);
+        });
       }
       await refresh();
       if (!existing) router.push(`/app/t/${bot.threadId}`);
@@ -191,15 +212,14 @@ export function BotDialog({ botId, onClose }: { botId: string | null; onClose: (
               <FieldDescription>{APPROVAL_LEVEL_LABELS[form.approval].detail} Every bot runs on the model chosen under Settings. Any bot can add teammates and hand work to them; your primary bot is the one that coordinates.</FieldDescription>
             </Field>
 
-            <FieldLabel htmlFor="bot-notify">
-              <Field orientation="horizontal">
-                <FieldContent>
-                  <FieldTitle>Notify me</FieldTitle>
-                  <FieldDescription>A notification when it finishes or needs you. Turn them on under Settings first.</FieldDescription>
-                </FieldContent>
-                <Switch id="bot-notify" checked={form.notify} onCheckedChange={(on) => set("notify", on)} aria-label="Notify me" />
-              </Field>
-            </FieldLabel>
+            <div className="flex flex-col divide-y border-y">
+              <BellField title="Notify me" label={`Notify me about ${form.name.trim() || "this bot"}`} pressed={form.notify} onPressedChange={(on) => set("notify", on)} />
+              {existing && device.notices ? (
+                <BellField title={`On ${device.here}`} label={`${existing.name}'s notices on ${device.here}`} pressed={form.notify && hereOn} disabled={!form.notify} onPressedChange={setHere} />
+              ) : null}
+            </div>
+
+            {existing?.primary ? <CheckInsFields name={form.name.trim() || existing.name} state={checkIns} /> : null}
 
             {error ? <FieldError>{error}</FieldError> : null}
             <DialogFooter>
@@ -232,4 +252,16 @@ export function BotDialog({ botId, onClose }: { botId: string | null; onClose: (
 
 function pick(bot: Bot): Form {
   return { name: bot.name, title: bot.title, description: bot.description, color: bot.color, expression: bot.expression, shape: bot.shape, approval: bot.approval, notify: bot.notify };
+}
+
+/** A notice setting as a bell: rung when on, struck through when off. */
+function BellField({ title, label, pressed, disabled = false, onPressedChange }: { title: string; label: string; pressed: boolean; disabled?: boolean; onPressedChange: (pressed: boolean) => void }) {
+  return (
+    <Field orientation="horizontal" data-disabled={disabled || undefined} className="min-h-15">
+      <FieldTitle className="flex-1">{title}</FieldTitle>
+      <Toggle variant="bell" size="icon" pressed={pressed} disabled={disabled} onPressedChange={onPressedChange} aria-label={label}>
+        {pressed ? <Bell aria-hidden="true" /> : <BellOff aria-hidden="true" />}
+      </Toggle>
+    </Field>
+  );
 }

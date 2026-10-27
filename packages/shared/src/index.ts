@@ -178,6 +178,8 @@ export type Message = {
    * taken back or edited. Always filled by the API; optional only so cards drawn from other things needn't say.
    */
   waiting?: boolean;
+  /** What the primary bot said on a check-in of its own, not in answer to anything. */
+  checkIn?: boolean;
   createdAt: string;
 };
 
@@ -379,7 +381,22 @@ export type UserRole = (typeof USER_ROLES)[number];
 export type SignInProvider = "local" | "oidc";
 
 /** How a person signs in: a password, and whether the organisation's provider is linked to this account (null when none is set up). */
-export type SignIns = { password: boolean; oidc: { name: string; linked: boolean } | null };
+/** How a person signs in, and, for an account the provider made while one with a password waits unlinked, what moving to that one would delete. */
+/** How often the primary bot looks in on the person's bots, email and loose ends, in hours. */
+export const CHECK_IN_HOURS = [2, 3, 4, 6] as const;
+export type CheckInHours = (typeof CHECK_IN_HOURS)[number];
+
+/**
+ * The primary bot's check-ins: every `everyHours` outside the quiet hours (whole hours in the person's
+ * time zone, from `quietFrom` until `quietTo`), it says something only when something needs the person.
+ */
+export type CheckIns = { enabled: boolean; everyHours: CheckInHours; quietFrom: number; quietTo: number; email: boolean };
+
+export const DEFAULT_CHECK_INS: CheckIns = { enabled: true, everyHours: 3, quietFrom: 21, quietTo: 8, email: true };
+
+export const isCheckInHours = (value: unknown): value is CheckInHours => (CHECK_IN_HOURS as readonly unknown[]).includes(value);
+
+export type SignIns = { password: boolean; oidc: { name: string; linked: boolean } | null; move: { bots: number; chats: number } | null };
 
 export type Me = {
   id: string;

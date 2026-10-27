@@ -6,7 +6,7 @@ import { adoptLegacyAi } from "./ai.ts";
 import { ensurePrimary } from "./bots.ts";
 import { pictureType } from "../images.ts";
 import { userAccent, userTalk } from "./prefs.ts";
-import { isExtraProfile, personOf, profileOf } from "./profiles.ts";
+import { isExtraProfile, personOf, profileIds, profileOf } from "./profiles.ts";
 
 type UserRow = { id: string; name: string; email: string; role: string | null; createdAt: string | number };
 
@@ -18,6 +18,51 @@ function toRole(value: string | null | undefined): UserRole {
 export function signInsOf(userId: string): { password: boolean; oidc: boolean } {
   const rows = ensureDatabase().query('SELECT providerId FROM "account" WHERE userId = ?').all(userId) as { providerId: string }[];
   return { password: rows.some((r) => r.providerId === "credential"), oidc: rows.some((r) => r.providerId === OIDC_PROVIDER_ID) };
+}
+
+/** The account a username signs in to with a password, and that password's hash. */
+export function passwordAccount(username: string): { userId: string; hash: string } | null {
+  const row = ensureDatabase()
+    .query('SELECT a.userId AS userId, a.password AS hash FROM "account" a JOIN "user" u ON u.id = a.userId WHERE u.username = ? AND a.providerId = \'credential\' AND a.password IS NOT NULL')
+    .get(username) as { userId: string; hash: string } | null;
+  return row;
+}
+
+/** Whether an account with a password hasn't linked the provider's sign-in yet, so one made through the provider could move to it. */
+export function unlinkedPasswordAccount(): boolean {
+  return Boolean(
+    ensureDatabase()
+      .query('SELECT 1 FROM "account" a WHERE a.providerId = \'credential\' AND NOT EXISTS (SELECT 1 FROM "account" b WHERE b.userId = a.userId AND b.providerId = ?) LIMIT 1')
+      .get(OIDC_PROVIDER_ID),
+  );
+}
+
+/** What a person has made, over all their profiles: bots, and conversations they wrote in. */
+export function contentsOf(personId: string): { bots: number; chats: number } {
+  const db = ensureDatabase();
+  let bots = 0;
+  let chats = 0;
+  for (const id of profileIds(personId)) {
+    bots += Number((db.query("SELECT COUNT(*) AS n FROM gond_bots WHERE user_id = ? AND hidden = 0").get(id) as { n: number }).n);
+    chats += Number((db.query("SELECT COUNT(*) AS n FROM gond_threads t WHERE t.user_id = ? AND EXISTS (SELECT 1 FROM gond_messages m WHERE m.thread_id = t.id AND m.author = 'you')").get(id) as { n: number }).n);
+  }
+  return { bots, chats };
+}
+
+/** The provider's sign-in moves from one account to another, so signing in with it opens the other. */
+export function moveProviderSignIn(fromId: string, toId: string): void {
+  ensureDatabase().query('UPDATE "account" SET userId = ? WHERE userId = ? AND providerId = ?').run(toId, fromId, OIDC_PROVIDER_ID);
+}
+
+/** The sign-in side of a person, once everything else of theirs is gone: sessions, sign-ins and the account itself. */
+export function forgetAccount(personId: string): void {
+  transaction((db) => {
+    db.query('DELETE FROM gond_session_profiles WHERE session_id IN (SELECT id FROM "session" WHERE userId = ?)').run(personId);
+    db.query('DELETE FROM "session" WHERE userId = ?').run(personId);
+    db.query('DELETE FROM "account" WHERE userId = ?').run(personId);
+    db.query("DELETE FROM gond_profiles WHERE person_id = ?").run(personId);
+    db.query('DELETE FROM "user" WHERE id = ?').run(personId);
+  });
 }
 
 function providerOf(userId: string): SignInProvider {
@@ -139,6 +184,7 @@ export function deleteUserData(userId: string): { bots: string[] } {
     db.query("DELETE FROM gond_providers WHERE user_id = ?").run(userId);
     db.query("DELETE FROM gond_user_ai WHERE user_id = ?").run(userId);
     db.query("DELETE FROM gond_user_prefs WHERE user_id = ?").run(userId);
+    db.query("DELETE FROM gond_check_ins WHERE user_id = ?").run(userId);
     db.query("DELETE FROM gond_skill_files WHERE skill_id IN (SELECT id FROM gond_skills WHERE user_id = ?)").run(userId);
     db.query("DELETE FROM gond_skills WHERE user_id = ?").run(userId);
     db.query("DELETE FROM gond_exports WHERE user_id = ?").run(userId);
