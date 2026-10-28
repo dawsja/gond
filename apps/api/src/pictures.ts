@@ -1,14 +1,13 @@
-import { IMAGE_MODELS, IMAGE_SHAPES, IMAGE_SOURCES, PROVIDER_LABELS, type ImageAspect, type ImageSource } from "@gond/shared";
+import { IMAGE_MODELS, IMAGE_SHAPES, IMAGE_SOURCES, isXaiUrl, type ImageAspect, type ImageSource } from "@gond/shared";
 import { planSession, providerBaseUrl, providerKey } from "./data/providers.ts";
 import type { StepUsage } from "./data/usage.ts";
 import { GROK_MEDIA_HEADERS, grokAccessToken } from "./grok.ts";
-import { keyHolder } from "./households.ts";
 import { pictureType } from "./images.ts";
 import { authHeaders, upstreamUrl } from "./providers.ts";
 import { sseStream } from "./sse.ts";
 
 // A plan's token is good on the public API for pictures, as the Grok CLI uses it; its chat proxy has no images route.
-const XAI_API_URL = PROVIDER_LABELS.xai.defaultUrl;
+const XAI_API_URL = "https://api.x.ai/v1";
 const IMAGE_TIMEOUT_MS = 180_000;
 const PREVIEWS = 2;
 
@@ -19,18 +18,17 @@ export type ImageRequest = { prompt: string; aspect: ImageAspect; references: Im
 
 /** The person's first way to make pictures, in `IMAGE_SOURCES` order; null when they have none. */
 export async function imageAccess(userId: string): Promise<ImageAccess | null> {
-  // A household member makes pictures on the household's keys, never on anyone's plan.
-  const keys = keyHolder(userId);
   for (const source of IMAGE_SOURCES) {
     if (source === "grok") {
-      if (keys !== userId || !planSession(userId, "grok")) continue;
+      if (!planSession(userId, "grok")) continue;
       const token = await grokAccessToken(userId).catch(() => null);
       if (token) return { source, baseUrl: XAI_API_URL, headers: { authorization: `Bearer ${token}`, ...GROK_MEDIA_HEADERS } };
       continue;
     }
-    const baseUrl = providerBaseUrl(keys, source);
-    const key = providerKey(keys, source);
-    if (baseUrl && key) return { source, baseUrl, headers: authHeaders(source, baseUrl, key) };
+    // The OpenAI-compatible key makes pictures on xAI's images when it points at xAI.
+    const baseUrl = providerBaseUrl(userId, "openai");
+    const key = providerKey(userId, "openai");
+    if (baseUrl && key && (source === "xai") === isXaiUrl(baseUrl)) return { source, baseUrl, headers: authHeaders("openai", baseUrl, key) };
   }
   return null;
 }
@@ -80,7 +78,7 @@ export function imageRefusal(source: ImageSource, status: number, body: unknown)
   const said = errorText(body);
   const where = IMAGE_MODELS[source].label;
   if (/safety|moderat|content.?polic|not allowed|violat/i.test(said)) return `${where} turned that picture down under its content rules${said ? ` ("${said}")` : ""}. Ask the person for something else, or reword it.`;
-  if (source === "grok" && (status === 401 || status === 403)) return "The person's Grok plan can't make pictures: that needs SuperGrok. Tell them, or they can add an xAI or OpenAI key in Settings → AI.";
+  if (source === "grok" && (status === 401 || status === 403)) return "The person's Grok plan can't make pictures: that needs SuperGrok. Tell them, or they can add an OpenAI or xAI key in Settings → AI.";
   if (status === 401 || status === 403) return `${where} refused the person's key. They can check it in Settings → AI.`;
   if (status === 429) return `${where} says the person has hit a usage limit. Try again later.`;
   if (status >= 400 && status < 500) return `${where} couldn't make that picture${said ? `: ${said}` : ""}.`;

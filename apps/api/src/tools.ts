@@ -4,7 +4,6 @@ import { boxHome, previewBoxImage, readBoxFileBytes, uploadBoxFile, writeBoxFile
 import { exactApp, searchIndex } from "./catalog.ts";
 import { catalogIndex, composioConfigured, executeAction, isReadOnlyAction, toolsFor, type ComposioTool } from "./composio.ts";
 import { clearBotAvatar, createBot, findBot, getBot, listBots, setBotAvatar, updateBot } from "./data/bots.ts";
-import { runErrand, sharedBotsFor, type ErrandTurn } from "./households.ts";
 import { pictureType } from "./images.ts";
 import { emit } from "./events.ts";
 import { createImage, imageAccess, keepPreview, type ImageReference } from "./pictures.ts";
@@ -129,12 +128,6 @@ type Context = {
   message: Message;
 
   askBot: (bot: Bot, prompt: string, depth: number) => Promise<string>;
-
-  /** Runs a shared bot's turn on an errand for this bot's household member, in the head's conversation. */
-  errandTurn?: ErrandTurn;
-
-  /** Stops what runs in a conversation, quietly: a member's Stop reaching the errand it started. */
-  stopTurns?: (threadId: string) => Promise<unknown>;
 
   syncSoul: (bot: Bot) => Promise<void>;
 
@@ -660,7 +653,7 @@ export function baseTools(context: Context): Record<string, DriverTool> {
         const given = Array.isArray(input.from) ? input.from.map((path) => String(path ?? "").trim()).filter(Boolean) : [];
         if (given.length > MAX_IMAGE_REFERENCES) return `NOT made: at most ${MAX_IMAGE_REFERENCES} pictures in from.`;
         const access = await imageAccess(bot.userId);
-        if (!access) return "NOT made: the person has no way to make pictures yet. Tell them to sign in to Grok with SuperGrok, or add an xAI or OpenAI key, in Settings → AI. A ChatGPT plan can't make pictures here.";
+        if (!access) return "NOT made: the person has no way to make pictures yet. Tell them to sign in to Grok with SuperGrok, or add an OpenAI or xAI key as the OpenAI-compatible API, in Settings → AI. A ChatGPT plan can't make pictures here.";
 
         const references: ImageReference[] = [];
         for (const path of given) {
@@ -693,7 +686,7 @@ export function baseTools(context: Context): Record<string, DriverTool> {
               tell("preview", `/api/threads/${thread.id}/pictures/${id}?v=${previews}`);
             },
           });
-          if (picture.usage) recordUsage({ userId: bot.userId, botId: bot.id, threadId: thread.id, source: picture.source, model: IMAGE_MODELS[picture.source][references.length ? "editModel" : "model"], ...picture.usage });
+          if (picture.usage) recordUsage({ userId: bot.userId, botId: bot.id, threadId: thread.id, source: picture.source === "xai" ? "openai" : picture.source, model: IMAGE_MODELS[picture.source][references.length ? "editModel" : "model"], ...picture.usage });
           const extension = picture.mediaType === "image/png" ? "png" : picture.mediaType === "image/webp" ? "webp" : "jpg";
           const name = pictureName(prompt);
           const saved = `images/${name}-${Date.now().toString(36)}.${extension}`;
@@ -1511,7 +1504,6 @@ export function teamTools(context: Context): Record<string, DriverTool> {
         return `${updated.name}'s profile updated (${[...changed, ...Object.keys(patch)].join(", ")}). It reads its new SOUL on its next turn.`;
       },
     },
-    ...(context.errandTurn && sharedBotsFor(bot.userId).length ? { ask_shared_bot: sharedBotTool(context, depth) } : {}),
     ask_bot: {
       description: "Ask a teammate a short question and wait for the answer.",
       inputSchema: schema({ bot: { type: "string" }, question: { type: "string" } }, ["bot", "question"]),
@@ -1525,20 +1517,6 @@ export function teamTools(context: Context): Record<string, DriverTool> {
         const answer = await askBot(target, `${bot.name} (${bot.title || "teammate"}) asks you, briefly: ${question}`, depth);
         return clip(answer || "(no answer)");
       },
-    },
-  };
-}
-
-/** Asks one of the household head's shared bots for something, waiting for what came of it. */
-function sharedBotTool(context: Context, depth: number): DriverTool {
-  const { bot, thread, signal } = context;
-  return {
-    description: "Ask one of your household head's shared bots (listed in your instructions) to answer or do something, and wait for what came of it. Self-contained: it doesn't see this conversation.",
-    inputSchema: schema({ bot: { type: "string", description: "The shared bot's name or @handle." }, request: { type: "string", description: "What you need, with the details it needs, in a few lines." } }, ["bot", "request"]),
-    execute: async (input) => {
-      if (depth > MAX_CHAIN) return "NOT asked: too many bot-to-bot hops.";
-      if (!context.errandTurn || !context.stopTurns) return "NOT asked: shared bots can't be asked from here.";
-      return clip(await runErrand({ asker: bot, askerThread: thread, target: String(input.bot ?? ""), request: hideSecrets(String(input.request ?? "")), signal: signal ?? new AbortController().signal, turn: context.errandTurn, stopTurns: context.stopTurns }));
     },
   };
 }

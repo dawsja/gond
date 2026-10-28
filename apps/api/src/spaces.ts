@@ -1,8 +1,9 @@
-import { addressedIn, handleOf, isQuietReply, isRemoteAuthor, mentionsIn, plainMarkdown, type AiSettings, type Bot, type Message, type Space, type SpaceRule, type Thread } from "@gond/shared";
+import { addressedIn, handleOf, isQuietReply, isRemoteAuthor, mentionsIn, plainMarkdown, type Bot, type Message, type Space, type SpaceRule, type Thread } from "@gond/shared";
 import { verifyKeyCard, type KeyCard } from "@gond/relay/client";
 import { inviteHash, isKey } from "@gond/relay/protocol";
 import { askOwner } from "./approvals.ts";
 import { boxConfig, closeAgent } from "./box.ts";
+import { getAi } from "./data/ai.ts";
 import { getBot, listBots } from "./data/bots.ts";
 import { allSecretValues } from "./data/secrets.ts";
 import {
@@ -49,7 +50,6 @@ import { newId } from "./ids.ts";
 import { sendPush } from "./push.ts";
 import { nativeTurn } from "./native.ts";
 import { createRedactor } from "./redact.ts";
-import { turnAi } from "./households.ts";
 import { formatting } from "./souls.ts";
 import { MAX_ROOM_LINES } from "./tools.ts";
 import { loadMemory, transcriptLines } from "./transcript.ts";
@@ -685,8 +685,7 @@ async function answerAsGuest(bot: Bot, thread: Thread, message: Message, rule: S
   const instructions = guestInstructions(bot, rule, memory);
   const prompt = `The space so far (newest last):\n${lines}\n\nAnswer the last line, from ${memberOfAuthor(thread.id, message.author)?.name ?? "someone on another Gond"}, as ${bot.name}.`;
   try {
-    const { ai, keys } = turnAi(userId);
-    const said = await guestReply({ bot, threadId: thread.id, instructions, prompt, search: rule.level === "look", ai, keys, usageUserId: userId, signal });
+    const said = await guestReply({ bot, threadId: thread.id, instructions, prompt, search: rule.level === "look", signal });
     if (signal.aborted) return;
     if (said && !isQuietReply(said)) postMessage({ threadId: thread.id, author: bot.id, body: said, answered: true, answering: message.id });
   } catch (error) {
@@ -697,17 +696,16 @@ async function answerAsGuest(bot: Bot, thread: Thread, message: Message, rule: S
 }
 
 /**
- * One answer from a bot that isn't working for its owner (someone on another Gond, a household member's
- * bot): no tools, or only the web with `search`, its words redacted, in a session of its own that is
- * closed again. The AI is the one `ai` names, on `keys`' keys, and the usage is `usageUserId`'s.
+ * One answer from a bot to someone on another Gond: no tools, or only the web with `search`, its words
+ * redacted, in a session of its own that is closed again, on its owner's AI.
  */
-export async function guestReply(input: { bot: Bot; threadId: string; instructions: string; prompt: string; search: boolean; ai: AiSettings; keys: string; usageUserId: string; signal: AbortSignal }): Promise<string> {
+export async function guestReply(input: { bot: Bot; threadId: string; instructions: string; prompt: string; search: boolean; signal: AbortSignal }): Promise<string> {
   const { bot, threadId, instructions, prompt, search, signal } = input;
   activity(threadId, bot.id, "Thinking…");
   const hide = createRedactor(allSecretValues(), Infinity);
   try {
-    const run = engineRun(input.ai, input.keys);
-    const onUsage = usageRecorder(input.usageUserId, bot.id, threadId, run);
+    const run = engineRun(getAi(bot.userId), bot.userId);
+    const onUsage = usageRecorder(bot.userId, bot.id, threadId, run);
     let reply = "";
     if (run.native) {
       const result = await nativeTurn({ access: run.native, model: run.model, instructions, prompt, tools: {}, maxSteps: search ? 6 : 1, search, signal: AbortSignal.any([signal, AbortSignal.timeout(GUEST_TIMEOUT_MS)]), onUsage });

@@ -1381,7 +1381,7 @@ describe("the computer tool", () => {
     expect(chat[1]).toEqual({ role: "tool", tool_call_id: "c2", content: "exit 0\nok" });
     expect(chat[2]!.role).toBe("user");
     expect(chat[2]!.content).toEqual([{ type: "image_url", image_url: { url: "data:image/png;base64,AAAA" } }, { type: "text", text: "also check the footer" }]);
-    const plain = stepMessages("xai", [answers[1]!], ["go on"]) as { role: string; content: unknown }[];
+    const plain = stepMessages("openai", [answers[1]!], ["go on"]) as { role: string; content: unknown }[];
     expect(plain).toHaveLength(2);
     expect(plain[1]).toEqual({ role: "user", content: "go on" });
     expect(stepMessages("openai", [answers[1]!])).toHaveLength(1);
@@ -1493,25 +1493,6 @@ describe("login fields", () => {
     expect(ask("AdGuard Home", ["username", "password", "code"])).toBeNull();
     expect(ask("AdGuard Home", ["phone", "password"])).toBeNull();
     expect(ask("Uptime Kuma", ["username", "password"])).toBeNull();
-  });
-});
-
-describe("notification services", () => {
-  test("what the person types is checked, and a secret left empty keeps the saved one", async () => {
-    const { checkService } = await import("../src/notify-services.ts");
-    expect(checkService("ntfy", { topic: "gond-dawson-7k2" }, null)).toEqual({ settings: { server: "https://ntfy.sh", topic: "gond-dawson-7k2", priority: "3" }, secrets: {} });
-    expect(checkService("ntfy", { server: "https://ntfy.example.com/", topic: "ok", token: "tk_1" }, null)).toEqual({ settings: { server: "https://ntfy.example.com", topic: "ok", priority: "3" }, secrets: { token: "tk_1" } });
-    expect(checkService("ntfy", { topic: "has spaces" }, null)).toEqual({ error: "A topic is letters, numbers, dashes and underscores, up to 64 of them." });
-    expect(checkService("ntfy", { topic: "ok", priority: "9" }, null)).toEqual({ error: "Pick a priority from the list." });
-    expect(checkService("discord", { url: "https://example.com/api/webhooks/1/x" }, null)).toHaveProperty("error");
-    expect(checkService("discord", { url: "https://discord.com/api/webhooks/1/abc" }, null)).toEqual({ settings: {}, secrets: { url: "https://discord.com/api/webhooks/1/abc" } });
-    expect(checkService("telegram", { token: "123:short", chat: "1" }, null)).toEqual({ error: "That doesn't look like a bot token from @BotFather." });
-    expect(checkService("telegram", { token: `123456:${"a".repeat(35)}`, chat: "nope" }, null)).toEqual({ error: "A chat ID is a number, like 123456789, or a channel's @name." });
-    expect(checkService("pushover", { user: "u".repeat(30) }, null)).toEqual({ error: "Enter the application token." });
-    expect(checkService("gotify", { server: "ftp://x", token: "t" }, null)).toEqual({ error: "The server's address has to start with https:// or http://." });
-    const saved = { kind: "pushover" as const, enabled: true, settings: { priority: "0" }, secrets: { user: "u".repeat(30), token: "t".repeat(30) } };
-    expect(checkService("pushover", { priority: "1" }, saved)).toEqual({ settings: { priority: "1" }, secrets: saved.secrets });
-    expect(checkService("webhook", {}, saved)).toEqual({ error: "Enter the url." });
   });
 });
 
@@ -1743,6 +1724,36 @@ describe("message indexes", () => {
     const sent = plan("SELECT * FROM gond_messages WHERE (thread_id = 't' OR from_thread_id = 't') ORDER BY created_at DESC, rowid DESC LIMIT 200");
     expect(sent).toContain("gond_messages_from");
     expect(sent).not.toMatch(/SCAN gond_messages(?! USING)/);
+  });
+});
+
+describe("xAI keys", () => {
+  test("a saved xAI key becomes the OpenAI-compatible one, unless there is one already, and Household and the services leave nothing behind", async () => {
+    const { Database } = await import("bun:sqlite");
+    const { runMigrations, XAI_KEYS_VERSION } = await import("../src/db/migrations.ts");
+    const db = new Database(":memory:", { strict: true });
+    runMigrations(db, XAI_KEYS_VERSION - 1);
+    const at = "2026-10-28T00:00:00Z";
+    const key = (id: string, user: string, kind: string, url: string) =>
+      db.query("INSERT INTO gond_providers (id, user_id, kind, base_url, api_key, proxy_token, created_at, updated_at) VALUES (?, ?, ?, ?, 'sealed', ?, ?, ?)").run(id, user, kind, url, `token-${id}`, at, at);
+    key("p1", "u1", "xai", "https://api.x.ai/v1");
+    key("p2", "u2", "xai", "https://api.x.ai/v1");
+    key("p3", "u2", "openai", "https://api.openai.com/v1");
+    db.query("INSERT INTO gond_user_ai (user_id, engine, enabled, engines, updated_at) VALUES ('u1', 'api', '[\"api\"]', ?, ?)").run(JSON.stringify({ api: { access: "api", model: "grok-5", provider: "xai" } }), at);
+    db.query("INSERT INTO gond_usage (user_id, source, model, created_at) VALUES ('u1', 'xai', 'grok-5', ?)").run(at);
+    runMigrations(db);
+    const keys = db.query("SELECT id, user_id, kind, base_url, proxy_token FROM gond_providers ORDER BY id").all();
+    expect(keys).toEqual([
+      { id: "p1", user_id: "u1", kind: "openai", base_url: "https://api.x.ai/v1", proxy_token: "token-p1" },
+      { id: "p3", user_id: "u2", kind: "openai", base_url: "https://api.openai.com/v1", proxy_token: "token-p3" },
+    ]);
+    expect(JSON.parse((db.query("SELECT engines FROM gond_user_ai WHERE user_id = 'u1'").get() as { engines: string }).engines).api.provider).toBe("openai");
+    expect(db.query("SELECT source FROM gond_usage").all()).toEqual([{ source: "openai" }]);
+    const left = db.query("SELECT name FROM sqlite_master WHERE name LIKE 'gond_household%' OR name = 'gond_notify_services'").all();
+    expect(left).toEqual([]);
+    const columns = (db.query("PRAGMA table_info(gond_threads)").all() as { name: string }[]).map((c) => c.name);
+    expect(columns).not.toContain("errand_bot");
+    expect(columns).not.toContain("errand_for");
   });
 });
 

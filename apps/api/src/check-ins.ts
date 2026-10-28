@@ -171,7 +171,7 @@ async function newEmail(userId: string, since: string): Promise<Email[]> {
 async function gather(userId: string, bot: Bot, state: CheckInState, now: Date): Promise<Gathered> {
   const since = state.lastLookedAt ?? new Date(now.getTime() - FIRST_LOOK_MS).toISOString();
   const bots = listBots({ userId });
-  const threads = listThreads({ userId }).filter((t) => !t.errand);
+  const threads = listThreads({ userId });
   const chats = threads
     .map((thread) => ({ thread, lines: listMessages(thread.id, { after: since, limit: 200, shown: true }).filter((m) => SHOWN.has(m.kind) && !m.checkIn).slice(-LINES_PER_CHAT) }))
     .filter((chat) => chat.lines.length > 0);

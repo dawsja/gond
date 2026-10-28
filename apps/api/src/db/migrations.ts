@@ -1008,6 +1008,17 @@ const MIGRATIONS: Array<string | ((db: Database) => void)> = [
   );
   ALTER TABLE gond_messages ADD COLUMN check_in INTEGER NOT NULL DEFAULT 0;
   `,
+  foldXaiKeys,
+  `
+  DROP INDEX IF EXISTS gond_household_errands_open;
+  DROP TABLE IF EXISTS gond_household_errands;
+  DROP TABLE IF EXISTS gond_household_shares;
+  DROP TABLE IF EXISTS gond_household_members;
+  DROP TABLE IF EXISTS gond_households;
+  ALTER TABLE gond_threads DROP COLUMN errand_bot;
+  ALTER TABLE gond_threads DROP COLUMN errand_for;
+  DROP TABLE IF EXISTS gond_notify_services;
+  `,
 ];
 
 /**
@@ -1119,6 +1130,7 @@ export const RENAME_VERSION = MIGRATIONS.indexOf(renameLegacyObjects) + 1;
 export const CALLS_OUT_VERSION = MIGRATIONS.indexOf(CALLS_OUT) + 1;
 export const TEACH_CARDS_VERSION = MIGRATIONS.indexOf(allowTeachMessages) + 1;
 export const CONTROL_CARDS_VERSION = MIGRATIONS.indexOf(allowControlMessages) + 1;
+export const XAI_KEYS_VERSION = MIGRATIONS.indexOf(foldXaiKeys) + 1;
 export const LATEST_VERSION = MIGRATIONS.length;
 
 type Named = { name: string; sql: string | null };
@@ -1136,6 +1148,29 @@ function renameLegacyObjects(db: Database) {
   }
   const left = db.query("SELECT name FROM sqlite_master WHERE name LIKE 'kru\\_%' ESCAPE '\\'").all() as { name: string }[];
   if (left.length > 0) throw new Error(`Legacy objects still named kru_: ${left.map((r) => r.name).join(", ")}`);
+}
+
+/**
+ * xAI's API was a kind of key of its own. It speaks OpenAI's, so a saved one becomes the person's
+ * OpenAI-compatible key, unless they have one already, and whatever named it names that.
+ */
+function foldXaiKeys(db: Database) {
+  db.exec("DELETE FROM gond_providers WHERE kind = 'xai' AND user_id IN (SELECT user_id FROM gond_providers WHERE kind = 'openai')");
+  db.exec("UPDATE gond_providers SET kind = 'openai' WHERE kind = 'xai'");
+  db.exec("UPDATE gond_usage SET source = 'openai' WHERE source = 'xai'");
+  const rows = db.query("SELECT user_id, engines FROM gond_user_ai WHERE engines LIKE '%\"xai\"%'").all() as { user_id: string; engines: string }[];
+  for (const row of rows) {
+    let engines: Record<string, unknown>;
+    try {
+      engines = JSON.parse(row.engines) as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+    for (const config of Object.values(engines)) {
+      if (config && typeof config === "object" && (config as { provider?: unknown }).provider === "xai") (config as { provider: string }).provider = "openai";
+    }
+    db.query("UPDATE gond_user_ai SET engines = ? WHERE user_id = ?").run(JSON.stringify(engines), row.user_id);
+  }
 }
 
 function hasTable(db: Database, name: string) {

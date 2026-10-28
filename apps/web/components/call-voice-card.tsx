@@ -80,7 +80,7 @@ export function CallVoiceCard() {
         {!voice || (!list && !error) ? (
           <Skeleton className="h-16 rounded-xl" />
         ) : !list?.provider ? (
-          <p className="text-sm text-muted-foreground">Add an xAI or OpenAI key under AI to call your primary bot.</p>
+          <p className="text-sm text-muted-foreground">Add an OpenAI or xAI key under AI to call your primary bot.</p>
         ) : (
           <Field>
             <FieldLabel htmlFor="call-voice">Voice</FieldLabel>

@@ -5,7 +5,6 @@ import { getThread, listMessages, postMessage, recentMessages } from "./data/thr
 import { getUser } from "./data/users.ts";
 import { getVoice } from "./data/voice.ts";
 import { subscribe } from "./events.ts";
-import { keyHolder } from "./households.ts";
 import { newId, now } from "./ids.ts";
 import { hasWork, stopFromMessage } from "./responder.ts";
 import { acknowledge, openVoiceLink, type VoiceLink, type VoiceSignal } from "./voice-link.ts";
@@ -137,12 +136,11 @@ export function callableBot(thread: Thread): Bot | null {
 export function startCall(thread: Thread, userId: string): StartCall {
   const bot = callableBot(thread);
   if (!bot) return { ok: false, status: 400, error: "You can only call your primary bot, from its own chat." };
-  const keys = keyHolder(userId);
-  const voiceSettings = getVoice(userId, keys);
+  const voiceSettings = getVoice(userId);
   const provider = voiceSettings.using;
-  const baseUrl = provider ? providerBaseUrl(keys, provider) : null;
-  const key = provider ? providerKey(keys, provider) : null;
-  if (!provider || !baseUrl || !key) return { ok: false, status: 409, error: "A call needs an xAI or OpenAI key. Add one in Settings → AI." };
+  const baseUrl = provider ? providerBaseUrl(userId, "openai") : null;
+  const key = provider ? providerKey(userId, "openai") : null;
+  if (!provider || !baseUrl || !key) return { ok: false, status: 409, error: "A call needs an OpenAI or xAI key. Add one in Settings → AI." };
 
   const previous = callOf(userId);
   if (previous) endCall(previous.id, null);

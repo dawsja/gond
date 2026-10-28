@@ -7,7 +7,6 @@ import { usePathname } from "next/navigation";
 import { Fragment, memo, useEffect, useMemo, useState, type ReactElement, type ReactNode } from "react";
 import { BotAvatar, PersonAvatar, RoomAvatar, roomMembers } from "@/components/bot-avatar";
 import { CallBar, useCallLine } from "@/components/call/call-controls";
-import { HouseholdAsk } from "@/components/household-section";
 import { GondBot } from "@/components/hq/gond-bot";
 import { ProfileMenu } from "@/components/profile-menu";
 import type { ShellDialog } from "@/components/shell";
@@ -388,7 +387,6 @@ export function AppSidebar({ onOpen }: { onOpen: (dialog: ShellDialog) => void }
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupContent>
-            {query ? null : <HouseholdAsk className="mx-1" />}
             <BotRows rows={rows} hits={hits} query={query} setQuery={setQuery} lookAs="popover" onOpen={onOpen} onAsk={setAsk} />
           </SidebarGroupContent>
         </SidebarGroup>

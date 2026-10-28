@@ -103,13 +103,9 @@ export type Thread = {
   noticed: { watch: string; body: string; at: string } | null;
   /** A room shared with people on other Gonds: who is there from where. Null for any other conversation. */
   space: ThreadSpace | null;
-  /** Where one of the head's shared bots does a household member's errands; null for any other conversation. */
-  errand?: ThreadErrand | null;
   createdAt: string;
   updatedAt: string;
 };
-
-export type ThreadErrand = { botId: string; memberId: string; memberName: string };
 
 export type MessageAuthor = "you" | "system" | "routine" | string;
 
@@ -411,8 +407,6 @@ export type Me = {
   emoji: EmojiLevel;
   /** The profile this is: on `/api/me`, the one open on this device. */
   profile: ProfileRef;
-  /** The household the person heads, is in, or is asked to join. */
-  household?: MeHousehold | null;
 };
 
 /** How every bot of a person's talks to them (Settings → Personalization), read into each bot's prompt. */
@@ -470,7 +464,7 @@ export type ProfileIcon = (typeof PROFILE_ICONS)[number];
 export type Profile = ProfileRef & {
   accent: Accent;
   avatar: string | null;
-  /** Its bots finish and ask in silence: no push, no notification service. */
+  /** Its bots finish and ask in silence: no notices. */
   muted: boolean;
   /** Conversations with something new, and cards waiting on the person. */
   unread: number;
@@ -527,11 +521,11 @@ export type AuthConfig = {
   oidc: { enabled: boolean; name: string } | null;
 };
 
-export const PROVIDER_KINDS = ["anthropic", "openai", "xai", "chatgpt", "grok"] as const;
+export const PROVIDER_KINDS = ["anthropic", "openai", "chatgpt", "grok"] as const;
 export type ProviderKind = (typeof PROVIDER_KINDS)[number];
 
 /** The APIs a person types a key for; a ChatGPT or Grok plan is signed in to instead. */
-export const KEY_PROVIDER_KINDS = ["anthropic", "openai", "xai"] as const satisfies readonly ProviderKind[];
+export const KEY_PROVIDER_KINDS = ["anthropic", "openai"] as const satisfies readonly ProviderKind[];
 export type KeyProviderKind = (typeof KEY_PROVIDER_KINDS)[number];
 
 /** A plan a person signs in to, whose tokens Gond keeps and renews; each is an engine of its own. */
@@ -558,16 +552,9 @@ export const PROVIDER_LABELS: Record<ProviderKind, { name: string; short: string
   openai: {
     name: "OpenAI-compatible API",
     short: "OpenAI",
-    detail: "OpenAI, OpenRouter, or any server that speaks their API.",
+    detail: "OpenAI, xAI, OpenRouter, or any server that speaks their API.",
     defaultUrl: "https://api.openai.com/v1",
     keyHint: "sk-…",
-  },
-  xai: {
-    name: "xAI API",
-    short: "xAI",
-    detail: "xAI's own API.",
-    defaultUrl: "https://api.x.ai/v1",
-    keyHint: "xai-…",
   },
   chatgpt: {
     name: "ChatGPT plan",
@@ -587,7 +574,7 @@ export const PROVIDER_LABELS: Record<ProviderKind, { name: string; short: string
 
 /** Bearer auth and OpenAI's paths; a plan talks the Responses API on them, a key chat completions. */
 export function isOpenAiShaped(kind: ProviderKind): boolean {
-  return kind === "openai" || kind === "xai" || kind === "chatgpt" || kind === "grok";
+  return kind === "openai" || kind === "chatgpt" || kind === "grok";
 }
 
 export type ProviderMeta = {
@@ -611,20 +598,29 @@ export const providerInputSchema = z.object({
 });
 export type ProviderInput = z.infer<typeof providerInputSchema>;
 
-/** Cheapest first: "auto" takes the first one the person has a key for. */
-export const VOICE_PROVIDERS = ["xai", "openai"] as const satisfies readonly ProviderKind[];
+/**
+ * Whose speech endpoints the person's OpenAI-compatible key reaches: xAI's own (`stt`, `realtime`,
+ * `tts`) when it points at xAI, OpenAI's anywhere else.
+ */
+export const VOICE_PROVIDERS = ["xai", "openai"] as const;
 export type VoiceProvider = (typeof VOICE_PROVIDERS)[number];
 export const VOICE_MODELS: Record<VoiceProvider, { path: string; model: string; label: string }> = {
   xai: { path: "stt", model: "grok-voice-transcribe-2.0", label: "xAI Grok" },
   openai: { path: "audio/transcriptions", model: "gpt-transcribe", label: "OpenAI" },
 };
-export const VOICE_PREFERENCES = ["auto", ...VOICE_PROVIDERS] as const;
-export type VoicePreference = (typeof VOICE_PREFERENCES)[number];
+
+export function isXaiUrl(url: string): boolean {
+  try {
+    return new URL(url).hostname.toLowerCase() === "api.x.ai";
+  } catch {
+    return false;
+  }
+}
+
 /** `openaiModel` is for an OpenAI-compatible server that names its own models, like a local Whisper. */
 export type VoiceSettings = {
-  preference: VoicePreference;
+  /** Null without an OpenAI-compatible key. */
   using: VoiceProvider | null;
-  available: VoiceProvider[];
   openaiModel: string;
   /** The voice a call speaks in, per provider, since each has its own; missing is the provider's default. */
   callVoice: Partial<Record<VoiceProvider, string>>;
@@ -634,16 +630,6 @@ export type CallVoice = { id: string; name: string; detail: string | null };
 export const VOICE_MODEL_ID = /^[\w.:/@+-]{1,120}$/;
 export const TRANSCRIBE_MAX_BYTES = 10 * 1024 * 1024;
 export const TRANSCRIBE_MAX_SECONDS = 120;
-
-export function isVoicePreference(value: unknown): value is VoicePreference {
-  return typeof value === "string" && (VOICE_PREFERENCES as readonly string[]).includes(value);
-}
-
-/** A chosen provider whose key is gone falls back to the cheapest one left. */
-export function pickVoiceProvider(preference: VoicePreference, has: (kind: VoiceProvider) => boolean): VoiceProvider | null {
-  if (preference !== "auto" && has(preference)) return preference;
-  return VOICE_PROVIDERS.find(has) ?? null;
-}
 
 /**
  * A live call with the primary bot runs on a speaking model with the person's own key: OpenAI's
@@ -696,10 +682,11 @@ export type CallInfo = { id: string; threadId: string; botId: string; provider: 
 export type CallEvent = { type: "ready" } | { type: "audio"; data: string } | { type: "interrupt" } | { type: "ended"; reason: string | null };
 
 /**
- * Where a bot's pictures are made, best first: a Grok plan is already paid for, then the cheaper key.
- * A ChatGPT plan can't: OpenAI's Sign in with ChatGPT leaves image generation out.
+ * Where a bot's pictures are made, best first: a Grok plan is already paid for, then the OpenAI-compatible
+ * key, on xAI's images (`xai`) when it points at xAI. A ChatGPT plan can't: OpenAI's Sign in with
+ * ChatGPT leaves image generation out.
  */
-export const IMAGE_SOURCES = ["grok", "xai", "openai"] as const satisfies readonly ProviderKind[];
+export const IMAGE_SOURCES = ["grok", "xai", "openai"] as const;
 export type ImageSource = (typeof IMAGE_SOURCES)[number];
 export const IMAGE_MODELS: Record<ImageSource, { model: string; editModel: string; label: string }> = {
   grok: { model: "grok-imagine-image-quality", editModel: "grok-imagine-image-quality", label: "your Grok plan" },
@@ -797,7 +784,7 @@ export const ENGINE_LABELS: Record<Engine, EngineInfo> = {
     signIn: "",
     signInAt: "",
     provider: "anthropic",
-    providers: ["anthropic", "openai", "xai"],
+    providers: ["anthropic", "openai"],
     defaultModel: "",
     modelHint: "claude-sonnet-5-5, or any model your key lists",
   },
@@ -1157,8 +1144,6 @@ export type LiveEvent =
    * to show on its own. Quiet when that conversation is in front of you.
    */
   | { topic: "notify"; userId: string; title: string; body: string; url: string; tag: string; threadId: string; botId?: string | null }
-  /** Your household changed: someone joined or left, a bot was shared, its AI changed. */
-  | { topic: "household"; userId: string }
   /** One of your other profiles has something new, or your profiles changed: `userId` is the person. */
   | { topic: "profiles"; userId: string }
   /** Your desktop on the computer: who is driving it, and whether it is up. */
@@ -1715,163 +1700,10 @@ export function coverLogin(fields: LoginField[], saved: string[]): Map<string, s
   return found;
 }
 
-/**
- * The services a person can send their notices to besides their browsers and apps, one at a time.
- * Each field is what the service needs; a `secret` one is stored encrypted and never sent back, so
- * the form shows it empty and leaving it empty keeps what was saved.
- */
-export const NOTIFY_SERVICE_KINDS = ["ntfy", "pushover", "discord", "telegram", "gotify", "webhook"] as const;
-export type NotifyServiceKind = (typeof NOTIFY_SERVICE_KINDS)[number];
-
-export type NotifyField = {
-  key: string;
-  label: string;
-  placeholder?: string;
-  help?: string;
-  secret?: boolean;
-  optional?: boolean;
-  options?: readonly { value: string; label: string }[];
-  initial?: string;
-};
-
-export const NOTIFY_SERVICES: Record<NotifyServiceKind, { name: string; blurb: string; color: string; fields: readonly NotifyField[] }> = {
-  ntfy: {
-    name: "ntfy",
-    blurb: "The ntfy app on your phone, on ntfy.sh or your own server.",
-    color: "#338574",
-    fields: [
-      { key: "server", label: "Server", placeholder: "https://ntfy.sh", initial: "https://ntfy.sh" },
-      { key: "topic", label: "Topic", placeholder: "gond-yourname-7k2", help: "Subscribe to it in the ntfy app. On ntfy.sh anyone who knows a topic can read it, so make it hard to guess." },
-      { key: "token", label: "Access token", placeholder: "Only for a protected topic", secret: true, optional: true },
-      {
-        key: "priority",
-        label: "Priority",
-        initial: "3",
-        options: [
-          { value: "2", label: "Low" },
-          { value: "3", label: "Normal" },
-          { value: "4", label: "High" },
-          { value: "5", label: "Urgent" },
-        ],
-      },
-    ],
-  },
-  pushover: {
-    name: "Pushover",
-    blurb: "The Pushover app on your phone.",
-    color: "#249DF1",
-    fields: [
-      { key: "user", label: "User key", placeholder: "From your Pushover dashboard", secret: true },
-      { key: "token", label: "Application token", placeholder: "Create one at pushover.net/apps", secret: true },
-      {
-        key: "priority",
-        label: "Priority",
-        initial: "0",
-        options: [
-          { value: "-1", label: "Quiet" },
-          { value: "0", label: "Normal" },
-          { value: "1", label: "High" },
-        ],
-      },
-    ],
-  },
-  discord: {
-    name: "Discord",
-    blurb: "A message in a Discord channel.",
-    color: "#5865F2",
-    fields: [{ key: "url", label: "Webhook URL", placeholder: "https://discord.com/api/webhooks/…", help: "In the channel's settings: Integrations, then Webhooks, then New Webhook.", secret: true }],
-  },
-  telegram: {
-    name: "Telegram",
-    blurb: "A message from your own Telegram bot.",
-    color: "#27A7E7",
-    fields: [
-      { key: "token", label: "Bot token", placeholder: "From @BotFather", secret: true },
-      { key: "chat", label: "Chat ID", placeholder: "123456789", help: "Message your bot once, then ask @userinfobot for your ID, or use a group's ID." },
-    ],
-  },
-  gotify: {
-    name: "Gotify",
-    blurb: "Your own Gotify server and its app.",
-    color: "#2D6BCB",
-    fields: [
-      { key: "server", label: "Server", placeholder: "https://gotify.example.com" },
-      { key: "token", label: "App token", placeholder: "From Apps in Gotify", secret: true },
-      {
-        key: "priority",
-        label: "Priority",
-        initial: "5",
-        options: [
-          { value: "2", label: "Low" },
-          { value: "5", label: "Normal" },
-          { value: "8", label: "High" },
-        ],
-      },
-    ],
-  },
-  webhook: {
-    name: "Webhook",
-    blurb: "Any address that takes a POST: Gond sends the title, the message and a link as JSON.",
-    color: "#4B4B4B",
-    fields: [{ key: "url", label: "URL", placeholder: "https://example.com/hooks/gond", secret: true }],
-  },
-};
-
-export function isNotifyServiceKind(value: unknown): value is NotifyServiceKind {
-  return typeof value === "string" && (NOTIFY_SERVICE_KINDS as readonly string[]).includes(value);
-}
-
-/** A person's notification service as the web sees it: what isn't secret, and which secrets are saved. */
-export type NotifyService = {
-  kind: NotifyServiceKind;
-  enabled: boolean;
-  details: Record<string, string>;
-  saved: string[];
-  lastSentAt: string | null;
-  lastError: string | null;
-  updatedAt: string;
-};
-
 export type PushSubscriptionInput = {
   endpoint: string;
   keys: { p256dh: string; auth: string };
 };
-
-/**
- * A household: the admin as its head, people from the OIDC provider as members, who run on the
- * household's API keys and whose bots can ask the head's shared bots for help.
- */
-export type HouseholdRole = "head" | "member" | "asked";
-
-/** The AI a household's members run on: an API on one of the head's keys, or Claude Code on an Anthropic key. Never a plan. */
-export type MembersAi = { engine: "api" | "claude"; provider: KeyProviderKind; model: string };
-
-export type HouseholdMember = { id: string; name: string; email: string; image: string | null; status: "asked" | "joined"; tokens: number };
-
-/** One of the head's bots as a household's members' bots reach it, and what each member's bots may have it do. */
-export type SharedBot = { bot: Pick<Bot, "id" | "name" | "title" | "color" | "expression" | "shape" | "avatar">; levels: { memberId: string; level: SpaceLevel; memory: boolean }[] };
-
-export type Household = {
-  id: string;
-  name: string;
-  head: { id: string; name: string };
-  role: HouseholdRole;
-  /** The head sees everyone; a member sees the head and themselves. */
-  members: HouseholdMember[];
-  ai: MembersAi;
-  /** Whether the key the members' AI names is saved. */
-  aiReady: boolean;
-  /** For the head, every share; for a member, the bots shared with them. */
-  shared: SharedBot[];
-};
-
-/** What the admin still needs before Household can be turned on. */
-export type HouseholdSetup = { oidc: string | null; linked: boolean; keys: KeyProviderKind[] };
-
-/** The household as `/api/me` tells the web: enough for Settings and a join card. */
-export type MeHousehold = { id: string; name: string; role: HouseholdRole; headName: string };
-
-export const HOUSEHOLD_NAME_MAX = 60;
 
 /** What one browser or app is told about: every bot but the muted ones, and `other` for notices about no bot (exports, spaces). */
 export type DeviceNotices = { mutedBots: string[]; other: boolean };
@@ -2497,8 +2329,6 @@ export function describeTool(name: string, input: Record<string, unknown> = {}, 
     case "delegate_bot":
       return { verb: "Delegating to", detail: short(input.bot) };
     case "ask_bot":
-      return { verb: "Asking", detail: short(input.bot) };
-    case "ask_shared_bot":
       return { verb: "Asking", detail: short(input.bot) };
     case "create_bot":
       return { verb: "Creating a bot", detail: short(input.name) };

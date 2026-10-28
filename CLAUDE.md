@@ -475,7 +475,8 @@ One line each: where to start, and what must not change.
   (`remoteMember`). Mentions include other Gonds' members
   (`spaceMentionables`). Reactions stay off another Gond's lines
   (`canReact`) and its bots' `::choices` are inert, since only lines
-  cross.
+  cross. Always allow is picked only through `LevelSelect`, which
+  confirms it every time.
 - **Bot files** (`bot-files.tsx`, `GET /api/bots/:id/files`,
   `/files/raw`): dotfiles left out; a download is always a sandboxed
   attachment, a picture inline only when its bytes are one
@@ -486,7 +487,7 @@ One line each: where to start, and what must not change.
   Refetches on `usage` and `ai`.
 - **Voice input** (`voice-button.tsx`, `hooks/use-recorder.ts`,
   `/api/transcribe`, `voice-card.tsx`): the text lands in the draft and
-  is never sent for them. Only an xAI or OpenAI key can transcribe;
+  is never sent for them. Only the OpenAI-compatible key can transcribe;
   without one the mic is dimmed and says where to add one. Always the
   system's default input. `Permissions-Policy` allows the microphone for
   the app's own origin only.
@@ -524,16 +525,11 @@ One line each: where to start, and what must not change.
   `muted_bots` and `other` for Web Push, `shellNotices` on the device for
   the apps, so every notice names its `botId`. A bot's two bells live in
   its Edit dialog (`BellField`, the `bell` toggle): Notify me (`notify`,
-  everywhere, the service too) and this device, saved with the dialog.
+  everywhere) and this device, saved with the dialog.
   Settings keeps only the device's Other notices, never a list of bots.
 - **Check-ins** (`check-ins-fields.tsx` in the primary bot's Edit dialog,
   `Message.checkIn`): a check-in line wears the person's colour (the
   `tint` bubble) under "Checked in". It is the primary bot's alone.
-- **Household** (`household-section.tsx`, `level-select.tsx`):
-  `TurnOnCard` for the admin, `HeadView`, `JoinCard`, `MemberView`;
-  `HouseholdAsk` on Chats; `HouseholdAiCard` stands in for Settings → AI
-  for a member. Always allow is picked only through `LevelSelect`, which
-  confirms it every time, in Household and Spaces alike.
 - **Linked sign-in** (`linked-sign-in.tsx`): the local account links the
   provider (`LinkedSignIn`), and an account the provider made moves its
   sign-in to the local one (`MoveSignIn`, `POST /api/me/sign-ins/move` in
@@ -597,25 +593,7 @@ One line each: where to start, and what must not change.
   apps, the Composio key, MCP servers, secrets, skills, the AI and its
   providers, the computer account. Nothing is shared and nobody falls back
   to the admin's, except `COMPOSIO_API_KEY` for the admin's default
-  profile alone, and a household member's AI, which is the household's.
-- **Household** (`src/households.ts`, `data/households.ts`,
-  `routes/households.ts`): one per install, turned on only by the admin
-  once OIDC is ready, the admin's account is linked to it and a key
-  exists; the admin is its head. Members are OIDC users who accepted a
-  join card, per person, so all their profiles. A member runs on the
-  household's keys and never a plan (`turnAi`, `threadAi`, `keyHolder` for
-  pictures, calls and voice); `refuseForMembers` guards every route that
-  would change their own AI. The head keeps their own AI. Shared bots
-  (`gond_household_shares`, the four `SPACE_LEVELS`) are reached only by a
-  member's bot with `ask_shared_bot` (`runErrand`), never by a member: an
-  errand runs in the head's conversation for that bot and member
-  (`errandThreadFor`, `Thread.errand`, where only cards count as unread),
-  on the household's keys and the member's usage. Talk and Look answer
-  with `guestReply`; Act asks the head with `askOwner` first; Always allow
-  (`full`) needs `confirmed: true` and posts a line. Stop on either side
-  ends it (`stopErrandsIn`), a restart fails open errands without rerunning
-  their prompt (`releaseClaims`), and `deleteBot` and `deleteUserData`
-  take every household row with them.
+  profile alone.
 - **Profiles** (`src/data/profiles.ts`, `src/profiles.ts`,
   `routes/profiles.ts`, `gond_profiles`): each profile but the default is
   a `"user"` row nobody signs in to, owned by a person (`personOf`); the
@@ -623,8 +601,8 @@ One line each: where to start, and what must not change.
   deleted. A profile may wear one of `PROFILE_ICONS` (`icon`, `isProfileIcon`) in
   the middle of its mark instead of its initial. `userId(c)` is the profile the session has open
   (`gond_session_profiles`, per device, `activeProfile`), `personId(c)` the
-  login. Only the person's: name, sign-in, time zone, push subscriptions,
-  the notification service and the admin role (`/api/me` takes the
+  login. Only the person's: name, sign-in, time zone, push subscriptions
+  and the admin role (`/api/me` takes the
   person's role); everything else switches. A profile's role is never
   admin. Notices are labelled and open in their profile (`fromProfile`,
   `?profile=`), a muted one sends none. Other profiles reach a page's
@@ -938,9 +916,14 @@ One line each: where to start, and what must not change.
   from `rate_limit_event` (`saveClaudeLimits`), Grok's from its proxy's
   `/billing` at most every five minutes (`grokWindows`). Neither is a
   documented API, so a failed read keeps the last one.
+- **xAI is an OpenAI-compatible key**, not a kind of its own: chat
+  goes the OpenAI way, and a key at `api.x.ai` (`isXaiUrl`) reaches xAI's
+  own speech and images endpoints (`voiceProvider`, the `xai` image
+  source). Saved xAI keys were folded in by `foldXaiKeys`.
 - **Transcription** (`src/routes/voice.ts`, `src/data/voice.ts`,
-  `pickVoiceProvider`, `VOICE_MODELS`): the person's own key, through
-  `upstreamUrl` and `authHeaders`. The format comes from the file's
+  `voiceProvider`, `VOICE_MODELS`): the person's OpenAI-compatible key,
+  through `upstreamUrl` and `authHeaders`, on xAI's `stt` when it points
+  at xAI. The format comes from the file's
   extension (Bun's multipart parser drops a part's type). Audio is never
   stored or logged.
 - **Calls** (`src/calls.ts`, `src/voice-link.ts`, `src/routes/calls.ts`):
@@ -962,8 +945,9 @@ One line each: where to start, and what must not change.
   so a restart ends it.
 - **Pictures** (`src/pictures.ts`, `create_image`): on the owner's plan or
   key, `imageAccess` taking the first of `IMAGE_SOURCES` they have (Grok plan, SuperGrok only,
-  with `GROK_MEDIA_HEADERS`; xAI key; OpenAI key, the only one that
-  streams previews). `IMAGE_MODELS`. Previews live in memory while made
+  with `GROK_MEDIA_HEADERS`; the OpenAI-compatible key on xAI's images
+  when it points at xAI, else OpenAI's, the only one that streams
+  previews). `IMAGE_MODELS`. Previews live in memory while made
   (`keepPreview`). The result passes `pictureType`, is posted, and copied
   to `images/<name>-<stamp>.<ext>`. Rides the turn's signal.
 
@@ -1120,18 +1104,13 @@ One line each: where to start, and what must not change.
 
 ### People, notifications, updates
 
-- **Notifications** (`src/push.ts`, `src/notify-services.ts`,
-  `src/data/notify-services.ts`, `NOTIFY_SERVICES`): Web Push (VAPID keys
-  in the data directory) on every subscription, plus one notification
-  service per person, keys encrypted and never returned (an empty key on
-  change keeps the saved one). Push only when a bot finishes for the
+- **Notifications** (`src/push.ts`): Web Push (VAPID keys in the data
+  directory) on every subscription. Push only when a bot finishes for the
   person or needs them, only when `bot.notify` is on, and only to devices
   that didn't mute that bot (`muted_bots`, `other`). `sendPush` also
   emits a `notify` event for the shells. Nothing is pushed about a
   conversation on screen (`src/presence.ts`, since the service worker
-  can't tell on an iPhone). Service addresses are the person's own (a LAN
-  ntfy is the point), called as given, and only a short reason comes
-  back, never the response.
+  can't tell on an iPhone).
 - **Check-ins** (`src/check-ins.ts`, `data/check-ins.ts`,
   `routes/check-ins.ts`, `gond_check_ins`, on by default per profile): the
   primary bot offers them once (`offerCheckIns`, fixed words from Gond,
@@ -1404,8 +1383,7 @@ list saying what changed and why, written for the person reading the log.
   provider belongs to a profile, push subscriptions to a person, and a
   route never returns another profile's.
 - Everyone's bots run on their own plan or key. Nothing about the AI is
-  shared, and nobody falls back to the admin's, except a household
-  member, who runs on the household's keys: never on anyone's plan.
+  shared, and nobody falls back to the admin's.
 - The web app never talks to the box; the API does, with a bearer token,
   over the Compose network.
 - Another Gond only ever gets what is said in a space it is in, the

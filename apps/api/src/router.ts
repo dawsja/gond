@@ -1,7 +1,7 @@
 import { handleOf, mentionsIn, roomAnswerer, roomTargets, type Bot, type Message, type Thread } from "@gond/shared";
 import { boxConfig, closeAgent } from "./box.ts";
 import { cliTurn } from "./driver.ts";
-import { turnAi } from "./households.ts";
+import { getAi } from "./data/ai.ts";
 import { engineRun, type EngineRun } from "./engines.ts";
 import { nativeTurn } from "./native.ts";
 import { transcriptLines } from "./transcript.ts";
@@ -44,8 +44,7 @@ function routerModel(run: EngineRun): string {
 /** Whether the person has an AI the router can ask right now; without one, lines go by the rules at once rather than wait. */
 export function canRoute(userId: string): boolean {
   try {
-    const { ai, keys } = turnAi(userId);
-    const run = engineRun(ai, keys);
+    const run = engineRun(getAi(userId), userId);
     return Boolean(run.native) || boxConfig(userId) !== null;
   } catch {
     return false;
@@ -59,8 +58,7 @@ export function canRoute(userId: string): boolean {
  */
 export async function askOnce(input: { userId: string; speaker: Bot; threadId: string; purpose: string; instructions: string; prompt: string; timeoutMs: number; signal: AbortSignal }): Promise<string> {
   const { userId, speaker, threadId } = input;
-  const { ai, keys } = turnAi(userId);
-  const run = engineRun(ai, keys);
+  const run = engineRun(getAi(userId), userId);
   const onUsage = usageRecorder(userId, speaker.id, threadId, run);
   if (run.native) {
     const result = await nativeTurn({ access: run.native, model: routerModel(run), instructions: input.instructions, prompt: input.prompt, tools: {}, maxSteps: 1, signal: input.signal, onUsage });

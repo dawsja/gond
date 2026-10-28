@@ -1,10 +1,10 @@
-import { CALL_VOICE_ID, VOICE_MODELS, VOICE_PROVIDERS, isVoicePreference, pickVoiceProvider, type VoicePreference, type VoiceProvider, type VoiceSettings } from "@gond/shared";
+import { CALL_VOICE_ID, VOICE_MODELS, VOICE_PROVIDERS, isXaiUrl, type VoiceProvider, type VoiceSettings } from "@gond/shared";
 import { ensureDatabase } from "../db/init.ts";
 import { emit } from "../events.ts";
 import { now } from "../ids.ts";
-import { getProvider } from "./providers.ts";
+import { providerBaseUrl } from "./providers.ts";
 
-type Row = { voice: string | null; voice_model: string | null; call_voice: string | null };
+type Row = { voice_model: string | null; call_voice: string | null };
 
 function callVoiceOf(raw: string | null | undefined): VoiceSettings["callVoice"] {
   try {
@@ -15,22 +15,23 @@ function callVoiceOf(raw: string | null | undefined): VoiceSettings["callVoice"]
   }
 }
 
-/** `keys` is whose provider keys serve the person: their own, or a household member's household's. */
-export function getVoice(userId: string, keys = userId): VoiceSettings {
-  const row = ensureDatabase().query("SELECT voice, voice_model, call_voice FROM gond_user_prefs WHERE user_id = ?").get(userId) as Row | null;
-  const preference: VoicePreference = isVoicePreference(row?.voice) ? row.voice : "auto";
-  const available = VOICE_PROVIDERS.filter((kind) => Boolean(getProvider(keys, kind)));
-  return { preference, using: pickVoiceProvider(preference, (kind) => available.includes(kind)), available, openaiModel: row?.voice_model || VOICE_MODELS.openai.model, callVoice: callVoiceOf(row?.call_voice) };
+/** Whose speech endpoints the person's OpenAI-compatible key reaches; null without one. */
+export function voiceProvider(userId: string): VoiceProvider | null {
+  const baseUrl = providerBaseUrl(userId, "openai");
+  return baseUrl ? (isXaiUrl(baseUrl) ? "xai" : "openai") : null;
+}
+
+export function getVoice(userId: string): VoiceSettings {
+  const row = ensureDatabase().query("SELECT voice_model, call_voice FROM gond_user_prefs WHERE user_id = ?").get(userId) as Row | null;
+  return { using: voiceProvider(userId), openaiModel: row?.voice_model || VOICE_MODELS.openai.model, callVoice: callVoiceOf(row?.call_voice) };
 }
 
 /** An empty `openaiModel` puts OpenAI's own model back. */
-export function setVoice(userId: string, patch: { preference?: VoicePreference; openaiModel?: string }): VoiceSettings {
-  const current = getVoice(userId);
-  const preference = patch.preference ?? current.preference;
-  const model = patch.openaiModel === undefined ? current.openaiModel : patch.openaiModel.trim() || VOICE_MODELS.openai.model;
+export function setVoice(userId: string, patch: { openaiModel: string }): VoiceSettings {
+  const model = patch.openaiModel.trim() || VOICE_MODELS.openai.model;
   ensureDatabase()
-    .query("INSERT INTO gond_user_prefs (user_id, voice, voice_model, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET voice = excluded.voice, voice_model = excluded.voice_model, updated_at = excluded.updated_at")
-    .run(userId, preference === "auto" ? null : preference, model === VOICE_MODELS.openai.model ? null : model, now());
+    .query("INSERT INTO gond_user_prefs (user_id, voice_model, updated_at) VALUES (?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET voice_model = excluded.voice_model, updated_at = excluded.updated_at")
+    .run(userId, model === VOICE_MODELS.openai.model ? null : model, now());
   emit({ topic: "ai", userId });
   return getVoice(userId);
 }

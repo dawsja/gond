@@ -6,7 +6,6 @@ import { appUrl, ensureDataDir } from "./config.ts";
 import { personOf, profileIds, profileOf } from "./data/profiles.ts";
 import { listSubscriptions, removeSubscription } from "./data/push.ts";
 import { emit } from "./events.ts";
-import { notifyService } from "./notify-services.ts";
 import { isViewing } from "./presence.ts";
 
 type Vapid = { publicKey: string; privateKey: string };
@@ -51,8 +50,8 @@ export function fromProfile(payload: PushPayload, userId: string): PushPayload {
 
 /**
  * A notice goes everywhere the person set up, whichever profile it is from: every browser and app
- * that turned notifications on, and their notification service (ntfy, Pushover and the rest). Nothing
- * goes about the conversation they have in front of them, and nothing from a profile they muted.
+ * that turned notifications on. Nothing goes about the conversation they have in front of them, and
+ * nothing from a profile they muted.
  */
 export async function sendPush(raw: PushPayload, userId: string): Promise<number> {
   if (profileOf(userId)?.muted) return 0;
@@ -60,7 +59,6 @@ export async function sendPush(raw: PushPayload, userId: string): Promise<number
   const person = personOf(userId);
   emit({ topic: "notify", userId, ...payload });
   if (payload.threadId && isViewing(userId, payload.threadId)) return 0;
-  void notifyService(person, payload);
   const subscriptions = listSubscriptions(person).filter((sub) => noticeWanted(sub.notices, payload.botId));
   if (subscriptions.length === 0) return 0;
   const keys = vapidKeys();

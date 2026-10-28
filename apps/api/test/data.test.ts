@@ -33,6 +33,23 @@ afterAll(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
+/** Sends what Gond addresses to xAI's own API to a local server instead, until the returned function runs. */
+function routeXai(port: number | undefined): () => void {
+  const fetchBefore = globalThis.fetch;
+  const SocketBefore = globalThis.WebSocket;
+  const local = (url: string) => url.replace(/^(https|wss):\/\/api\.x\.ai/, (_, scheme: string) => `${scheme === "wss" ? "ws" : "http"}://127.0.0.1:${port}`);
+  globalThis.fetch = Object.assign((input: RequestInfo | URL, init?: RequestInit) => fetchBefore(typeof input === "string" || input instanceof URL ? local(String(input)) : input, init), fetchBefore);
+  globalThis.WebSocket = class extends SocketBefore {
+    constructor(url: string | URL, options?: string | string[]) {
+      super(local(String(url)), options);
+    }
+  };
+  return () => {
+    globalThis.fetch = fetchBefore;
+    globalThis.WebSocket = SocketBefore;
+  };
+}
+
 describe("data", () => {
   test("creates a bot with its thread, posts and claims messages", async () => {
     const { createBot, listBots, getBotByThread } = await import("../src/data/bots.ts");
@@ -932,16 +949,16 @@ describe("data", () => {
       ensureDatabase()
         .query("INSERT INTO gond_user_ai (user_id, engine, enabled, engines, updated_at) VALUES (?, 'grok', '[\"claude\",\"grok\"]', ?, '')")
         .run(userId, JSON.stringify({ grok }));
-    saveProvider("u-legacy", "xai", { baseUrl: "https://api.x.ai/v1", apiKey: "xai-1234567890" });
+    saveProvider("u-legacy", "openai", { baseUrl: "https://api.x.ai/v1", apiKey: "xai-1234567890" });
 
-    write("u-legacy", { access: "api", model: "grok-4.6", provider: "xai" });
+    write("u-legacy", { access: "api", model: "grok-4.6", provider: "openai" });
     const keyed = getAi("u-legacy");
     expect(keyed.engine).toBe("api");
     expect(keyed.enabled).toEqual(["claude", "api"]);
-    expect(keyed.engines.api).toEqual({ access: "api", model: "grok-4.6", provider: "xai" });
+    expect(keyed.engines.api).toEqual({ access: "api", model: "grok-4.6", provider: "openai" });
     expect(keyed.engines.grok).toEqual({ access: "api", model: "", provider: "grok" });
-    expect(engineRun(keyed, "u-legacy").native?.kind).toBe("xai");
-    deleteProvider("u-legacy", "xai");
+    expect(engineRun(keyed, "u-legacy").native?.kind).toBe("openai");
+    deleteProvider("u-legacy", "openai");
 
     write("u-legacy-cli", { access: "plan", model: "grok-build" });
     const cli = getAi("u-legacy-cli");
@@ -1148,22 +1165,22 @@ describe("data", () => {
     const { engineRun, EngineSetupError } = await import("../src/engines.ts");
     const { getAi } = await import("../src/data/ai.ts");
     const base = getAi("u-admin");
-    const ai = { ...base, engine: "api" as const, enabled: ["api" as const], engines: { ...base.engines, api: { access: "api" as const, model: "grok-4.6", provider: "xai" as const } } };
+    const ai = { ...base, engine: "api" as const, enabled: ["api" as const], engines: { ...base.engines, api: { access: "api" as const, model: "grok-4.6", provider: "openai" as const } } };
 
     expect(() => engineRun(ai, "u-admin")).toThrow(EngineSetupError);
-    saveProvider("u-admin", "xai", { baseUrl: "https://api.x.ai/v1", apiKey: "xai-secret-123456" });
+    saveProvider("u-admin", "openai", { baseUrl: "https://api.x.ai/v1", apiKey: "xai-secret-123456" });
     const run = engineRun(ai, "u-admin");
     expect(run.engine).toBe("api");
     expect(run.model).toBe("grok-4.6");
-    expect(run.native?.baseUrl).toEndWith("/api/llm/xai");
-    expect(run.native?.token).toBe(providerProxyToken("u-admin", "xai")!);
+    expect(run.native?.baseUrl).toEndWith("/api/llm/openai");
+    expect(run.native?.token).toBe(providerProxyToken("u-admin", "openai")!);
 
     expect(JSON.stringify(run)).not.toContain("xai-secret");
 
     expect(() => engineRun({ ...ai, engines: { ...ai.engines, api: { ...ai.engines.api, model: "" } } }, "u-admin")).toThrow(EngineSetupError);
 
     expect(() => engineRun(ai, "u-other")).toThrow(EngineSetupError);
-    deleteProvider("u-admin", "xai");
+    deleteProvider("u-admin", "openai");
   });
 
   test("Claude Code runs on a key through the proxy, with the key's model for its background calls too", async () => {
@@ -1187,7 +1204,7 @@ describe("data", () => {
     deleteProvider("u-kimi", "anthropic");
   });
 
-  test("voice picks the cheapest key unless one is chosen, and transcribes through it", async () => {
+  test("voice transcribes through the OpenAI-compatible key, on xAI's own endpoint when it points at xAI", async () => {
     const { saveProvider, deleteProvider } = await import("../src/data/providers.ts");
     const { getVoice, setVoice } = await import("../src/data/voice.ts");
     const { voiceRoutes } = await import("../src/routes/voice.ts");
@@ -1202,6 +1219,7 @@ describe("data", () => {
         return Response.json({ text: " hello there " });
       },
     });
+    const restore = routeXai(upstream.port);
     const app = asPerson(new Hono(), "u-voice");
     app.route("/api", voiceRoutes());
     const send = (name = "voice.webm", bytes = 10) => {
@@ -1210,38 +1228,35 @@ describe("data", () => {
       return app.request("/api/transcribe", { method: "POST", body: form });
     };
     try {
-      expect(getVoice("u-voice")).toEqual({ preference: "auto", using: null, available: [], openaiModel: "gpt-transcribe", callVoice: {} });
+      expect(getVoice("u-voice")).toEqual({ using: null, openaiModel: "gpt-transcribe", callVoice: {} });
       expect((await send()).status).toBe(409);
 
       saveProvider("u-voice", "openai", { baseUrl: `http://127.0.0.1:${upstream.port}/v1`, apiKey: "sk-voice-key-123456" });
-      saveProvider("u-voice", "xai", { baseUrl: `http://127.0.0.1:${upstream.port}/x/v1`, apiKey: "xai-voice-key-123456" });
-      expect(getVoice("u-voice").using).toBe("xai");
-      const grok = await send();
-      expect(await grok.json()).toEqual({ text: "hello there" });
-      expect(seen[0]).toEqual({ path: "/x/v1/stt", auth: "Bearer xai-voice-key-123456", model: "grok-voice-transcribe-2.0", name: "recording.webm" });
-
-      expect(setVoice("u-voice", { preference: "openai" }).using).toBe("openai");
-      await send("voice.mp4");
-      expect(seen[1]).toEqual({ path: "/v1/audio/transcriptions", auth: "Bearer sk-voice-key-123456", model: "gpt-transcribe", name: "recording.mp4" });
+      expect(getVoice("u-voice").using).toBe("openai");
+      const heard = await send("voice.mp4");
+      expect(await heard.json()).toEqual({ text: "hello there" });
+      expect(seen[0]).toEqual({ path: "/v1/audio/transcriptions", auth: "Bearer sk-voice-key-123456", model: "gpt-transcribe", name: "recording.mp4" });
 
       const local = await app.request("/api/voice", { method: "PUT", body: JSON.stringify({ openaiModel: "Systran/faster-whisper-small" }) });
-      expect(await local.json()).toMatchObject({ preference: "openai", openaiModel: "Systran/faster-whisper-small" });
+      expect(await local.json()).toMatchObject({ using: "openai", openaiModel: "Systran/faster-whisper-small" });
       await send();
-      expect(seen[2]!.model).toBe("Systran/faster-whisper-small");
+      expect(seen[1]!.model).toBe("Systran/faster-whisper-small");
       expect((await app.request("/api/voice", { method: "PUT", body: JSON.stringify({ openaiModel: "bad model" }) })).status).toBe(400);
+      expect((await app.request("/api/voice", { method: "PUT", body: JSON.stringify({}) })).status).toBe(400);
       expect(setVoice("u-voice", { openaiModel: "" }).openaiModel).toBe("gpt-transcribe");
 
-      deleteProvider("u-voice", "openai");
-      expect(getVoice("u-voice")).toMatchObject({ preference: "openai", using: "xai" });
+      saveProvider("u-voice", "openai", { baseUrl: "https://api.x.ai/v1", apiKey: "xai-voice-key-123456" });
+      expect(getVoice("u-voice").using).toBe("xai");
+      await send();
+      expect(seen[2]).toEqual({ path: "/v1/stt", auth: "Bearer xai-voice-key-123456", model: "grok-voice-transcribe-2.0", name: "recording.webm" });
 
       expect((await send("page.html")).status).toBe(400);
       expect((await app.request("/api/transcribe", { method: "POST", body: new FormData() })).status).toBe(400);
       expect((await send("voice.webm", 11 * 1024 * 1024)).status).toBe(413);
-      expect((await app.request("/api/voice", { method: "PUT", body: JSON.stringify({ preference: "anthropic" }) })).status).toBe(400);
     } finally {
+      restore();
       upstream.stop(true);
       deleteProvider("u-voice", "openai");
-      deleteProvider("u-voice", "xai");
     }
   });
 
@@ -2025,76 +2040,6 @@ describe("data", () => {
     expect((await app.request("/api/push/viewing", { method: "POST", body: JSON.stringify({ client: "w2", threadId: null }) })).status).toBe(204);
     expect(await sendPush(notice, "u-tester")).toBe(2);
     expect(delivered.sort()).toEqual(["https://push.example/tester", "https://push.example/tester-phone"]);
-  });
-
-  test("a person's one notification service gets every notice, with its keys kept out of every answer", async () => {
-    const { Hono } = await import("hono");
-    const { notifyRoutes } = await import("../src/routes/notify.ts");
-    const { sendPush } = await import("../src/push.ts");
-    const { markViewing } = await import("../src/presence.ts");
-    const { ensureDatabase } = await import("../src/db/init.ts");
-    const got: { path: string; headers: Record<string, string>; body: unknown }[] = [];
-    let status = 200;
-    const fake = Bun.serve({
-      port: 0,
-      async fetch(request: Request) {
-        const url = new URL(request.url);
-        got.push({ path: url.pathname, headers: Object.fromEntries(request.headers), body: await request.json().catch(() => null) });
-        return new Response(status === 200 ? "{}" : JSON.stringify({ error: "bad token" }), { status });
-      },
-    });
-    const at = `http://127.0.0.1:${fake.port}`;
-    try {
-      const app = asPerson(new Hono(), "u-notify").route("/api", notifyRoutes());
-      const call = (method: string, path: string, body?: unknown) => app.request(`/api${path}`, { method, body: body === undefined ? undefined : JSON.stringify(body) });
-      expect(await (await call("GET", "/notify-service")).json()).toEqual({ service: null });
-      expect((await call("PUT", "/notify-service", { kind: "slack", values: {} })).status).toBe(400);
-      expect((await call("PUT", "/notify-service", { kind: "webhook", values: { url: "not a url" } })).status).toBe(400);
-
-      // A test before saving goes to what the form holds.
-      const tried = await call("POST", "/notify-service/test", { kind: "ntfy", values: { server: at, topic: "gond-test", token: "tk_secret_123" } });
-      expect(tried.status).toBe(200);
-      expect(got.at(-1)).toMatchObject({ path: "/", headers: { authorization: "Bearer tk_secret_123" }, body: { topic: "gond-test", title: "Gond is set up", priority: 3 } });
-      expect((got.at(-1)!.body as { click: string }).click).toMatch(/\/app$/);
-
-      const saved = await call("PUT", "/notify-service", { kind: "webhook", values: { url: `${at}/hooks/gond-secret-path` } });
-      expect(saved.status).toBe(200);
-      const shown = JSON.stringify(await saved.json());
-      expect(shown).not.toContain("gond-secret-path");
-      expect(shown).toContain('"saved":["url"]');
-      expect(JSON.stringify(ensureDatabase().query("SELECT * FROM gond_notify_services").all())).not.toContain("gond-secret-path");
-
-      got.length = 0;
-      await sendPush({ title: "Patch", body: "Disk is back to 41%.", url: "/app/t/t9", tag: "t9", threadId: "t9" }, "u-notify");
-      await Bun.sleep(50);
-      expect(got).toHaveLength(1);
-      expect(got[0]).toMatchObject({ path: "/hooks/gond-secret-path", body: { title: "Patch", body: "Disk is back to 41%." } });
-      expect((got[0]!.body as { url: string }).url).toMatch(/\/app\/t\/t9$/);
-      expect(((await (await call("GET", "/notify-service")).json()) as { service: { lastSentAt: string | null } }).service.lastSentAt).not.toBeNull();
-
-      // Nothing about the conversation on screen, and nothing while it's switched off.
-      got.length = 0;
-      markViewing("u-notify", "w1", "t9");
-      await sendPush({ title: "Patch", body: "Again.", url: "/app/t/t9", tag: "t9", threadId: "t9" }, "u-notify");
-      expect((await call("PATCH", "/notify-service", { enabled: false })).status).toBe(200);
-      await sendPush({ title: "Patch", body: "Off.", url: "/app/t/t8", tag: "t8", threadId: "t8" }, "u-notify");
-      await Bun.sleep(50);
-      expect(got).toHaveLength(0);
-
-      // Changing it keeps a key left empty; a refusal is said in words, and kept for Settings.
-      expect((await call("PUT", "/notify-service", { kind: "webhook", values: {} })).status).toBe(200);
-      status = 401;
-      const refused = await call("POST", "/notify-service/test");
-      expect(refused.status).toBe(400);
-      expect(((await refused.json()) as { error: string }).error).toBe("Webhook turned the key down: bad token. Check it and save again.");
-      expect(got.at(-1)!.path).toBe("/hooks/gond-secret-path");
-
-      expect((await call("DELETE", "/notify-service")).status).toBe(200);
-      expect(await (await call("GET", "/notify-service")).json()).toEqual({ service: null });
-      expect((await call("POST", "/notify-service/test")).status).toBe(404);
-    } finally {
-      fake.stop(true);
-    }
   });
 
   test("each person has their own bots, conversations and subscriptions", async () => {
@@ -5372,12 +5317,12 @@ describe("usage", () => {
     const since = rangeStart("month", "UTC");
     recordUsage({ userId: "u-usage", botId: "b1", threadId: "t1", source: "claude", model: "opus", tokens: tokens(100, 20), cost: null });
     recordUsage({ userId: "u-usage", botId: "b2", threadId: "t2", source: "claude", model: "haiku", tokens: tokens(10, 5), cost: null });
-    recordUsage({ userId: "u-usage", botId: "b2", threadId: "t2", source: "xai", model: "grok-5", tokens: tokens(1000, 100), cost: 0.25 });
-    recordUsage({ userId: "u-usage", botId: "b2", threadId: "t2", source: "xai", model: "grok-5", tokens: tokens(0, 0), cost: null });
+    recordUsage({ userId: "u-usage", botId: "b2", threadId: "t2", source: "openai", model: "grok-5", tokens: tokens(1000, 100), cost: 0.25 });
+    recordUsage({ userId: "u-usage", botId: "b2", threadId: "t2", source: "openai", model: "grok-5", tokens: tokens(0, 0), cost: null });
     recordUsage({ userId: "u-other", botId: "b9", threadId: "t9", source: "claude", model: "opus", tokens: tokens(5, 5), cost: null });
 
     expect(sourceTotals("u-usage", "claude", since)).toEqual({ tokens: 135, cost: null });
-    expect(sourceTotals("u-usage", "xai", since)).toEqual({ tokens: 1100, cost: 0.25 });
+    expect(sourceTotals("u-usage", "openai", since)).toEqual({ tokens: 1100, cost: 0.25 });
     expect(botTotals("u-usage", since)).toEqual([
       { botId: "b2", tokens: 1115, cost: 0.25 },
       { botId: "b1", tokens: 120, cost: null },
@@ -5412,7 +5357,7 @@ describe("usage", () => {
 describe("call voices", () => {
   test("a call's voice is picked from the provider's own list, sampled with the person's key, and kept per provider", async () => {
     const { saveProvider } = await import("../src/data/providers.ts");
-    const { getVoice, setVoice } = await import("../src/data/voice.ts");
+    const { getVoice } = await import("../src/data/voice.ts");
     const { voiceRoutes } = await import("../src/routes/voice.ts");
     const { Hono } = await import("hono");
     const said: { path: string; body: unknown }[] = [];
@@ -5425,12 +5370,12 @@ describe("call voices", () => {
         return new Response(new Uint8Array([0xff, 0xfb, 1, 2]), { headers: { "content-type": "audio/mpeg" } });
       },
     });
+    const restore = routeXai(upstream.port);
     const app = asPerson(new Hono(), "u-voices");
     app.route("/api", voiceRoutes());
     try {
       expect(await (await app.request("/api/voice/voices")).json()).toEqual({ provider: null, voices: [], chosen: null });
-      saveProvider("u-voices", "xai", { baseUrl: `http://127.0.0.1:${upstream.port}/x/v1`, apiKey: "xai-voices-key-123456" });
-      saveProvider("u-voices", "openai", { baseUrl: `http://127.0.0.1:${upstream.port}/v1`, apiKey: "sk-voices-key-123456" });
+      saveProvider("u-voices", "openai", { baseUrl: "https://api.x.ai/x/v1", apiKey: "xai-voices-key-123456" });
 
       expect(await (await app.request("/api/voice/voices")).json()).toEqual({ provider: "xai", voices: [{ id: "eve", name: "Eve", detail: null }, { id: "ara", name: "Ara", detail: null }], chosen: "eve" });
       expect((await app.request("/api/voice/call-voice", { method: "PUT", body: JSON.stringify({ voice: "ara" }) })).status).toBe(200);
@@ -5441,7 +5386,7 @@ describe("call voices", () => {
       expect(sample.headers.get("content-type")).toBe("audio/mpeg");
       expect(said[0]).toMatchObject({ path: "/x/v1/tts", body: { voice_id: "ara", language: "en" } });
 
-      setVoice("u-voices", { preference: "openai" });
+      saveProvider("u-voices", "openai", { baseUrl: `http://127.0.0.1:${upstream.port}/v1`, apiKey: "sk-voices-key-123456" });
       const openai = (await (await app.request("/api/voice/voices")).json()) as { provider: string; voices: { id: string }[]; chosen: string };
       expect(openai.provider).toBe("openai");
       expect(openai.chosen).toBe("marin");
@@ -5452,6 +5397,7 @@ describe("call voices", () => {
       await app.request("/api/voice/call-voice", { method: "PUT", body: JSON.stringify({ voice: "marin" }) });
       expect(getVoice("u-voices").callVoice).toEqual({ xai: "ara" });
     } finally {
+      restore();
       upstream.stop(true);
     }
   });
@@ -5499,9 +5445,10 @@ describe("calls", () => {
       },
     });
     const say = (event: object) => socket!.send(JSON.stringify(event));
+    const restore = routeXai(fake.port);
     try {
       const bot = createBot(botInputSchema.parse({ name: "Patch Caller", title: "Travel" }), "u-caller");
-      saveProvider("u-caller", "xai", { baseUrl: `http://127.0.0.1:${fake.port}/v1`, apiKey: "xai-test-key-1234567890" });
+      saveProvider("u-caller", "openai", { baseUrl: "https://api.x.ai/v1", apiKey: "xai-test-key-1234567890" });
       const thread = getThread(bot.threadId)!;
       expect(bot.primary).toBe(true);
       const helper = createBot(botInputSchema.parse({ name: "Ledger Caller", title: "Books" }), "u-caller");
@@ -5550,6 +5497,7 @@ describe("calls", () => {
       expect(listMessages(thread.id, { shown: true }).filter((m) => m.kind !== "prompt").map((m) => m.body)).toEqual(["Call · under a minute"]);
       expect(callOf("u-caller")).toBeNull();
     } finally {
+      restore();
       fake.stop(true);
     }
   });
@@ -5582,9 +5530,10 @@ describe("calls", () => {
       fetch: async (req, server) => (await upgradeCallSocket(req, server, async () => person)) ?? new Response("not a socket", { status: 418 }),
       websocket: callSocket,
     });
+    const restore = routeXai(voice.port);
     try {
       const bot = createBot(botInputSchema.parse({ name: "Patch Socket" }), "u-socket");
-      saveProvider("u-socket", "xai", { baseUrl: `http://127.0.0.1:${voice.port}/v1`, apiKey: "xai-socket-key-1234567890" });
+      saveProvider("u-socket", "openai", { baseUrl: "https://api.x.ai/v1", apiKey: "xai-socket-key-1234567890" });
       const started = startCall(getThread(bot.threadId)!, "u-socket");
       if (!started.ok) throw new Error(started.error);
       const url = `http://127.0.0.1:${gond.port}/api/calls/${started.call.id}/socket`;
@@ -5609,6 +5558,7 @@ describe("calls", () => {
       endCall(started.call.id, null);
       await until(() => events.includes("ended"));
     } finally {
+      restore();
       gond.stop(true);
       voice.stop(true);
     }
@@ -6103,185 +6053,6 @@ describe("failed turns, Try again, and taking lines back", () => {
         expect(down.health).toBeUndefined();
       },
     );
-  });
-});
-
-describe("household", () => {
-  const json = { "Content-Type": "application/json" };
-
-  async function household() {
-    await seedUsers(["u-hh-head", "user"], ["u-hh-member", "user"], ["u-hh-asked", "user"]);
-    const { createHousehold, askMember, joinMember, deleteHousehold, getHousehold } = await import("../src/data/households.ts");
-    const { saveProvider } = await import("../src/data/providers.ts");
-    const existing = getHousehold();
-    if (existing) deleteHousehold(existing.id);
-    saveProvider("u-hh-head", "anthropic", { baseUrl: "https://api.anthropic.com", apiKey: "sk-ant-household-1234567890" });
-    const row = createHousehold("u-hh-head", "Hall household", { engine: "api", provider: "anthropic", model: "claude-sonnet-5-5" });
-    askMember(row.id, "u-hh-member");
-    joinMember("u-hh-member");
-    askMember(row.id, "u-hh-asked");
-    return row;
-  }
-
-  test("a member runs on the household's keys, never their own AI, and can't change it", async () => {
-    const home = await household();
-    const { turnAi, keyHolder, memberHousehold, householdView, meHousehold } = await import("../src/households.ts");
-    const { engineRun } = await import("../src/engines.ts");
-    const { updateAi } = await import("../src/data/ai.ts");
-    const { Hono } = await import("hono");
-    const { refuseForMembers } = await import("../src/routes/households.ts");
-    updateAi("u-hh-member", { engine: "claude" });
-
-    const member = turnAi("u-hh-member");
-    expect(member.keys).toBe("u-hh-head");
-    expect(member.ai.engine).toBe("api");
-    const run = engineRun(member.ai, member.keys);
-    expect(run.native?.kind).toBe("anthropic");
-    expect(run.model).toBe("claude-sonnet-5-5");
-    expect(keyHolder("u-hh-member")).toBe("u-hh-head");
-    // Someone only asked isn't in it yet, and the head runs on their own AI.
-    expect(memberHousehold("u-hh-asked")).toBeNull();
-    expect(turnAi("u-hh-asked").keys).toBe("u-hh-asked");
-    expect(turnAi("u-hh-head").keys).toBe("u-hh-head");
-
-    expect(householdView("u-hh-head")?.members.map((m) => [m.id, m.status])).toEqual([["u-hh-member", "joined"], ["u-hh-asked", "asked"]]);
-    expect(householdView("u-hh-member")?.members.map((m) => m.id)).toEqual(["u-hh-member"]);
-    expect(householdView("u-hh-member")?.aiReady).toBe(true);
-    expect(meHousehold("u-hh-asked")).toMatchObject({ id: home.id, role: "asked" });
-    expect(meHousehold("u-nobody")).toBeNull();
-
-    const app = asPerson(new Hono(), "u-hh-member");
-    app.use("*", async (c: { set: (key: string, value: unknown) => void }, next: () => Promise<void>) => (c.set("profile", "u-hh-member"), next()));
-    app.on(["PATCH"], ["/api/ai"], refuseForMembers);
-    app.patch("/api/ai", (c: { json: (v: unknown) => Response }) => c.json({ ok: true }));
-    const refused = await app.request("/api/ai", { method: "PATCH", headers: json, body: "{}" });
-    expect(refused.status).toBe(409);
-    expect(((await refused.json()) as { error: string }).error).toContain("sets the AI for your household");
-  });
-
-  test("the head shares a bot at a level, and Always allow must be confirmed", async () => {
-    await household();
-    const { Hono } = await import("hono");
-    const { householdsRoutes } = await import("../src/routes/households.ts");
-    const { createBot } = await import("../src/data/bots.ts");
-    const { botInputSchema } = await import("@gond/shared");
-    const { sharedBotsFor, sharedBotsNote } = await import("../src/households.ts");
-    const steve = createBot(botInputSchema.parse({ name: "Steve", title: "IT" }), "u-hh-head");
-    const theirs = createBot(botInputSchema.parse({ name: "Jasper" }), "u-hh-member");
-    const head = asPerson(new Hono(), "u-hh-head").route("/api", householdsRoutes());
-    const member = asPerson(new Hono(), "u-hh-member").route("/api", householdsRoutes());
-    const share = (app: typeof head, botId: string, body: Record<string, unknown>) => app.request(`/api/household/shares/${botId}`, { method: "PUT", headers: json, body: JSON.stringify({ memberId: "u-hh-member", memory: false, ...body }) });
-
-    expect((await share(member, steve.id, { level: "act" })).status).toBe(403);
-    expect((await share(head, theirs.id, { level: "act" })).status).toBe(404);
-    expect((await share(head, steve.id, { level: "act", memberId: "u-hh-asked" })).status).toBe(404);
-    expect((await share(head, steve.id, { level: "act" })).status).toBe(200);
-    expect(sharedBotsFor(theirs.userId).map((s) => [s.bot.name, s.share.level])).toEqual([["Steve", "act"]]);
-    expect(sharedBotsNote("u-hh-member")).toContain("Steve (@steve)");
-    expect(sharedBotsNote("u-hh-head")).toBeNull();
-
-    const quiet = await share(head, steve.id, { level: "full" });
-    expect(quiet.status).toBe(400);
-    expect(((await quiet.json()) as { error: string }).error).toBe("Confirm Always allow before turning it on");
-    expect((await share(head, steve.id, { level: "full", confirmed: true })).status).toBe(200);
-    expect(sharedBotsFor("u-hh-member")[0]!.share.level).toBe("full");
-    expect((await share(head, steve.id, { level: null })).status).toBe(200);
-    expect(sharedBotsFor("u-hh-member")).toEqual([]);
-
-    const view = (await (await head.request("/api/household")).json()) as { household: { role: string }; candidates: { id: string }[] };
-    expect(view.household.role).toBe("head");
-    expect((await (await member.request("/api/household")).json()) as { household: { role: string } }).toMatchObject({ household: { role: "member" } });
-  });
-
-  test("an errand runs in the head's own conversation, asks the head first on Do things, and only the answer comes back", async () => {
-    await household();
-    const { createBot } = await import("../src/data/bots.ts");
-    const { setShare, getErrand } = await import("../src/data/households.ts");
-    const { getThread, listMessages } = await import("../src/data/threads.ts");
-    const { decide } = await import("../src/approvals.ts");
-    const { runErrand, threadAi } = await import("../src/households.ts");
-    const { botInputSchema } = await import("@gond/shared");
-    const reel = createBot(botInputSchema.parse({ name: "Reel", title: "Movies" }), "u-hh-head");
-    const jasper = createBot(botInputSchema.parse({ name: "Jasper" }), "u-hh-member");
-    const askerThread = getThread(jasper.threadId)!;
-    const turns: string[] = [];
-    const turn = async (bot: typeof reel, thread: NonNullable<ReturnType<typeof getThread>>, message: { body: string }) => {
-      turns.push(`${bot.name}@${thread.id}: ${message.body.slice(0, 40)}`);
-      return "Requested Dune: Part Two.";
-    };
-    const errand = (request: string) => runErrand({ asker: jasper, askerThread, target: "@reel", request, signal: new AbortController().signal, turn, stopTurns: async () => undefined });
-
-    expect(await errand("anything")).toContain("NOT asked: no bots are shared");
-
-    setShare({ botId: reel.id, memberId: "u-hh-member", level: "full", memory: false });
-    expect(await errand("Request Dune Part Two")).toBe("Reel (u-hh-head's) did it and says:\n\nRequested Dune: Part Two.");
-    const thread = getThread(turns[0]!.split("@")[1]!.split(":")[0]!);
-    expect(thread?.userId).toBe("u-hh-head");
-    expect(thread?.name).toBe("Reel · for u-hh-member");
-    expect(thread?.errand).toEqual({ botId: reel.id, memberId: "u-hh-member", memberName: "u-hh-member" });
-    // It runs on the household's keys and counts as the member's, though it's the head's bot.
-    expect(threadAi(thread!)).toMatchObject({ keys: "u-hh-head", usageUserId: "u-hh-member" });
-    expect(listMessages(thread!.id).find((m) => m.kind === "event")?.body).toBe('Jasper, u-hh-member\'s bot, asked Reel: "Request Dune Part Two"');
-
-    setShare({ botId: reel.id, memberId: "u-hh-member", level: "act", memory: false });
-    const asked = errand("Request Arrival too");
-    await Bun.sleep(5);
-    const card = listMessages(thread!.id).filter((m) => m.kind === "approval").at(-1)!;
-    expect(card.body).toBe("Let Reel do what u-hh-member's bot asked?");
-    // A card is the only thing in an errand conversation that counts as unread for the head.
-    expect(getThread(thread!.id)!.unread).toBe(1);
-    decide(card.approvalId!, { decision: "deny" });
-    expect(await asked).toBe("u-hh-head said no to that, so Reel won't do it. Tell your person.");
-    expect(turns).toHaveLength(1);
-
-    const allowed = errand("Request Arrival too");
-    await Bun.sleep(5);
-    decide(listMessages(thread!.id).filter((m) => m.kind === "approval").at(-1)!.approvalId!, { decision: "allow" });
-    expect(await allowed).toContain("did it and says");
-    expect(turns).toHaveLength(2);
-    expect(listMessages(thread!.id).filter((m) => m.kind === "prompt").at(-1)!.body).toContain('u-hh-head tapped "Do it"');
-    const latest = (await import("../src/db/init.ts")).ensureDatabase().query("SELECT id FROM gond_household_errands WHERE errand_thread_id = ? ORDER BY rowid DESC LIMIT 1").get(thread!.id) as { id: string };
-    expect(getErrand(latest.id)).toMatchObject({ status: "done", answer: "Requested Dune: Part Two." });
-  });
-
-  test("a restart closes open errands and never reruns their prompt", async () => {
-    await household();
-    const { ensureDatabase, releaseClaims } = await import("../src/db/init.ts");
-    const { createBot } = await import("../src/data/bots.ts");
-    const { createErrand, errandThreadFor, getErrand, setErrandPrompt } = await import("../src/data/households.ts");
-    const { getMessage, postMessage } = await import("../src/data/threads.ts");
-    const { botInputSchema } = await import("@gond/shared");
-    const steve = createBot(botInputSchema.parse({ name: "Steve Restart" }), "u-hh-head");
-    const jasper = createBot(botInputSchema.parse({ name: "Jasper Restart" }), "u-hh-member");
-    const thread = errandThreadFor(steve.id, steve.name, steve.userId, "u-hh-member", "Jaimee");
-    const errand = createErrand({ botId: steve.id, memberId: "u-hh-member", fromBotId: jasper.id, fromThreadId: jasper.threadId, errandThreadId: thread.id, request: "Fix the printer", level: "act" });
-    const prompt = postMessage({ threadId: thread.id, author: "system", kind: "prompt", body: "@steve do it" });
-    setErrandPrompt(errand.id, prompt.id);
-    releaseClaims(ensureDatabase());
-    expect(getErrand(errand.id)?.status).toBe("failed");
-    expect(ensureDatabase().query("SELECT answered_at FROM gond_messages WHERE id = ?").get(prompt.id)).toMatchObject({ answered_at: expect.any(String) });
-    expect(getMessage(prompt.id)).not.toBeNull();
-  });
-
-  test("a person who goes takes every household row of theirs with them", async () => {
-    const home = await household();
-    const { ensureDatabase } = await import("../src/db/init.ts");
-    const { createBot } = await import("../src/data/bots.ts");
-    const { errandThreadFor, getHousehold, setShare } = await import("../src/data/households.ts");
-    const { deleteUserData } = await import("../src/data/users.ts");
-    const { getThread } = await import("../src/data/threads.ts");
-    const { botInputSchema } = await import("@gond/shared");
-    const db = ensureDatabase();
-    const steve = createBot(botInputSchema.parse({ name: "Steve Gone" }), "u-hh-head");
-    setShare({ botId: steve.id, memberId: "u-hh-member", level: "talk", memory: false });
-    const thread = errandThreadFor(steve.id, steve.name, steve.userId, "u-hh-member", "Jaimee");
-    deleteUserData("u-hh-member");
-    expect(db.query("SELECT 1 FROM gond_household_members WHERE person_id = ?").get("u-hh-member")).toBeNull();
-    expect(db.query("SELECT 1 FROM gond_household_shares WHERE member_id = ?").get("u-hh-member")).toBeNull();
-    expect(getThread(thread.id)).toBeNull();
-    deleteUserData("u-hh-head");
-    expect(getHousehold()?.id === home.id).toBe(false);
-    expect(db.query("SELECT 1 FROM gond_household_members WHERE household_id = ?").get(home.id)).toBeNull();
   });
 });
 

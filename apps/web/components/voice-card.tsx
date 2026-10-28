@@ -1,6 +1,6 @@
 "use client";
 
-import { VOICE_MODELS, VOICE_PREFERENCES, type VoicePreference, type VoiceSettings } from "@gond/shared";
+import { VOICE_MODELS, type VoiceSettings } from "@gond/shared";
 import Link from "next/link";
 import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
@@ -8,21 +8,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Field, FieldDescription, FieldError, FieldLabel, FieldTitle } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useVoice } from "@/hooks/use-voice";
 import { api } from "@/lib/api";
 import { settingsHref } from "@/lib/settings-sections";
 
-function optionLabel(preference: VoicePreference) {
-  return preference === "auto" ? "Automatic" : VOICE_MODELS[preference].label;
-}
-
 function usingLine(voice: VoiceSettings) {
-  if (!voice.using) return "Add an xAI or OpenAI key under AI to turn on the microphone.";
-  const name = `${VOICE_MODELS[voice.using].label} (${voice.using === "openai" ? voice.openaiModel : VOICE_MODELS[voice.using].model})`;
-  if (voice.preference === "auto") return `Using ${name}, the cheapest of your keys.`;
-  if (voice.preference !== voice.using) return `Your ${VOICE_MODELS[voice.preference].label} key is gone, so ${name} is used.`;
-  return `Using ${name}.`;
+  if (!voice.using) return "Add an OpenAI or xAI key under AI to turn on the microphone.";
+  return `Using ${VOICE_MODELS[voice.using].label} (${voice.using === "openai" ? voice.openaiModel : VOICE_MODELS[voice.using].model}), through your OpenAI-compatible key.`;
 }
 
 export function VoiceCard() {
@@ -32,12 +24,12 @@ export function VoiceCard() {
 
   const [model, setModel] = useState<string | null>(null);
 
-  async function save(patch: { preference?: VoicePreference; openaiModel?: string }) {
+  async function save(patch: { openaiModel: string }) {
     setSaving(true);
     setError(null);
     try {
       setVoice(await api<VoiceSettings>("/api/voice", { method: "PUT", body: JSON.stringify(patch) }));
-      if (patch.openaiModel !== undefined) setModel(null);
+      setModel(null);
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "Couldn't save.");
     } finally {
@@ -58,15 +50,8 @@ export function VoiceCard() {
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {voice ? (
-          <Field data-disabled={saving || undefined}>
-            <FieldTitle id="voice-label">Turns speech into text</FieldTitle>
-            <ToggleGroup aria-labelledby="voice-label" variant="pill" value={[voice.preference]} onValueChange={(next) => next[0] && void save({ preference: next[0] as VoicePreference })} disabled={saving} className="flex-wrap">
-              {VOICE_PREFERENCES.map((preference) => (
-                <ToggleGroupItem key={preference} value={preference} disabled={preference !== "auto" && !voice.available.includes(preference)}>
-                  {optionLabel(preference)}
-                </ToggleGroupItem>
-              ))}
-            </ToggleGroup>
+          <Field>
+            <FieldTitle>Turns speech into text</FieldTitle>
             <FieldDescription>{usingLine(voice)}</FieldDescription>
             {error ? <FieldError>{error}</FieldError> : null}
           </Field>
@@ -89,7 +74,7 @@ export function VoiceCard() {
             </Field>
           </form>
         ) : null}
-        {voice && voice.available.length < 2 ? (
+        {voice && !voice.using ? (
           <div>
             <Button variant="outline" render={<Link href={settingsHref("ai")} />} nativeButton={false}>
               Add a key

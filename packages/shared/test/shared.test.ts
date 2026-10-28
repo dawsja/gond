@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { cardBrand, cardFieldValue, checkCard, looseCards, luhnValid, parseExpiry, MODEL_ID_PATTERN, addressedIn, newerVersion, BOT_TEMPLATES, draftIdOf, editedEmailInput, emailDraftOf, emailEditable, emailName, emailText, sendDraftAction, wordDiff, MOBILE_SIGN_IN_CALLBACK, SIGN_IN_APPS, approvalLine, botInputSchema, composioCard, composioCardToolkit, fromNativeAction, gerund, handleOf, isClosing, isQuietReply, isQuietTool, withoutQuietReply, isStopRequest, routineName, joinCommandLine, mentionsIn, pickBotName, pickVoiceProvider, plainMarkdown, roomAnswerer, roomNameFor, roomTargets, ruleLabel, splitCommandLine, toolLabel, toolLine } from "../src/index.ts";
+import { cardBrand, cardFieldValue, checkCard, looseCards, luhnValid, parseExpiry, MODEL_ID_PATTERN, addressedIn, newerVersion, BOT_TEMPLATES, draftIdOf, editedEmailInput, emailDraftOf, emailEditable, emailName, emailText, sendDraftAction, wordDiff, MOBILE_SIGN_IN_CALLBACK, SIGN_IN_APPS, approvalLine, botInputSchema, composioCard, composioCardToolkit, fromNativeAction, gerund, handleOf, isClosing, isQuietReply, isQuietTool, withoutQuietReply, isStopRequest, routineName, joinCommandLine, mentionsIn, isXaiUrl, pickBotName, plainMarkdown, roomAnswerer, roomNameFor, roomTargets, ruleLabel, splitCommandLine, toolLabel, toolLine } from "../src/index.ts";
 
 describe("shared", () => {
   test("a model id may end in Claude Code's [1m] mark, and nothing else in brackets", () => {
@@ -258,14 +258,14 @@ describe("isClosing", () => {
   });
 });
 
-describe("pickVoiceProvider", () => {
-  test("auto takes the cheapest key, a choice holds while its key does", () => {
-    const has = (...kinds: string[]) => (kind: string) => kinds.includes(kind);
-    expect(pickVoiceProvider("auto", has("openai", "xai"))).toBe("xai");
-    expect(pickVoiceProvider("auto", has("openai"))).toBe("openai");
-    expect(pickVoiceProvider("openai", has("openai", "xai"))).toBe("openai");
-    expect(pickVoiceProvider("openai", has("xai"))).toBe("xai");
-    expect(pickVoiceProvider("auto", has())).toBeNull();
+describe("isXaiUrl", () => {
+  test("only xAI's own API counts, whatever the path or case", () => {
+    expect(isXaiUrl("https://api.x.ai/v1")).toBe(true);
+    expect(isXaiUrl("https://API.X.AI")).toBe(true);
+    expect(isXaiUrl("https://api.openai.com/v1")).toBe(false);
+    expect(isXaiUrl("https://api.x.ai.example.com/v1")).toBe(false);
+    expect(isXaiUrl("https://example.com/api.x.ai")).toBe(false);
+    expect(isXaiUrl("not a url")).toBe(false);
   });
 
   test("an email card reads what a Gmail or Outlook action is about to send", () => {

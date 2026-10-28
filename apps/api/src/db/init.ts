@@ -14,11 +14,7 @@ const holder = globalThis as typeof globalThis & { __gondDbReady?: string };
  * waits on it any more and it would otherwise hold its bot up for good.
  */
 export function releaseClaims(db: Database): number {
-  // An errand's asker waited on it in memory, so it is over: its prompt isn't run again for nobody, and the
-  // member's bot, whose own turn is cut off and tried again, asks afresh if it still needs it.
   const at = now();
-  db.query("UPDATE gond_messages SET answered_at = ?, claimed_by = NULL WHERE answered_at IS NULL AND id IN (SELECT prompt_id FROM gond_household_errands WHERE status = 'open' AND prompt_id IS NOT NULL)").run(at);
-  db.query("UPDATE gond_household_errands SET status = 'failed', answer = ?, finished_at = ? WHERE status = 'open'").run("Gond restarted while this errand ran.", at);
   // A line still waiting on the router was never started, so it isn't cut off; released, it routes by the rules.
   const cut = db.query("SELECT id FROM gond_messages WHERE claimed_by IS NOT NULL AND claimed_by != 'routing' AND answered_at IS NULL").all() as { id: string }[];
   for (const { id } of cut) noteInterrupted(id);

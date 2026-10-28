@@ -35,8 +35,6 @@ type ThreadRow = {
   pinned: number;
   created_at: string;
   updated_at: string;
-  errand_bot?: string | null;
-  errand_for?: string | null;
 };
 
 type MessageRow = {
@@ -191,15 +189,8 @@ function toThread(row: ThreadRow): Thread {
     .query("SELECT author, body, created_at FROM gond_messages WHERE thread_id = ? AND kind IN ('message', 'approval', 'signin', 'teach') AND from_thread_id IS NULL AND spoken = 0 ORDER BY created_at DESC LIMIT 1")
     .get(row.id) as { author: string; body: string; created_at: string } | null;
   const unread = db
-    .query("SELECT COUNT(*) AS n, COUNT(from_thread_id) AS team, COUNT(CASE WHEN kind = 'approval' THEN 1 END) AS cards FROM gond_messages WHERE thread_id = ? AND author NOT IN ('you') AND kind IN ('message', 'approval', 'signin', 'teach') AND spoken = 0 AND created_at > ?")
-    .get(row.id, row.last_read_at ?? "") as { n: number; team: number; cards: number };
-  // A shared bot's errands for a household member are bots working for each other: only a card there asks
-  // anything of the head, so only cards count as unread and the rest is quietly new.
-  const errand = row.errand_bot && row.errand_for ? { botId: row.errand_bot, memberId: row.errand_for, memberName: (db.query('SELECT name FROM "user" WHERE id = ?').get(row.errand_for) as { name: string } | null)?.name ?? "a member" } : null;
-  if (errand) {
-    unread.team = Number(unread.n) - Number(unread.cards);
-    unread.n = Number(unread.n);
-  }
+    .query("SELECT COUNT(*) AS n, COUNT(from_thread_id) AS team FROM gond_messages WHERE thread_id = ? AND author NOT IN ('you') AND kind IN ('message', 'approval', 'signin', 'teach') AND spoken = 0 AND created_at > ?")
+    .get(row.id, row.last_read_at ?? "") as { n: number; team: number };
   return {
     id: row.id,
     userId: row.user_id ?? "",
@@ -213,7 +204,6 @@ function toThread(row: ThreadRow): Thread {
     unreadTeam: Number(unread.team) > 0 && Number(unread.n) === Number(unread.team),
     noticed: noticedIn(row),
     space: row.kind === "room" ? threadSpace(row.id, federationRow().key) : null,
-    errand,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

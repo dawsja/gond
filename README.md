@@ -33,8 +33,8 @@ affiliated with xAI, Meta or Anthropic.
 - **Your AI, your plan.** Claude Code on your own subscription,
   signed in from Settings without a terminal, your ChatGPT plan with
   Continue with ChatGPT, or your SuperGrok or X Premium+ plan with Sign
-  in with Grok. Or bring an API key (Anthropic, OpenAI, xAI or
-  anything compatible). Without a CLI, Gond drives the model itself.
+  in with Grok. Or bring an API key (Anthropic, OpenAI, or anything
+  compatible, like xAI). Without a CLI, Gond drives the model itself.
   Claude Code can run on an Anthropic-compatible key too, which is how
   a coding plan like Kimi Code works.
 - **Usage.** Settings → Usage shows how much of your Claude or Grok plan is
@@ -237,6 +237,4 @@ packages/shared  Types, schemas, templates and the app catalog
 
 ## License
 
-MIT. Provider names and logos are trademarks of their owners. The ntfy,
-Discord and Telegram marks are from Simple Icons (CC0); the Gotify logo is by
-the Gotify organisation (CC BY 4.0), after the Go gopher by Renee French.
+MIT. Provider names and logos are trademarks of their owners.

@@ -1253,8 +1253,7 @@ export function Conversation({ threadId }: { threadId: string }) {
 
   const busy = Object.keys(working).length > 0 || Boolean(info?.busy.length);
   const space = info?.thread.space ?? null;
-  const roomLine = info ? (space ? spaceSubtitle(space) : info.thread.errand ? "Errands" : `${info.thread.members.length} bots`) : "";
-  const errandBot = info?.thread.errand ? bots.find((b) => b.id === info.thread.errand?.botId) : undefined;
+  const roomLine = info ? (space ? spaceSubtitle(space) : `${info.thread.members.length} bots`) : "";
   const members = isRoom && info ? info.thread.members.map((id) => bots.find((b) => b.id === id)).filter((b): b is Bot => Boolean(b)) : [];
   // In a room, @ offers only the bots in it, and in a space the people and bots on the other Gonds too.
   const fromAfar = spaceMentionables(space);
@@ -1517,8 +1516,8 @@ export function Conversation({ threadId }: { threadId: string }) {
               onBlur={() => window.setTimeout(() => setSlash(null), 120)}
               onPaste={onPaste}
               rows={1}
-              placeholder={replying ? `Reply to ${nameOf(replying.author, bots, space)}` : busy && !isRoom ? "Add to it, or say stop" : bot ? `Message ${bot.name}` : errandBot ? `Message ${errandBot.name}` : space ? "Message the space" : answersNext.length ? `${names(answersNext)} ${answersNext.length > 1 ? "answer" : "answers"} next` : "Message the room"}
-              aria-label={bot ? `Message ${bot.name}` : errandBot ? `Message ${errandBot.name}` : "Message the room"}
+              placeholder={replying ? `Reply to ${nameOf(replying.author, bots, space)}` : busy && !isRoom ? "Add to it, or say stop" : bot ? `Message ${bot.name}` : space ? "Message the space" : answersNext.length ? `${names(answersNext)} ${answersNext.length > 1 ? "answer" : "answers"} next` : "Message the room"}
+              aria-label={bot ? `Message ${bot.name}` : "Message the room"}
               enterKeyHint={touch ? "enter" : "send"}
               // An empty field is one row whatever its hint, so a long one never makes the pill taller.
               className="max-h-40 min-h-[42px] px-4 py-2.5 text-[16px] leading-5 placeholder-shown:h-[42px] placeholder-shown:overflow-hidden placeholder-shown:[field-sizing:fixed] placeholder:truncate sm:text-[14px]"
@@ -1580,7 +1579,7 @@ export function Conversation({ threadId }: { threadId: string }) {
           composer={{
             text: draft,
             focusRev,
-            placeholder: replying ? `Reply to ${nameOf(replying.author, bots, space)}` : busy && !isRoom ? "Add to it, or say stop" : bot ? `Message ${bot.name}` : errandBot ? `Message ${errandBot.name}` : space ? "Message the space" : answersNext.length ? `${names(answersNext)} ${answersNext.length > 1 ? "answer" : "answers"} next` : "Message the room",
+            placeholder: replying ? `Reply to ${nameOf(replying.author, bots, space)}` : busy && !isRoom ? "Add to it, or say stop" : bot ? `Message ${bot.name}` : space ? "Message the space" : answersNext.length ? `${names(answersNext)} ${answersNext.length > 1 ? "answer" : "answers"} next` : "Message the room",
             canSend: !sending && Boolean(draft.trim() || files.length),
             sending,
             later: busy && Boolean(draft.trim()) && !files.length,

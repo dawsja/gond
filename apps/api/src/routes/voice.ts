@@ -1,11 +1,10 @@
-import { CALL_MODELS, CALL_VOICE_ID, OPENAI_CALL_VOICES, TRANSCRIBE_MAX_BYTES, VOICE_MODEL_ID, VOICE_MODELS, isVoicePreference, type CallVoice, type VoiceProvider } from "@gond/shared";
+import { CALL_MODELS, CALL_VOICE_ID, OPENAI_CALL_VOICES, TRANSCRIBE_MAX_BYTES, VOICE_MODEL_ID, VOICE_MODELS, type CallVoice, type VoiceProvider } from "@gond/shared";
 import { Hono } from "hono";
 import type { Env } from "../app.ts";
 import { ownThread, userId } from "../access.ts";
 import { getBot } from "../data/bots.ts";
 import { providerBaseUrl, providerKey } from "../data/providers.ts";
 import { getVoice, setCallVoice, setVoice } from "../data/voice.ts";
-import { keyHolder } from "../households.ts";
 import { authHeaders, upstreamUrl } from "../providers.ts";
 
 // Both APIs read the format from the file name, and Bun's multipart parser drops a part's own
@@ -27,7 +26,7 @@ async function voicesFor(provider: VoiceProvider, baseUrl: string, key: string):
   const cacheKey = `${baseUrl}\n${key}`;
   const cached = voiceLists.get(cacheKey);
   if (cached && Date.now() - cached.at < VOICE_LIST_MS) return cached.voices;
-  const res = await fetch(upstreamUrl(baseUrl, "tts/voices", ""), { headers: authHeaders(provider, baseUrl, key), redirect: "manual", signal: AbortSignal.timeout(15_000) }).catch(() => null);
+  const res = await fetch(upstreamUrl(baseUrl, "tts/voices", ""), { headers: authHeaders("openai", baseUrl, key), redirect: "manual", signal: AbortSignal.timeout(15_000) }).catch(() => null);
   if (!res?.ok) return null;
   const payload = (await res.json().catch(() => null)) as { voices?: { voice_id?: unknown; name?: unknown }[] } | null;
   const voices = (payload?.voices ?? [])
@@ -40,24 +39,22 @@ async function voicesFor(provider: VoiceProvider, baseUrl: string, key: string):
 export function voiceRoutes() {
   const app = new Hono<Env>();
 
-  app.get("/voice", (c) => c.json(getVoice(userId(c), keyHolder(userId(c)))));
+  app.get("/voice", (c) => c.json(getVoice(userId(c))));
 
   app.put("/voice", async (c) => {
-    const body = (await c.req.json().catch(() => null)) as { preference?: unknown; openaiModel?: unknown } | null;
-    const { preference, openaiModel } = body ?? {};
-    if (preference === undefined && openaiModel === undefined) return c.json({ error: "There was nothing to change" }, 400);
-    if (preference !== undefined && !isVoicePreference(preference)) return c.json({ error: "Pick Automatic, xAI or OpenAI" }, 400);
-    if (openaiModel !== undefined && (typeof openaiModel !== "string" || (openaiModel.trim() && !VOICE_MODEL_ID.test(openaiModel.trim())))) return c.json({ error: "That isn't a model id" }, 400);
-    setVoice(userId(c), { preference, openaiModel });
-    return c.json(getVoice(userId(c), keyHolder(userId(c))));
+    const body = (await c.req.json().catch(() => null)) as { openaiModel?: unknown } | null;
+    const openaiModel = body?.openaiModel;
+    if (openaiModel === undefined) return c.json({ error: "There was nothing to change" }, 400);
+    if (typeof openaiModel !== "string" || (openaiModel.trim() && !VOICE_MODEL_ID.test(openaiModel.trim()))) return c.json({ error: "That isn't a model id" }, 400);
+    return c.json(setVoice(userId(c), { openaiModel }));
   });
 
   app.get("/voice/voices", async (c) => {
     const who = userId(c);
-    const voice = getVoice(who, keyHolder(who));
+    const voice = getVoice(who);
     const provider = voice.using;
-    const baseUrl = provider ? providerBaseUrl(keyHolder(who), provider) : null;
-    const key = provider ? providerKey(keyHolder(who), provider) : null;
+    const baseUrl = provider ? providerBaseUrl(who, "openai") : null;
+    const key = provider ? providerKey(who, "openai") : null;
     if (!provider || !baseUrl || !key) return c.json({ provider: null, voices: [], chosen: null });
     const voices = await voicesFor(provider, baseUrl, key);
     if (!voices) return c.json({ error: `${VOICE_MODELS[provider].label} didn't list its voices. Try again.` }, 502);
@@ -67,8 +64,8 @@ export function voiceRoutes() {
   app.put("/voice/call-voice", async (c) => {
     const who = userId(c);
     const body = (await c.req.json().catch(() => null)) as { voice?: unknown } | null;
-    const provider = getVoice(who, keyHolder(who)).using;
-    if (!provider) return c.json({ error: "Add an xAI or OpenAI key first" }, 409);
+    const provider = getVoice(who).using;
+    if (!provider) return c.json({ error: "Add an OpenAI or xAI key first" }, 409);
     if (body?.voice !== null && (typeof body?.voice !== "string" || !CALL_VOICE_ID.test(body.voice))) return c.json({ error: "That isn't a voice" }, 400);
     return c.json(setCallVoice(who, provider, body.voice === CALL_MODELS[provider].voice ? null : body.voice));
   });
@@ -78,17 +75,17 @@ export function voiceRoutes() {
     const who = userId(c);
     const id = c.req.query("voice") ?? "";
     if (!CALL_VOICE_ID.test(id)) return c.json({ error: "That isn't a voice" }, 400);
-    const provider = getVoice(who, keyHolder(who)).using;
-    const baseUrl = provider ? providerBaseUrl(keyHolder(who), provider) : null;
-    const key = provider ? providerKey(keyHolder(who), provider) : null;
-    if (!provider || !baseUrl || !key) return c.json({ error: "Add an xAI or OpenAI key first" }, 409);
+    const provider = getVoice(who).using;
+    const baseUrl = provider ? providerBaseUrl(who, "openai") : null;
+    const key = provider ? providerKey(who, "openai") : null;
+    if (!provider || !baseUrl || !key) return c.json({ error: "Add an OpenAI or xAI key first" }, 409);
     const request =
       provider === "xai"
         ? { path: "tts", body: { text: SAMPLE_TEXT, voice_id: id, language: "en" } }
         : { path: "audio/speech", body: { model: "gpt-4o-mini-tts", voice: id, input: SAMPLE_TEXT, response_format: "mp3" } };
     const res = await fetch(upstreamUrl(baseUrl, request.path, ""), {
       method: "POST",
-      headers: { ...authHeaders(provider, baseUrl, key), "content-type": "application/json" },
+      headers: { ...authHeaders("openai", baseUrl, key), "content-type": "application/json" },
       body: JSON.stringify(request.body),
       redirect: "manual",
       signal: AbortSignal.timeout(30_000),
@@ -105,11 +102,11 @@ export function voiceRoutes() {
     const extension = audioExtension(file.name);
     if (!extension) return c.json({ error: "That isn't a recording this can read" }, 400);
     if (file.size > TRANSCRIBE_MAX_BYTES) return c.json({ error: "The recording is too long" }, 413);
-    const voice = getVoice(who, keyHolder(who));
+    const voice = getVoice(who);
     const kind = voice.using;
-    const baseUrl = kind ? providerBaseUrl(keyHolder(who), kind) : null;
-    const key = kind ? providerKey(keyHolder(who), kind) : null;
-    if (!kind || !baseUrl || !key) return c.json({ error: "Add an xAI or OpenAI key to talk to your bots" }, 409);
+    const baseUrl = kind ? providerBaseUrl(who, "openai") : null;
+    const key = kind ? providerKey(who, "openai") : null;
+    if (!kind || !baseUrl || !key) return c.json({ error: "Add an OpenAI or xAI key to talk to your bots" }, 409);
 
     const { path, label } = VOICE_MODELS[kind];
     const model = kind === "openai" ? voice.openaiModel : VOICE_MODELS[kind].model;
@@ -125,7 +122,7 @@ export function voiceRoutes() {
 
     let res: Response;
     try {
-      res = await fetch(upstreamUrl(baseUrl, path, ""), { method: "POST", headers: authHeaders(kind, baseUrl, key), body: upstream, redirect: "manual", signal: AbortSignal.timeout(60_000) });
+      res = await fetch(upstreamUrl(baseUrl, path, ""), { method: "POST", headers: authHeaders("openai", baseUrl, key), body: upstream, redirect: "manual", signal: AbortSignal.timeout(60_000) });
     } catch {
       return c.json({ error: `${label} didn't answer. Try again.` }, 502);
     }

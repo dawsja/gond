@@ -49,8 +49,6 @@ function planName(report: UsageReport): { name: string; detail: string } {
       return { name: "ChatGPT plan", detail: "Signed in with ChatGPT" };
     case "grok":
       return { name: "Grok plan", detail: "Signed in with Grok" };
-    case "xai":
-      return { name: "xAI key", detail: "Pay as you go" };
     case "anthropic":
       return { name: "Anthropic-compatible key", detail: report.host ? `Your key at ${report.host}` : "Your API key" };
     case "openai":
@@ -63,9 +61,9 @@ function notShared(report: UsageReport): { text: string; link: { href: string; l
   if (report.source === "claude") return { text: "Shows here after your bots' next reply.", link: null };
   if (report.source === "grok") return { text: "Grok didn't say how much is left just now.", link: null };
   if (report.source === "chatgpt") return { text: "ChatGPT doesn't share how much of your plan is left.", link: { href: CHATGPT_USAGE_URL, label: "See it on chatgpt.com" } };
-  if (report.source === "xai") return { text: "xAI doesn't share your key's balance.", link: { href: "https://console.x.ai", label: "See it on console.x.ai" } };
   if (report.host === "api.anthropic.com") return { text: "Anthropic doesn't share a key's balance.", link: { href: "https://console.anthropic.com", label: "See it on console.anthropic.com" } };
   if (report.host === "api.openai.com") return { text: "OpenAI doesn't share a key's balance.", link: { href: "https://platform.openai.com/usage", label: "See it on platform.openai.com" } };
+  if (report.host === "api.x.ai") return { text: "xAI doesn't share a key's balance.", link: { href: "https://console.x.ai", label: "See it on console.x.ai" } };
   return { text: "Your key's provider doesn't share how much is left.", link: null };
 }
 

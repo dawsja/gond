@@ -14,13 +14,10 @@ import { eventsRoutes } from "./routes/events.ts";
 import { exportsRoutes } from "./routes/exports.ts";
 import { teachingsRoutes } from "./routes/teachings.ts";
 import { spacesRoutes } from "./routes/spaces.ts";
-import { householdsRoutes, refuseForMembers } from "./routes/households.ts";
-import { meHousehold } from "./households.ts";
 import { llmProxyRoutes, providerRoutes } from "./routes/llm.ts";
 import { mcpHandBack, mcpProxyRoutes, mcpRoutes } from "./routes/mcp.ts";
 import { mobileSignInRoutes } from "./routes/mobile-sign-in.ts";
 import { checkInsRoutes } from "./routes/check-ins.ts";
-import { notifyRoutes } from "./routes/notify.ts";
 import { profilesRoutes } from "./routes/profiles.ts";
 import { signInsRoutes } from "./routes/sign-ins.ts";
 import { pushRoutes } from "./routes/push.ts";
@@ -85,14 +82,12 @@ export function createApp() {
     app.use(path, requireAdmin);
   }
   app.on(["POST", "PATCH", "PUT", "DELETE"], ["/api/settings"], requireAdmin);
-  // A household member runs on the household's AI: nothing they do changes or signs in to one of their own.
-  app.on(["POST", "PATCH", "PUT", "DELETE"], ["/api/ai", "/api/box/engines/*", "/api/providers/*"], refuseForMembers);
 
   // The person, as the open profile shows them: its picture, colour and talk, the person's own role.
   app.get("/api/me", (c) => {
     const person = getUser(personId(c));
     const user = getUser(userId(c));
-    return person && user ? c.json({ user: { ...user, id: person.id, role: person.role, household: meHousehold(person.id) } }) : c.json({ error: "Sign in to continue" }, 401);
+    return person && user ? c.json({ user: { ...user, id: person.id, role: person.role } }) : c.json({ error: "Sign in to continue" }, 401);
   });
 
   app.get("/api/me/avatar", (c) => {
@@ -151,7 +146,6 @@ export function createApp() {
   app.route("/api", exportsRoutes());
   app.route("/api", teachingsRoutes());
   app.route("/api", spacesRoutes());
-  app.route("/api", householdsRoutes());
   app.route("/api", skillsRoutes());
   app.route("/api", mcpRoutes());
   app.route("/api", secretsRoutes());
@@ -160,7 +154,6 @@ export function createApp() {
   app.route("/api", callsRoutes());
   app.route("/api", usageRoutes());
   app.route("/api", pushRoutes());
-  app.route("/api", notifyRoutes());
   app.route("/api", checkInsRoutes());
   app.route("/api", usersRoutes());
   app.route("/api", releaseRoutes());

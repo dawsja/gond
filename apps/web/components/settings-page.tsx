@@ -18,7 +18,6 @@ import { ComputerCard } from "@/components/computer-card";
 import { AiSteps } from "@/components/ai-steps";
 import { HomeResetCard } from "@/components/home-reset-card";
 import { McpCard } from "@/components/mcp-card";
-import { HouseholdAiCard, HouseholdSection } from "@/components/household-section";
 import { NotificationsSection } from "@/components/notifications-section";
 import { OidcCard } from "@/components/oidc-card";
 import { UsageSection } from "@/components/usage-section";
@@ -102,7 +101,7 @@ export function SettingsPage({ user, section, index = false }: { user: SessionUs
         <span className="min-w-0 flex-1 truncate text-[15px] font-semibold">{me.name}</span>
         <ChevronRight className="size-4 text-muted-foreground" aria-hidden="true" />
       </Link>
-      {groupedSections(me.role, "account", Boolean(me.household)).map((group) => (
+      {groupedSections(me.role, "account").map((group) => (
         <div key={group.id ?? "rest"} className="flex flex-col gap-1 pt-3 first-of-type:pt-0">
           {group.label ? <h2 className="px-3 pb-1 text-[12px] font-medium uppercase tracking-wide text-muted-foreground">{group.label}</h2> : null}
           {group.sections.map((s) => {
@@ -134,7 +133,7 @@ export function SettingsPage({ user, section, index = false }: { user: SessionUs
 
   const nav = (
     <nav aria-label="Settings sections" className="flex flex-col gap-1">
-      {groupedSections(me.role, undefined, Boolean(me.household)).map((group) => (
+      {groupedSections(me.role).map((group) => (
         <div key={group.id ?? "rest"} className="flex flex-col gap-1 pt-4 first-of-type:pt-0">
           {group.label ? <h2 className="px-3 pb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{group.label}</h2> : null}
           {group.sections.map((s) => {
@@ -174,9 +173,6 @@ export function SettingsPage({ user, section, index = false }: { user: SessionUs
     case "profiles":
       body = <ProfilesCard />;
       break;
-    case "household":
-      body = <HouseholdSection />;
-      break;
     case "notifications":
       body = <NotificationsSection />;
       break;
@@ -191,7 +187,7 @@ export function SettingsPage({ user, section, index = false }: { user: SessionUs
       break;
     case "ai":
       body = (
-        me.household?.role === "member" ? <HouseholdAiCard /> : ai ? <AiSteps ai={ai} status={status} onChange={setAi} onRefresh={() => load(true)} /> : aiFailed ? <LoadFailed what="your AI settings" onRetry={() => void load()} /> : <Skeleton className="h-96 rounded-xl" />
+        ai ? <AiSteps ai={ai} status={status} onChange={setAi} onRefresh={() => load(true)} /> : aiFailed ? <LoadFailed what="your AI settings" onRetry={() => void load()} /> : <Skeleton className="h-96 rounded-xl" />
       );
       break;
     case "usage":

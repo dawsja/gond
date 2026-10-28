@@ -132,7 +132,7 @@ export function StoreProvider({ user, children }: { user: Me; children: ReactNod
     if (message.topic === "open") void refreshRef.current();
     else if (message.topic === "bots" || message.topic === "thread") loadBotsSoon();
     else if (message.topic === "approvals") void loadApprovals().catch(() => undefined);
-    else if (message.topic === "me" || message.topic === "household") void loadMe().catch(() => undefined);
+    else if (message.topic === "me") void loadMe().catch(() => undefined);
     else if (message.topic === "profiles") void loadProfiles().catch(() => undefined);
     else if (message.topic === "box") void loadBoxUpdate().catch(() => undefined);
     else if (message.topic === "desktop") setDesktop(message.desktop);
