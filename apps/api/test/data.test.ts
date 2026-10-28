@@ -1203,7 +1203,7 @@ describe("data", () => {
     deleteProvider("u-kimi", "anthropic");
   });
 
-  test("voice transcribes through the OpenAI-compatible key, on xAI's own endpoint when it points at xAI", async () => {
+  test("voice transcribes through its own key, never the bots', on xAI's own endpoint when it points at xAI", async () => {
     const { saveProvider, deleteProvider } = await import("../src/data/providers.ts");
     const { getVoice, setVoice } = await import("../src/data/voice.ts");
     const { voiceRoutes } = await import("../src/routes/voice.ts");
@@ -1229,8 +1229,12 @@ describe("data", () => {
     try {
       expect(getVoice("u-voice")).toEqual({ using: null, openaiModel: "gpt-transcribe", callVoice: {} });
       expect((await send()).status).toBe(409);
+      // The bots' OpenAI-compatible key is theirs alone.
+      saveProvider("u-voice", "openai", { baseUrl: `http://127.0.0.1:${upstream.port}/v1`, apiKey: "sk-bots-key-123456" });
+      expect(getVoice("u-voice").using).toBeNull();
+      expect((await send()).status).toBe(409);
 
-      saveProvider("u-voice", "openai", { baseUrl: `http://127.0.0.1:${upstream.port}/v1`, apiKey: "sk-voice-key-123456" });
+      saveProvider("u-voice", "voice", { baseUrl: `http://127.0.0.1:${upstream.port}/v1`, apiKey: "sk-voice-key-123456" });
       expect(getVoice("u-voice").using).toBe("openai");
       const heard = await send("voice.mp4");
       expect(await heard.json()).toEqual({ text: "hello there" });
@@ -1244,7 +1248,7 @@ describe("data", () => {
       expect((await app.request("/api/voice", { method: "PUT", body: JSON.stringify({}) })).status).toBe(400);
       expect(setVoice("u-voice", { openaiModel: "" }).openaiModel).toBe("gpt-transcribe");
 
-      saveProvider("u-voice", "openai", { baseUrl: "https://api.x.ai/v1", apiKey: "xai-voice-key-123456" });
+      saveProvider("u-voice", "voice", { baseUrl: "https://api.x.ai/v1", apiKey: "xai-voice-key-123456" });
       expect(getVoice("u-voice").using).toBe("xai");
       await send();
       expect(seen[2]).toEqual({ path: "/v1/stt", auth: "Bearer xai-voice-key-123456", model: "grok-voice-transcribe-2.0", name: "recording.webm" });
@@ -1255,6 +1259,7 @@ describe("data", () => {
     } finally {
       restore();
       upstream.stop(true);
+      deleteProvider("u-voice", "voice");
       deleteProvider("u-voice", "openai");
     }
   });
@@ -1315,10 +1320,16 @@ describe("data", () => {
       const other = await app.request("/api/llm/openai/responses", { method: "POST", headers: { authorization: `Bearer ${providerProxyToken("u-other", "openai")}` }, body: "{}" });
       expect(other.status).toBe(200);
       expect(seen[2]).toMatchObject({ path: "/other/responses", auth: "Bearer sk-other-key-123456" });
+
+      // The voice key is the API's own: its token opens nothing here.
+      saveProvider("u-admin", "voice", { baseUrl: `http://127.0.0.1:${upstream.port}/voice`, apiKey: "sk-voice-only-123456" });
+      expect((await app.request("/api/llm/voice/audio/transcriptions", { method: "POST", headers: { authorization: `Bearer ${providerProxyToken("u-admin", "voice")}` }, body: "{}" })).status).toBe(404);
+      expect(seen).toHaveLength(3);
     } finally {
       upstream.stop(true);
       deleteProvider("u-admin", "openai");
       deleteProvider("u-admin", "anthropic");
+      deleteProvider("u-admin", "voice");
       deleteProvider("u-other", "openai");
     }
   });
@@ -5374,7 +5385,7 @@ describe("call voices", () => {
     app.route("/api", voiceRoutes());
     try {
       expect(await (await app.request("/api/voice/voices")).json()).toEqual({ provider: null, voices: [], chosen: null });
-      saveProvider("u-voices", "openai", { baseUrl: "https://api.x.ai/x/v1", apiKey: "xai-voices-key-123456" });
+      saveProvider("u-voices", "voice", { baseUrl: "https://api.x.ai/x/v1", apiKey: "xai-voices-key-123456" });
 
       expect(await (await app.request("/api/voice/voices")).json()).toEqual({ provider: "xai", voices: [{ id: "eve", name: "Eve", detail: null }, { id: "ara", name: "Ara", detail: null }], chosen: "eve" });
       expect((await app.request("/api/voice/call-voice", { method: "PUT", body: JSON.stringify({ voice: "ara" }) })).status).toBe(200);
@@ -5385,7 +5396,7 @@ describe("call voices", () => {
       expect(sample.headers.get("content-type")).toBe("audio/mpeg");
       expect(said[0]).toMatchObject({ path: "/x/v1/tts", body: { voice_id: "ara", language: "en" } });
 
-      saveProvider("u-voices", "openai", { baseUrl: `http://127.0.0.1:${upstream.port}/v1`, apiKey: "sk-voices-key-123456" });
+      saveProvider("u-voices", "voice", { baseUrl: `http://127.0.0.1:${upstream.port}/v1`, apiKey: "sk-voices-key-123456" });
       const openai = (await (await app.request("/api/voice/voices")).json()) as { provider: string; voices: { id: string }[]; chosen: string };
       expect(openai.provider).toBe("openai");
       expect(openai.chosen).toBe("marin");
@@ -5447,7 +5458,7 @@ describe("calls", () => {
     const restore = routeXai(fake.port);
     try {
       const bot = createBot(botInputSchema.parse({ name: "Patch Caller", title: "Travel" }), "u-caller");
-      saveProvider("u-caller", "openai", { baseUrl: "https://api.x.ai/v1", apiKey: "xai-test-key-1234567890" });
+      saveProvider("u-caller", "voice", { baseUrl: "https://api.x.ai/v1", apiKey: "xai-test-key-1234567890" });
       const thread = getThread(bot.threadId)!;
       expect(bot.primary).toBe(true);
       const helper = createBot(botInputSchema.parse({ name: "Ledger Caller", title: "Books" }), "u-caller");
@@ -5532,7 +5543,7 @@ describe("calls", () => {
     const restore = routeXai(voice.port);
     try {
       const bot = createBot(botInputSchema.parse({ name: "Patch Socket" }), "u-socket");
-      saveProvider("u-socket", "openai", { baseUrl: "https://api.x.ai/v1", apiKey: "xai-socket-key-1234567890" });
+      saveProvider("u-socket", "voice", { baseUrl: "https://api.x.ai/v1", apiKey: "xai-socket-key-1234567890" });
       const started = startCall(getThread(bot.threadId)!, "u-socket");
       if (!started.ok) throw new Error(started.error);
       const url = `http://127.0.0.1:${gond.port}/api/calls/${started.call.id}/socket`;

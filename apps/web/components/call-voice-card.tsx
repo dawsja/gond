@@ -3,6 +3,7 @@
 import type { CallVoice, VoiceProvider } from "@gond/shared";
 import { Play } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { LoadFailed } from "@/components/load-failed";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldLabel } from "@/components/ui/field";
@@ -79,8 +80,10 @@ export function CallVoiceCard() {
       <CardContent>
         {!voice || (!list && !error) ? (
           <Skeleton className="h-16 rounded-xl" />
+        ) : !voice.using ? (
+          <p className="text-sm text-muted-foreground">Add a voice key above to call your primary bot.</p>
         ) : !list?.provider ? (
-          <p className="text-sm text-muted-foreground">Add an OpenAI or xAI key under AI to call your primary bot.</p>
+          error ? <LoadFailed what="the voices" onRetry={() => void load()} /> : null
         ) : (
           <Field>
             <FieldLabel htmlFor="call-voice">Voice</FieldLabel>
@@ -108,7 +111,6 @@ export function CallVoiceCard() {
             </div>
           </Field>
         )}
-        {error ? <p className="text-sm text-destructive">{error}</p> : null}
       </CardContent>
     </Card>
   );

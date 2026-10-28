@@ -2,6 +2,15 @@ import type { Database } from "bun:sqlite";
 
 const CALLS_OUT = `DELETE FROM gond_messages WHERE spoken = 1 OR (kind = 'event' AND author = 'system' AND (body = 'Call started' OR body LIKE 'Call ended · %'));`;
 
+// Voice has a key of its own now, so Settings → AI is only the bots': each person's OpenAI-compatible
+// key, which voice used until now, becomes their voice key too.
+const VOICE_KEYS = `
+  INSERT INTO gond_providers (id, user_id, kind, base_url, api_key, proxy_token, last_check, created_at, updated_at)
+    SELECT 'prov_' || lower(hex(randomblob(12))), user_id, 'voice', base_url, api_key, lower(hex(randomblob(24))), last_check, created_at, updated_at
+    FROM gond_providers p
+    WHERE kind = 'openai' AND user_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM gond_providers v WHERE v.user_id = p.user_id AND v.kind = 'voice');
+  `;
+
 const MIGRATIONS: Array<string | ((db: Database) => void)> = [
   `
   CREATE TABLE kru_bots (
@@ -1019,6 +1028,7 @@ const MIGRATIONS: Array<string | ((db: Database) => void)> = [
   ALTER TABLE gond_threads DROP COLUMN errand_for;
   DROP TABLE IF EXISTS gond_notify_services;
   `,
+  VOICE_KEYS,
 ];
 
 /**
@@ -1132,6 +1142,7 @@ export const TEACH_CARDS_VERSION = MIGRATIONS.indexOf(allowTeachMessages) + 1;
 export const CONTROL_CARDS_VERSION = MIGRATIONS.indexOf(allowControlMessages) + 1;
 export const SEARCH_INDEX_VERSION = MIGRATIONS.findIndex((step) => typeof step === "string" && step.includes("CREATE VIRTUAL TABLE gond_messages_fts")) + 1;
 export const XAI_KEYS_VERSION = MIGRATIONS.indexOf(foldXaiKeys) + 1;
+export const VOICE_KEYS_VERSION = MIGRATIONS.indexOf(VOICE_KEYS) + 1;
 export const LATEST_VERSION = MIGRATIONS.length;
 
 type Named = { name: string; sql: string | null };

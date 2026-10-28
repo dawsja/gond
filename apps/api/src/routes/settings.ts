@@ -1,4 +1,4 @@
-import { BOT_TEMPLATES, CATALOG_PAGE_SIZE, ENGINE_ACCESS, ENGINES, MODEL_ID_PATTERN, PROVIDER_KINDS, type CatalogPage, type Engine, type EngineAccess, type EngineSettings, type ProviderKind } from "@gond/shared";
+import { BOT_TEMPLATES, CATALOG_PAGE_SIZE, ENGINE_ACCESS, ENGINES, MODEL_ID_PATTERN, PROVIDER_KINDS, type CatalogPage, type Engine, type EngineAccess, type EngineProviderKind, type EngineSettings } from "@gond/shared";
 import { Hono } from "hono";
 import { admin, userId } from "../access.ts";
 import type { Env } from "../app.ts";
@@ -54,8 +54,8 @@ export function settingsRoutes() {
           next.model = model;
         }
         if (given.provider !== undefined) {
-          if (given.provider !== null && !(PROVIDER_KINDS as readonly string[]).includes(String(given.provider))) return c.json({ error: "Couldn't find that API" }, 400);
-          next.provider = given.provider === null ? null : (String(given.provider) as ProviderKind);
+          if (given.provider !== null && (given.provider === "voice" || !(PROVIDER_KINDS as readonly string[]).includes(String(given.provider)))) return c.json({ error: "Couldn't find that API" }, 400);
+          next.provider = given.provider === null ? null : (String(given.provider) as EngineProviderKind);
         }
         engines[name as Engine] = next;
       }

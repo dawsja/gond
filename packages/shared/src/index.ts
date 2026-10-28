@@ -519,16 +519,19 @@ export type AuthConfig = {
   oidc: { enabled: boolean; name: string } | null;
 };
 
-export const PROVIDER_KINDS = ["anthropic", "openai", "chatgpt", "grok"] as const;
+export const PROVIDER_KINDS = ["anthropic", "openai", "chatgpt", "grok", "voice"] as const;
 export type ProviderKind = (typeof PROVIDER_KINDS)[number];
 
-/** The APIs a person types a key for; a ChatGPT or Grok plan is signed in to instead. */
+/** The APIs a person types a key for their bots; a ChatGPT or Grok plan is signed in to instead. */
 export const KEY_PROVIDER_KINDS = ["anthropic", "openai"] as const satisfies readonly ProviderKind[];
 export type KeyProviderKind = (typeof KEY_PROVIDER_KINDS)[number];
 
 /** A plan a person signs in to, whose tokens Gond keeps and renews; each is an engine of its own. */
 export const PLAN_PROVIDER_KINDS = ["chatgpt", "grok"] as const satisfies readonly ProviderKind[];
 export type PlanProviderKind = (typeof PLAN_PROVIDER_KINDS)[number];
+
+/** What a bot can run on: every kind of key but the voice key, which only the microphone and calls use. */
+export type EngineProviderKind = Exclude<ProviderKind, "voice">;
 
 export function isPlanProvider(kind: ProviderKind): kind is PlanProviderKind {
   return (PLAN_PROVIDER_KINDS as readonly string[]).includes(kind);
@@ -568,11 +571,18 @@ export const PROVIDER_LABELS: Record<ProviderKind, { name: string; short: string
     defaultUrl: GROK_API_URL,
     keyHint: "",
   },
+  voice: {
+    name: "Voice key",
+    short: "voice",
+    detail: "OpenAI's API or xAI's, for the microphone and calls. Your bots never use it.",
+    defaultUrl: "https://api.openai.com/v1",
+    keyHint: "sk-… or xai-…",
+  },
 };
 
 /** Bearer auth and OpenAI's paths; a plan talks the Responses API on them, a key chat completions. */
 export function isOpenAiShaped(kind: ProviderKind): boolean {
-  return kind === "openai" || kind === "chatgpt" || kind === "grok";
+  return kind === "openai" || kind === "chatgpt" || kind === "grok" || kind === "voice";
 }
 
 export type ProviderMeta = {
@@ -597,8 +607,8 @@ export const providerInputSchema = z.object({
 export type ProviderInput = z.infer<typeof providerInputSchema>;
 
 /**
- * Whose speech endpoints the person's OpenAI-compatible key reaches: xAI's own (`stt`, `realtime`,
- * `tts`) when it points at xAI, OpenAI's anywhere else.
+ * Whose speech endpoints the person's voice key reaches: xAI's own (`stt`, `realtime`, `tts`) when it
+ * points at xAI, OpenAI's anywhere else.
  */
 export const VOICE_PROVIDERS = ["xai", "openai"] as const;
 export type VoiceProvider = (typeof VOICE_PROVIDERS)[number];
@@ -617,7 +627,7 @@ export function isXaiUrl(url: string): boolean {
 
 /** `openaiModel` is for an OpenAI-compatible server that names its own models, like a local Whisper. */
 export type VoiceSettings = {
-  /** Null without an OpenAI-compatible key. */
+  /** Null without a voice key. */
   using: VoiceProvider | null;
   openaiModel: string;
   /** The voice a call speaks in, per provider, since each has its own; missing is the provider's default. */
@@ -728,9 +738,9 @@ export type EngineInfo = {
 
   signInAt: string;
 
-  provider: ProviderKind;
+  provider: EngineProviderKind;
 
-  providers: readonly ProviderKind[];
+  providers: readonly EngineProviderKind[];
 
   defaultModel: string;
 
@@ -799,7 +809,7 @@ export type ModelGroup = {
 
 export type ModelList = { groups: ModelGroup[] };
 
-export type EngineSettings = { access: EngineAccess; model: string; provider?: ProviderKind | null };
+export type EngineSettings = { access: EngineAccess; model: string; provider?: EngineProviderKind | null };
 
 /** A model id, or none; `[1m]` at the end is Claude Code's own mark for a model's 1M-token context. */
 export const MODEL_ID_PATTERN = /^(?:[A-Za-z0-9._:/-]{1,120}(?:\[1m\])?)?$/;
@@ -1155,7 +1165,7 @@ export type LiveEvent =
   | { topic: "picture"; threadId: string; botId: string; id: string; aspect: ImageAspect; state: "making" | "preview" | "done" | "failed"; preview: string | null; file: string | null };
 
 /** Where a turn's tokens came from: "claude" is Claude Code on the person's Claude plan, the rest a provider. */
-export type UsageSource = "claude" | ProviderKind;
+export type UsageSource = "claude" | EngineProviderKind;
 
 export const USAGE_RANGES = ["month", "week", "today"] as const;
 export type UsageRange = (typeof USAGE_RANGES)[number];

@@ -74,7 +74,7 @@ export function releaseEngines(userId: string, kind: ProviderKind, saved: (kind:
   const engines: Partial<Record<Engine, EngineSettings>> = {};
   for (const engine of ENGINES) {
     const config = current.engines[engine];
-    const providers = ENGINE_LABELS[engine].providers;
+    const providers: readonly ProviderKind[] = ENGINE_LABELS[engine].providers;
     if (!isCliEngine(engine) || config.access !== "api" || !providers.includes(kind)) continue;
     if (providers.some((other) => other !== kind && saved(other))) continue;
     engines[engine] = { ...config, access: "plan" };

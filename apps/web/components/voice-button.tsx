@@ -46,7 +46,7 @@ export function useVoiceInput(threadId: string, onText: (text: string) => void) 
   async function toggle() {
     if (transcribing) return;
     if (!ready) {
-      toast.add({ title: "Add an OpenAI or xAI key to talk to your bots.", description: "It goes in Settings → AI, and Settings → Voice picks the model." });
+      toast.add({ title: "Add a voice key to talk to your bots.", description: "It goes in Settings → Voice." });
       return;
     }
     if (recorder.recording) return recorder.stop();

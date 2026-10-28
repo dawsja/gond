@@ -98,7 +98,7 @@ export function useDial(threadId: string, bot: Bot | undefined): { dial: () => v
 
   function dial() {
     if (!voice?.using) {
-      toast.add({ title: "A call needs an OpenAI or xAI key.", description: "Add one in Settings → AI. The call is billed by the minute on that key." });
+      toast.add({ title: "A call needs a voice key.", description: "Add one in Settings → Voice. The call is billed by the minute on that key." });
       return;
     }
     if (call) setAsking(true);

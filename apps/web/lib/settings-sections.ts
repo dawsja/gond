@@ -19,7 +19,7 @@ export const SETTINGS_SECTIONS = [
   { id: "computer", group: "you", label: "Your computer", blurb: "Where your bots work, and starting it fresh.", icon: Monitor, admin: false },
   { id: "ai", group: "bots", label: "AI", blurb: "What your bots run on: Claude Code on your plan or a key, your ChatGPT or Grok plan, or an API key.", icon: BrainCircuit, admin: false },
   { id: "usage", group: "bots", label: "Usage", blurb: "How much of your plan is left, and what each of your bots used.", icon: Gauge, admin: false },
-  { id: "voice", group: "bots", label: "Voice", blurb: "Talk to your bots: the model that turns speech into text, and the voice your primary bot speaks in on a call.", icon: Mic, admin: false },
+  { id: "voice", group: "bots", label: "Voice", blurb: "Talk to your bots: the key your voice runs on, the model that turns speech into text, and the voice your primary bot speaks in on a call.", icon: Mic, admin: false },
   { id: "skills", group: "bots", label: "Skills", blurb: "How to do a job, written once and shared by all of your bots.", icon: Sparkles, admin: false },
   { id: "apps", group: "bots", label: "Apps", blurb: "Gmail, Slack and the rest for your bots, and your own MCP tool servers.", icon: Blocks, admin: false },
   { id: "secrets", group: "bots", label: "Secrets", blurb: "The cards, sign-ins and keys you gave your bots. Only their names are shown.", icon: KeyRound, admin: false },

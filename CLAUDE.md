@@ -487,8 +487,8 @@ One line each: where to start, and what must not change.
   Refetches on `usage` and `ai`.
 - **Voice input** (`voice-button.tsx`, `hooks/use-recorder.ts`,
   `/api/transcribe`, `voice-card.tsx`): the text lands in the draft and
-  is never sent for them. Only the OpenAI-compatible key can transcribe;
-  without one the mic is dimmed and says where to add one. Always the
+  is never sent for them. Only the voice key can transcribe; without one
+  the mic is dimmed and says where to add one. Always the
   system's default input. `Permissions-Policy` allows the microphone for
   the app's own origin only.
 - **Calls** (`components/call/`, `CallProvider` in `call-provider.tsx`):
@@ -920,16 +920,21 @@ One line each: where to start, and what must not change.
   goes the OpenAI way, and a key at `api.x.ai` (`isXaiUrl`) reaches xAI's
   own speech and images endpoints (`voiceProvider`, the `xai` image
   source). Saved xAI keys were folded in by `foldXaiKeys`.
+- **The voice key** (the `voice` row of `gond_providers`,
+  `voice-key-card.tsx` in Settings → Voice) is what the microphone, calls
+  and call voices run on, OpenAI's or xAI's by its address; Settings → AI
+  is only the bots'. No engine takes it (`EngineProviderKind`), and the
+  LLM proxy refuses it, so nothing on the computer reaches it.
+  `VOICE_KEYS` copied each person's OpenAI-compatible key into it.
 - **Transcription** (`src/routes/voice.ts`, `src/data/voice.ts`,
-  `voiceProvider`, `VOICE_MODELS`): the person's OpenAI-compatible key,
-  through `upstreamUrl` and `authHeaders`, on xAI's `stt` when it points
-  at xAI. The format comes from the file's
+  `voiceProvider`, `VOICE_MODELS`): the person's voice key, through
+  `upstreamUrl` and `authHeaders`, on xAI's `stt` when it points at xAI. The format comes from the file's
   extension (Bun's multipart parser drops a part's type). Audio is never
   stored or logged.
 - **Calls** (`src/calls.ts`, `src/voice-link.ts`, `src/routes/calls.ts`):
   `POST /api/threads/:id/call` takes only the primary bot's own chat
   (`callableBot`, so the route decides, not the button). The API holds
-  the provider socket with the person's key (`CALL_MODELS`), so the key
+  the provider socket with the person's voice key (`CALL_MODELS`), so the key
   never reaches the page. `upgradeCallSocket` runs ahead of Hono and
   checks the Origin (a WebSocket carries the cookie from any site), the
   session and ownership. Events are read by `readLiveEvent` /

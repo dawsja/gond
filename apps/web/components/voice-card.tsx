@@ -1,7 +1,6 @@
 "use client";
 
 import { VOICE_MODELS, type VoiceSettings } from "@gond/shared";
-import Link from "next/link";
 import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,11 +9,10 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useVoice } from "@/hooks/use-voice";
 import { api } from "@/lib/api";
-import { settingsHref } from "@/lib/settings-sections";
 
 function usingLine(voice: VoiceSettings) {
-  if (!voice.using) return "Add an OpenAI or xAI key under AI to turn on the microphone.";
-  return `Using ${VOICE_MODELS[voice.using].label} (${voice.using === "openai" ? voice.openaiModel : VOICE_MODELS[voice.using].model}), through your OpenAI-compatible key.`;
+  if (!voice.using) return "Add a voice key above to turn on the microphone.";
+  return `Using ${VOICE_MODELS[voice.using].label} (${voice.using === "openai" ? voice.openaiModel : VOICE_MODELS[voice.using].model}).`;
 }
 
 export function VoiceCard() {
@@ -73,13 +71,6 @@ export function VoiceCard() {
               <FieldDescription>{`${VOICE_MODELS.openai.model} for OpenAI. For a server of your own, like a local Whisper, the model id it serves. Empty puts ${VOICE_MODELS.openai.model} back.`}</FieldDescription>
             </Field>
           </form>
-        ) : null}
-        {voice && !voice.using ? (
-          <div>
-            <Button variant="outline" render={<Link href={settingsHref("ai")} />} nativeButton={false}>
-              Add a key
-            </Button>
-          </div>
         ) : null}
       </CardContent>
     </Card>

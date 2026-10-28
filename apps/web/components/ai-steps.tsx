@@ -1,6 +1,6 @@
 "use client";
 
-import { ENGINE_LABELS, ENGINES, PROVIDER_LABELS, isCliEngine, isPlanProvider, type AiSettings, type BoxStatus, type Engine, type EngineSettings, type ProviderKind, type ProviderMeta } from "@gond/shared";
+import { ENGINE_LABELS, ENGINES, PROVIDER_LABELS, isCliEngine, isPlanProvider, type AiSettings, type BoxStatus, type Engine, type EngineProviderKind, type EngineSettings, type ProviderKind, type ProviderMeta } from "@gond/shared";
 import { Check, CircleDashed, RefreshCw, TriangleAlert } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
@@ -25,7 +25,7 @@ type Readiness = {
   signIn?: Engine;
 };
 
-function providerFor(engine: Engine, providers: Record<ProviderKind, ProviderMeta | null> | null, chosen?: ProviderKind | null): ProviderKind {
+function providerFor(engine: Engine, providers: Record<ProviderKind, ProviderMeta | null> | null, chosen?: EngineProviderKind | null): EngineProviderKind {
   const info = ENGINE_LABELS[engine];
   if (chosen && info.providers.includes(chosen)) return chosen;
   return info.providers.find((kind) => providers?.[kind]) ?? info.provider;

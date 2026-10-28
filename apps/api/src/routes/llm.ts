@@ -162,7 +162,8 @@ export function llmProxyRoutes() {
 
   app.all("/llm/:kind/*", async (c) => {
     const kind = c.req.param("kind");
-    if (!isProviderKind(kind)) return c.json({ error: "Couldn't find that provider" }, 404);
+    // The voice key is the API's own, for the microphone and calls; nothing on the computer reaches it.
+    if (!isProviderKind(kind) || kind === "voice") return c.json({ error: "Couldn't find that provider" }, 404);
     const token = presentedToken(c.req.raw.headers);
 
     // Tokens are random and unique; the lookup is by equality in the database, never by prefix.

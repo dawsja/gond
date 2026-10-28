@@ -1,4 +1,4 @@
-import { CHATGPT_USAGE_URL, PROVIDER_LABELS, isOpenAiShaped, isPlanProvider, toolLabel, toolLine, type ProviderKind } from "@gond/shared";
+import { CHATGPT_USAGE_URL, PROVIDER_LABELS, isOpenAiShaped, isPlanProvider, toolLabel, toolLine, type EngineProviderKind, type ProviderKind } from "@gond/shared";
 import type { ModelUsage, StepUsage } from "./data/usage.ts";
 import { clipParts, clipToolResult, isToolParts, resultAsText, type DriverTool, type ToolPart } from "./driver.ts";
 import { sseStream } from "./sse.ts";
@@ -12,7 +12,7 @@ const MAX_OUTPUT_TOKENS = 16_000;
 
 
 export type NativeAccess = {
-  kind: ProviderKind;
+  kind: EngineProviderKind;
 
   baseUrl: string;
 

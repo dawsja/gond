@@ -138,9 +138,9 @@ export function startCall(thread: Thread, userId: string): StartCall {
   if (!bot) return { ok: false, status: 400, error: "You can only call your primary bot, from its own chat." };
   const voiceSettings = getVoice(userId);
   const provider = voiceSettings.using;
-  const baseUrl = provider ? providerBaseUrl(userId, "openai") : null;
-  const key = provider ? providerKey(userId, "openai") : null;
-  if (!provider || !baseUrl || !key) return { ok: false, status: 409, error: "A call needs an OpenAI or xAI key. Add one in Settings → AI." };
+  const baseUrl = provider ? providerBaseUrl(userId, "voice") : null;
+  const key = provider ? providerKey(userId, "voice") : null;
+  if (!provider || !baseUrl || !key) return { ok: false, status: 409, error: "A call needs a voice key. Add one in Settings → Voice." };
 
   const previous = callOf(userId);
   if (previous) endCall(previous.id, null);

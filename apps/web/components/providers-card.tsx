@@ -1,6 +1,6 @@
 "use client";
 
-import { KEY_PROVIDER_KINDS, PROVIDER_KINDS, PROVIDER_LABELS, type KeyProviderKind, type ProviderKind, type ProviderMeta } from "@gond/shared";
+import { KEY_PROVIDER_KINDS, PROVIDER_KINDS, PROVIDER_LABELS, type KeyProviderKind, type PlanProviderKind, type ProviderKind, type ProviderMeta } from "@gond/shared";
 import { Check, TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useLiveEvents } from "@/components/hq/live-events";
@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Spinner } from "@/components/ui/spinner";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { api, del, post } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -31,12 +32,21 @@ export function useProviders() {
   return { providers, reload: load };
 }
 
-function ProviderForm({ kind, provider, onSaved, onCancel }: { kind: ProviderKind; provider: ProviderMeta | null; onSaved: (provider: ProviderMeta) => void; onCancel?: () => void }) {
+/** Addresses to fill the Base URL from with one tap, when a kind of key has more than one usual home. */
+const URL_PRESETS: Partial<Record<ProviderKind, { label: string; url: string }[]>> = {
+  voice: [
+    { label: "OpenAI", url: "https://api.openai.com/v1" },
+    { label: "xAI", url: "https://api.x.ai/v1" },
+  ],
+};
+
+export function ProviderForm({ kind, provider, onSaved, onCancel }: { kind: ProviderKind; provider: ProviderMeta | null; onSaved: (provider: ProviderMeta) => void; onCancel?: () => void }) {
   const label = PROVIDER_LABELS[kind];
   const [baseUrl, setBaseUrl] = useState(provider?.baseUrl ?? label.defaultUrl);
   const [apiKey, setApiKey] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const presets = URL_PRESETS[kind];
 
   async function save(event: FormEvent) {
     event.preventDefault();
@@ -57,6 +67,18 @@ function ProviderForm({ kind, provider, onSaved, onCancel }: { kind: ProviderKin
   return (
     <form onSubmit={save}>
       <FieldGroup className="gap-4">
+        {presets ? (
+          <Field>
+            <FieldTitle id={`${kind}-preset`}>Provider</FieldTitle>
+            <ToggleGroup aria-labelledby={`${kind}-preset`} variant="pill" value={presets.some((p) => p.url === baseUrl) ? [baseUrl] : []} onValueChange={(next) => next[0] && setBaseUrl(next[0])}>
+              {presets.map((preset) => (
+                <ToggleGroupItem key={preset.url} value={preset.url}>
+                  {preset.label}
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
+          </Field>
+        ) : null}
         <Field>
           <FieldLabel htmlFor={`${kind}-key`}>API key</FieldLabel>
           <Input id={`${kind}-key`} type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder={provider ? "Leave empty to keep the saved key" : label.keyHint} autoComplete="off" spellCheck={false} required={!provider} aria-invalid={error ? true : undefined} />
@@ -65,7 +87,7 @@ function ProviderForm({ kind, provider, onSaved, onCancel }: { kind: ProviderKin
         <Field data-invalid={error ? true : undefined}>
           <FieldLabel htmlFor={`${kind}-url`}>Base URL</FieldLabel>
           <Input id={`${kind}-url`} value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} inputMode="url" autoCapitalize="none" spellCheck={false} required />
-          <FieldDescription>{kind === "anthropic" ? "Without /v1. Claude Code adds it." : "Up to and including /v1, where the API's /models and /chat/completions live."}</FieldDescription>
+          <FieldDescription>{kind === "anthropic" ? "Without /v1. Claude Code adds it." : kind === "voice" ? "Up to and including /v1. At xAI's address the microphone and calls use xAI's own voice; anywhere else, OpenAI's, or a server of your own like a local Whisper." : "Up to and including /v1, where the API's /models and /chat/completions live."}</FieldDescription>
           {error ? <FieldError>{error}</FieldError> : null}
         </Field>
         <div className="flex gap-2">
@@ -95,7 +117,7 @@ export function ProviderCheck({ provider }: { provider: ProviderMeta }) {
 }
 
 /** A saved key's own actions: change it, check it, or remove it. */
-function ManageKey({ kind, provider, onChange }: { kind: KeyProviderKind; provider: ProviderMeta; onChange: () => void }) {
+export function ManageKey({ kind, provider, onChange }: { kind: Exclude<ProviderKind, PlanProviderKind>; provider: ProviderMeta; onChange: () => void }) {
   const label = PROVIDER_LABELS[kind];
   const [editing, setEditing] = useState(false);
   const [checking, setChecking] = useState(false);
@@ -137,8 +159,8 @@ function ManageKey({ kind, provider, onChange }: { kind: KeyProviderKind; provid
       <Confirm
         open={removing}
         onOpenChange={setRemoving}
-        title="Remove this API key?"
-        description={`Bots running on the ${label.short} API stop working until you add a key again or pick somewhere else for them to run.`}
+        title={kind === "voice" ? "Remove the voice key?" : "Remove this API key?"}
+        description={kind === "voice" ? "The microphone and calls stop working until you add a voice key again." : `Bots running on the ${label.short} API stop working until you add a key again or pick somewhere else for them to run.`}
         action="Remove"
         onConfirm={async () => {
           await del(`/api/providers/${kind}`);
@@ -215,7 +237,7 @@ export function KeyList({
   );
 }
 
-export function AddProviderKey({ providers, onSaved }: { providers: Record<ProviderKind, ProviderMeta | null>; onSaved: (kind: ProviderKind) => void }) {
+export function AddProviderKey({ providers, onSaved }: { providers: Record<ProviderKind, ProviderMeta | null>; onSaved: (kind: KeyProviderKind) => void }) {
   const missing = KEY_PROVIDER_KINDS.filter((kind) => !providers[kind]);
   const [picked, setPicked] = useState<KeyProviderKind | null>(null);
 

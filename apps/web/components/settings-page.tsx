@@ -22,6 +22,7 @@ import { NotificationsSection } from "@/components/notifications-section";
 import { OidcCard } from "@/components/oidc-card";
 import { UsageSection } from "@/components/usage-section";
 import { VoiceCard } from "@/components/voice-card";
+import { VoiceKeyCard } from "@/components/voice-key-card";
 import { CallVoiceCard } from "@/components/call-voice-card";
 import { SecretsCard } from "@/components/secrets-card";
 import { OtherGondsSection, SpaceDefaultsCard } from "@/components/spaces/spaces-settings";
@@ -196,6 +197,7 @@ export function SettingsPage({ user, section, index = false }: { user: SessionUs
     case "voice":
       body = (
         <>
+          <VoiceKeyCard />
           <VoiceCard />
           <CallVoiceCard />
         </>

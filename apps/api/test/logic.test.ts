@@ -1741,7 +1741,7 @@ describe("xAI keys", () => {
     db.query("INSERT INTO gond_user_ai (user_id, engine, enabled, engines, updated_at) VALUES ('u1', 'api', '[\"api\"]', ?, ?)").run(JSON.stringify({ api: { access: "api", model: "grok-5", provider: "xai" } }), at);
     db.query("INSERT INTO gond_usage (user_id, source, model, created_at) VALUES ('u1', 'xai', 'grok-5', ?)").run(at);
     runMigrations(db);
-    const keys = db.query("SELECT id, user_id, kind, base_url, proxy_token FROM gond_providers ORDER BY id").all();
+    const keys = db.query("SELECT id, user_id, kind, base_url, proxy_token FROM gond_providers WHERE kind != 'voice' ORDER BY id").all();
     expect(keys).toEqual([
       { id: "p1", user_id: "u1", kind: "openai", base_url: "https://api.x.ai/v1", proxy_token: "token-p1" },
       { id: "p3", user_id: "u2", kind: "openai", base_url: "https://api.openai.com/v1", proxy_token: "token-p3" },
@@ -1753,6 +1753,30 @@ describe("xAI keys", () => {
     const columns = (db.query("PRAGMA table_info(gond_threads)").all() as { name: string }[]).map((c) => c.name);
     expect(columns).not.toContain("errand_bot");
     expect(columns).not.toContain("errand_for");
+  });
+});
+
+describe("voice keys", () => {
+  test("each person's OpenAI-compatible key becomes their voice key too, unless they have one", async () => {
+    const { Database } = await import("bun:sqlite");
+    const { runMigrations, VOICE_KEYS_VERSION } = await import("../src/db/migrations.ts");
+    const db = new Database(":memory:", { strict: true });
+    runMigrations(db, VOICE_KEYS_VERSION - 1);
+    const at = "2026-10-28T00:00:00Z";
+    const key = (id: string, user: string | null, kind: string, url: string) =>
+      db.query("INSERT INTO gond_providers (id, user_id, kind, base_url, api_key, proxy_token, last_check, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, '{\"ok\":true}', ?, ?)").run(id, user, kind, url, `sealed-${id}`, `token-${id}`, at, at);
+    key("p1", "u1", "openai", "https://api.x.ai/v1");
+    key("p2", "u2", "openai", "https://api.openai.com/v1");
+    key("p3", "u2", "voice", "http://whisper.lan/v1");
+    key("p4", "u3", "anthropic", "https://api.anthropic.com");
+    runMigrations(db);
+    const voices = db.query("SELECT user_id, base_url, api_key, proxy_token, last_check FROM gond_providers WHERE kind = 'voice' ORDER BY user_id").all() as { user_id: string; base_url: string; api_key: string; proxy_token: string; last_check: string }[];
+    expect(voices.map(({ user_id, base_url, api_key, last_check }) => ({ user_id, base_url, api_key, last_check }))).toEqual([
+      { user_id: "u1", base_url: "https://api.x.ai/v1", api_key: "sealed-p1", last_check: '{"ok":true}' },
+      { user_id: "u2", base_url: "http://whisper.lan/v1", api_key: "sealed-p3", last_check: '{"ok":true}' },
+    ]);
+    expect(voices[0]!.proxy_token).not.toBe("token-p1");
+    expect(db.query("SELECT COUNT(*) AS n FROM gond_providers WHERE kind = 'openai'").get()).toEqual({ n: 2 });
   });
 });
 

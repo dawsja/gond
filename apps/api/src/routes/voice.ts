@@ -26,7 +26,7 @@ async function voicesFor(provider: VoiceProvider, baseUrl: string, key: string):
   const cacheKey = `${baseUrl}\n${key}`;
   const cached = voiceLists.get(cacheKey);
   if (cached && Date.now() - cached.at < VOICE_LIST_MS) return cached.voices;
-  const res = await fetch(upstreamUrl(baseUrl, "tts/voices", ""), { headers: authHeaders("openai", baseUrl, key), redirect: "manual", signal: AbortSignal.timeout(15_000) }).catch(() => null);
+  const res = await fetch(upstreamUrl(baseUrl, "tts/voices", ""), { headers: authHeaders("voice", baseUrl, key), redirect: "manual", signal: AbortSignal.timeout(15_000) }).catch(() => null);
   if (!res?.ok) return null;
   const payload = (await res.json().catch(() => null)) as { voices?: { voice_id?: unknown; name?: unknown }[] } | null;
   const voices = (payload?.voices ?? [])
@@ -53,8 +53,8 @@ export function voiceRoutes() {
     const who = userId(c);
     const voice = getVoice(who);
     const provider = voice.using;
-    const baseUrl = provider ? providerBaseUrl(who, "openai") : null;
-    const key = provider ? providerKey(who, "openai") : null;
+    const baseUrl = provider ? providerBaseUrl(who, "voice") : null;
+    const key = provider ? providerKey(who, "voice") : null;
     if (!provider || !baseUrl || !key) return c.json({ provider: null, voices: [], chosen: null });
     const voices = await voicesFor(provider, baseUrl, key);
     if (!voices) return c.json({ error: `${VOICE_MODELS[provider].label} didn't list its voices. Try again.` }, 502);
@@ -65,7 +65,7 @@ export function voiceRoutes() {
     const who = userId(c);
     const body = (await c.req.json().catch(() => null)) as { voice?: unknown } | null;
     const provider = getVoice(who).using;
-    if (!provider) return c.json({ error: "Add an OpenAI or xAI key first" }, 409);
+    if (!provider) return c.json({ error: "Add a voice key in Settings → Voice first" }, 409);
     if (body?.voice !== null && (typeof body?.voice !== "string" || !CALL_VOICE_ID.test(body.voice))) return c.json({ error: "That isn't a voice" }, 400);
     return c.json(setCallVoice(who, provider, body.voice === CALL_MODELS[provider].voice ? null : body.voice));
   });
@@ -76,16 +76,16 @@ export function voiceRoutes() {
     const id = c.req.query("voice") ?? "";
     if (!CALL_VOICE_ID.test(id)) return c.json({ error: "That isn't a voice" }, 400);
     const provider = getVoice(who).using;
-    const baseUrl = provider ? providerBaseUrl(who, "openai") : null;
-    const key = provider ? providerKey(who, "openai") : null;
-    if (!provider || !baseUrl || !key) return c.json({ error: "Add an OpenAI or xAI key first" }, 409);
+    const baseUrl = provider ? providerBaseUrl(who, "voice") : null;
+    const key = provider ? providerKey(who, "voice") : null;
+    if (!provider || !baseUrl || !key) return c.json({ error: "Add a voice key in Settings → Voice first" }, 409);
     const request =
       provider === "xai"
         ? { path: "tts", body: { text: SAMPLE_TEXT, voice_id: id, language: "en" } }
         : { path: "audio/speech", body: { model: "gpt-4o-mini-tts", voice: id, input: SAMPLE_TEXT, response_format: "mp3" } };
     const res = await fetch(upstreamUrl(baseUrl, request.path, ""), {
       method: "POST",
-      headers: { ...authHeaders("openai", baseUrl, key), "content-type": "application/json" },
+      headers: { ...authHeaders("voice", baseUrl, key), "content-type": "application/json" },
       body: JSON.stringify(request.body),
       redirect: "manual",
       signal: AbortSignal.timeout(30_000),
@@ -104,9 +104,9 @@ export function voiceRoutes() {
     if (file.size > TRANSCRIBE_MAX_BYTES) return c.json({ error: "The recording is too long" }, 413);
     const voice = getVoice(who);
     const kind = voice.using;
-    const baseUrl = kind ? providerBaseUrl(who, "openai") : null;
-    const key = kind ? providerKey(who, "openai") : null;
-    if (!kind || !baseUrl || !key) return c.json({ error: "Add an OpenAI or xAI key to talk to your bots" }, 409);
+    const baseUrl = kind ? providerBaseUrl(who, "voice") : null;
+    const key = kind ? providerKey(who, "voice") : null;
+    if (!kind || !baseUrl || !key) return c.json({ error: "Add a voice key in Settings → Voice to talk to your bots" }, 409);
 
     const { path, label } = VOICE_MODELS[kind];
     const model = kind === "openai" ? voice.openaiModel : VOICE_MODELS[kind].model;
@@ -122,7 +122,7 @@ export function voiceRoutes() {
 
     let res: Response;
     try {
-      res = await fetch(upstreamUrl(baseUrl, path, ""), { method: "POST", headers: authHeaders("openai", baseUrl, key), body: upstream, redirect: "manual", signal: AbortSignal.timeout(60_000) });
+      res = await fetch(upstreamUrl(baseUrl, path, ""), { method: "POST", headers: authHeaders("voice", baseUrl, key), body: upstream, redirect: "manual", signal: AbortSignal.timeout(60_000) });
     } catch {
       return c.json({ error: `${label} didn't answer. Try again.` }, 502);
     }
