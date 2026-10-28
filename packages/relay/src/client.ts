@@ -12,6 +12,7 @@ import {
   verifySignature,
   type Envelope,
   type ClientFrame,
+  type PushPlatform,
   type PushRequest,
   type Refusal,
   type RelayFrame,
@@ -52,9 +53,19 @@ async function sign(identity: Identity, message: Uint8Array): Promise<string> {
   return toB64(await crypto.subtle.sign({ name: "Ed25519" }, key, message as Uint8Array<ArrayBuffer>));
 }
 
-/** A push for one Android phone, signed by this Gond, for a relay's `/v1/push`. `data` is already sealed for the phone. */
-export async function pushRequest(identity: Identity, input: { token: string; data: string; collapse: string | null; at?: number }): Promise<PushRequest> {
-  const unsigned: Omit<PushRequest, "sig"> = { v: 1, from: identity.key, at: input.at ?? Date.now(), id: randomB64(12), platform: "android", token: input.token, data: input.data, collapse: input.collapse };
+/** A push for one phone, signed by this Gond, for a relay's `/v1/push`. `data` is already sealed for the phone. */
+export async function pushRequest(identity: Identity, input: { token: string; data: string; collapse: string | null; platform?: PushPlatform; quiet?: boolean; at?: number }): Promise<PushRequest> {
+  const unsigned: Omit<PushRequest, "sig"> = {
+    v: 1,
+    from: identity.key,
+    at: input.at ?? Date.now(),
+    id: randomB64(12),
+    platform: input.platform ?? "android",
+    token: input.token,
+    data: input.data,
+    collapse: input.collapse,
+    ...(input.quiet ? { quiet: true as const } : {}),
+  };
   return { ...unsigned, sig: await sign(identity, signedPush(unsigned)) };
 }
 

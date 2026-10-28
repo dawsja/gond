@@ -140,7 +140,7 @@ export function ownKey(): string | null {
 }
 
 /** A push for one phone, signed with this Gond's key, which the relay checks before passing it to Firebase. */
-export async function signPush(input: { token: string; data: string; collapse: string | null }): Promise<PushRequest> {
+export async function signPush(input: { token: string; data: string; collapse: string | null; platform: PushRequest["platform"]; quiet?: boolean }): Promise<PushRequest> {
   return pushRequest(await identity(), input);
 }
 

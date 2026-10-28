@@ -4,12 +4,14 @@ import { ensureDatabase } from "../db/init.ts";
 import { newId, now } from "../ids.ts";
 import { decryptSecret, encryptSecret } from "../secrets.ts";
 
+export type PushPlatform = "android" | "ios";
+
 /**
- * A phone that gets the person's notices as push (Android through Firebase, via the relay). Each has
+ * A phone that gets the person's notices as push (through the relay and Firebase). Each has
  * two keys of its own, made here and handed to the phone once: one seals the notices so only that
  * phone reads them, the other signs its answers to cards from the lock screen.
  */
-export type PushDevice = { id: string; userId: string; platform: "android"; token: string; sealKey: string; answerKey: string; notices: DeviceNotices };
+export type PushDevice = { id: string; userId: string; platform: PushPlatform; token: string; sealKey: string; answerKey: string; notices: DeviceNotices };
 
 type Row = { id: string; user_id: string; platform: string; token: string; seal_key: string; answer_key: string; muted_bots: string; other: number };
 
@@ -23,7 +25,7 @@ function readMuted(json: string): string[] {
 }
 
 function toDevice(row: Row): PushDevice {
-  return { id: row.id, userId: row.user_id, platform: "android", token: row.token, sealKey: decryptSecret(row.seal_key), answerKey: decryptSecret(row.answer_key), notices: { mutedBots: readMuted(row.muted_bots), other: row.other !== 0 } };
+  return { id: row.id, userId: row.user_id, platform: row.platform === "ios" ? "ios" : "android", token: row.token, sealKey: decryptSecret(row.seal_key), answerKey: decryptSecret(row.answer_key), notices: { mutedBots: readMuted(row.muted_bots), other: row.other !== 0 } };
 }
 
 export function listPushDevices(userId: string): PushDevice[] {
@@ -40,7 +42,7 @@ export function getPushDevice(id: string): PushDevice | null {
  * new token, or a phone this server doesn't know, gets new ones, and the token leaves any phone
  * that had it before.
  */
-export function registerPushDevice(userId: string, input: { token: string; id?: string | null; notices?: DeviceNotices | null }): { id: string; keys: { seal: string; answer: string } | null } {
+export function registerPushDevice(userId: string, input: { platform: PushPlatform; token: string; id?: string | null; notices?: DeviceNotices | null }): { id: string; keys: { seal: string; answer: string } | null } {
   const db = ensureDatabase();
   const at = now();
   const known = input.id ? (db.query("SELECT * FROM gond_push_devices WHERE id = ? AND user_id = ? AND token = ?").get(input.id, userId, input.token) as Row | null) : null;
@@ -55,9 +57,10 @@ export function registerPushDevice(userId: string, input: { token: string; id?: 
   db.transaction(() => {
     db.query("DELETE FROM gond_push_devices WHERE token = ?").run(input.token);
     if (input.id) db.query("DELETE FROM gond_push_devices WHERE id = ? AND user_id = ?").run(input.id, userId);
-    db.query("INSERT INTO gond_push_devices (id, user_id, platform, token, seal_key, answer_key, muted_bots, other, created_at, updated_at) VALUES (?, ?, 'android', ?, ?, ?, ?, ?, ?, ?)").run(
+    db.query("INSERT INTO gond_push_devices (id, user_id, platform, token, seal_key, answer_key, muted_bots, other, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run(
       id,
       userId,
+      input.platform,
       input.token,
       encryptSecret(seal),
       encryptSecret(answer),

@@ -18,6 +18,7 @@ final class WebShell: NSObject {
     private var typing = false
     private var server: String?
     private var notificationsState = "prompt"
+    private var pushState = "{}"
     private var downloads: [ObjectIdentifier: URL] = [:]
     private var progressObservation: NSKeyValueObservation?
 
@@ -56,6 +57,7 @@ final class WebShell: NSObject {
         center.addObserver(self, selector: #selector(keyboardChanged(_:)), name: UIResponder.keyboardWillShowNotification, object: nil)
         center.addObserver(self, selector: #selector(keyboardChanged(_:)), name: UIResponder.keyboardWillHideNotification, object: nil)
         center.addObserver(self, selector: #selector(cameBack), name: UIApplication.didBecomeActiveNotification, object: nil)
+        Push.shared.onChange = { [weak self] in self?.refreshPushState() }
     }
 
     func load(server: String, path: String) {
@@ -87,7 +89,8 @@ final class WebShell: NSObject {
         guard let server else { return }
         let controller = webView.configuration.userContentController
         controller.removeAllUserScripts()
-        let script = Self.bridgeScript(server: server, version: AppInfo.version, notifications: notificationsState)
+        pushState = Push.shared.state
+        let script = Self.bridgeScript(server: server, version: AppInfo.version, notifications: notificationsState, push: pushState)
         controller.addUserScript(WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         #if DEBUG
         controller.addUserScript(WKUserScript(source: Self.consoleScript, injectionTime: .atDocumentStart, forMainFrameOnly: true))
@@ -95,7 +98,7 @@ final class WebShell: NSObject {
         Task { await refreshNotificationsState() }
     }
 
-    static func bridgeScript(server: String, version: String, notifications: String) -> String {
+    static func bridgeScript(server: String, version: String, notifications: String, push: String) -> String {
         func json(_ value: String) -> String {
             let data = (try? JSONSerialization.data(withJSONObject: [value])) ?? Data("[\"\"]".utf8)
             return String(String(decoding: data, as: UTF8.self).dropFirst().dropLast())
@@ -104,7 +107,9 @@ final class WebShell: NSObject {
         (function () {
           if (location.origin !== \(json(server))) return;
           var state = \(json(notifications));
+          var push = \(json(push));
           window.addEventListener("gond:notifications-state", function (event) { state = event.detail; });
+          window.addEventListener("gond:push-state", function (event) { push = event.detail; });
           function post(action, args) { window.webkit.messageHandlers.gondMobile.postMessage({ action: action, args: args || [] }); }
           window.gondMobile = {
             platform: function () { return "ios"; },
@@ -118,7 +123,9 @@ final class WebShell: NSObject {
             openExternal: function (url) { post("openExternal", [String(url || "")]); },
             setTheme: function (background, dark, system) { post("setTheme", [String(background || ""), Boolean(dark), Boolean(system)]); },
             present: function (kind, request) { post("present", [String(kind || ""), String(request || "")]); },
-            chrome: function (state) { post("chrome", [String(state || "null")]); }
+            chrome: function (state) { post("chrome", [String(state || "null")]); },
+            pushState: function () { return push; },
+            setPushDevice: function (json) { post("setPushDevice", [json == null ? "" : String(json)]); }
           };
         })();
         """
@@ -176,21 +183,39 @@ final class WebShell: NSObject {
         #endif
         case "chrome":
             model?.ui.setChrome(text(0))
+        case "setPushDevice":
+            Push.shared.save(text(0))
         default:
             break
         }
+    }
+
+    /// The bridge script carries what the page reads back, so a page loaded later starts with the current values.
+    private func rewriteBridge() {
+        guard let server else { return }
+        let script = Self.bridgeScript(server: server, version: AppInfo.version, notifications: notificationsState, push: pushState)
+        let controller = webView.configuration.userContentController
+        controller.removeAllUserScripts()
+        controller.addUserScript(WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        #if DEBUG
+        controller.addUserScript(WKUserScript(source: Self.consoleScript, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        #endif
+    }
+
+    /// The push token or device changed: the page reads the state again and signs this phone up with it.
+    func refreshPushState() {
+        pushState = Push.shared.state
+        rewriteBridge()
+        guard let data = try? JSONSerialization.data(withJSONObject: [pushState]) else { return }
+        let detail = String(String(decoding: data, as: UTF8.self).dropFirst().dropLast())
+        webView.evaluateJavaScript("window.dispatchEvent(new CustomEvent('gond:push-state', { detail: \(detail) }));window.dispatchEvent(new Event('gond:push'));", completionHandler: nil)
     }
 
     private func refreshNotificationsState() async {
         let state = await Notifications.shared.state()
         let changed = state != notificationsState
         notificationsState = state
-        if changed, let server {
-            let script = Self.bridgeScript(server: server, version: AppInfo.version, notifications: state)
-            let controller = webView.configuration.userContentController
-            controller.removeAllUserScripts()
-            controller.addUserScript(WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true))
-        }
+        if changed { rewriteBridge() }
         // The web app's notifications card reads the state again on gond:notifications.
         let js = "window.dispatchEvent(new CustomEvent('gond:notifications-state', { detail: '\(state)' }));window.dispatchEvent(new Event('gond:notifications'));"
         webView.evaluateJavaScript(js, completionHandler: nil)

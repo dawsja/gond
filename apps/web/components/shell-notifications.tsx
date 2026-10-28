@@ -8,9 +8,9 @@ import { phonePushOn, shellNotices, shellNotificationsOff, syncPhonePush } from 
 import { shellBridge } from "@/lib/shell";
 
 /**
- * Notices in the apps. The Android app gets them as push once it's signed up (`syncPhonePush`, as it
- * opens and whenever its token or notifications change); until then, and in the other apps, the
- * page asks the app to show each one while it runs.
+ * Notices in the apps. The phone apps get them as push once signed up (`syncPhonePush`, as they open
+ * and whenever their token or notifications change); until then, and in the desktop app, the page
+ * asks the app to show each one while it runs.
  */
 export function ShellNotifications() {
   useEffect(() => {

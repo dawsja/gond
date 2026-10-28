@@ -438,10 +438,10 @@ describe("a connection that dies quietly", () => {
 });
 
 describe("push", () => {
-  type Sent = { token: string; data: Record<string, string>; collapse: string | null };
+  type Sent = { token: string; data: Record<string, string>; collapse: string | null; kind?: { platform: string; quiet: boolean } };
   function fakeFcm(result: "sent" | "gone" | "failed" = "sent") {
     const sent: Sent[] = [];
-    return { sent, fcm: { send: async (token: string, data: Record<string, string>, collapse: string | null) => (sent.push({ token, data, collapse }), result) } };
+    return { sent, fcm: { send: async (token: string, data: Record<string, string>, collapse: string | null, kind?: { platform: "android" | "ios"; quiet: boolean }) => (sent.push({ token, data, collapse, kind }), result) } };
   }
   const post = (url: string, body: unknown) => fetch(`${url}/v1/push`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   const token = "fcm-token-1234567890:abcdefghij";
@@ -457,15 +457,34 @@ describe("push", () => {
     const ok = await post(relay.url, push);
     expect(ok.status).toBe(200);
     expect(await ok.json()).toEqual({ result: "sent" });
-    expect(sent).toEqual([{ token, data: { d: "c2VhbGVk" }, collapse: "t_123" }]);
+    expect(sent).toEqual([{ token, data: { d: "c2VhbGVk" }, collapse: "t_123", kind: { platform: "android", quiet: false } }]);
 
     expect((await post(relay.url, { ...push, data: "b3RoZXI" })).status).toBe(401);
     const other = await createIdentity();
     expect((await post(relay.url, { ...push, from: other.key })).status).toBe(401);
     expect((await post(relay.url, await pushRequest(gond, { token, data: "c2VhbGVk", collapse: null, at: Date.now() - LIMITS.pushSkewMs - 1000 }))).status).toBe(400);
-    expect((await post(relay.url, { ...push, platform: "ios" })).status).toBe(400);
+    expect((await post(relay.url, { ...push, platform: "ios" })).status).toBe(401);
+    expect((await post(relay.url, { ...push, platform: "windows" })).status).toBe(400);
+    expect((await post(relay.url, { ...push, quiet: true })).status).toBe(401);
+    expect((await post(relay.url, { ...push, quiet: false })).status).toBe(400);
     expect((await post(relay.url, await pushRequest(gond, { token, data: "x".repeat(LIMITS.pushBytes + 1), collapse: null }))).status).toBe(400);
     expect(sent).toHaveLength(1);
+
+    const iphone = await pushRequest(gond, { token, data: "c2VhbGVk", collapse: "card-ap_1", platform: "ios" });
+    expect((await post(relay.url, iphone)).status).toBe(200);
+    const withdrawn = await pushRequest(gond, { token, data: "c2VhbGVk", collapse: "card-ap_1", platform: "ios", quiet: true });
+    expect((await post(relay.url, withdrawn)).status).toBe(200);
+    expect(sent.slice(1).map((s) => s.kind)).toEqual([
+      { platform: "ios", quiet: false },
+      { platform: "ios", quiet: true },
+    ]);
+  });
+
+  test("a push from a Gond that predates quiet pushes signs exactly as it did", async () => {
+    const { signedPush } = await import("../src/protocol.ts");
+    const unsigned = { v: 1 as const, from: "k".repeat(43), at: 1, id: "abcdefgh", platform: "android" as const, token, data: "YQ", collapse: null };
+    expect(new TextDecoder().decode(signedPush(unsigned))).toBe(["gond-relay/1 push", "abcdefgh", "k".repeat(43), "1", "android", token, "YQ", ""].join("\n"));
+    expect(new TextDecoder().decode(signedPush({ ...unsigned, quiet: true }))).toEndWith("\nquiet");
   });
 
   test("pushes are counted per Gond, a token the phone gave up says so, and a relay without Firebase says it can't", async () => {
@@ -521,6 +540,19 @@ describe("push", () => {
     expect(grants).toEqual(["https://www.googleapis.com/auth/firebase.messaging"]);
     expect(messages[0]).toEqual({ auth: "Bearer ya29.1", path: "/v1/projects/gond-test/messages:send", body: { message: { token, data: { d: "YQ" }, android: { priority: "HIGH", ttl: "3600s", collapse_key: "t_1" } } } });
     expect((messages[1]!.body as { message: { android: Record<string, unknown> } }).message.android).toEqual({ priority: "HIGH", ttl: "3600s" });
+
+    // An iPhone gets a placeholder its notification service extension rewrites, or a background push when quiet.
+    expect(await fcm.send(token, { d: "YQ" }, "card-ap_1", { platform: "ios", quiet: false })).toBe("sent");
+    expect((messages[2]!.body as { message: unknown }).message).toEqual({
+      token,
+      data: { d: "YQ" },
+      apns: {
+        headers: { "apns-push-type": "alert", "apns-priority": "10", "apns-collapse-id": "card-ap_1" },
+        payload: { aps: { alert: { title: "Gond", body: "Something new from your bots." }, sound: "default", "mutable-content": 1 } },
+      },
+    });
+    expect(await fcm.send(token, { d: "YQ" }, null, { platform: "ios", quiet: true })).toBe("sent");
+    expect((messages[3]!.body as { message: { apns: unknown } }).message.apns).toEqual({ headers: { "apns-push-type": "background", "apns-priority": "5" }, payload: { aps: { "content-available": 1 } } });
 
     const gone = createFcm(JSON.stringify({ ...JSON.parse(account), project_id: "gone" }), { endpoint: base });
     expect(await gone.send(token, { d: "YQ" }, null)).toBe("gone");

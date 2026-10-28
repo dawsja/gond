@@ -125,12 +125,16 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         web.onResume()
+        web.evaluateJavascript("window.dispatchEvent(new Event('gond:app-shown'))", null)
     }
 
     // WebView writes new cookies to disk lazily, and a swipe from the recent apps kills the
     // process before it does, so the sign-in's session cookie would be lost with it.
     override fun onPause() {
         CookieManager.getInstance().flush()
+        // The WebView keeps its page "visible" in the background, and Android may then kill the app
+        // without a pagehide, so the page is told here and stops counting as reading its conversation.
+        web.evaluateJavascript("window.dispatchEvent(new Event('gond:app-hidden'))", null)
         super.onPause()
     }
 

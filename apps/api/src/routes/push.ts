@@ -52,12 +52,12 @@ export function pushRoutes() {
   // A phone signing up for push, or checking in as it opens. New keys come back only when it needs them.
   app.put("/push/devices", async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as { platform?: unknown; token?: unknown; id?: unknown; notices?: unknown };
-    if (body.platform !== "android") return c.json({ error: "Push works on the Android app for now" }, 400);
+    if (body.platform !== "android" && body.platform !== "ios") return c.json({ error: "Push works in the Android and iPhone apps" }, 400);
     if (typeof body.token !== "string" || !/^[\w:.-]{20,512}$/.test(body.token)) return c.json({ error: "This phone sent a push token that doesn't look right. Open the app again." }, 400);
     if (body.id !== undefined && body.id !== null && (typeof body.id !== "string" || !/^[\w-]{1,64}$/.test(body.id))) return c.json({ error: "Say which phone this is" }, 400);
     const notices = body.notices === undefined ? null : readDeviceNotices(body.notices);
     if (body.notices !== undefined && !notices) return c.json({ error: "Couldn't read which notices this phone wants" }, 400);
-    const device = registerPushDevice(personId(c), { token: body.token, id: (body.id as string | null | undefined) ?? null, notices });
+    const device = registerPushDevice(personId(c), { platform: body.platform, token: body.token, id: (body.id as string | null | undefined) ?? null, notices });
     return c.json(device.keys ? { id: device.id, seal: device.keys.seal, answer: device.keys.answer } : { id: device.id }, device.keys ? 201 : 200);
   });
 

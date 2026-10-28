@@ -37,11 +37,14 @@ functions to start from; the code holds the details.
   Object per mailbox, hibernating sockets, `wrangler.jsonc`,
   `api.gond.io`). The relay has no dependencies. Its tests run every flow
   on the Bun server, and on any relay `GOND_RELAY_TEST_URL` names.
-  It also carries push to Android phones (`/v1/push`, `push.ts`): a Gond
-  signs each push with its key, the notice already sealed for that phone,
-  and the relay sends it through Firebase as the service account in the
-  `FCM_SERVICE_ACCOUNT` Cloudflare secret, counted per key. `api.gond.io`
-  is every Gond's push relay (`PUSH_RELAY_URL`), with no setting.
+  It also carries push to phones (`/v1/push`, `push.ts`): a Gond signs
+  each push with its key, the notice already sealed for that phone, and
+  the relay sends it through Firebase as the service account in the
+  `FCM_SERVICE_ACCOUNT` Cloudflare secret, counted per key; Firebase hands
+  an iPhone's to Apple with the APNs key uploaded to it. An iPhone gets a
+  placeholder alert its extension rewrites, and a `quiet` push (taking a
+  notice back) as a background one. `api.gond.io` is every Gond's push
+  relay (`PUSH_RELAY_URL`), with no setting.
 - `docker-compose.yml` runs the three services; CI builds the images (and
   `gond-relay`'s) and publishes them to GHCR. Builds start alongside the
   checks and nothing is published or released unless they pass. When a
@@ -94,8 +97,9 @@ The address rules are mirrored in each app with the same tests.
   first), posting `/api/push/answer` signed with the answer key.
   `google-services.json` comes from CI's `GOOGLE_SERVICES_JSON` and is
   never checked in; a build without it has no push. The page signs the
-  phone up (`syncPhonePush`) through `pushState` and `setPushDevice`,
-  kept off `GondMobile` (`GondPush`) since the iPhone has none.
+  phone up (`syncPhonePush`) through `pushState` and `setPushDevice`
+  (`GondPush`, kept off `GondMobile` so an older app needn't offer it), as
+  in the iPhone app.
 - `apps/ios`: Swift and SwiftUI, iPhone only, iOS 17 and up. Connect is
   native (`ConnectView.swift`, Liquid Glass from iOS 26 via `glassEffect`
   and `.glassProminent`, a material before, over faces drawn from the
@@ -112,8 +116,19 @@ The address rules are mirrored in each app with the same tests.
   - Attachments download to the share sheet, other origins' links open
     in Safari's view, insets are `--shell-inset-*` as on Android. Sign-in
     is `ASWebAuthenticationSession` with `app=ios`, back on
-    `gond://sign-in`. Notifications come through the bridge, so only
-    while the app is open or just put away; there is no APNs.
+    `gond://sign-in`.
+  - Push (`Push.swift`): Firebase Messaging with the APNs token handed over
+    by the app delegate. The notification service extension
+    (`GondNotifications`, `NotificationService.swift`) opens each notice
+    with the phone's seal key (`Shared/PushCrypto.swift`) from the
+    keychain it shares with the app through the App Group
+    `group.io.gond.ios` (`PushKeys`). A card's notice is in the `gond.card`
+    category, Allow and Deny behind Face ID or the passcode, answered with
+    the answer key. `GoogleService-Info.plist` comes from CI's
+    `GOOGLE_SERVICE_INFO_PLIST`, never checked in; without it there's no
+    push and the bridge's notify works as before. The archive is signed ad
+    hoc with the entitlements before export, since an unsigned one carries
+    none.
   - Some UI is the app's own, in Liquid Glass (`NativeUI.swift`,
     `NativeViews.swift`, `lib/native-ui.ts` on the page): `present` (a
     confirm as iOS's alert, from every `Confirm`; a message's long-press
@@ -298,10 +313,10 @@ The address rules are mirrored in each app with the same tests.
   `shellBridge()`, `mobileShell`, `desktopShell`), never by touching
   `window.gondDesktop` or `window.gondMobile`. The desktop's calls return
   promises and an older desktop may lack a method, so check it is a
-  function first. In an app there is no Web Push. The Android app gets
-  push through the relay once signed up (`phonePushOn`); otherwise, and
-  in the other apps, the `notify` live event becomes a native
-  notification while the app runs (`shell-notifications.tsx`). Turn off
+  function first. In an app there is no Web Push. The phone apps get push
+  through the relay once signed up (`phonePushOn`); otherwise, and in the
+  desktop app, the `notify` live event becomes a native notification
+  while the app runs (`shell-notifications.tsx`). Turn off
   is a per-device switch (`shellNotificationsOff` in `lib/push.ts`) that
   also signs the phone out of push. A tap
   on a link to another site goes to `openExternal` (`OutsideLinks` in
@@ -1130,14 +1145,14 @@ One line each: where to start, and what must not change.
   person or needs them, only when `bot.notify` is on, and only to devices
   that didn't mute that bot (`muted_bots`, `other`). `sendPush` also
   emits a `notify` event for the shells.
-  Android phones (`gond_push_devices`, per person, `src/phone-push.ts`)
-  get each notice sealed for them alone (`sealNotice`, AES-256-GCM with
+  Phones (`gond_push_devices`, per person, Android or iPhone,
+  `src/phone-push.ts`) get each notice sealed for them alone (`sealNotice`, AES-256-GCM with
   the phone's key) and signed with this Gond's key (`signPush`), sent to
   the relay; a 410 forgets the phone. `registerPushDevice` hands out keys
   only to a phone it doesn't know. A card a phone may answer
   (`answerableOnPhone`: never an email) carries its buttons under a
   `card-<id>` tag and is withdrawn from the phones once closed
-  (`offPhones`). `/api/push/answer` runs ahead of the session, taken
+  (`offPhones`), quietly. `/api/push/answer` runs ahead of the session, taken
   only signed by the phone's answer key within five minutes
   (`answerSigned`), for a card of that phone's person. Nothing is pushed about a
   conversation on screen (`src/presence.ts`, since the service worker

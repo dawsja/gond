@@ -1,13 +1,27 @@
-import { LIMITS, fromB64, parsePush, signedPush, toB64, utf8, verifySignature, type PushResult } from "./protocol.ts";
+import { LIMITS, fromB64, parsePush, signedPush, toB64, utf8, verifySignature, type PushPlatform, type PushResult } from "./protocol.ts";
 
 /**
- * Pushes to Android phones through Firebase Cloud Messaging's v1 API, as the service account
- * the relay holds (FCM_SERVICE_ACCOUNT on Cloudflare). Gond servers never hold it: each signs a
- * push with its own key and the relay sends it on, so a self-hosted Gond reaches its phones with
- * nothing of Google's to set up.
+ * Pushes to phones through Firebase Cloud Messaging's v1 API, as the service account the relay
+ * holds (FCM_SERVICE_ACCOUNT on Cloudflare); Firebase hands an iPhone's to Apple with the APNs key
+ * uploaded to it. Gond servers never hold either: each signs a push with its own key and the relay
+ * sends it on, so a self-hosted Gond reaches its phones with nothing of Google's or Apple's to set up.
  */
 
-export type Fcm = { send(token: string, data: Record<string, string>, collapse: string | null): Promise<PushResult> };
+export type PushKind = { platform: PushPlatform; quiet: boolean };
+export type Fcm = { send(token: string, data: Record<string, string>, collapse: string | null, kind?: PushKind): Promise<PushResult> };
+
+/*
+ * An iPhone shows an alert as it comes, so the relay sends a placeholder that the app's notification
+ * service extension replaces with what the sealed notice says; a phone that can't open it still shows
+ * that something came. A quiet push goes as a background one, which shows nothing.
+ */
+function apnsOf(collapse: string | null, quiet: boolean) {
+  if (quiet) return { headers: { "apns-push-type": "background", "apns-priority": "5" }, payload: { aps: { "content-available": 1 } } };
+  return {
+    headers: { "apns-push-type": "alert", "apns-priority": "10", ...(collapse ? { "apns-collapse-id": collapse } : {}) },
+    payload: { aps: { alert: { title: "Gond", body: "Something new from your bots." }, sound: "default", "mutable-content": 1 } },
+  };
+}
 
 type ServiceAccount = { project_id: string; client_email: string; private_key: string; token_uri?: string };
 
@@ -39,14 +53,15 @@ export function createFcm(serviceAccount: string, options: { fetch?: typeof fetc
   }
 
   return {
-    async send(token, data, collapse) {
+    async send(token, data, collapse, kind = { platform: "android", quiet: false }) {
       let auth: string;
       try {
         auth = await accessToken();
       } catch {
         return "failed";
       }
-      const message = { token, data, android: { priority: "HIGH", ttl: "3600s", ...(collapse ? { collapse_key: collapse } : {}) } };
+      const message =
+        kind.platform === "ios" ? { token, data, apns: apnsOf(collapse, kind.quiet) } : { token, data, android: { priority: "HIGH", ttl: "3600s", ...(collapse ? { collapse_key: collapse } : {}) } };
       const res = await fetcher(`${endpoint}/v1/projects/${encodeURIComponent(account.project_id)}/messages:send`, {
         method: "POST",
         headers: { authorization: `Bearer ${auth}`, "content-type": "application/json" },
@@ -81,6 +96,6 @@ export async function handlePush(raw: unknown, deps: { fcm: Fcm | null; spend: (
   const { sig, ...signed } = push;
   if (!(await verifySignature(push.from, sig, signedPush(signed)))) return { status: 401, body: { error: "The push's signature doesn't match its sender." } };
   if (!deps.spend(`push:${push.from}`, LIMITS.pushesPerMinute)) return { status: 429, body: { error: `At most ${LIMITS.pushesPerMinute} pushes a minute.` } };
-  const result = await deps.fcm.send(push.token, { d: push.data }, push.collapse);
+  const result = await deps.fcm.send(push.token, { d: push.data }, push.collapse, { platform: push.platform, quiet: Boolean(push.quiet) });
   return { status: result === "sent" ? 200 : result === "gone" ? 410 : 502, body: { result } };
 }

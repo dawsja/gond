@@ -107,8 +107,11 @@ final class AppModel: ObservableObject {
             connectError = "No Gond answered at that address. Check it, and that Gond is running."
             return
         }
-        // A different Gond: its own sign-in, not the last one's.
-        if found != server { await shell.forgetEverything() }
+        // A different Gond: its own sign-in, not the last one's, and its own push keys.
+        if found != server {
+            await shell.forgetEverything()
+            PushKeys.save(nil)
+        }
         server = found
         Prefs.server = found
         open("/login")

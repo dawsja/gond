@@ -2,10 +2,11 @@ import UIKit
 import UserNotifications
 
 /*
- * The web view has no Web Push, so the web app asks for a notification
- * through the bridge on the API's `notify` live event, as in the Android
- * app. iOS pauses the page soon after the app leaves the screen, so they
- * come while Gond is open or just put away.
+ * Notices arrive as push (`Push.swift`, opened by the notification service
+ * extension) once the phone has signed up for it. Until then, or in a build
+ * without Firebase's config, the web app asks for one through the bridge on
+ * the API's `notify` live event, which comes only while Gond is open or just
+ * put away, since iOS pauses the page soon after.
  */
 @MainActor
 final class Notifications: NSObject {
@@ -17,7 +18,12 @@ final class Notifications: NSObject {
 
     private override init() {
         super.init()
-        UNUserNotificationCenter.current().delegate = self
+        let center = UNUserNotificationCenter.current()
+        center.delegate = self
+        // A yes from a locked phone would let anyone holding it approve, so both ask for Face ID or the passcode first.
+        let allow = UNNotificationAction(identifier: PushCategory.allow, title: "Allow", options: [.authenticationRequired])
+        let deny = UNNotificationAction(identifier: PushCategory.deny, title: "Deny", options: [.authenticationRequired, .destructive])
+        center.setNotificationCategories([UNNotificationCategory(identifier: PushCategory.card, actions: [allow, deny], intentIdentifiers: [])])
     }
 
     /// "granted", "denied" or "prompt", as the web app's notifications card shows it.
@@ -75,7 +81,17 @@ extension Notifications: UNUserNotificationCenterDelegate {
     }
 
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
-        let url = response.notification.request.content.userInfo["url"] as? String ?? "/app"
+        let info = response.notification.request.content.userInfo
+        let url = info["url"] as? String ?? "/app"
+        let action = response.actionIdentifier
+        if let approval = info["approval"] as? String, action == PushCategory.allow || action == PushCategory.deny {
+            let problem = await Push.shared.answer(approval: approval, decision: action)
+            if let problem {
+                let tag = info["tag"] as? String ?? response.notification.request.identifier
+                await MainActor.run { self.show(title: "Couldn't answer the card", body: problem, url: url, tag: tag) }
+            }
+            return
+        }
         await MainActor.run { self.open(url) }
     }
 }

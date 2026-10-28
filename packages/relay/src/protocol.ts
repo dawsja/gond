@@ -94,18 +94,26 @@ export type PushRequest = {
   at: number;
   /** Chosen by the sender, so two pushes in the same millisecond sign differently. */
   id: string;
-  platform: "android";
+  platform: PushPlatform;
   /** The phone's Firebase registration token. */
   token: string;
   /** The sealed notice, base64url. */
   data: string;
   /** A newer push with the same collapse key replaces an older one still waiting. */
   collapse: string | null;
+  /**
+   * Shows nothing by itself: what it carries changes what the phone already shows (a card answered
+   * elsewhere). An iPhone must show every alert, so a quiet one goes there as a background push.
+   */
+  quiet?: true;
   /** Ed25519 by `from` over `signedPush`. */
   sig: string;
 };
 
 export type PushResult = "sent" | "gone" | "failed";
+
+export const PUSH_PLATFORMS = ["android", "ios"] as const;
+export type PushPlatform = (typeof PUSH_PLATFORMS)[number];
 
 /** What a relay says about itself at its root address. */
 export function info() {
@@ -142,7 +150,8 @@ export function signedEnvelope(e: Omit<Envelope, "sig">): Uint8Array {
 }
 
 export function signedPush(p: Omit<PushRequest, "sig">): Uint8Array {
-  return utf8([`gond-relay/${PROTOCOL} push`, p.id, p.from, String(p.at), p.platform, p.token, p.data, p.collapse ?? ""].join("\n"));
+  // `quiet` came later, so a push without it signs exactly as before.
+  return utf8([`gond-relay/${PROTOCOL} push`, p.id, p.from, String(p.at), p.platform, p.token, p.data, p.collapse ?? "", ...(p.quiet ? ["quiet"] : [])].join("\n"));
 }
 
 const PUSH_TOKEN = /^[\w:.-]{20,512}$/;
@@ -151,11 +160,12 @@ const COLLAPSE = /^[\w.-]{1,64}$/;
 export function parsePush(value: unknown): PushRequest | null {
   if (!value || typeof value !== "object") return null;
   const p = value as Record<string, unknown>;
-  if (p.v !== 1 || !isKey(p.from) || !isId(p.id) || p.platform !== "android") return null;
+  if (p.v !== 1 || !isKey(p.from) || !isId(p.id) || !(PUSH_PLATFORMS as readonly unknown[]).includes(p.platform)) return null;
   if (typeof p.at !== "number" || !Number.isSafeInteger(p.at) || p.at < 0) return null;
   if (typeof p.token !== "string" || !PUSH_TOKEN.test(p.token) || !isB64(p.data, LIMITS.pushBytes) || !isB64(p.sig, 128)) return null;
   if (p.collapse !== null && (typeof p.collapse !== "string" || !COLLAPSE.test(p.collapse))) return null;
-  return { v: 1, from: p.from, at: p.at, id: p.id, platform: "android", token: p.token, data: p.data, collapse: p.collapse, sig: p.sig };
+  if (p.quiet !== undefined && p.quiet !== true) return null;
+  return { v: 1, from: p.from, at: p.at, id: p.id, platform: p.platform as PushPlatform, token: p.token, data: p.data, collapse: p.collapse, ...(p.quiet ? { quiet: true as const } : {}), sig: p.sig };
 }
 
 export function parseEnvelope(value: unknown): Envelope | null {

@@ -3,6 +3,7 @@ import WebKit
 
 @main
 struct GondApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @StateObject private var model = AppModel()
 
     init() {

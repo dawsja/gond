@@ -29,8 +29,8 @@ export type GondMobile = {
 };
 
 /**
- * The Android app's push (`Push.kt`): its Firebase token and the device id this Gond gave it.
- * Kept off GondMobile, which the iPhone app must offer whole; an app without it shows notices
+ * A phone app's push (`Push.kt`, `Push.swift`): its Firebase token and the device id this Gond gave
+ * it. Kept off GondMobile, which every app must offer whole; an older app without it shows notices
  * only while it runs.
  */
 export type GondPush = {

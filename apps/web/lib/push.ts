@@ -118,21 +118,22 @@ export function phonePushOn(): boolean {
 }
 
 /**
- * Signs the Android app up for push with its Gond, checks it in as it opens, or signs it out when
+ * Signs the phone app up for push with its Gond, checks it in as it opens, or signs it out when
  * its notifications are off. The server hands the phone new keys only when it needs them.
  */
 export async function syncPhonePush(): Promise<void> {
   const bridge = pushBridge();
   const state = phonePush();
   if (!bridge || !state?.token) return;
-  const wanted = !shellNotificationsOff() && mobileShell()?.notificationsState() === "granted";
+  const mobile = mobileShell();
+  const wanted = !shellNotificationsOff() && mobile?.notificationsState() === "granted";
   try {
     if (!wanted) {
       if (state.device) await del(`/api/push/devices/${state.device}`).catch(() => undefined);
       if (state.device) bridge.setPushDevice(null);
       return;
     }
-    const answer = await api<{ id: string; seal?: string; answer?: string }>("/api/push/devices", { method: "PUT", body: JSON.stringify({ platform: "android", token: state.token, id: state.device, notices: shellNotices() }) });
+    const answer = await api<{ id: string; seal?: string; answer?: string }>("/api/push/devices", { method: "PUT", body: JSON.stringify({ platform: mobile?.platform() === "ios" ? "ios" : "android", token: state.token, id: state.device, notices: shellNotices() }) });
     if (answer.seal && answer.answer) bridge.setPushDevice(JSON.stringify(answer));
   } finally {
     window.dispatchEvent(new Event(PUSH_SYNCED_EVENT));

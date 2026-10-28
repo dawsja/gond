@@ -14,14 +14,24 @@ export function ViewingReport() {
     const send = (shown: string | null) =>
       void fetch("/api/push/viewing", { method: "POST", keepalive: true, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ client, threadId: shown, timezone: browserTimezone() }) }).catch(() => undefined);
     let last: string | null | undefined;
+    // The Android app says when it goes to the background, which its WebView doesn't show the page.
+    let hidden = false;
     const report = ({ force = false, leaving = false } = {}) => {
-      const shown = !leaving && document.visibilityState === "visible" && document.hasFocus() ? threadId : null;
+      const shown = !leaving && !hidden && document.visibilityState === "visible" && document.hasFocus() ? threadId : null;
       if (!force && shown === last) return;
       last = shown;
       send(shown);
     };
     const onChange = () => report();
     const onLeave = () => report({ leaving: true });
+    const onAppHidden = () => {
+      hidden = true;
+      report();
+    };
+    const onAppShown = () => {
+      hidden = false;
+      report();
+    };
     report({ force: true });
     const heartbeat = window.setInterval(() => {
       if (last) report({ force: true });
@@ -30,12 +40,16 @@ export function ViewingReport() {
     window.addEventListener("focus", onChange);
     window.addEventListener("blur", onChange);
     window.addEventListener("pagehide", onLeave);
+    window.addEventListener("gond:app-hidden", onAppHidden);
+    window.addEventListener("gond:app-shown", onAppShown);
     return () => {
       window.clearInterval(heartbeat);
       document.removeEventListener("visibilitychange", onChange);
       window.removeEventListener("focus", onChange);
       window.removeEventListener("blur", onChange);
       window.removeEventListener("pagehide", onLeave);
+      window.removeEventListener("gond:app-hidden", onAppHidden);
+      window.removeEventListener("gond:app-shown", onAppShown);
     };
   }, [pathname]);
   return null;

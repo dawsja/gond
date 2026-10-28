@@ -6223,7 +6223,7 @@ describe("phone push", () => {
     }
   }
 
-  type Pushed = { from: string; at: number; id: string; platform: string; token: string; data: string; collapse: string | null; sig: string };
+  type Pushed = { from: string; at: number; id: string; platform: string; token: string; data: string; collapse: string | null; quiet?: true; sig: string };
 
   function fakeRelay(status = 200) {
     const pushes: Pushed[] = [];
@@ -6250,12 +6250,12 @@ describe("phone push", () => {
     return JSON.parse(Buffer.concat([decipher.update(raw.subarray(12, raw.length - 16)), decipher.final()]).toString("utf8"));
   }
 
-  async function phone(person: string, token: string) {
+  async function phone(person: string, token: string, platform: "android" | "ios" = "android") {
     const { pushRoutes } = await import("../src/routes/push.ts");
     const { Hono } = await import("hono");
     const app = asPerson(new Hono(), person);
     app.route("/api", pushRoutes());
-    const res = await app.request("/api/push/devices", { method: "PUT", body: JSON.stringify({ platform: "android", token, notices: { mutedBots: [], other: true } }) });
+    const res = await app.request("/api/push/devices", { method: "PUT", body: JSON.stringify({ platform, token, notices: { mutedBots: [], other: true } }) });
     expect(res.status).toBe(201);
     return { app, ...((await res.json()) as { id: string; seal: string; answer: string }) };
   }
@@ -6275,7 +6275,7 @@ describe("phone push", () => {
       const again = await device.app.request("/api/push/devices", { method: "PUT", body: JSON.stringify({ platform: "android", token, id: device.id }) });
       expect(again.status).toBe(200);
       expect(await again.json()).toEqual({ id: device.id });
-      expect((await device.app.request("/api/push/devices", { method: "PUT", body: JSON.stringify({ platform: "ios", token }) })).status).toBe(400);
+      expect((await device.app.request("/api/push/devices", { method: "PUT", body: JSON.stringify({ platform: "windows", token }) })).status).toBe(400);
       expect((await device.app.request("/api/push/devices", { method: "PUT", body: JSON.stringify({ platform: "android", token: "bad token" }) })).status).toBe(400);
 
       expect(await sendPush({ title: "Pocket", body: "Done.", url: `/app/t/${bot.threadId}`, tag: bot.threadId, threadId: bot.threadId, botId: bot.id }, "u-phone")).toBe(1);
@@ -6332,9 +6332,12 @@ describe("phone push", () => {
     app.route("/api", pushAnswerRoutes());
     try {
       const bot = createBot(botInputSchema.parse({ name: "Errand" }), "u-phone-card");
-      const device = await phone("u-phone-card", "fcm:token-card-000000001");
+      const device = await phone("u-phone-card", "fcm:token-card-000000001", "ios");
       const asked = askOwner({ bot, threadId: bot.threadId, summary: "Place this order?", input: { summary: "Place this order?", allow: "Place order", deny: "Not yet" } });
       await until(() => relay.pushes.length === 1);
+      expect(relay.pushes[0]!.platform).toBe("ios");
+      expect(relay.pushes[0]!.collapse).toStartWith("card-");
+      expect(relay.pushes[0]!.quiet).toBeUndefined();
       const notice = await opened(relay.pushes[0]!, device.seal);
       const card = notice.card as { id: string; allow: string; deny: string };
       expect(card).toMatchObject({ allow: "Place order", deny: "Not yet" });
@@ -6356,6 +6359,8 @@ describe("phone push", () => {
       expect((await asked).decision).toBe("allow");
       expect(getApproval(card.id)!.status).toBe("allowed");
       await until(() => relay.pushes.length === 2);
+      // Taking it back shows nothing, so an iPhone gets it as a background push.
+      expect(relay.pushes[1]).toMatchObject({ platform: "ios", quiet: true });
       expect(await opened(relay.pushes[1]!, device.seal)).toEqual({ v: 1, withdraw: `card-${card.id}` });
       expect((await answer(card.id, "deny")).status).toBe(409);
 

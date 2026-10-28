@@ -34,7 +34,7 @@ const collapseOf = (tag: string) => tag.replace(/[^\w.-]/g, "").slice(0, 64) || 
 
 async function sendTo(device: PushDevice, notice: PhoneNotice, collapse: string | null): Promise<boolean> {
   try {
-    const push = await signPush({ token: device.token, data: sealNotice(device.sealKey, notice), collapse });
+    const push = await signPush({ token: device.token, data: sealNotice(device.sealKey, notice), collapse, platform: device.platform, quiet: "withdraw" in notice });
     const res = await fetch(`${PUSH_RELAY_URL}/v1/push`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(push), signal: AbortSignal.timeout(15_000) });
     // The phone gave up its token: the app is gone or its data cleared, and it signs up again when it opens.
     if (res.status === 410) removePushDevice(device.id);

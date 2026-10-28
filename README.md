@@ -62,9 +62,9 @@ affiliated with xAI, Meta or Anthropic.
 - **Memory.** Each bot has its own, plus a team memory shared by all your
   bots. Handoffs that stall get chased.
 - **Notifications.** Push when a bot finishes or needs you, but not for the
-  chat you're already looking at. The Android app gets them even when it's
-  closed, through `api.gond.io` and Firebase, sealed so that only your phone
-  can read them, and answers a card from the lock screen.
+  chat you're already looking at. The Android and iPhone apps get them even
+  when they're closed, through `api.gond.io` and Firebase, sealed so that
+  only your phone can read them, and answer a card from the lock screen.
 - **Multiple people.** Add an OIDC provider (Pocket ID, Authentik, Keycloak,
   …) and everyone gets their own bots, AI, apps, secrets and Linux account.
 - **Phone and desktop.** The web app is built phone-first and can go on your
