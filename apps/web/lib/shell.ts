@@ -28,6 +28,18 @@ export type GondMobile = {
   features?(): string[];
 };
 
+/**
+ * The Android app's push (`Push.kt`): its Firebase token and the device id this Gond gave it.
+ * Kept off GondMobile, which the iPhone app must offer whole; an app without it shows notices
+ * only while it runs.
+ */
+export type GondPush = {
+  /** `{ token, device }` as JSON, each null until there is one. */
+  pushState(): string;
+  /** The server's answer to signing up (`{ id, seal, answer }`), or null to sign the phone out. */
+  setPushDevice(json: string | null): void;
+};
+
 export type GondDesktop = {
   platform?: () => Promise<string>;
   version?: () => Promise<string>;
@@ -74,6 +86,11 @@ type NativeShell = "desktop" | "android" | "ios";
 
 export function mobileShell(): GondMobile | null {
   return typeof window === "undefined" ? null : (window.gondMobile ?? null);
+}
+
+export function pushBridge(): GondPush | null {
+  const mobile = mobileShell() as (GondMobile & Partial<GondPush>) | null;
+  return mobile && typeof mobile.pushState === "function" && typeof mobile.setPushDevice === "function" ? (mobile as GondMobile & GondPush) : null;
 }
 
 export function desktopShell(): GondDesktop | null {

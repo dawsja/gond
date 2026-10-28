@@ -37,6 +37,11 @@ functions to start from; the code holds the details.
   Object per mailbox, hibernating sockets, `wrangler.jsonc`,
   `api.gond.io`). The relay has no dependencies. Its tests run every flow
   on the Bun server, and on any relay `GOND_RELAY_TEST_URL` names.
+  It also carries push to Android phones (`/v1/push`, `push.ts`): a Gond
+  signs each push with its key, the notice already sealed for that phone,
+  and the relay sends it through Firebase as the service account in the
+  `FCM_SERVICE_ACCOUNT` Cloudflare secret, counted per key. `api.gond.io`
+  is every Gond's push relay (`PUSH_RELAY_URL`), with no setting.
 - `docker-compose.yml` runs the three services; CI builds the images (and
   `gond-relay`'s) and publishes them to GHCR. Builds start alongside the
   checks and nothing is published or released unless they pass. When a
@@ -82,7 +87,15 @@ The address rules are mirrored in each app with the same tests.
   (`layoutFor`/`pushInsets` in `MainActivity.kt`; only the keyboard pads
   the window), while Connect and other origins stay between the bars.
   Build with `gradle assembleRelease` in `apps/android` (ANDROID_HOME
-  set); CI does.
+  set); CI does, signed with the release key in its secrets.
+  Push: `PushService` takes Firebase's messages and opens each with the
+  phone's seal key (`PushCrypto`, the keys wrapped by `Vault`). A card's
+  notice has Approve and Deny (`AnswerReceiver`, the phone unlocked
+  first), posting `/api/push/answer` signed with the answer key.
+  `google-services.json` comes from CI's `GOOGLE_SERVICES_JSON` and is
+  never checked in; a build without it has no push. The page signs the
+  phone up (`syncPhonePush`) through `pushState` and `setPushDevice`,
+  kept off `GondMobile` (`GondPush`) since the iPhone has none.
 - `apps/ios`: Swift and SwiftUI, iPhone only, iOS 17 and up. Connect is
   native (`ConnectView.swift`, Liquid Glass from iOS 26 via `glassEffect`
   and `.glassProminent`, a material before, over faces drawn from the
@@ -285,9 +298,12 @@ The address rules are mirrored in each app with the same tests.
   `shellBridge()`, `mobileShell`, `desktopShell`), never by touching
   `window.gondDesktop` or `window.gondMobile`. The desktop's calls return
   promises and an older desktop may lack a method, so check it is a
-  function first. In an app there is no Web Push: the `notify` live event
-  becomes a native notification (`shell-notifications.tsx`), and Turn off
-  is a per-device switch (`shellNotificationsOff` in `lib/push.ts`). A tap
+  function first. In an app there is no Web Push. The Android app gets
+  push through the relay once signed up (`phonePushOn`); otherwise, and
+  in the other apps, the `notify` live event becomes a native
+  notification while the app runs (`shell-notifications.tsx`). Turn off
+  is a per-device switch (`shellNotificationsOff` in `lib/push.ts`) that
+  also signs the phone out of push. A tap
   on a link to another site goes to `openExternal` (`OutsideLinks` in
   `shell.tsx`). Signing out in an app ends only Gond's session
   (`useSignOut` passes `disableRedirect`), since the provider's session
@@ -1113,7 +1129,17 @@ One line each: where to start, and what must not change.
   directory) on every subscription. Push only when a bot finishes for the
   person or needs them, only when `bot.notify` is on, and only to devices
   that didn't mute that bot (`muted_bots`, `other`). `sendPush` also
-  emits a `notify` event for the shells. Nothing is pushed about a
+  emits a `notify` event for the shells.
+  Android phones (`gond_push_devices`, per person, `src/phone-push.ts`)
+  get each notice sealed for them alone (`sealNotice`, AES-256-GCM with
+  the phone's key) and signed with this Gond's key (`signPush`), sent to
+  the relay; a 410 forgets the phone. `registerPushDevice` hands out keys
+  only to a phone it doesn't know. A card a phone may answer
+  (`answerableOnPhone`: never an email) carries its buttons under a
+  `card-<id>` tag and is withdrawn from the phones once closed
+  (`offPhones`). `/api/push/answer` runs ahead of the session, taken
+  only signed by the phone's answer key within five minutes
+  (`answerSigned`), for a card of that phone's person. Nothing is pushed about a
   conversation on screen (`src/presence.ts`, since the service worker
   can't tell on an iPhone).
 - **Check-ins** (`src/check-ins.ts`, `data/check-ins.ts`,

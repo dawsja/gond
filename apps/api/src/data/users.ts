@@ -159,6 +159,7 @@ export function deleteUserData(userId: string): { bots: string[] } {
     db.query("DELETE FROM gond_threads WHERE user_id = ?").run(userId);
     db.query("DELETE FROM gond_bots WHERE user_id = ?").run(userId);
     db.query("DELETE FROM gond_push_subscriptions WHERE user_id = ?").run(userId);
+    db.query("DELETE FROM gond_push_devices WHERE user_id = ?").run(userId);
     db.query("DELETE FROM gond_user_avatars WHERE user_id = ?").run(userId);
     db.query("DELETE FROM gond_connections WHERE user_id = ?").run(userId);
     db.query("DELETE FROM gond_mcp_servers WHERE user_id = ?").run(userId);

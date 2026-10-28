@@ -4,9 +4,11 @@ import { boxHome } from "./box.ts";
 import { approvalTimeoutMs } from "./config.ts";
 import { addRule, createApproval, getApproval, listApprovals, listRules, resolveApproval } from "./data/approvals.ts";
 import { getBot } from "./data/bots.ts";
+import { personOf } from "./data/profiles.ts";
 import { botHome } from "./memory.ts";
 import { hideSecrets } from "./data/secrets.ts";
 import { postMessage } from "./data/threads.ts";
+import { withdrawFromPhones } from "./phone-push.ts";
 import { sendPush } from "./push.ts";
 
 type Pending = { resolve: (answer: Answer) => void; timer: ReturnType<typeof setTimeout> };
@@ -158,6 +160,7 @@ export function setAside(botId: string, threadId: string): number {
     if (!waiter) continue;
     clearTimeout(waiter.timer);
     pending().delete(approval.id);
+    offPhones(approval.id);
     resolveApproval(approval.id, "expired", null, { outcome: "aside" });
     waiter.resolve({ decision: "deny", input: approval.input, edited: false, send: false, note: null, aside: true });
     closed += 1;
@@ -295,12 +298,38 @@ export function askOwner(input: { bot: Bot; threadId: string; input: Record<stri
   return postCard({ ...input, tool: "ask_approval" });
 }
 
+/** Whether a phone may answer this card from its lock screen: a plain yes or no, never an email, whose card can be read and edited only in full. */
+export function answerableOnPhone(approval: Pick<Approval, "tool" | "input">): boolean {
+  return !emailDraftOf(approval.tool, approval.input);
+}
+
+const buttonLabel = (value: unknown, fallback: string) => (typeof value === "string" && value.trim() ? value.trim().slice(0, 24) : fallback);
+
+/** Cards sent to phones with buttons, by id, with the person whose phones have them. */
+function onPhones(): Map<string, string> {
+  const holder = globalThis as typeof globalThis & { __gondCardsOnPhones?: Map<string, string> };
+  holder.__gondCardsOnPhones ??= new Map();
+  return holder.__gondCardsOnPhones;
+}
+
+/** A card closed (answered, expired, set aside): its buttons come off the phones that had them. */
+function offPhones(id: string) {
+  const person = onPhones().get(id);
+  if (!person) return;
+  onPhones().delete(id);
+  void withdrawFromPhones(person, `card-${id}`);
+}
+
 function postCard(input: { bot: Bot; threadId: string; tool: string; input: Record<string, unknown>; summary?: string; signal?: AbortSignal }): Promise<Answer> {
   const { bot, threadId, tool } = input;
   const answer = (decision: Decision): Answer => ({ decision, input: input.input, edited: false, send: false, note: null, aside: false });
   const approval = createApproval({ botId: bot.id, threadId, tool, summary: hideSecrets(input.summary ?? summarize(tool, input.input)), input: input.input, revises: redrafting(bot.id, threadId, tool) });
   postMessage({ threadId, author: bot.id, kind: "approval", body: approval.summary, approvalId: approval.id, answered: true });
-  if (bot.notify) void sendPush({ title: `${bot.name} needs your approval`, body: approval.summary.slice(0, 140), url: `/app/t/${threadId}`, tag: threadId, threadId, botId: bot.id }, bot.userId);
+  if (bot.notify) {
+    const card = answerableOnPhone(approval) ? { id: approval.id, allow: buttonLabel(input.input.allow, "Allow"), deny: buttonLabel(input.input.deny, "Deny") } : undefined;
+    if (card) onPhones().set(approval.id, personOf(bot.userId));
+    void sendPush({ title: `${bot.name} needs your approval`, body: approval.summary.slice(0, 140), url: `/app/t/${threadId}`, tag: card ? `card-${approval.id}` : threadId, threadId, botId: bot.id, card }, bot.userId);
+  }
   return new Promise<Answer>((resolve) => {
     // Nobody answered in time, or the turn that asked was stopped: the card
     // closes, so a late tap can't run something for work that's over.
@@ -308,6 +337,7 @@ function postCard(input: { bot: Bot; threadId: string; tool: string; input: Reco
       clearTimeout(timer);
       input.signal?.removeEventListener("abort", expire);
       if (!pending().delete(approval.id)) return;
+      offPhones(approval.id);
       resolveApproval(approval.id, "expired");
       resolve(answer("expired"));
       // A stopped turn says what stopped on its own; only a card that ran out of time gets the line.
@@ -347,6 +377,7 @@ export function decide(id: string, given: ApprovalAnswer): Approval | null {
   const note = decision === "deny" ? (given.note?.trim() ?? null) : null;
   const outcome = note ? "changes" : decision === "deny" || email?.mode !== "draft" ? null : given.send ? "sent" : "saved";
   const resolved = resolveApproval(id, decision === "deny" ? "denied" : "allowed", rule, { outcome, note: note ? hideSecrets(note) : null, input: edited });
+  offPhones(id);
   const waiter = pending().get(id);
   if (waiter) {
     clearTimeout(waiter.timer);

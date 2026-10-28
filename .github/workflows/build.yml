@@ -189,6 +189,10 @@ jobs:
     needs: changes
     if: needs.changes.outputs.android == 'true'
     runs-on: ubuntu-24.04
+    # At the job's level so the steps' `if`s can see them; a step's own env isn't set yet when its `if` runs.
+    env:
+      KEYSTORE: ${{ secrets.GOND_ANDROID_KEYSTORE_BASE64 }}
+      GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-java@v5
@@ -205,11 +209,13 @@ jobs:
           node -e "const fs=require('fs');const f='apps/android/package.json';const p=JSON.parse(fs.readFileSync(f,'utf8'));p.version=process.env.RELEASE_TAG.slice(1);fs.writeFileSync(f,JSON.stringify(p,null,2)+'\n');"
       - name: Keystore from secrets
         if: env.KEYSTORE != ''
-        env:
-          KEYSTORE: ${{ secrets.GOND_ANDROID_KEYSTORE_BASE64 }}
         run: |
           echo "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/release.keystore"
           echo "GOND_ANDROID_KEYSTORE=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
+      # Firebase's config for push; without it the app builds the same and shows notices only while it runs.
+      - name: Firebase config from secrets
+        if: env.GOOGLE_SERVICES_JSON != ''
+        run: printf '%s' "$GOOGLE_SERVICES_JSON" > apps/android/app/google-services.json
       - working-directory: apps/android
         env:
           GOND_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.GOND_ANDROID_KEYSTORE_PASSWORD }}

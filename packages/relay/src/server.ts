@@ -4,6 +4,7 @@ import path from "node:path";
 import type { ServerWebSocket } from "bun";
 import { challenge, createStore, ownerFrame, provesKey, receive, type Sql, type SqlValue, type Store } from "./mailbox.ts";
 import { LIMITS, VERSIONS, info, isKey, parseClientFrame, type RelayFrame } from "./protocol.ts";
+import { handlePush, type Fcm } from "./push.ts";
 
 /**
  * gond-relay on your own machine: one Bun process, every mailbox in one SQLite file. Run it
@@ -13,7 +14,7 @@ import { LIMITS, VERSIONS, info, isKey, parseClientFrame, type RelayFrame } from
 
 type Socket = { key: string; nonce: string; authed: boolean; timer?: ReturnType<typeof setTimeout>; turn: Promise<void> };
 
-type RelayServerOptions = { port?: number; hostname?: string; dataDir?: string; database?: Database; now?: () => number };
+type RelayServerOptions = { port?: number; hostname?: string; dataDir?: string; database?: Database; now?: () => number; fcm?: Fcm };
 
 function sqlOf(db: Database): Sql {
   return {
@@ -33,8 +34,13 @@ export function createRelayServer(options: RelayServerOptions = {}) {
   const server = Bun.serve<Socket>({
     port: options.port ?? 8791,
     hostname: options.hostname,
-    fetch(request, server) {
+    async fetch(request, server) {
       const url = new URL(request.url);
+      if (url.pathname === "/v1/push" && request.method === "POST") {
+        const raw = await request.json().catch(() => null);
+        const answer = await handlePush(raw, { fcm: options.fcm ?? null, spend: (key, limit) => store.spend(key, limit), now: store.now });
+        return Response.json(answer.body, { status: answer.status });
+      }
       if (url.pathname === "/v1/connect") {
         const key = url.searchParams.get("key");
         if (!isKey(key)) return Response.json({ error: "Connect with your server's key as ?key=" }, { status: 400 });

@@ -20,7 +20,7 @@ import { mobileSignInRoutes } from "./routes/mobile-sign-in.ts";
 import { checkInsRoutes } from "./routes/check-ins.ts";
 import { profilesRoutes } from "./routes/profiles.ts";
 import { signInsRoutes } from "./routes/sign-ins.ts";
-import { pushRoutes } from "./routes/push.ts";
+import { pushAnswerRoutes, pushRoutes } from "./routes/push.ts";
 import { secretsRoutes } from "./routes/secrets.ts";
 import { skillsRoutes } from "./routes/skills.ts";
 import { routinesRoutes } from "./routes/routines.ts";
@@ -68,6 +68,7 @@ export function createApp() {
 
   app.route("/api", mcpProxyRoutes());
   app.route("/api", llmProxyRoutes());
+  app.route("/api", pushAnswerRoutes());
 
   app.use("/api/*", async (c, next) => {
     if (!isSameOrigin(c.req.raw)) return c.json({ error: "Cross-site request blocked" }, 403);

@@ -106,11 +106,11 @@ export function createStore(sql: Sql, now: () => number = Date.now) {
     },
 
     /** Counts one send against the key's minute; false once it's spent. */
-    spend(key: string): boolean {
+    spend(key: string, limit: number = LIMITS.sendsPerMinute): boolean {
       const minute = Math.floor(now() / 60_000);
       const row = sql.all(`SELECT minute, count FROM relay_sends WHERE key = ?`, key)[0];
       const used = row && Number(row.minute) === minute ? Number(row.count) : 0;
-      if (used >= LIMITS.sendsPerMinute) return false;
+      if (used >= limit) return false;
       sql.run(`INSERT INTO relay_sends (key, minute, count) VALUES (?, ?, ?) ON CONFLICT (key) DO UPDATE SET minute = excluded.minute, count = excluded.count`, key, minute, used + 1);
       return true;
     },

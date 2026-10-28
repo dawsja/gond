@@ -6,6 +6,13 @@ plugins {
 }
 
 /*
+ * Push needs Firebase's config, google-services.json, which CI writes from
+ * the GOOGLE_SERVICES_JSON secret and is never checked in. Without it the app
+ * builds the same and shows notices only while the web app runs.
+ */
+if (file("google-services.json").exists()) apply(plugin = "com.google.gms.google-services")
+
+/*
  * The version comes from package.json, as the desktop app's does: CI writes
  * the release tag there before building. The version code is derived from
  * it so an update always installs over the previous one.
@@ -98,5 +105,7 @@ dependencies {
     implementation("androidx.browser:browser:1.9.0")
     implementation("com.google.android.material:material:1.13.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    implementation(platform("com.google.firebase:firebase-bom:35.1.0"))
+    implementation("com.google.firebase:firebase-messaging")
     testImplementation("junit:junit:4.13.2")
 }

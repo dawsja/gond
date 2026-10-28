@@ -29,6 +29,12 @@ class GondBridge(private val activity: MainActivity) {
     fun requestNotifications() = activity.fromTrustedPage { askForNotifications() }
 
     @JavascriptInterface
+    fun pushState(): String = Push.state(activity)
+
+    @JavascriptInterface
+    fun setPushDevice(json: String?) = activity.fromTrustedPage { Push.save(this, json) }
+
+    @JavascriptInterface
     fun signIn(next: String?) = activity.fromTrustedPage { startSignIn(next) }
 
     @JavascriptInterface

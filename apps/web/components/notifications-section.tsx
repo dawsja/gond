@@ -8,7 +8,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "@/components/ui/toast";
 import { NOTIFICATIONS_EVENT, useDeviceNotices } from "@/hooks/use-device-notices";
-import { currentSubscription, disablePush, enablePush, pushPermission, pushSupported, setShellNotificationsOff, shellNotificationsOff } from "@/lib/push";
+import { PUSH_SYNCED_EVENT, currentSubscription, disablePush, enablePush, phonePushOn, pushPermission, pushSupported, setShellNotificationsOff, shellNotificationsOff } from "@/lib/push";
 import { isPhoneShell, shellBridge, useNativeShell } from "@/lib/shell";
 
 /** Settings → Notifications: this browser or app, and the notices it gets. */
@@ -38,12 +38,14 @@ type DeviceState = "checking" | "unsupported" | "off" | "on" | "blocked";
 function DeviceRow() {
   const shell = useNativeShell();
   const [state, setState] = useState<DeviceState>("checking");
+  const [pushed, setPushed] = useState(false);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     const read = async () => {
       const bridge = shellBridge();
       if (bridge) {
+        setPushed(phonePushOn());
         if (typeof bridge.notificationsState !== "function") return setState("unsupported");
         const permission = await bridge.notificationsState();
         return setState(permission === "granted" ? (shellNotificationsOff() ? "off" : "on") : permission === "denied" ? "blocked" : "off");
@@ -55,7 +57,11 @@ function DeviceRow() {
     void Promise.resolve().then(read);
     const onChange = () => void read();
     window.addEventListener(NOTIFICATIONS_EVENT, onChange);
-    return () => window.removeEventListener(NOTIFICATIONS_EVENT, onChange);
+    window.addEventListener(PUSH_SYNCED_EVENT, onChange);
+    return () => {
+      window.removeEventListener(NOTIFICATIONS_EVENT, onChange);
+      window.removeEventListener(PUSH_SYNCED_EVENT, onChange);
+    };
   }, []);
 
   async function turnOn() {
@@ -105,7 +111,9 @@ function DeviceRow() {
       ? "Checking…"
       : state === "on"
         ? phone
-          ? "On, while the Gond app is open or just put away."
+          ? pushed
+            ? "On, even when the Gond app is closed."
+            : "On, while the Gond app is open or just put away."
           : shell === "desktop"
             ? "On, while the Gond app is running."
             : "On for this browser."

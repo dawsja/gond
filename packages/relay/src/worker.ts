@@ -1,5 +1,6 @@
 import { challenge, createStore, ownerFrame, provesKey, receive, type Sql, type SqlValue, type Store } from "./mailbox.ts";
-import { LIMITS, info, isKey, parseClientFrame, parseEnvelope, type Envelope, type Refusal, type RelayFrame } from "./protocol.ts";
+import { LIMITS, info, isKey, parseClientFrame, parseEnvelope, parsePush, type Envelope, type Refusal, type RelayFrame } from "./protocol.ts";
+import { createFcm, handlePush, type Fcm } from "./push.ts";
 
 /**
  * gond-relay on Cloudflare (api.gond.io): the Worker sends each socket to the Durable Object
@@ -32,12 +33,13 @@ interface DurableObjectNamespace {
   idFromName(name: string): unknown;
   get(id: unknown): DurableObjectStub;
 }
-type Env = { MAILBOXES: DurableObjectNamespace };
+type Env = { MAILBOXES: DurableObjectNamespace; FCM_SERVICE_ACCOUNT?: string };
 
 const WebSocketPair = (globalThis as unknown as { WebSocketPair: new () => { 0: CfSocket; 1: CfSocket } }).WebSocketPair;
 const SWEEP_MS = 24 * 60 * 60 * 1000;
 // Only a Durable Object calls this; the Worker never forwards it, so nobody outside can.
 const RECEIVE = "https://mailbox.internal/receive";
+const PUSH = "https://mailbox.internal/push";
 
 type Attachment = { key: string; nonce: string; authed: boolean };
 
@@ -50,6 +52,13 @@ export default {
       if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") return Response.json({ error: "This address takes a WebSocket" }, { status: 426 });
       return env.MAILBOXES.get(env.MAILBOXES.idFromName(key)).fetch(request);
     }
+    if (url.pathname === "/v1/push" && request.method === "POST") {
+      // Each Gond's pushes are counted in the Durable Object named after its key, as its sends are.
+      const raw = await request.json().catch(() => null);
+      const push = parsePush(raw);
+      if (!push) return Response.json({ error: "That isn't a version 1 push." }, { status: 400 });
+      return env.MAILBOXES.get(env.MAILBOXES.idFromName(push.from)).fetch(PUSH, { method: "POST", body: JSON.stringify(push) });
+    }
     if (url.pathname === "/healthz") return new Response("ok");
     if (url.pathname === "/" || url.pathname === "/v1") return Response.json(info());
     return Response.json({ error: "Not found" }, { status: 404 });
@@ -58,6 +67,7 @@ export default {
 
 export class Mailbox {
   private readonly store: Store;
+  private fcm: Fcm | null | undefined;
   private readonly turns = new WeakMap<CfSocket, Promise<void>>();
 
   constructor(
@@ -73,6 +83,11 @@ export class Mailbox {
   }
 
   async fetch(request: Request): Promise<Response> {
+    if (request.url === PUSH) {
+      if (this.fcm === undefined) this.fcm = this.env.FCM_SERVICE_ACCOUNT ? createFcm(this.env.FCM_SERVICE_ACCOUNT) : null;
+      const answer = await handlePush(await request.json(), { fcm: this.fcm, spend: (key, limit) => this.store.spend(key, limit), now: Date.now });
+      return Response.json(answer.body, { status: answer.status });
+    }
     if (request.url === RECEIVE) {
       const { envelope, invite } = (await request.json()) as { envelope: unknown; invite: string | null };
       const parsed = parseEnvelope(envelope);

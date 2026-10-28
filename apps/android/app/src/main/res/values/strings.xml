@@ -19,4 +19,7 @@
     <string name="no_app_for_link">Nothing on this phone can open that link.</string>
     <string name="notifications_channel">Bots</string>
     <string name="notifications_channel_description">When a bot finishes a job for you or needs your input.</string>
+    <string name="answer_failed">Couldn\'t answer the card</string>
+    <string name="answer_open">Open Gond to answer the card.</string>
+    <string name="answer_offline">Gond didn\'t answer. Open the app to answer the card.</string>
 </resources>

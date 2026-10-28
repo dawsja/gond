@@ -6,11 +6,13 @@ import {
   randomB64,
   signedEnvelope,
   signedHello,
+  signedPush,
   toB64,
   utf8,
   verifySignature,
   type Envelope,
   type ClientFrame,
+  type PushRequest,
   type Refusal,
   type RelayFrame,
 } from "./protocol.ts";
@@ -48,6 +50,12 @@ export async function createIdentity(): Promise<Identity> {
 async function sign(identity: Identity, message: Uint8Array): Promise<string> {
   const key = await crypto.subtle.importKey("pkcs8", fromB64(identity.secret), { name: "Ed25519" }, false, ["sign"]);
   return toB64(await crypto.subtle.sign({ name: "Ed25519" }, key, message as Uint8Array<ArrayBuffer>));
+}
+
+/** A push for one Android phone, signed by this Gond, for a relay's `/v1/push`. `data` is already sealed for the phone. */
+export async function pushRequest(identity: Identity, input: { token: string; data: string; collapse: string | null; at?: number }): Promise<PushRequest> {
+  const unsigned: Omit<PushRequest, "sig"> = { v: 1, from: identity.key, at: input.at ?? Date.now(), id: randomB64(12), platform: "android", token: input.token, data: input.data, collapse: input.collapse };
+  return { ...unsigned, sig: await sign(identity, signedPush(unsigned)) };
 }
 
 export async function keyCard(identity: Identity): Promise<KeyCard> {

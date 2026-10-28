@@ -33,11 +33,12 @@ afterAll(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-/** Sends what Gond addresses to xAI's own API to a local server instead, until the returned function runs. */
-function routeXai(port: number | undefined): () => void {
+/** Sends what Gond addresses to `host` (xAI's API, Gond's relay) to a local server instead, until the returned function runs. */
+function routeHost(host: string, port: number | undefined): () => void {
   const fetchBefore = globalThis.fetch;
   const SocketBefore = globalThis.WebSocket;
-  const local = (url: string) => url.replace(/^(https|wss):\/\/api\.x\.ai/, (_, scheme: string) => `${scheme === "wss" ? "ws" : "http"}://127.0.0.1:${port}`);
+  const pattern = new RegExp(`^(https|wss)://${host.replaceAll(".", "\\.")}(?=[/:]|$)`);
+  const local = (url: string) => url.replace(pattern, (_, scheme: string) => `${scheme === "wss" ? "ws" : "http"}://127.0.0.1:${port}`);
   globalThis.fetch = Object.assign((input: RequestInfo | URL, init?: RequestInit) => fetchBefore(typeof input === "string" || input instanceof URL ? local(String(input)) : input, init), fetchBefore);
   globalThis.WebSocket = class extends SocketBefore {
     constructor(url: string | URL, options?: string | string[]) {
@@ -1218,7 +1219,7 @@ describe("data", () => {
         return Response.json({ text: " hello there " });
       },
     });
-    const restore = routeXai(upstream.port);
+    const restore = routeHost("api.x.ai", upstream.port);
     const app = asPerson(new Hono(), "u-voice");
     app.route("/api", voiceRoutes());
     const send = (name = "voice.webm", bytes = 10) => {
@@ -5380,7 +5381,7 @@ describe("call voices", () => {
         return new Response(new Uint8Array([0xff, 0xfb, 1, 2]), { headers: { "content-type": "audio/mpeg" } });
       },
     });
-    const restore = routeXai(upstream.port);
+    const restore = routeHost("api.x.ai", upstream.port);
     const app = asPerson(new Hono(), "u-voices");
     app.route("/api", voiceRoutes());
     try {
@@ -5455,7 +5456,7 @@ describe("calls", () => {
       },
     });
     const say = (event: object) => socket!.send(JSON.stringify(event));
-    const restore = routeXai(fake.port);
+    const restore = routeHost("api.x.ai", fake.port);
     try {
       const bot = createBot(botInputSchema.parse({ name: "Patch Caller", title: "Travel" }), "u-caller");
       saveProvider("u-caller", "voice", { baseUrl: "https://api.x.ai/v1", apiKey: "xai-test-key-1234567890" });
@@ -5540,7 +5541,7 @@ describe("calls", () => {
       fetch: async (req, server) => (await upgradeCallSocket(req, server, async () => person)) ?? new Response("not a socket", { status: 418 }),
       websocket: callSocket,
     });
-    const restore = routeXai(voice.port);
+    const restore = routeHost("api.x.ai", voice.port);
     try {
       const bot = createBot(botInputSchema.parse({ name: "Patch Socket" }), "u-socket");
       saveProvider("u-socket", "voice", { baseUrl: "https://api.x.ai/v1", apiKey: "xai-socket-key-1234567890" });
@@ -6210,5 +6211,160 @@ describe("check-ins", () => {
     const ok = await put({ enabled: false, quietFrom: 22 });
     expect(ok.status).toBe(200);
     expect(((await ok.json()) as { checkIns: { enabled: boolean; quietFrom: number } }).checkIns).toMatchObject({ enabled: false, quietFrom: 22 });
+  });
+});
+
+describe("phone push", () => {
+  async function until(check: () => boolean, ms = 4000) {
+    const end = Date.now() + ms;
+    while (!check()) {
+      if (Date.now() > end) throw new Error("timed out");
+      await Bun.sleep(20);
+    }
+  }
+
+  type Pushed = { from: string; at: number; id: string; platform: string; token: string; data: string; collapse: string | null; sig: string };
+
+  function fakeRelay(status = 200) {
+    const pushes: Pushed[] = [];
+    const server = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        if (new URL(request.url).pathname !== "/v1/push") return new Response("no", { status: 404 });
+        pushes.push((await request.json()) as Pushed);
+        return Response.json({ result: status === 200 ? "sent" : "gone" }, { status });
+      },
+    });
+    const restore = routeHost("api.gond.io", server.port);
+    return { pushes, stop: () => (restore(), server.stop(true)) };
+  }
+
+  async function opened(push: Pushed, key: string): Promise<Record<string, unknown>> {
+    const { createDecipheriv } = await import("node:crypto");
+    const { signedPush, verifySignature } = await import("@gond/relay/protocol");
+    const { sig, ...signed } = push;
+    expect(await verifySignature(push.from, sig, signedPush(signed as Parameters<typeof signedPush>[0]))).toBe(true);
+    const raw = Buffer.from(push.data, "base64url");
+    const decipher = createDecipheriv("aes-256-gcm", Buffer.from(key, "base64url"), raw.subarray(0, 12));
+    decipher.setAuthTag(raw.subarray(raw.length - 16));
+    return JSON.parse(Buffer.concat([decipher.update(raw.subarray(12, raw.length - 16)), decipher.final()]).toString("utf8"));
+  }
+
+  async function phone(person: string, token: string) {
+    const { pushRoutes } = await import("../src/routes/push.ts");
+    const { Hono } = await import("hono");
+    const app = asPerson(new Hono(), person);
+    app.route("/api", pushRoutes());
+    const res = await app.request("/api/push/devices", { method: "PUT", body: JSON.stringify({ platform: "android", token, notices: { mutedBots: [], other: true } }) });
+    expect(res.status).toBe(201);
+    return { app, ...((await res.json()) as { id: string; seal: string; answer: string }) };
+  }
+
+  test("a phone signs up once, and each notice reaches it sealed for it alone and signed by this Gond", async () => {
+    await seedUsers(["u-phone", "user"]);
+    const { createBot } = await import("../src/data/bots.ts");
+    const { listPushDevices } = await import("../src/data/push-devices.ts");
+    const { sendPush } = await import("../src/push.ts");
+    const { botInputSchema } = await import("@gond/shared");
+    const relay = fakeRelay();
+    try {
+      const bot = createBot(botInputSchema.parse({ name: "Pocket" }), "u-phone");
+      const token = "fcm:token-for-u-phone-0001";
+      const device = await phone("u-phone", token);
+      expect(device.seal).toHaveLength(43);
+      const again = await device.app.request("/api/push/devices", { method: "PUT", body: JSON.stringify({ platform: "android", token, id: device.id }) });
+      expect(again.status).toBe(200);
+      expect(await again.json()).toEqual({ id: device.id });
+      expect((await device.app.request("/api/push/devices", { method: "PUT", body: JSON.stringify({ platform: "ios", token }) })).status).toBe(400);
+      expect((await device.app.request("/api/push/devices", { method: "PUT", body: JSON.stringify({ platform: "android", token: "bad token" }) })).status).toBe(400);
+
+      expect(await sendPush({ title: "Pocket", body: "Done.", url: `/app/t/${bot.threadId}`, tag: bot.threadId, threadId: bot.threadId, botId: bot.id }, "u-phone")).toBe(1);
+      expect(relay.pushes).toHaveLength(1);
+      expect(relay.pushes[0]).toMatchObject({ platform: "android", token, collapse: bot.threadId });
+      expect(JSON.stringify(relay.pushes[0])).not.toContain("Done.");
+      expect(await opened(relay.pushes[0]!, device.seal)).toEqual({ v: 1, title: "Pocket", body: "Done.", url: `/app/t/${bot.threadId}`, tag: bot.threadId });
+
+      // A bot this phone muted says nothing to it.
+      expect((await device.app.request(`/api/push/devices/${device.id}/notices`, { method: "PUT", body: JSON.stringify({ notices: { mutedBots: [bot.id], other: true } }) })).status).toBe(200);
+      await sendPush({ title: "Pocket", body: "Again.", url: "/app", tag: bot.threadId, threadId: bot.threadId, botId: bot.id }, "u-phone");
+      expect(relay.pushes).toHaveLength(1);
+
+      // The same token from a new install takes the phone over, with new keys.
+      const reinstalled = await phone("u-phone", token);
+      expect(reinstalled.id).not.toBe(device.id);
+      expect(listPushDevices("u-phone").map((d) => d.id)).toEqual([reinstalled.id]);
+      expect((await device.app.request(`/api/push/devices/${reinstalled.id}`, { method: "DELETE" })).status).toBe(204);
+      expect(listPushDevices("u-phone")).toEqual([]);
+    } finally {
+      relay.stop();
+    }
+  });
+
+  test("a token the phone gave up is forgotten, and a person who goes takes their phones", async () => {
+    await seedUsers(["u-phone-gone", "user"]);
+    const { listPushDevices } = await import("../src/data/push-devices.ts");
+    const { deleteUserData } = await import("../src/data/users.ts");
+    const { sendPush } = await import("../src/push.ts");
+    const relay = fakeRelay(410);
+    try {
+      await phone("u-phone-gone", "fcm:token-gone-000000001");
+      await sendPush({ title: "Export", body: "Ready.", url: "/app", tag: "export-1", threadId: "" }, "u-phone-gone");
+      expect(listPushDevices("u-phone-gone")).toEqual([]);
+      await phone("u-phone-gone", "fcm:token-gone-000000002");
+      deleteUserData("u-phone-gone");
+      expect(listPushDevices("u-phone-gone")).toEqual([]);
+    } finally {
+      relay.stop();
+    }
+  });
+
+  test("a card goes to the phone with its own buttons, is answered from the lock screen by the phone's signature, and then leaves the phone", async () => {
+    await seedUsers(["u-phone-card", "user"], ["u-phone-other", "user"]);
+    const { createBot } = await import("../src/data/bots.ts");
+    const { askOwner } = await import("../src/approvals.ts");
+    const { createApproval, getApproval } = await import("../src/data/approvals.ts");
+    const { pushAnswerRoutes } = await import("../src/routes/push.ts");
+    const { answerSignature } = await import("../src/phone-push.ts");
+    const { Hono } = await import("hono");
+    const { botInputSchema } = await import("@gond/shared");
+    const relay = fakeRelay();
+    const app = new Hono();
+    app.route("/api", pushAnswerRoutes());
+    try {
+      const bot = createBot(botInputSchema.parse({ name: "Errand" }), "u-phone-card");
+      const device = await phone("u-phone-card", "fcm:token-card-000000001");
+      const asked = askOwner({ bot, threadId: bot.threadId, summary: "Place this order?", input: { summary: "Place this order?", allow: "Place order", deny: "Not yet" } });
+      await until(() => relay.pushes.length === 1);
+      const notice = await opened(relay.pushes[0]!, device.seal);
+      const card = notice.card as { id: string; allow: string; deny: string };
+      expect(card).toMatchObject({ allow: "Place order", deny: "Not yet" });
+      expect(notice.tag).toBe(`card-${card.id}`);
+
+      const answer = (approvalId: string, decision: string, options: { key?: string; at?: number; device?: string } = {}) => {
+        const at = String(options.at ?? Date.now());
+        const id = options.device ?? device.id;
+        const signature = answerSignature(options.key ?? device.answer, { device: id, at, approvalId, decision });
+        return app.request("/api/push/answer", { method: "POST", headers: { "x-gond-device": id, "x-gond-time": at, "x-gond-signature": signature }, body: JSON.stringify({ approvalId, decision }) });
+      };
+      expect((await answer(card.id, "allow", { key: device.seal })).status).toBe(401);
+      expect((await answer(card.id, "allow", { at: Date.now() - 10 * 60_000 })).status).toBe(401);
+      const other = await phone("u-phone-other", "fcm:token-other-00000001");
+      expect((await answer(card.id, "allow", { device: other.id, key: other.answer })).status).toBe(404);
+
+      const ok = await answer(card.id, "allow");
+      expect(ok.status).toBe(200);
+      expect((await asked).decision).toBe("allow");
+      expect(getApproval(card.id)!.status).toBe("allowed");
+      await until(() => relay.pushes.length === 2);
+      expect(await opened(relay.pushes[1]!, device.seal)).toEqual({ v: 1, withdraw: `card-${card.id}` });
+      expect((await answer(card.id, "deny")).status).toBe(409);
+
+      // An email is read and edited in full, so its card never takes an answer from the lock screen.
+      const email = createApproval({ botId: bot.id, threadId: bot.threadId, tool: "GMAIL_SEND_EMAIL", summary: "Send it", input: { recipient_email: "dana@example.com", subject: "Hi", body: "Hello" } });
+      expect((await answer(email.id, "allow")).status).toBe(409);
+      expect(getApproval(email.id)!.status).toBe("pending");
+    } finally {
+      relay.stop();
+    }
   });
 });

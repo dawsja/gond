@@ -1029,6 +1029,22 @@ const MIGRATIONS: Array<string | ((db: Database) => void)> = [
   DROP TABLE IF EXISTS gond_notify_services;
   `,
   VOICE_KEYS,
+  // A phone the person's notices reach through Firebase (via the relay), with the keys only it and this server hold.
+  `
+  CREATE TABLE gond_push_devices (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    platform TEXT NOT NULL,
+    token TEXT NOT NULL UNIQUE,
+    seal_key TEXT NOT NULL,
+    answer_key TEXT NOT NULL,
+    muted_bots TEXT NOT NULL DEFAULT '[]',
+    other INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX gond_push_devices_user ON gond_push_devices (user_id);
+  `,
 ];
 
 /**

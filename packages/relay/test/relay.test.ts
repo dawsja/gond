@@ -436,3 +436,94 @@ describe("a connection that dies quietly", () => {
     }
   });
 });
+
+describe("push", () => {
+  type Sent = { token: string; data: Record<string, string>; collapse: string | null };
+  function fakeFcm(result: "sent" | "gone" | "failed" = "sent") {
+    const sent: Sent[] = [];
+    return { sent, fcm: { send: async (token: string, data: Record<string, string>, collapse: string | null) => (sent.push({ token, data, collapse }), result) } };
+  }
+  const post = (url: string, body: unknown) => fetch(`${url}/v1/push`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  const token = "fcm-token-1234567890:abcdefghij";
+
+  test("a Gond's signed push goes to the phone's token with its sealed notice, and nothing else does", async () => {
+    const { pushRequest } = await import("../src/client.ts");
+    const { sent, fcm } = fakeFcm();
+    const relay = createRelayServer({ port: 0, hostname: "127.0.0.1", database: new Database(":memory:", { strict: true }), fcm });
+    stops.push(() => relay.stop());
+    const gond = await createIdentity();
+    const push = await pushRequest(gond, { token, data: "c2VhbGVk", collapse: "t_123" });
+
+    const ok = await post(relay.url, push);
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toEqual({ result: "sent" });
+    expect(sent).toEqual([{ token, data: { d: "c2VhbGVk" }, collapse: "t_123" }]);
+
+    expect((await post(relay.url, { ...push, data: "b3RoZXI" })).status).toBe(401);
+    const other = await createIdentity();
+    expect((await post(relay.url, { ...push, from: other.key })).status).toBe(401);
+    expect((await post(relay.url, await pushRequest(gond, { token, data: "c2VhbGVk", collapse: null, at: Date.now() - LIMITS.pushSkewMs - 1000 }))).status).toBe(400);
+    expect((await post(relay.url, { ...push, platform: "ios" })).status).toBe(400);
+    expect((await post(relay.url, await pushRequest(gond, { token, data: "x".repeat(LIMITS.pushBytes + 1), collapse: null }))).status).toBe(400);
+    expect(sent).toHaveLength(1);
+  });
+
+  test("pushes are counted per Gond, a token the phone gave up says so, and a relay without Firebase says it can't", async () => {
+    const { pushRequest } = await import("../src/client.ts");
+    const gone = fakeFcm("gone");
+    const relay = createRelayServer({ port: 0, hostname: "127.0.0.1", database: new Database(":memory:", { strict: true }), fcm: gone.fcm, now: () => 1_000_000 });
+    stops.push(() => relay.stop());
+    const gond = await createIdentity();
+    const at = 1_000_000;
+    const first = await post(relay.url, await pushRequest(gond, { token, data: "YQ", collapse: null, at }));
+    expect(first.status).toBe(410);
+    expect(await first.json()).toEqual({ result: "gone" });
+    for (let i = 1; i < LIMITS.pushesPerMinute; i++) await post(relay.url, await pushRequest(gond, { token, data: "YQ", collapse: null, at }));
+    expect((await post(relay.url, await pushRequest(gond, { token, data: "YQ", collapse: null, at }))).status).toBe(429);
+    const another = await createIdentity();
+    expect((await post(relay.url, await pushRequest(another, { token, data: "YQ", collapse: null, at }))).status).toBe(410);
+
+    const bare = bunRelay();
+    expect((await post(bare.url, await pushRequest(gond, { token, data: "YQ", collapse: null }))).status).toBe(503);
+  });
+
+  test("Firebase is reached as the service account, its token kept until it runs out", async () => {
+    const { createFcm } = await import("../src/push.ts");
+    const pair = (await crypto.subtle.generateKey({ name: "RSASSA-PKCS1-v1_5", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" }, true, ["sign", "verify"])) as CryptoKeyPair;
+    const pkcs8 = Buffer.from(await crypto.subtle.exportKey("pkcs8", pair.privateKey)).toString("base64");
+    const pem = `-----BEGIN PRIVATE KEY-----\n${pkcs8.match(/.{1,64}/g)!.join("\n")}\n-----END PRIVATE KEY-----\n`;
+    const grants: string[] = [];
+    const messages: { auth: string | null; path: string; body: unknown }[] = [];
+    const google = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      async fetch(request) {
+        const url = new URL(request.url);
+        if (url.pathname === "/token") {
+          const assertion = new URLSearchParams(await request.text()).get("assertion") ?? "";
+          const [head, claims, sig] = assertion.split(".");
+          const valid = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", pair.publicKey, fromB64(sig!), new TextEncoder().encode(`${head}.${claims}`));
+          if (!valid) return Response.json({ error: "invalid_grant" }, { status: 400 });
+          grants.push(JSON.parse(new TextDecoder().decode(fromB64(claims!))).scope);
+          return Response.json({ access_token: `ya29.${grants.length}`, expires_in: 3600 });
+        }
+        messages.push({ auth: request.headers.get("authorization"), path: url.pathname, body: await request.json() });
+        return url.pathname.includes("gone") ? Response.json({ error: { status: "NOT_FOUND" } }, { status: 404 }) : Response.json({ name: "projects/p/messages/1" });
+      },
+    });
+    stops.push(() => google.stop(true));
+    const base = `http://127.0.0.1:${google.port}`;
+    const account = JSON.stringify({ project_id: "gond-test", client_email: "push@gond-test.iam.gserviceaccount.com", private_key: pem, token_uri: `${base}/token` });
+
+    const fcm = createFcm(account, { endpoint: base });
+    expect(await fcm.send(token, { d: "YQ" }, "t_1")).toBe("sent");
+    expect(await fcm.send(token, { d: "Yg" }, null)).toBe("sent");
+    expect(grants).toEqual(["https://www.googleapis.com/auth/firebase.messaging"]);
+    expect(messages[0]).toEqual({ auth: "Bearer ya29.1", path: "/v1/projects/gond-test/messages:send", body: { message: { token, data: { d: "YQ" }, android: { priority: "HIGH", ttl: "3600s", collapse_key: "t_1" } } } });
+    expect((messages[1]!.body as { message: { android: Record<string, unknown> } }).message.android).toEqual({ priority: "HIGH", ttl: "3600s" });
+
+    const gone = createFcm(JSON.stringify({ ...JSON.parse(account), project_id: "gone" }), { endpoint: base });
+    expect(await gone.send(token, { d: "YQ" }, null)).toBe("gone");
+    expect(() => createFcm("{}")).toThrow();
+  });
+});

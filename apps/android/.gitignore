@@ -1,3 +1,5 @@
 .gradle/
 build/
 local.properties
+# Firebase config for push: CI writes it from the GOOGLE_SERVICES_JSON secret.
+app/google-services.json

@@ -1,5 +1,6 @@
 import { ALL_NOTICES, readDeviceNotices, type DeviceNotices } from "@gond/shared";
-import { api, post } from "@/lib/api";
+import { api, del, post } from "@/lib/api";
+import { mobileShell, pushBridge } from "@/lib/shell";
 
 export function pushSupported(): boolean {
   return typeof window !== "undefined" && "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
@@ -87,8 +88,53 @@ export async function deviceNotices(inShell: boolean): Promise<DeviceNotices | n
 }
 
 export async function saveDeviceNotices(inShell: boolean, notices: DeviceNotices): Promise<void> {
-  if (inShell) return setShellNotices(notices);
+  if (inShell) {
+    const device = phonePush()?.device;
+    if (device && !shellNotificationsOff()) await api(`/api/push/devices/${device}/notices`, { method: "PUT", body: JSON.stringify({ notices }) });
+    return setShellNotices(notices);
+  }
   const subscription = await currentSubscription();
   if (!subscription) throw new Error("Notifications aren't on for this browser. Turn them on first.");
   await api("/api/push/notices", { method: "PUT", body: JSON.stringify({ endpoint: subscription.endpoint, notices }) });
+}
+
+/** Fired once the phone's push sign-up is settled, so what shows it reads it again. */
+export const PUSH_SYNCED_EVENT = "gond:push-synced";
+
+function phonePush(): { token: string | null; device: string | null } | null {
+  const bridge = pushBridge();
+  if (!bridge) return null;
+  try {
+    const state = JSON.parse(bridge.pushState()) as { token?: unknown; device?: unknown };
+    return { token: typeof state.token === "string" ? state.token : null, device: typeof state.device === "string" ? state.device : null };
+  } catch {
+    return null;
+  }
+}
+
+/** Whether this phone gets its notices as push, so the page leaves showing them to the app. */
+export function phonePushOn(): boolean {
+  return Boolean(phonePush()?.device) && !shellNotificationsOff();
+}
+
+/**
+ * Signs the Android app up for push with its Gond, checks it in as it opens, or signs it out when
+ * its notifications are off. The server hands the phone new keys only when it needs them.
+ */
+export async function syncPhonePush(): Promise<void> {
+  const bridge = pushBridge();
+  const state = phonePush();
+  if (!bridge || !state?.token) return;
+  const wanted = !shellNotificationsOff() && mobileShell()?.notificationsState() === "granted";
+  try {
+    if (!wanted) {
+      if (state.device) await del(`/api/push/devices/${state.device}`).catch(() => undefined);
+      if (state.device) bridge.setPushDevice(null);
+      return;
+    }
+    const answer = await api<{ id: string; seal?: string; answer?: string }>("/api/push/devices", { method: "PUT", body: JSON.stringify({ platform: "android", token: state.token, id: state.device, notices: shellNotices() }) });
+    if (answer.seal && answer.answer) bridge.setPushDevice(JSON.stringify(answer));
+  } finally {
+    window.dispatchEvent(new Event(PUSH_SYNCED_EVENT));
+  }
 }

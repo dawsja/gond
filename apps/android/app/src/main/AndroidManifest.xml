@@ -57,5 +57,18 @@
                 <data android:scheme="gond" android:host="sign-in" />
             </intent-filter>
         </activity>
+
+        <!-- Push from the person's Gond, through the relay and Firebase (PushService.kt). -->
+        <service
+            android:name=".PushService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+        <!-- Approve and Deny on a card's notification. -->
+        <receiver
+            android:name=".AnswerReceiver"
+            android:exported="false" />
     </application>
 </manifest>

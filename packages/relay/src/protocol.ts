@@ -32,6 +32,12 @@ export const LIMITS = {
   helloMs: 10_000,
   /** A mailbox nobody connected to for this long is removed, with everything in it. */
   idleMs: 90 * 24 * 60 * 60 * 1000,
+  /** A push's sealed notice; Firebase takes 4 KB of data in all. */
+  pushBytes: 3000,
+  /** Pushes one key may send a minute. */
+  pushesPerMinute: 120,
+  /** How far a push's time may be from the relay's, either way. */
+  pushSkewMs: 5 * 60 * 1000,
 } as const;
 
 export type Envelope = {
@@ -78,6 +84,29 @@ export type RelayFrame =
   | { t: "error"; message: string }
   | { t: "pong" };
 
+/**
+ * A notice for a phone, which the relay passes to Firebase (`/v1/push`). The notice is sealed by the
+ * Gond for that phone alone, so the relay sees only which Gond, which phone, when and how big.
+ */
+export type PushRequest = {
+  v: 1;
+  from: string;
+  at: number;
+  /** Chosen by the sender, so two pushes in the same millisecond sign differently. */
+  id: string;
+  platform: "android";
+  /** The phone's Firebase registration token. */
+  token: string;
+  /** The sealed notice, base64url. */
+  data: string;
+  /** A newer push with the same collapse key replaces an older one still waiting. */
+  collapse: string | null;
+  /** Ed25519 by `from` over `signedPush`. */
+  sig: string;
+};
+
+export type PushResult = "sent" | "gone" | "failed";
+
 /** What a relay says about itself at its root address. */
 export function info() {
   return { name: "gond-relay", protocol: PROTOCOL, versions: VERSIONS, limits: { envelopeBytes: LIMITS.envelopeBytes, queueDays: LIMITS.queueMs / 86_400_000 } };
@@ -110,6 +139,23 @@ export function signedHello(nonce: string): Uint8Array {
 
 export function signedEnvelope(e: Omit<Envelope, "sig">): Uint8Array {
   return utf8([`gond-relay/${PROTOCOL} envelope`, e.id, e.from, e.to, String(e.at), e.enc, e.ct].join("\n"));
+}
+
+export function signedPush(p: Omit<PushRequest, "sig">): Uint8Array {
+  return utf8([`gond-relay/${PROTOCOL} push`, p.id, p.from, String(p.at), p.platform, p.token, p.data, p.collapse ?? ""].join("\n"));
+}
+
+const PUSH_TOKEN = /^[\w:.-]{20,512}$/;
+const COLLAPSE = /^[\w.-]{1,64}$/;
+
+export function parsePush(value: unknown): PushRequest | null {
+  if (!value || typeof value !== "object") return null;
+  const p = value as Record<string, unknown>;
+  if (p.v !== 1 || !isKey(p.from) || !isId(p.id) || p.platform !== "android") return null;
+  if (typeof p.at !== "number" || !Number.isSafeInteger(p.at) || p.at < 0) return null;
+  if (typeof p.token !== "string" || !PUSH_TOKEN.test(p.token) || !isB64(p.data, LIMITS.pushBytes) || !isB64(p.sig, 128)) return null;
+  if (p.collapse !== null && (typeof p.collapse !== "string" || !COLLAPSE.test(p.collapse))) return null;
+  return { v: 1, from: p.from, at: p.at, id: p.id, platform: "android", token: p.token, data: p.data, collapse: p.collapse, sig: p.sig };
 }
 
 export function parseEnvelope(value: unknown): Envelope | null {

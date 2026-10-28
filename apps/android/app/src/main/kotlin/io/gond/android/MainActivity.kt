@@ -105,6 +105,9 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        shown = java.lang.ref.WeakReference(this)
+        Push.refresh(this) { pushChanged() }
+
         server = Prefs.server(this)
         if (finishSignIn(intent)) return
         val target = intent?.getStringExtra(Notifications.EXTRA_URL)
@@ -132,6 +135,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        if (shown?.get() === this) shown = null
         web.destroy()
         super.onDestroy()
     }
@@ -508,6 +512,12 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val PROBE_TIMEOUT_MS = 8_000
+        private var shown: java.lang.ref.WeakReference<MainActivity>? = null
+
+        /** The push token changed: the web app signs this phone up with it. */
+        fun pushChanged() {
+            shown?.get()?.let { activity -> activity.runOnUiThread { activity.web.evaluateJavascript("window.dispatchEvent(new Event('gond:push'))", null) } }
+        }
 
         /** Kept in step with MCP_LOOPBACK_PORT in packages/shared. */
         private const val LOOPBACK_PORT = 47651

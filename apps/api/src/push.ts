@@ -6,6 +6,7 @@ import { appUrl, ensureDataDir } from "./config.ts";
 import { personOf, profileIds, profileOf } from "./data/profiles.ts";
 import { listSubscriptions, removeSubscription } from "./data/push.ts";
 import { emit } from "./events.ts";
+import { pushToPhones } from "./phone-push.ts";
 import { isViewing } from "./presence.ts";
 
 type Vapid = { publicKey: string; privateKey: string };
@@ -35,6 +36,8 @@ type PushPayload = {
   threadId: string;
   /** The bot it is about, so each device can leave out the bots it muted; none for an export or a person in a space. */
   botId?: string | null;
+  /** A card a phone can answer from its lock screen, its buttons named as on the card. */
+  card?: { id: string; allow: string; deny: string };
 };
 
 /**
@@ -50,15 +53,24 @@ export function fromProfile(payload: PushPayload, userId: string): PushPayload {
 
 /**
  * A notice goes everywhere the person set up, whichever profile it is from: every browser and app
- * that turned notifications on. Nothing goes about the conversation they have in front of them, and
- * nothing from a profile they muted.
+ * that turned notifications on, and every phone signed up for push. Nothing goes about the
+ * conversation they have in front of them, and nothing from a profile they muted.
  */
 export async function sendPush(raw: PushPayload, userId: string): Promise<number> {
   if (profileOf(userId)?.muted) return 0;
   const payload = fromProfile(raw, userId);
   const person = personOf(userId);
-  emit({ topic: "notify", userId, ...payload });
+  const { card: _card, ...live } = payload;
+  emit({ topic: "notify", userId, ...live });
   if (payload.threadId && isViewing(userId, payload.threadId)) return 0;
+  const [phones, browsers] = await Promise.all([
+    pushToPhones(person, { v: 1, title: payload.title, body: payload.body, url: payload.url, tag: payload.tag, ...(payload.card ? { card: payload.card } : {}) }, payload.botId),
+    toBrowsers(person, live),
+  ]);
+  return phones + browsers;
+}
+
+async function toBrowsers(person: string, payload: Omit<PushPayload, "card">): Promise<number> {
   const subscriptions = listSubscriptions(person).filter((sub) => noticeWanted(sub.notices, payload.botId));
   if (subscriptions.length === 0) return 0;
   const keys = vapidKeys();
