@@ -13,9 +13,9 @@ import { LIMITS, VERSIONS, info, isKey, parseClientFrame, type RelayFrame } from
 
 type Socket = { key: string; nonce: string; authed: boolean; timer?: ReturnType<typeof setTimeout>; turn: Promise<void> };
 
-export type RelayServerOptions = { port?: number; hostname?: string; dataDir?: string; database?: Database; now?: () => number };
+type RelayServerOptions = { port?: number; hostname?: string; dataDir?: string; database?: Database; now?: () => number };
 
-export function sqlOf(db: Database): Sql {
+function sqlOf(db: Database): Sql {
   return {
     all: (query, ...params) => db.query(query).all(...params) as Record<string, SqlValue>[],
     run: (query, ...params) => void db.query(query).run(...params),

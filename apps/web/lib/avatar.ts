@@ -27,7 +27,7 @@ export function clampCrop(crop: Crop, picture: Size, stage: number): Crop {
 }
 
 /** The square of the picture the stage shows, in the picture's own pixels. */
-export function cropSource(crop: Crop, picture: Size, stage: number): { x: number; y: number; side: number } {
+function cropSource(crop: Crop, picture: Size, stage: number): { x: number; y: number; side: number } {
   const scale = coverScale(picture, stage) * crop.zoom;
   return { x: -crop.x / scale, y: -crop.y / scale, side: stage / scale };
 }

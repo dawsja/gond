@@ -1,9 +1,9 @@
 import { batchTimeoutMs } from "./computer.mjs";
 import { takeLines } from "./gond-mcp.mjs";
 
-export const BROWSER_IDLE_MS = 30 * 60_000;
+const BROWSER_IDLE_MS = 30 * 60_000;
 // Chrome's first start in a fresh profile, on top of the batch's own time.
-export const LAUNCH_MS = 60_000;
+const LAUNCH_MS = 60_000;
 
 const keyOf = (accountId, bot) => `${accountId ?? ""}\n${bot}`;
 

@@ -86,7 +86,7 @@ export function endsCall(text: string, botName = ""): boolean {
   return new RegExp(`^(?:(?:${LEADERS}) )*(?:${CLOSERS})(?: (?:${CLOSERS}|${trailers}))*$`).test(words);
 }
 
-export function voiceInstructions(bot: Bot, person: string): string {
+function voiceInstructions(bot: Bot, person: string): string {
   const job = bot.title || bot.description ? ` (${[bot.title, bot.description].filter(Boolean).join(": ").slice(0, 300)})` : "";
   return [
     `You are the voice of ${bot.name}${job}, on a call with ${person}. You only talk. ${bot.name}'s real work (its memory, files, tools, the computer, connected apps) happens when you hand a request over.`,
@@ -104,7 +104,7 @@ function greetingFor(bot: Bot): string {
 }
 
 /** The hidden prompt a hand-over becomes: the bot's own turn, whose answer goes back to the voice. */
-export function callPrompt(request: string): string {
+function callPrompt(request: string): string {
   const said = request.trim() ? `"${request.trim().slice(0, 2000)}"` : "(what they just said is at the end of the chat above)";
   return [
     `The person is on a voice call with you. Your voice, a separate model that only talks, heard this from them and handed it to you to do:\n\n${said}`,
@@ -125,10 +125,10 @@ function emitTo(call: Call, event: CallEvent) {
   for (const listener of [...call.listeners]) listener(event);
 }
 
-export type StartCall = { ok: true; call: CallInfo } | { ok: false; status: 400 | 409; error: string };
+type StartCall = { ok: true; call: CallInfo } | { ok: false; status: 400 | 409; error: string };
 
 /** Only the primary bot takes calls: it is the one that knows the team and hands work on to the rest. */
-export function callableBot(thread: Thread): Bot | null {
+function callableBot(thread: Thread): Bot | null {
   const bot = thread.kind === "bot" && thread.botId ? getBot(thread.botId) : null;
   return bot?.primary ? bot : null;
 }

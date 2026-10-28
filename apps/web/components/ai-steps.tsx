@@ -18,14 +18,14 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { patch } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
-export type Readiness = {
+type Readiness = {
   state: "ready" | "waiting" | "problem";
   text: string;
 
   signIn?: Engine;
 };
 
-export function providerFor(engine: Engine, providers: Record<ProviderKind, ProviderMeta | null> | null, chosen?: ProviderKind | null): ProviderKind {
+function providerFor(engine: Engine, providers: Record<ProviderKind, ProviderMeta | null> | null, chosen?: ProviderKind | null): ProviderKind {
   const info = ENGINE_LABELS[engine];
   if (chosen && info.providers.includes(chosen)) return chosen;
   return info.providers.find((kind) => providers?.[kind]) ?? info.provider;

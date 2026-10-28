@@ -25,9 +25,9 @@ const MAX_CLIENTS = 64;
 // A relay that's away shouldn't hold up every other Gond's envelopes for long.
 const PEER_TIMEOUT_MS = 5_000;
 
-export type Inbound = (from: string, body: unknown) => Promise<void>;
+type Inbound = (from: string, body: unknown) => Promise<void>;
 /** An event the relay won't ever take, like a join whose invite is used up: for Spaces to say so. */
-export type Undeliverable = (peerKey: string, body: unknown) => void;
+type Undeliverable = (peerKey: string, body: unknown) => void;
 
 type Relay = { client: RelayClient; used: number; busy: number };
 
@@ -120,7 +120,7 @@ function expandIpv6(host: string): number[] | null {
 }
 
 /** This Gond's keys, made the first time they're needed and kept encrypted with the secret key. */
-export async function identity(): Promise<Identity> {
+async function identity(): Promise<Identity> {
   const current = state();
   if (current.identity) return current.identity;
   const row = federationRow();
@@ -144,10 +144,6 @@ export async function ownCard(): Promise<KeyCard> {
 
 export function federationEnabled(): boolean {
   return Boolean(federationRow().enabled);
-}
-
-export function federationState(): FederationState {
-  return state().state;
 }
 
 export function federationFor(admin: boolean): Federation {
@@ -246,7 +242,7 @@ function evictOne(): boolean {
 }
 
 /** The connection this Gond receives on: its own relay. */
-export function ownClient(): RelayClient | null {
+function ownClient(): RelayClient | null {
   const current = state();
   return current.own ? (current.clients.get(current.own)?.client ?? null) : null;
 }
@@ -290,7 +286,7 @@ export async function startFederation() {
   void flush();
 }
 
-export function stopFederation() {
+function stopFederation() {
   const current = state();
   if (current.timer) clearInterval(current.timer);
   current.timer = null;

@@ -39,7 +39,7 @@ export function useNativeCallBar(): boolean {
 
 export type NativeMenuItem = { id: string; label: string; symbol: string; destructive?: boolean };
 
-export type NativeRequest =
+type NativeRequest =
   | { kind: "confirm"; title: string; message: string; action: string; destructive: boolean }
   | {
       kind: "message";
@@ -53,7 +53,7 @@ export type NativeRequest =
   | { kind: "pictures"; items: { url: string; name: string }[]; index: number }
   | { kind: "toast"; title: string; description: string; tone: "error" | "success" | "info" };
 
-export type NativeAnswer = { confirm: boolean; message: { action?: string; react?: string }; pictures: null; toast: null };
+type NativeAnswer = { confirm: boolean; message: { action?: string; react?: string }; pictures: null; toast: null };
 
 let next = 0;
 const waiting = new Map<string, (value: unknown) => void>();
@@ -133,7 +133,7 @@ export type ChromeState = {
 };
 
 /** The Chats screen's header in the iPhone app: your picture, Search and New. */
-export type ChatsChromeState = {
+type ChatsChromeState = {
   screen: "chats";
   /** Search is open: the app draws the field, and the page shows what it finds. */
   searching: boolean;
@@ -167,9 +167,9 @@ export type ChromeEvent =
   | { type: "call-end" };
 
 /** A Settings page's back button in the iPhone app. */
-export type SettingsChromeState = { screen: "settings"; label: string; covered: boolean };
+type SettingsChromeState = { screen: "settings"; label: string; covered: boolean };
 
-export type AnyChrome = ChromeState | ChatsChromeState | SettingsChromeState;
+type AnyChrome = ChromeState | ChatsChromeState | SettingsChromeState;
 
 /** Hands the conversation's header and composer to the app while `state` is set, and takes them back when it isn't. */
 export function useNativeChrome(state: AnyChrome | null, onEvent: (event: ChromeEvent) => void) {

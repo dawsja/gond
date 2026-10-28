@@ -35,5 +35,3 @@ export function createRedactor(secrets: readonly (string | null | undefined)[], 
 function escape(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
-
-export const redact = createRedactor([]);

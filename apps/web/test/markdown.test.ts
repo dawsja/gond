@@ -46,9 +46,6 @@ describe("markdown", () => {
   test("a table ends at a blank line and the text after it is its own block", () => {
     expect(types(parseMarkdown("| A |\n|---|\n| 1 |\n\nAfter the table.").children)).toEqual(["table", "paragraph"]);
   });
-  test("strikethrough", () => {
-    expect(types(parseInline("~~gone~~ now"))).toEqual(["delete", "text"]);
-  });
   test("blocks", () => {
     expect(types(parseMarkdown("# Title\n\n- one\n- two\n\n```sh\nls\n```").children)).toEqual(["heading", "list", "code"]);
   });

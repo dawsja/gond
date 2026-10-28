@@ -78,7 +78,7 @@ function matching(value: unknown, id: number): RpcReply | null {
 }
 
 /** The reply to request `id`, from a JSON body or an event stream (Streamable HTTP lets the server pick). */
-export async function replyTo(res: Response, id: number): Promise<RpcReply> {
+async function replyTo(res: Response, id: number): Promise<RpcReply> {
   if (!(res.headers.get("content-type") ?? "").includes("text/event-stream")) {
     const reply = matching(await res.json(), id);
     if (!reply) throw new Error("The server answered without a reply to the call");
@@ -133,11 +133,11 @@ export class McpSession {
   }
 }
 
-export type McpToolInfo = { name: string; title?: string; description?: string; inputSchema?: unknown };
+type McpToolInfo = { name: string; title?: string; description?: string; inputSchema?: unknown };
 
 type McpContent = { type?: string; text?: string; data?: string; mimeType?: string; resource?: { text?: string; uri?: string } };
 
-export function toolResultOf(result: unknown): ToolResult {
+function toolResultOf(result: unknown): ToolResult {
   const { content = [], structuredContent, isError } = (result ?? {}) as { content?: McpContent[]; structuredContent?: unknown; isError?: boolean };
   const parts: ToolPart[] = [];
   for (const item of content) {

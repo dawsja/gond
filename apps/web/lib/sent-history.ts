@@ -12,7 +12,7 @@ export function sentHistory(messages: Line[]): string[] {
   return history;
 }
 
-export type HistoryKey = {
+type HistoryKey = {
   key: string;
   text: string;
   start: number;

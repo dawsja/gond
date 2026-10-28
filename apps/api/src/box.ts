@@ -8,7 +8,7 @@ import type { StepUpdate } from "./work.ts";
 
 export type BoxConfig = { url: string; token: string; user: string | null };
 
-export type ExecResult = {
+type ExecResult = {
   exitCode: number;
   signal: string | null;
   output: string;
@@ -16,7 +16,7 @@ export type ExecResult = {
   timedOut: boolean;
 };
 
-export function boxUrl(): string | null {
+function boxUrl(): string | null {
   const url = (env("BOX_URL") ?? "").trim().replace(/\/+$/, "");
   return url || null;
 }
@@ -89,11 +89,11 @@ async function call<T>(config: BoxConfig, method: string, route: string, body?: 
   return data;
 }
 
-export type BoxAccount = { id: string; name: string; uid: number | null; home: string };
+type BoxAccount = { id: string; name: string; uid: number | null; home: string };
 
 const knownAccounts = new Map<string, BoxAccount>();
 
-export async function ensureBoxAccount(config: BoxConfig): Promise<BoxAccount> {
+async function ensureBoxAccount(config: BoxConfig): Promise<BoxAccount> {
   if (!config.user) throw new BoxError("No person to make an account for", 400);
   const user = getUser(config.user);
   if (!user) throw new BoxError("No such person", 404);
@@ -117,7 +117,7 @@ export async function removeBoxAccount(config: BoxConfig, userId: string): Promi
   knownAccounts.delete(userId);
 }
 
-export type BoxSkillFile = { path: string; data: string; executable: boolean };
+type BoxSkillFile = { path: string; data: string; executable: boolean };
 
 export function listBoxSkills(config: BoxConfig): Promise<{ skills: string[] }> {
   return call(config, "GET", "/skills", undefined, 10_000);
@@ -131,13 +131,13 @@ export async function deleteBoxSkill(config: BoxConfig, slug: string): Promise<v
   await call(config, "DELETE", `/skills/${slug}`);
 }
 
-export const EXEC_TIMEOUT_MS = 10 * 60 * 1000;
+const EXEC_TIMEOUT_MS = 10 * 60 * 1000;
 
 export function health(config: BoxConfig): Promise<{ ok: boolean; agents: number; desktops?: number; updating?: boolean }> {
   return fetch(`${config.url}/health`, { signal: AbortSignal.timeout(5_000) }).then((r) => r.json() as Promise<{ ok: boolean; agents: number; updating?: boolean }>);
 }
 
-export type BoxUpdateStatus = { running: boolean; startedAt?: string; finishedAt?: string | null; ok?: boolean | null; exitCode?: number | null; log?: string };
+type BoxUpdateStatus = { running: boolean; startedAt?: string; finishedAt?: string | null; ok?: boolean | null; exitCode?: number | null; log?: string };
 
 export function startBoxUpdate(config: BoxConfig): Promise<{ ok: true; startedAt: string }> {
   return call(config, "POST", "/update", {}, 120_000);
@@ -253,7 +253,7 @@ export function checkClaude(config: BoxConfig): Promise<ClaudeCheck> {
   return call(config, "POST", "/claude/check", {}, 45_000);
 }
 
-export type ClaudeAuth = { known: boolean; loggedIn: boolean | null; email?: string | null; org?: string | null; method?: string | null };
+type ClaudeAuth = { known: boolean; loggedIn: boolean | null; email?: string | null; org?: string | null; method?: string | null };
 
 export function claudeAuth(config: BoxConfig): Promise<ClaudeAuth> {
   return call(config, "GET", "/claude/auth", undefined, 20_000);
@@ -279,7 +279,7 @@ export async function cancelEngineSignIn(config: BoxConfig, engine: Engine): Pro
   await call(config, "DELETE", `/engines/${engine}/sign-in`, undefined, 15_000);
 }
 
-export async function* readEvents<T>(body: ReadableStream<Uint8Array>): AsyncGenerator<T> {
+async function* readEvents<T>(body: ReadableStream<Uint8Array>): AsyncGenerator<T> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let pending = "";
@@ -303,7 +303,7 @@ export type AgentTool = { name: string; description: string; inputSchema: unknow
 
 export type BoxAccess = { kind: "plan" } | { kind: "api"; baseUrl: string; token: string; smallModel?: string | null };
 
-export type AgentTurnInput = {
+type AgentTurnInput = {
   bot: string;
 
   engine: Engine;
@@ -323,7 +323,7 @@ export type AgentTurnInput = {
   guest?: "talk" | "look";
 };
 
-export type AgentEvent =
+type AgentEvent =
   | { type: "init"; sessionId: string; permissionMode: string | null }
   | { type: "line"; line: string }
   | { type: "activity"; line: string }
@@ -338,7 +338,7 @@ export type AgentEvent =
   | AgentTurnResult
   | { type: "error"; missing: boolean; message: string };
 
-export type AgentTurnResult = {
+type AgentTurnResult = {
   type: "result";
   ok: boolean;
   text: string;
@@ -402,7 +402,7 @@ export function desktopScreens(config: BoxConfig): Promise<{ screens: DesktopSta
  * `primary` on the first start of the primary bot's screen hands it the browser profile from before each bot had its own;
  * `name` and `color` put the bot on its browser's homepage.
  */
-export type ScreenStart = { width: number; height: number; primary?: boolean; name?: string; color?: string };
+type ScreenStart = { width: number; height: number; primary?: boolean; name?: string; color?: string };
 
 export function startDesktop(config: BoxConfig, bot: string, body: ScreenStart): Promise<DesktopStatus> {
   return call(config, "POST", screenPath(bot), body, 45_000);
@@ -490,7 +490,7 @@ export type ScreenStep = { type: ScreenStepType } & Record<string, unknown>;
 
 export type ScreenView = "both" | "text" | "image";
 
-export type ScreenBatch = {
+type ScreenBatch = {
   bot: string;
   primary?: boolean;
   name?: string;
@@ -526,7 +526,7 @@ export type ScreenResult = {
 };
 
 // Twenty steps may each wait or load a page; the box bounds every one of them.
-export const SCREEN_BATCH_TIMEOUT_MS = 6 * 60_000;
+const SCREEN_BATCH_TIMEOUT_MS = 6 * 60_000;
 
 export function screenBatch(config: BoxConfig, batch: ScreenBatch, signal?: AbortSignal): Promise<ScreenResult> {
   return call(config, "POST", "/computer", batch, SCREEN_BATCH_TIMEOUT_MS, signal);

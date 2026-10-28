@@ -304,8 +304,6 @@ export const routineInputSchema = routineFields.extend({
   skillId: routineFields.shape.skillId.default(null),
 });
 
-export const routinePatchSchema = routineFields.partial();
-
 /** What `bot.json` in a `.bot` file says: a bot's job and look and its routines, never its memory, secrets or chats. */
 export const BOT_TEMPLATE_FORMAT = "gond.bot/1";
 
@@ -1047,10 +1045,6 @@ export const SPACE_LEVEL_LABELS: Record<SpaceLevel, { label: string; blurb: stri
   act: { label: "Do things, with my OK", blurb: "What they ask comes to you as a card first. On a yes, your bot does it with its tools." },
   full: { label: "Always allow", blurb: "Does what they ask with its tools and your sign-ins, with no card to you first. An email that goes out and a card payment still ask." },
 };
-
-export function isSpaceLevel(value: unknown): value is SpaceLevel {
-  return typeof value === "string" && (SPACE_LEVELS as readonly string[]).includes(value);
-}
 
 /** Your bot's rules in one space, which only you see and set. */
 /**

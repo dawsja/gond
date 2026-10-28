@@ -3,7 +3,7 @@ import { ensureDatabase } from "../db/init.ts";
 import { now } from "../ids.ts";
 import { getMessage } from "./threads.ts";
 
-export type ThreadSummary = { summary: string; through: string; updatedAt: string };
+type ThreadSummary = { summary: string; through: string; updatedAt: string };
 
 const TRANSCRIPT_KINDS = "kind IN ('message', 'approval', 'signin')";
 

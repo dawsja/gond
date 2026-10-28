@@ -10,7 +10,6 @@ import { applyAccent } from "@/lib/theme/theme";
 
 export type ThreadRow = Thread & { busy?: boolean };
 
-export type { Me };
 
 type Store = {
   bots: Bot[];

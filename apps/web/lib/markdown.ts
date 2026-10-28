@@ -7,7 +7,7 @@ import { gfm } from "micromark-extension-gfm";
 
 export type Tone = "ok" | "warn" | "bad" | "info" | "neutral";
 
-export const TONES: readonly Tone[] = ["ok", "warn", "bad", "info", "neutral"];
+const TONES: readonly Tone[] = ["ok", "warn", "bad", "info", "neutral"];
 
 export type Badge = { label: PhrasingContent[]; tone: Tone };
 
@@ -24,7 +24,7 @@ export type Meter = {
 
 export type CalloutKind = "note" | "tip" | "important" | "warning" | "caution";
 
-export type Callout = { kind: CalloutKind; children: RootContent[] };
+type Callout = { kind: CalloutKind; children: RootContent[] };
 
 export type Definitions = Map<string, { url: string; title: string | null }>;
 

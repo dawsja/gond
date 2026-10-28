@@ -35,7 +35,7 @@ export function saveFederation(patch: Partial<Pick<FederationRow, "enabled" | "n
     .run(...entries.map(([, value]) => value as string | number | null), now());
 }
 
-export type PeerRow = { key: string; box: string; sig: string; name: string; relay_url: string; blocked: number; last_seen: string | null };
+type PeerRow = { key: string; box: string; sig: string; name: string; relay_url: string; blocked: number; last_seen: string | null };
 
 export function getPeer(key: string): PeerRow | null {
   return ensureDatabase().query("SELECT key, box, sig, name, relay_url, blocked, last_seen FROM gond_peers WHERE key = ?").get(key) as PeerRow | null;
@@ -66,7 +66,7 @@ export function setPeerChecked(userId: string, key: string, checked: boolean) {
   else db.query("DELETE FROM gond_peer_checks WHERE user_id = ? AND peer_key = ?").run(userId, key);
 }
 
-export function peerChecked(userId: string, key: string): boolean {
+function peerChecked(userId: string, key: string): boolean {
   return Boolean(ensureDatabase().query("SELECT 1 FROM gond_peer_checks WHERE user_id = ? AND peer_key = ?").get(userId, key));
 }
 
@@ -288,7 +288,7 @@ export function firstSight(peerKey: string, envelopeId: string): boolean {
   return changes > 0;
 }
 
-export type OutboxRow = { id: string; peer_key: string; body: string; attempts: number; next_at: string; created_at: string };
+type OutboxRow = { id: string; peer_key: string; body: string; attempts: number; next_at: string; created_at: string };
 
 export function enqueue(peerKey: string, body: unknown): string {
   const id = newId("env").replace(/[^A-Za-z0-9_-]/g, "");

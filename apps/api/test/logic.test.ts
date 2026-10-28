@@ -9,8 +9,7 @@ import { isViewing, markViewing, VIEWING_TTL_MS } from "../src/presence.ts";
 import { renderSoul } from "../src/souls.ts";
 import { checkBundleFiles, packSkill, parseSkillMd, readableName, renderSkillMd, unpackSkill } from "../src/skill-bundle.ts";
 import { zipSync } from "fflate";
-import { ruleLabel, type AppCatalogEntry, type Approval, type Bot, type Routine, type Thread } from "@gond/shared";
-import type { Delegation } from "../src/data/delegations.ts";
+import { ruleLabel, type AppCatalogEntry, type Bot, type Thread } from "@gond/shared";
 
 const bot: Bot = {
   id: "bot-1",
@@ -1688,9 +1687,9 @@ describe("run_with_secrets", () => {
 describe("message search index", () => {
   test("the migration indexes messages that are already there, and triggers keep it current", async () => {
     const { Database } = await import("bun:sqlite");
-    const { runMigrations, LATEST_VERSION } = await import("../src/db/migrations.ts");
+    const { runMigrations, SEARCH_INDEX_VERSION } = await import("../src/db/migrations.ts");
     const db = new Database(":memory:", { strict: true });
-    runMigrations(db, LATEST_VERSION - 1);
+    runMigrations(db, SEARCH_INDEX_VERSION - 1);
     const at = "2026-10-21T00:00:00Z";
     db.query("INSERT INTO gond_threads (id, kind, bot_id, name, user_id, created_at, updated_at) VALUES ('t1', 'room', NULL, 'Room', 'u1', ?, ?)").run(at, at);
     const post = (id: string, body: string) =>

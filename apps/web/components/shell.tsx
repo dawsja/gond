@@ -85,7 +85,7 @@ export function Shell({ user, children }: { user: SessionUser; children: ReactNo
   );
 }
 
-export const OPEN_DIALOG_EVENT = "gond:open-dialog";
+const OPEN_DIALOG_EVENT = "gond:open-dialog";
 
 export function openShellDialog(dialog: NonNullable<ShellDialog>) {
   window.dispatchEvent(new CustomEvent(OPEN_DIALOG_EVENT, { detail: dialog }));

@@ -17,7 +17,7 @@ const holder = globalThis as typeof globalThis & {
 };
 
 /** How long a reply keeps its bot's screen after its last batch there, while another reply of that bot waits for it. */
-export const DESKTOP_LAPSE_MS = 2 * 60_000;
+const DESKTOP_LAPSE_MS = 2 * 60_000;
 const WAIT_POLL_MS = 500;
 
 // Every bot has a screen of its own, so what is kept per screen is keyed by the person and the bot.

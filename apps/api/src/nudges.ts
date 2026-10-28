@@ -4,7 +4,7 @@ import { listOpenDelegations, markEscalated, markNudged, openChildren } from "./
 import { getThread, postMessage } from "./data/threads.ts";
 import { isBusy } from "./responder.ts";
 
-export function nudgeAfterMs(): number {
+function nudgeAfterMs(): number {
   return Math.max(5, Number(env("NUDGE_MINUTES") ?? 120) || 120) * 60_000;
 }
 

@@ -6,7 +6,7 @@ import { botTotals, planLimits, rangeStart, recordUsage, savePlanLimits, sourceT
 import { providerFor, type EngineRun } from "./engines.ts";
 import { GROK_PLAN_HEADERS, grokAccessToken } from "./grok.ts";
 
-export function usageSourceOf(run: Pick<EngineRun, "access" | "native">): UsageSource {
+function usageSourceOf(run: Pick<EngineRun, "access" | "native">): UsageSource {
   if (run.native) return run.native.kind;
   return run.access.kind === "api" ? "anthropic" : "claude";
 }
@@ -87,7 +87,7 @@ async function freshGrok(userId: string): Promise<void> {
 }
 
 /** What the person's bots run on now, read without failing when it isn't set up. */
-export function currentSource(userId: string): UsageSource {
+function currentSource(userId: string): UsageSource {
   const ai = getAi(userId);
   if (isCliEngine(ai.engine)) return ai.engines[ai.engine].access === "api" ? "anthropic" : "claude";
   const config = ai.engines[ai.engine];

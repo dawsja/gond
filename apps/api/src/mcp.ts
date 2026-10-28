@@ -2,7 +2,7 @@ import { SECRET_REF, isKeyHeader, type Bot, type McpServer } from "@gond/shared"
 import { env } from "./config.ts";
 import { listMcpServers, mcpProxyToken } from "./data/mcp.ts";
 
-export type BoxMcpServer = ({ name: string; type: "http"; url: string; headers: Record<string, string> } | { name: string; type: "stdio"; command: string; args: string[]; env: Record<string, string> }) & { rev?: string };
+type BoxMcpServer = ({ name: string; type: "http"; url: string; headers: Record<string, string> } | { name: string; type: "stdio"; command: string; args: string[]; env: Record<string, string> }) & { rev?: string };
 
 export function apiInternalUrl(): string {
   return (env("API_INTERNAL_URL") ?? `http://127.0.0.1:${process.env.PORT || 8790}`).replace(/\/$/, "");

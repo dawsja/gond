@@ -45,7 +45,7 @@ export async function skillsReady(userId: string): Promise<void> {
   await syncSkills(userId);
 }
 
-export function renderSkill(skill: StoredSkill): string {
+function renderSkill(skill: StoredSkill): string {
   return renderSkillMd(skill);
 }
 

@@ -31,7 +31,7 @@ export function useProviders() {
   return { providers, reload: load };
 }
 
-export function ProviderForm({ kind, provider, onSaved, onCancel }: { kind: ProviderKind; provider: ProviderMeta | null; onSaved: (provider: ProviderMeta) => void; onCancel?: () => void }) {
+function ProviderForm({ kind, provider, onSaved, onCancel }: { kind: ProviderKind; provider: ProviderMeta | null; onSaved: (provider: ProviderMeta) => void; onCancel?: () => void }) {
   const label = PROVIDER_LABELS[kind];
   const [baseUrl, setBaseUrl] = useState(provider?.baseUrl ?? label.defaultUrl);
   const [apiKey, setApiKey] = useState("");

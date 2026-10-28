@@ -10,7 +10,7 @@ export type ModelUsage = { model: string; tokens: Tokens; cost: number | null };
 
 export type StepUsage = Omit<ModelUsage, "model">;
 
-export function tokenTotal(tokens: Tokens): number {
+function tokenTotal(tokens: Tokens): number {
   return tokens.input + tokens.output + tokens.cacheRead + tokens.cacheWrite;
 }
 

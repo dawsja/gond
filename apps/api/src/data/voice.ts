@@ -16,7 +16,7 @@ function callVoiceOf(raw: string | null | undefined): VoiceSettings["callVoice"]
 }
 
 /** Whose speech endpoints the person's OpenAI-compatible key reaches; null without one. */
-export function voiceProvider(userId: string): VoiceProvider | null {
+function voiceProvider(userId: string): VoiceProvider | null {
   const baseUrl = providerBaseUrl(userId, "openai");
   return baseUrl ? (isXaiUrl(baseUrl) ? "xai" : "openai") : null;
 }

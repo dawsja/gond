@@ -44,7 +44,7 @@ export function spaceMentionables(space: ThreadSpace | null | undefined): Mentio
 }
 
 /** "Ada's Gond", "Ada's Gond and Cy's Gond", "Ada's Gond and 2 more". */
-export function gondNames(space: ThreadSpace): string {
+function gondNames(space: ThreadSpace): string {
   const list = space.gonds.map((g) => g.name);
   if (list.length <= 2) return list.join(" and ");
   return `${list[0]} and ${list.length - 1} more`;

@@ -17,7 +17,7 @@ export type Decision = "allow" | "deny" | "always" | "expired";
  * `aside` is a card the person wrote past instead of answering (`setAside`); its decision is "deny", so a caller that
  * doesn't look for it still does nothing.
  */
-export type Answer = { decision: Decision; input: Record<string, unknown>; edited: boolean; send: boolean; note: string | null; aside: boolean };
+type Answer = { decision: Decision; input: Record<string, unknown>; edited: boolean; send: boolean; note: string | null; aside: boolean };
 
 const holder = globalThis as typeof globalThis & { __gondPendingApprovals?: Map<string, Pending> };
 

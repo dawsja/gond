@@ -1130,6 +1130,7 @@ export const RENAME_VERSION = MIGRATIONS.indexOf(renameLegacyObjects) + 1;
 export const CALLS_OUT_VERSION = MIGRATIONS.indexOf(CALLS_OUT) + 1;
 export const TEACH_CARDS_VERSION = MIGRATIONS.indexOf(allowTeachMessages) + 1;
 export const CONTROL_CARDS_VERSION = MIGRATIONS.indexOf(allowControlMessages) + 1;
+export const SEARCH_INDEX_VERSION = MIGRATIONS.findIndex((step) => typeof step === "string" && step.includes("CREATE VIRTUAL TABLE gond_messages_fts")) + 1;
 export const XAI_KEYS_VERSION = MIGRATIONS.indexOf(foldXaiKeys) + 1;
 export const LATEST_VERSION = MIGRATIONS.length;
 

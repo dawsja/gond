@@ -7,7 +7,7 @@ export const MAX_UPLOAD_BYTES = 30 * 1024 * 1024;
 
 // The coder is named for ImageMagick, never guessed from the file's bytes,
 // so a file can only ever be read as the kind of picture it was sent as.
-export const PREVIEW_CODERS = {
+const PREVIEW_CODERS = {
   "image/jpeg": "jpeg",
   "image/png": "png",
   "image/webp": "webp",

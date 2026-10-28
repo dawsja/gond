@@ -30,7 +30,3 @@ export function getDb(): Database {
   return db;
 }
 
-export function closeDb() {
-  holder.__gondSqlite?.db.close();
-  holder.__gondSqlite = undefined;
-}

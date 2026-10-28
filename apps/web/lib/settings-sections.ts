@@ -2,13 +2,13 @@ import type { UserRole } from "@gond/shared";
 import { Bell, Gauge, Globe, Layers, Link2, Blocks, BrainCircuit, Info, KeyRound, LogIn, MessageCircleHeart, Mic, Monitor, Palette, Server, Sparkles, UserRound } from "lucide-react";
 
 /** The headings Settings' list is grouped under; a section with no group sits on its own at the end. */
-export const SETTINGS_GROUPS = [
+const SETTINGS_GROUPS = [
   { id: "you", label: "You" },
   { id: "bots", label: "Bots" },
   { id: "server", label: "Server" },
 ] as const;
 
-export type SettingsGroup = (typeof SETTINGS_GROUPS)[number]["id"];
+type SettingsGroup = (typeof SETTINGS_GROUPS)[number]["id"];
 
 export const SETTINGS_SECTIONS = [
   { id: "account", group: "you", label: "Account", blurb: "Your picture, your password, and exporting your chats.", icon: UserRound, admin: false },
@@ -36,7 +36,7 @@ export function isSettingsSection(value: string): value is SettingsSection {
   return SETTINGS_SECTIONS.some((s) => s.id === value);
 }
 
-export function sectionsFor(role: UserRole) {
+function sectionsFor(role: UserRole) {
   return SETTINGS_SECTIONS.filter((s) => role === "admin" || !s.admin);
 }
 

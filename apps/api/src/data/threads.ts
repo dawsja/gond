@@ -5,7 +5,7 @@ import { newId, now } from "../ids.ts";
 import { federationRow, threadSpace } from "./spaces.ts";
 
 /** What happened to a conversation, for Spaces to pass on: a message posted, or a room's bots changed. */
-export type ThreadEvent = { type: "posted"; message: Message } | { type: "room"; threadId: string };
+type ThreadEvent = { type: "posted"; message: Message } | { type: "room"; threadId: string };
 type ThreadListener = (event: ThreadEvent) => void;
 const listenerHolder = globalThis as typeof globalThis & { __gondThreadListeners?: Set<ThreadListener> };
 const threadListeners = () => (listenerHolder.__gondThreadListeners ??= new Set());
@@ -283,7 +283,7 @@ export function markThreadRead(id: string) {
   botsChanged(threadOwner(id));
 }
 
-export type NewMessage = {
+type NewMessage = {
   threadId: string;
   author: MessageAuthor;
   body: string;
@@ -333,7 +333,7 @@ export function postMessage(input: NewMessage): Message {
 }
 
 /** The claim a room line holds while the router decides whom it is for, so no turn takes it first. */
-export const ROUTING = "routing";
+const ROUTING = "routing";
 
 /** Records whom the router judged a line was for. */
 export function setSentTo(id: string, botIds: string[]) {
@@ -423,7 +423,7 @@ export function recentMessages(threadId: string, count: number): Message[] {
 }
 
 /** The words of a search, each matched anywhere in a message (case aside), in any order. */
-export function searchTerms(query: string): string[] {
+function searchTerms(query: string): string[] {
   return [...new Set(query.toLowerCase().split(/\s+/).filter(Boolean))].slice(0, 8);
 }
 

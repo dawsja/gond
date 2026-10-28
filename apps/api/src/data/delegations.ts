@@ -76,7 +76,7 @@ export function getDelegation(id: string): Delegation | null {
   return row ? toDelegation(row) : null;
 }
 
-export function delegationForMessage(messageId: string): Delegation | null {
+function delegationForMessage(messageId: string): Delegation | null {
   const row = ensureDatabase().query("SELECT * FROM gond_delegations WHERE message_id = ? AND status = 'open'").get(messageId) as Row | null;
   return row ? toDelegation(row) : null;
 }

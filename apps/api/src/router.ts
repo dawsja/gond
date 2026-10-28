@@ -11,9 +11,9 @@ import { usageRecorder } from "./usage.ts";
 const ROUTE_LINES = 12;
 const ROUTE_LINE_CHARS = 300;
 // Past this the person's line goes by the rules instead: a slow pick is worse than a plain one.
-export const ROUTE_TIMEOUT_MS = 8_000;
+const ROUTE_TIMEOUT_MS = 8_000;
 
-export const ROUTER_INSTRUCTIONS = "You decide which bot in a group chat a person's message is for. You only answer with @handles: you have no tools and do nothing else.";
+const ROUTER_INSTRUCTIONS = "You decide which bot in a group chat a person's message is for. You only answer with @handles: you have no tools and do nothing else.";
 
 export function routerPrompt(members: Bot[], lines: string, body: string): string {
   const roster = members.map((b) => `- @${handleOf(b.name)}: ${b.name}${b.title ? `, ${b.title}` : ""}${b.description ? `. ${b.description.replace(/\s+/g, " ").slice(0, 300)}` : ""}`).join("\n");

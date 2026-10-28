@@ -3,8 +3,8 @@ import path from "node:path";
 import { appName, createTimeline, pageStep, samePage, TEACH_MAX_FRAME_BYTES, TEACH_MAX_FRAMES, TEACH_MAX_MS } from "./recorder.mjs";
 
 // With nobody watching the screen, a recording pauses after this, and ends after the second.
-export const AWAY_PAUSE_MS = 30_000;
-export const AWAY_END_MS = 30 * 60_000;
+const AWAY_PAUSE_MS = 30_000;
+const AWAY_END_MS = 30 * 60_000;
 const FRAME_GAP_MS = 600;
 const FRAME_SETTLE_MS = 300;
 const STEPS_FILE = "steps.json";

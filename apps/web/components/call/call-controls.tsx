@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils";
 const BARS = [0.5, 0.8, 1, 0.8, 0.5];
 
 /** "1:31" for the call, ticking each second. */
-export function useCallClock(call: CallView | null): string {
+function useCallClock(call: CallView | null): string {
   const [now, setNow] = useState<number | null>(null);
   const startedAt = call?.info.startedAt;
   useEffect(() => {
@@ -40,7 +40,7 @@ export function useCallClock(call: CallView | null): string {
  * The call's one moving thing: five bars that follow whoever is talking, in the person's color while
  * they do and the bot's while it does. Still under reduced motion.
  */
-export function CallWave({ call, bot, className }: { call: CallView; bot: Pick<Bot, "color"> | undefined; className?: string }) {
+function CallWave({ call, bot, className }: { call: CallView; bot: Pick<Bot, "color"> | undefined; className?: string }) {
   const { levels } = useCall();
   const bars = useRef<(HTMLSpanElement | null)[]>([]);
   const botTalking = call.speaking;

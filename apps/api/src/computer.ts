@@ -152,7 +152,7 @@ export function computerTools(context: Context): Record<string, DriverTool> {
 
 /** Every engine's: a command that needs a stored secret gets it as $NAME, and its output comes back with each value replaced by its name. */
 export function secretCommandTool(context: Context): Record<string, DriverTool> {
-  const { box, bot } = context;
+  const { bot } = context;
   return {
     run_with_secrets: {
       description:

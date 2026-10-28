@@ -3,7 +3,7 @@ import { unzipSync, zipSync, type Zippable } from "fflate";
 
 export type BundleFile = { path: string; data: Uint8Array; executable: boolean };
 
-export type ParsedSkillMd = {
+type ParsedSkillMd = {
   name: string | null;
   description: string;
   instructions: string;
@@ -126,7 +126,7 @@ export function packSkill(skill: { slug: string; name: string; description: stri
   return zipSync(entries, { level: 6 });
 }
 
-export type UnpackedSkill = { skillMd: string; folder: string | null; files: BundleFile[] };
+type UnpackedSkill = { skillMd: string; folder: string | null; files: BundleFile[] };
 
 function clutter(path: string): boolean {
   return path.split("/").some((part) => part === "__MACOSX" || part === ".DS_Store" || part === "Thumbs.db");

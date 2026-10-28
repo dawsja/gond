@@ -73,7 +73,7 @@ export function memoryByUid(proc = "/proc") {
 }
 
 const DU_TIMEOUT_MS = 2 * 60 * 1000;
-export const DU_KEEP_MS = 60 * 60 * 1000;
+const DU_KEEP_MS = 60 * 60 * 1000;
 
 /**
  * How much each home holds, measured by `du` in the background, one home at a time, and kept for an

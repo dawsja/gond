@@ -6,11 +6,10 @@ import path from "node:path";
 import { BridgedSession, EXIT_GRACE_MS, IDLE_MS, MAX_STDERR, ReplyText, killTree, systemReminder } from "./bridge.mjs";
 import { CLAUDE_BIN, NOT_SIGNED_IN, writeSystemPrompt } from "./claude.mjs";
 
-export { IDLE_MS, systemReminder };
 
 const MAX_LINE = 4 * 1024 * 1024;
 
-export const FLAG_FLOORS = {
+const FLAG_FLOORS = {
   "--input-format": "1.0.0",
   "--strict-mcp-config": "1.0.30",
   "--setting-sources": "1.0.100",
@@ -26,7 +25,7 @@ export function parseVersion(text) {
   return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : null;
 }
 
-export function atLeast(version, floor) {
+function atLeast(version, floor) {
   const want = parseVersion(floor);
   if (!version || !want) return false;
   for (let i = 0; i < 3; i += 1) {
@@ -36,7 +35,7 @@ export function atLeast(version, floor) {
   return true;
 }
 
-export function flagsFor(version) {
+function flagsFor(version) {
   const allowed = new Set();
   for (const [flag, floor] of Object.entries(FLAG_FLOORS)) {
     if (!version || atLeast(version, floor)) allowed.add(flag);
@@ -50,7 +49,7 @@ export function forgetClaudeVersion() {
   cachedVersion = undefined;
 }
 
-export function claudeVersion({ bin = CLAUDE_BIN, env, uid, gid } = {}) {
+function claudeVersion({ bin = CLAUDE_BIN, env, uid, gid } = {}) {
   if (cachedVersion !== undefined) return cachedVersion;
   try {
     const result = spawnSync(bin, ["--version"], { env, uid, gid, encoding: "utf8", timeout: 15_000 });
@@ -61,7 +60,7 @@ export function claudeVersion({ bin = CLAUDE_BIN, env, uid, gid } = {}) {
   return cachedVersion;
 }
 
-export const CREDENTIAL_ENV = [
+const CREDENTIAL_ENV = [
   "ANTHROPIC_API_KEY",
   "ANTHROPIC_AUTH_TOKEN",
   "ANTHROPIC_BASE_URL",
@@ -72,7 +71,7 @@ export const CREDENTIAL_ENV = [
   "CLAUDE_CODE_USE_VERTEX",
 ];
 
-export function stripCredentialEnv(env) {
+function stripCredentialEnv(env) {
   const clean = { ...env };
   for (const name of CREDENTIAL_ENV) delete clean[name];
   return clean;
@@ -162,7 +161,7 @@ export function argsKeyFor({ model, maxTurns, toolNames, permission, mcpServers 
   return createHash("sha256").update(JSON.stringify({ model, maxTurns: maxTurns ?? null, toolNames, permission: permission ?? "ask", mcpServers, access, ...revs, ...visitor })).digest("hex").slice(0, 16);
 }
 
-export function mcpServersConfig(servers) {
+function mcpServersConfig(servers) {
   const out = {};
   for (const server of Array.isArray(servers) ? servers : []) {
     if (!server || typeof server.name !== "string" || !/^[a-z0-9][a-z0-9_-]*$/i.test(server.name) || server.name === "gond") continue;
@@ -312,12 +311,12 @@ export function isReplay(event) {
 
 export const STEER_FOLLOW_MS = 5_000;
 
-export function isResumeFailure({ resume, sawInit, stderr, exitCode }) {
+function isResumeFailure({ resume, sawInit, stderr, exitCode }) {
   if (!resume || sawInit || exitCode === 0) return false;
   return /no conversation found|session.*(not found|does not exist|invalid)|could not resume|resume/i.test(stderr ?? "");
 }
 
-export function isUnknownOption(stderr) {
+function isUnknownOption(stderr) {
   return /unknown option|unrecognized option|unknown argument|too many arguments/i.test(stderr ?? "");
 }
 

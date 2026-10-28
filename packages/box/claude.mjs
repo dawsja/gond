@@ -5,8 +5,8 @@ import path from "node:path";
 
 export const CLAUDE_BIN = process.env.CLAUDE_BIN || "claude";
 
-export const CLAUDE_CHECK_MODEL = "haiku";
-export const CLAUDE_CHECK_TIMEOUT_MS = 30_000;
+const CLAUDE_CHECK_MODEL = "haiku";
+const CLAUDE_CHECK_TIMEOUT_MS = 30_000;
 
 const KILL_GRACE_MS = 5_000;
 
@@ -26,7 +26,7 @@ function killTree(child, signal) {
   }
 }
 
-export function spawnClaude({
+function spawnClaude({
   bin = CLAUDE_BIN,
   args,
   cwd,
@@ -110,7 +110,7 @@ export function spawnClaude({
 
 export const NOT_SIGNED_IN = /not logged in|please run \/login|invalid api key|authentication|unauthori[sz]ed|oauth token/i;
 
-export function classifyCheck({ spawnError, exitCode, output }) {
+function classifyCheck({ spawnError, exitCode, output }) {
   if (spawnError) {
     return spawnError.code === "ENOENT" || spawnError.code === "EACCES" ? "missing" : "error";
   }

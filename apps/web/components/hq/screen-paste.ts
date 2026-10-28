@@ -29,7 +29,7 @@ export function pasteText(read: string | null | undefined, fromEvent: string | n
   return fromEvent ? fromEvent : null;
 }
 
-export type ScreenKey = { keysym: number; code: string; down: boolean };
+type ScreenKey = { keysym: number; code: string; down: boolean };
 
 const XK = { v: 0x76, insert: 0xff63, shiftL: 0xffe1, controlL: 0xffe3, altL: 0xffe9, superL: 0xffeb, superR: 0xffec } as const;
 

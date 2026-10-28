@@ -6,7 +6,7 @@ import { useLiveEvents } from "@/components/hq/live-events";
 import { api, apiShared } from "@/lib/api";
 
 /** Where showing a bot how is still the person's or the bot's to finish: one at a time. */
-export const OPEN_STATUSES: TeachStatus[] = ["recording", "paused", "review", "looking"];
+const OPEN_STATUSES: TeachStatus[] = ["recording", "paused", "review", "looking"];
 
 type TeachingState = {
   open: Teaching | null;

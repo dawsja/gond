@@ -93,7 +93,7 @@ test("a recording gathers the person's steps with a screenshot each, and keeps t
   assert.equal(fs.existsSync(path.join(home, "teach", "u", "teach-0001")), false);
 });
 
-test("paused time doesn't count, the limit ends it, and nobody watching pauses then ends it", async () => {
+test("paused time doesn't count, and the limit ends it", async () => {
   const { home, clock, state, recordings } = setup();
   await recordings.start({ key: "k", user: "u", bot: "b", id: "teach-0002" });
   await clock.advance(4_000);

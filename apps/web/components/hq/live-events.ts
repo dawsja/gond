@@ -3,7 +3,7 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import type { LiveEvent } from "@gond/shared";
 
-export type LiveMessage = LiveEvent | { topic: "open" };
+type LiveMessage = LiveEvent | { topic: "open" };
 
 type Listener = (message: LiveMessage) => void;
 

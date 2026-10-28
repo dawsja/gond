@@ -2,7 +2,7 @@ import { accessSync, constants, existsSync } from "node:fs";
 import { hostname } from "node:os";
 import { env } from "./config.ts";
 
-export function dockerSocket(): string {
+function dockerSocket(): string {
   return env("DOCKER_SOCK") || "/var/run/docker.sock";
 }
 
@@ -54,7 +54,7 @@ async function json<T>(method: string, route: string, body?: unknown, timeoutMs?
   return (await res.json()) as T;
 }
 
-export type ContainerInfo = {
+type ContainerInfo = {
   Id: string;
   Name: string;
   Image: string;
@@ -106,7 +106,7 @@ export async function imageId(ref: string): Promise<string | null> {
   }
 }
 
-export function splitImageRef(ref: string): { image: string; tag: string } {
+function splitImageRef(ref: string): { image: string; tag: string } {
   const at = ref.indexOf("@");
   if (at !== -1) return { image: ref.slice(0, at), tag: ref.slice(at + 1) };
   const slash = ref.lastIndexOf("/");

@@ -51,7 +51,7 @@ export type DesktopReport = { status: DesktopStatus; message: string | null; not
 
 export const INITIAL_REPORT: DesktopReport = { status: "starting", message: null, notice: null, zoom: 1 };
 
-export type DesktopQuality = "thumb" | "full";
+type DesktopQuality = "thumb" | "full";
 
 export type DesktopViewHandle = {
   reconnect: () => void;
@@ -64,19 +64,19 @@ export type DesktopViewHandle = {
   recenterPointer: () => void;
 };
 
-export const MAX_ZOOM = 5;
+const MAX_ZOOM = 5;
 const TRACKPAD_TAP_MS = 250;
 const TRACKPAD_SPEED = 1.5;
 const POINTER_MARGIN = 32;
 // A pinch that ends this close to the whole screen snaps back to it.
 const ZOOM_SNAP = 1.08;
 
-export function clampZoom(zoom: number) {
+function clampZoom(zoom: number) {
   return Math.min(MAX_ZOOM, Math.max(1, Number.isFinite(zoom) ? zoom : 1));
 }
 
 /** The view's size for a remote screen fitted into a stage, then zoomed. */
-export function fittedSize(remote: { width: number; height: number }, stage: { width: number; height: number }, zoom: number) {
+function fittedSize(remote: { width: number; height: number }, stage: { width: number; height: number }, zoom: number) {
   const fit = Math.min(stage.width / remote.width, stage.height / remote.height);
   if (!Number.isFinite(fit) || fit <= 0) return { width: stage.width, height: stage.height };
   return { width: Math.floor(remote.width * fit * zoom), height: Math.floor(remote.height * fit * zoom) };
@@ -92,7 +92,7 @@ const KEYSYM_BACKSPACE = 0xff08;
 const KEYSYM_RETURN = 0xff0d;
 const KEYSYM_TAB = 0xff09;
 
-export function keysymOf(character: string): number {
+function keysymOf(character: string): number {
   if (character === "\n" || character === "\r") return KEYSYM_RETURN;
   if (character === "\t") return KEYSYM_TAB;
   const code = character.codePointAt(0) ?? 0;

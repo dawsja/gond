@@ -15,7 +15,7 @@ const NAME_CHARS = 80;
 const VALUE_CHARS = 60;
 const URL_CHARS = 60;
 export const MAX_LINES = 250;
-export const MAX_CHARS = 14_000;
+const MAX_CHARS = 14_000;
 
 const clip = (text, max) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
 

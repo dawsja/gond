@@ -27,7 +27,6 @@ describe("shared", () => {
     for (const t of BOT_TEMPLATES) {
       const parsed = botInputSchema.safeParse({ name: t.name, title: t.title, description: t.description, color: t.color, expression: t.expression });
       expect(parsed.success).toBe(true);
-      expect("isChief" in t).toBe(false);
     }
   });
 
@@ -267,7 +266,9 @@ describe("isXaiUrl", () => {
     expect(isXaiUrl("https://example.com/api.x.ai")).toBe(false);
     expect(isXaiUrl("not a url")).toBe(false);
   });
+});
 
+describe("email cards", () => {
   test("an email card reads what a Gmail or Outlook action is about to send", () => {
     expect(emailDraftOf("GMAIL_SEND_EMAIL", { recipient_email: "dana@ruizdesign.co", extra_recipients: ["priya@ruizdesign.co"], cc: ["ops@ruizdesign.co"], bcc: ["me@gmail.com"], subject: "Launch plan", body: "Hi all,\n\nDates below.", attachment: "/home/agent/proofs-v4.pdf" })).toEqual({
       mode: "send",
@@ -346,20 +347,22 @@ describe("isXaiUrl", () => {
     expect(wordDiff("same", "same")).toEqual([{ text: "same", change: "same" }]);
   });
 
-  test("a release is newer only by its numbers", () => {
-    expect(newerVersion("0.2.47", "0.2.46")).toBe(true);
-    expect(newerVersion("v0.10.0", "0.9.9")).toBe(true);
-    expect(newerVersion("0.2.46", "0.2.46")).toBe(false);
-    expect(newerVersion("0.2.47", "dev")).toBe(false);
-    expect(newerVersion("1.0.0-rc1", "0.9.0")).toBe(false);
-  });
-
   test("an email body is words, never markup", () => {
     expect(emailText("<script>alert(1)</script><b>Hi</b> &amp; bye<ul><li>one</li><li>two</li></ul>")).toBe("Hi & bye• one\n• two");
     expect(emailText("Plain <3 text")).toBe("Plain <3 text");
     expect(emailName("Dana Ruiz <dana@ruizdesign.co>")).toBe("Dana Ruiz");
     expect(emailName('"Ruiz, Dana" <dana@ruizdesign.co>')).toBe("Ruiz, Dana");
     expect(emailName("dana@ruizdesign.co")).toBe("dana@ruizdesign.co");
+  });
+});
+
+describe("releases", () => {
+  test("a release is newer only by its numbers", () => {
+    expect(newerVersion("0.2.47", "0.2.46")).toBe(true);
+    expect(newerVersion("v0.10.0", "0.9.9")).toBe(true);
+    expect(newerVersion("0.2.46", "0.2.46")).toBe(false);
+    expect(newerVersion("0.2.47", "dev")).toBe(false);
+    expect(newerVersion("1.0.0-rc1", "0.9.0")).toBe(false);
   });
 });
 

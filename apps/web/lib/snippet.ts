@@ -1,6 +1,6 @@
 import { plainMarkdown, type Message } from "@gond/shared";
 
-export type Snippet = { before: string; match: string; after: string };
+type Snippet = { before: string; match: string; after: string };
 
 const SIDE = 40;
 

@@ -36,11 +36,11 @@ const LABEL_ROLES = ["button", "link", "menuitem", "tab", "option", "checkbox", 
 const QUIET_MS = 150;
 const SETTLE_MAX_MS = 1_500;
 const DOWNLOAD_WAIT_MS = 15_000;
-export const MAX_READ_CHARS = 20_000;
+const MAX_READ_CHARS = 20_000;
 const JPEG_QUALITY = 75;
 
 /** The X clipboard of the person's display, which their Chrome and desktop share. */
-export const xclipClipboard = { read: () => readXclip(), write: (text) => writeXclip(text) };
+const xclipClipboard = { read: () => readXclip(), write: (text) => writeXclip(text) };
 
 export function readXclip(spawnAs = spawn, options = {}) {
   return new Promise((resolve, reject) => {
@@ -753,7 +753,7 @@ async function settleSize(page) {
 }
 
 /** Maximizes the window a page is in unless it already is (or is full screen); true when it changed. */
-export async function maximizeWindow(context, page) {
+async function maximizeWindow(context, page) {
   if (typeof context?.newCDPSession !== "function") return false;
   const cdp = await context.newCDPSession(page);
   try {

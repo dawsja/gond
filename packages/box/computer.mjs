@@ -13,24 +13,24 @@ export const LOOK_STEPS = new Set(["screenshot", "wait", "read", "wait_for", "cl
 // Steps that can name an element by its ref from the last answer's element list instead of a point.
 const REF_STEPS = new Set(["click", "hold", "mouse_down", "mouse_up", "move", "hover", "drag", "type", "scroll", "fill", "select", "check", "read", "copy", "upload"]);
 const NEEDS_REF = new Set(["fill", "select", "check", "upload"]);
-export const TARGETS = ["desktop", "browser"];
+const TARGETS = ["desktop", "browser"];
 
 export const MAX_STEPS = 20;
-export const MAX_TEXT_CHARS = 2000;
-export const MAX_KEY_CHARS = 200;
-export const MAX_URL_CHARS = 4000;
-export const MAX_WAIT_MS = 10_000;
-export const MAX_SCROLL = 20;
-export const DEFAULT_SCROLL = 3;
-export const MAX_TABS = 50;
-export const MAX_WAIT_FOR_MS = 30_000;
-export const DEFAULT_WAIT_FOR_MS = 10_000;
-export const MAX_OPTIONS = 20;
-export const MAX_POINTS = 20;
-export const MAX_HOLD_MS = 15_000;
-export const DEFAULT_HOLD_MS = 2000;
-export const DEFAULT_CLICK_DELAY_MS = 120;
-export const MAX_CLICK_DELAY_MS = 2000;
+const MAX_TEXT_CHARS = 2000;
+const MAX_KEY_CHARS = 200;
+const MAX_URL_CHARS = 4000;
+const MAX_WAIT_MS = 10_000;
+const MAX_SCROLL = 20;
+const DEFAULT_SCROLL = 3;
+const MAX_TABS = 50;
+const MAX_WAIT_FOR_MS = 30_000;
+const DEFAULT_WAIT_FOR_MS = 10_000;
+const MAX_OPTIONS = 20;
+const MAX_POINTS = 20;
+const MAX_HOLD_MS = 15_000;
+const DEFAULT_HOLD_MS = 2000;
+const DEFAULT_CLICK_DELAY_MS = 120;
+const MAX_CLICK_DELAY_MS = 2000;
 const REF = /^[a-z0-9]{1,24}$/i;
 export const MAX_LABEL_CHARS = 200;
 const ROLE = /^[a-z]{2,24}$/;
@@ -40,8 +40,8 @@ export const SETTLE_MS = 400;
 // A drag the way a hand does it, since drag-and-drop lists ignore one that jumps straight to
 // its end: hold the press, travel in small moves, and wait over the drop spot before letting go.
 export const DRAG_PRESS_MS = 150;
-export const DRAG_HOLD_MS = 80;
-export const MAX_DRAG_HOLD_MS = 10_000;
+const DRAG_HOLD_MS = 80;
+const MAX_DRAG_HOLD_MS = 10_000;
 export const DRAG_STEP_MS = 16;
 const DRAG_STEP_PX = 12;
 const DRAG_MIN_STEPS = 10;
@@ -143,7 +143,7 @@ function pointsOf(step, area) {
 }
 
 
-export const THUMB_EDGE = 1024;
+const THUMB_EDGE = 1024;
 
 export const PERSON_HAS_CONTROL = "The person has taken control of the computer; wait for them to give it back or ask them.";
 
@@ -286,7 +286,7 @@ export function normalizeUrl(value) {
   return url.href;
 }
 
-export const MIN_ZOOM_EDGE = 32;
+const MIN_ZOOM_EDGE = 32;
 
 /**
  * A part of the screen to answer with instead of all of it: a CAPTCHA's picture grid is
@@ -633,7 +633,7 @@ export function xdotoolStdin(step) {
 }
 
 export const STEP_TIMEOUT_MS = 15_000;
-export const TYPE_MS_PER_CHAR = 15;
+const TYPE_MS_PER_CHAR = 15;
 export const NAVIGATE_TIMEOUT_MS = 30_000;
 
 export function stepTimeoutMs(step) {

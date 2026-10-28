@@ -18,7 +18,7 @@ function state(): State {
   return (holder.__gondDispatcher ??= { timer: null, owner: randomString(8), ticking: false, lastChase: 0, woken: false });
 }
 
-export const TICK_MS = 2_000;
+const TICK_MS = 2_000;
 
 export function startDispatcher(options: { intervalMs?: number } = {}) {
   const current = state();
@@ -32,7 +32,7 @@ export function startDispatcher(options: { intervalMs?: number } = {}) {
 }
 
 /** One tick on the next turn of the event loop, however many ask for it before then. */
-export function wake() {
+function wake() {
   const current = state();
   if (current.woken) return;
   current.woken = true;
@@ -42,7 +42,7 @@ export function wake() {
   }, 0);
 }
 
-export function runDueRoutines(at = new Date()) {
+function runDueRoutines(at = new Date()) {
   for (const routine of claimDueRoutines(at)) {
     const bot = getBot(routine.botId);
     if (!bot || bot.hidden) continue;
@@ -59,11 +59,11 @@ export function runDueFollowUps(at = new Date()) {
   }
 }
 
-export function followUpPrompt(note: string, setAt: string): string {
+function followUpPrompt(note: string, setAt: string): string {
   return `The follow-up you set at ${setAt} is due: ${note}\n\nSee where it stands (list_handoffs and read_conversation tell you what your teammates did) and carry the work on. If you still have to wait, set another follow_up; if it's finished, tell the person.`;
 }
 
-export async function tick() {
+async function tick() {
   const current = state();
   if (current.ticking) return;
   current.ticking = true;

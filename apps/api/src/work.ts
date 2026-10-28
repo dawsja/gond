@@ -69,7 +69,7 @@ export function clearWork(threadId: string, botId: string) {
   logs().delete(keyOf(threadId, botId));
 }
 
-export type TurnTiming = { totalMs: number; toolsMs: number; modelMs: number; rounds: number; calls: number; screen: number; queuedMs: number; setupMs: number; firstMs: number | null };
+type TurnTiming = { totalMs: number; toolsMs: number; modelMs: number; rounds: number; calls: number; screen: number; queuedMs: number; setupMs: number; firstMs: number | null };
 
 /**
  * A turn's time from the message to its end: how long it waited to start (`queuedSince`), its setup

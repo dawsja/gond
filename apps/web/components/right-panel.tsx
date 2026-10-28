@@ -59,9 +59,9 @@ function RoutineRow({ routine, onOpen, onChange }: { routine: Routine; onOpen: (
 }
 
 /** Which bot's screen the conversation shows full size, if any. */
-export type ScreenProps = { open: string | null; onExpand: (botId: string) => void; onCollapse: () => void };
+type ScreenProps = { open: string | null; onExpand: (botId: string) => void; onCollapse: () => void };
 
-export function RightPanelContent({ thread, bot, screen }: { thread: Thread; bot: Bot | null; working: boolean; screen?: ScreenProps }) {
+function RightPanelContent({ thread, bot, screen }: { thread: Thread; bot: Bot | null; working: boolean; screen?: ScreenProps }) {
   const { bots } = useStore();
   const [routines, setRoutines] = useState<Routine[] | null>(null);
   const [routinesFailed, setRoutinesFailed] = useState(false);

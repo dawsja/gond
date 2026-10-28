@@ -25,7 +25,7 @@ const LINE_CHARS = 400;
 const STALLED_MS = 2 * HOUR;
 const EMAIL_MAX = 10;
 const EMAIL_TIMEOUT_MS = 20_000;
-export const CHECK_IN_TIMEOUT_MS = 90_000;
+const CHECK_IN_TIMEOUT_MS = 90_000;
 
 const running = new Map<string, AbortController>();
 
@@ -48,9 +48,9 @@ export function isDue(state: Pick<CheckInState, "enabled" | "offeredAt" | "every
   return !state.lastRunAt || now - Date.parse(state.lastRunAt) >= state.everyHours * HOUR;
 }
 
-export type Email = { id: string; from: string; subject: string; preview: string };
+type Email = { id: string; from: string; subject: string; preview: string };
 
-export type Gathered = {
+type Gathered = {
   now: Date;
   timezone: string;
   bot: Bot;

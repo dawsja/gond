@@ -21,7 +21,7 @@ export function isProviderKind(value: string): value is ProviderKind {
   return (PROVIDER_KINDS as readonly string[]).includes(value);
 }
 
-export function normalizeBaseUrl(value: string): string {
+function normalizeBaseUrl(value: string): string {
   const url = new URL(value.trim());
   if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error("The URL starts with http:// or https://");
   if (url.username || url.password) throw new Error("Leave the username and password out of the URL");

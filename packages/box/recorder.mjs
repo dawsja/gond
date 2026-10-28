@@ -4,7 +4,7 @@
 // is pure, so it is tested without a screen.
 
 export const TEACH_MAX_MS = 10 * 60_000;
-export const TEACH_MAX_STEPS = 300;
+const TEACH_MAX_STEPS = 300;
 export const TEACH_MAX_FRAMES = 120;
 export const TEACH_MAX_FRAME_BYTES = 15 * 1024 * 1024;
 

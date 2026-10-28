@@ -6,7 +6,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const INSTALLED = "/usr/share/gond/home/index.html";
 const LOCAL = path.join(path.dirname(fileURLToPath(import.meta.url)), "home", "index.html");
 
-export const HOME_FILE = fs.existsSync(INSTALLED) ? INSTALLED : LOCAL;
+const HOME_FILE = fs.existsSync(INSTALLED) ? INSTALLED : LOCAL;
 
 const COLOR = /^#?([0-9a-f]{6})$/i;
 

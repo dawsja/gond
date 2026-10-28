@@ -1,6 +1,6 @@
 import net from "node:net";
 
-export const PROTOCOL_VERSION = "2024-11-05";
+const PROTOCOL_VERSION = "2024-11-05";
 
 export async function handleRpc(message, bridge) {
   const { id, method, params } = message ?? {};

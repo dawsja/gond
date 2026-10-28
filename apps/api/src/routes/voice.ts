@@ -11,7 +11,7 @@ import { authHeaders, upstreamUrl } from "../providers.ts";
 // type for one guessed from the name, so the name's extension is what counts.
 const EXTENSIONS = new Set(["webm", "mp4", "m4a", "mp3", "mpeg", "wav", "ogg"]);
 
-export function audioExtension(name: string): string | null {
+function audioExtension(name: string): string | null {
   const extension = /\.([a-z0-9]+)$/i.exec(name)?.[1]?.toLowerCase();
   return extension && EXTENSIONS.has(extension) ? extension : null;
 }

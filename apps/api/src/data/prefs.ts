@@ -7,7 +7,7 @@ import { nextRun } from "./routines.ts";
 import { getSettings } from "./settings.ts";
 
 
-export function validTimezone(timezone: unknown): timezone is string {
+function validTimezone(timezone: unknown): timezone is string {
   if (typeof timezone !== "string" || !timezone || timezone.length > 64) return false;
   try {
     Intl.DateTimeFormat(undefined, { timeZone: timezone });
@@ -65,7 +65,7 @@ export function setUserAccent(userId: string, accent: Accent) {
   emit({ topic: "me", userId });
 }
 
-export type Talk = { style: ReplyStyle; emoji: EmojiLevel };
+type Talk = { style: ReplyStyle; emoji: EmojiLevel };
 
 /** How the person wants every one of their bots to talk to them. */
 export function userTalk(userId: string): Talk {

@@ -2,7 +2,7 @@ import { ALL_NOTICES, type DeviceNotices, type PushSubscriptionInput } from "@go
 import { ensureDatabase } from "../db/init.ts";
 import { now } from "../ids.ts";
 
-export type StoredSubscription = PushSubscriptionInput & { userAgent: string; createdAt: string; notices: DeviceNotices };
+type StoredSubscription = PushSubscriptionInput & { userAgent: string; createdAt: string; notices: DeviceNotices };
 
 type Row = { endpoint: string; p256dh: string; auth: string; user_agent: string; created_at: string; muted_bots: string; other: number };
 

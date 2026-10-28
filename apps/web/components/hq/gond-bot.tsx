@@ -2,10 +2,10 @@
 
 import { useEffect, useState, type CSSProperties } from "react";
 
-export type GondBotExpression = "happy" | "wink" | "surprised";
-export type GondBotShape = "cog" | "gumdrop" | "cloud" | "circle" | "triangle";
+type GondBotExpression = "happy" | "wink" | "surprised";
+type GondBotShape = "cog" | "gumdrop" | "cloud" | "circle" | "triangle";
 
-export type GondBotProps = {
+type GondBotProps = {
   color?: string;
   size?: number;
   expression?: GondBotExpression;

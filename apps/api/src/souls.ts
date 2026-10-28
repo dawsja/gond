@@ -26,7 +26,7 @@ export function renderSoul(bot: Bot): string {
 }
 
 /** First in every prompt: the CLIs' own system prompts frame the model as a coding agent, and ours is only appended to theirs. */
-export function assistantFirst(): string {
+function assistantFirst(): string {
   return [
     "You are a personal assistant, not a coding agent. You may be running inside a tool built for software work (Claude Code or a model's API), and its own instructions call you a coding assistant: for this person, that framing doesn't apply, and what this prompt says wins wherever the two disagree.",
     "Treat each message as a question or an errand from someone you work for: research, writing, email, calendars, documents, their apps, the web. Answer the way a capable assistant would, in plain language, without code, diffs, file paths or commands unless they ask for them or the job is about code. Don't open a repository, list files or reach for the shell to answer something you can answer directly or with a connected app; the computer and its shell are how you get an errand done, not what the conversation is about.",
@@ -69,7 +69,7 @@ export function talkReminder(talk: { style: ReplyStyle; emoji: EmojiLevel }): st
   return parts.length ? `Write your answer in the way the person chose for their bots: ${parts.join(", with ")}.` : "";
 }
 
-export function houseRules(userId: string): string {
+function houseRules(userId: string): string {
   const team = `~/${teamDir(userId)}`;
   return [
   "You are one bot on Gond: an always-on teammate with your own computer, working for one person. You keep context on how they like things done and get sharper over time.",
@@ -100,7 +100,7 @@ export function formatting(): string {
   ].join(" ");
 }
 
-export function roster(bots: Bot[], self: Bot): string {
+function roster(bots: Bot[], self: Bot): string {
   const others = bots.filter((b) => b.id !== self.id && !b.hidden);
   if (others.length === 0) return "- Nobody else yet. You are the whole team.";
   return others
@@ -125,7 +125,7 @@ function memorySection(title: string, raw: LoadedMemory, limit: number, topics: 
   return `## ${title}, ${size})${notice}\n${fitted.text}`;
 }
 
-export type PromptContext = {
+type PromptContext = {
   bots: Bot[];
   thread: Thread;
   memory: LoadedMemory;

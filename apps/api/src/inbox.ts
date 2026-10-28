@@ -4,12 +4,12 @@ import { getAttachment } from "./data/threads.ts";
 import { botHome } from "./memory.ts";
 
 // Big enough for a report, small enough that a turn's request to the box stays well under its limit.
-export const INLINE_PDF_BYTES = 8 * 1024 * 1024;
+const INLINE_PDF_BYTES = 8 * 1024 * 1024;
 // Under every vision API's per-image limit, for when no smaller copy could be made.
-export const INLINE_IMAGE_BYTES = 3.5 * 1024 * 1024;
+const INLINE_IMAGE_BYTES = 3.5 * 1024 * 1024;
 const PREVIEW_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "image/bmp"]);
 
-export type InlineFile = { name: string; mediaType: string; data: string };
+type InlineFile = { name: string; mediaType: string; data: string };
 export type Delivered = { path: string; meta: ChatAttachment; shown: boolean };
 
 /** A file name that is one plain path segment, whatever the phone called it. */

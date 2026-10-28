@@ -25,7 +25,7 @@ export function vapidKeys(): Vapid {
   return keys;
 }
 
-export type PushPayload = {
+type PushPayload = {
   title: string;
   body: string;
 

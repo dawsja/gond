@@ -23,10 +23,6 @@ export function listSecrets(userId: string): SecretMeta[] {
   return rows.map((r) => ({ name: r.name, requestedBy: r.requested_by, site: r.site, card: cardMetaOf(r.card), createdAt: r.created_at, updatedAt: r.updated_at }));
 }
 
-export function listCards(userId: string): (CardMeta & { name: string })[] {
-  return listSecrets(userId).flatMap((s) => (s.card ? [{ ...s.card, name: s.name }] : []));
-}
-
 function cardName(userId: string, meta: CardMeta): string {
   const slug = (meta.nickname || `${meta.brand} ${meta.last4}`).toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40) || meta.last4;
   const base = `SAVED_CARD_${slug}`;

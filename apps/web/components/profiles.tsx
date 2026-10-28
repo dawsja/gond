@@ -77,7 +77,7 @@ export async function openProfile(id: string) {
 }
 
 /** What another profile has waiting, said short; nothing when there's nothing. */
-export function waitingLine(profile: Profile): string {
+function waitingLine(profile: Profile): string {
   if (profile.needsYou > 0) return "Needs you";
   if (profile.unread > 0) return profile.unread === 1 ? "1 chat with something new" : `${profile.unread} chats with something new`;
   return "";

@@ -5,7 +5,7 @@ import path from "node:path";
 
 /** A real API on a fresh data directory, beside a stand-in OIDC provider that signs in whoever a code names. */
 
-export const SETUP_TOKEN = "link-test-token";
+const SETUP_TOKEN = "link-test-token";
 
 const people: Record<string, { sub: string; email: string; name: string }> = {
   dawson: { sub: "dawson-1", email: "dawson@example.com", name: "Dawson" },

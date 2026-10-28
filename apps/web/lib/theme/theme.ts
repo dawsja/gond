@@ -5,7 +5,7 @@ export type ResolvedTheme = "light" | "dark";
 export const THEME_STORAGE_KEY = "gond-theme";
 
 // The person's color lives on the server; this copy only paints the first frame before /api/me answers.
-export const ACCENT_STORAGE_KEY = "gond-accent";
+const ACCENT_STORAGE_KEY = "gond-accent";
 
 export const DARK_QUERY = "(prefers-color-scheme: dark)";
 

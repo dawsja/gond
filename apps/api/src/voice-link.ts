@@ -29,7 +29,7 @@ export type VoiceLink = {
   close(): void;
 };
 
-export type LinkOptions = {
+type LinkOptions = {
   baseUrl: string;
   key: string;
   instructions: string;
@@ -90,9 +90,9 @@ export function readLiveEvent(event: Event): VoiceSignal[] {
   }
 }
 
-export const ASK_TOOL = "ask_bot";
-export const STATUS_TOOL = "bot_status";
-export const END_TOOL = "end_call";
+const ASK_TOOL = "ask_bot";
+const STATUS_TOOL = "bot_status";
+const END_TOOL = "end_call";
 
 /** xAI's realtime voice: the OpenAI Realtime events, with the hand-over as a function call. */
 export function readXaiEvent(event: Event): VoiceSignal[] {

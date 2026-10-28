@@ -13,7 +13,7 @@ const STAGE = 256;
 const MAX_ZOOM = 4;
 
 /** Places a picture in a circle: drag to move it, the slider or the wheel to zoom. Answers a square PNG; the circle is drawn wherever it's shown. */
-export function PictureCropDialog({ file, title, onCancel, onDone }: { file: File; title: string; onCancel: () => void; onDone: (blob: Blob) => Promise<void> | void }) {
+function PictureCropDialog({ file, title, onCancel, onDone }: { file: File; title: string; onCancel: () => void; onDone: (blob: Blob) => Promise<void> | void }) {
   const [bitmap, setBitmap] = useState<ImageBitmap | null>(null);
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);

@@ -70,7 +70,7 @@ declare global {
   }
 }
 
-export type NativeShell = "desktop" | "android" | "ios";
+type NativeShell = "desktop" | "android" | "ios";
 
 export function mobileShell(): GondMobile | null {
   return typeof window === "undefined" ? null : (window.gondMobile ?? null);

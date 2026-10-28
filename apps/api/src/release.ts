@@ -34,7 +34,7 @@ export function releaseNotes(messages: string[]): string[] {
 }
 
 /** The newest release and what it brings over this one, looked up at most every ten minutes unless `force`d. */
-export async function latestRelease(force = false): Promise<Latest> {
+async function latestRelease(force = false): Promise<Latest> {
   const cached = holder.__gondRelease;
   if (!force && cached && Date.now() - cached.at < CHECK_MS) return cached;
   let latest: string | null = null;

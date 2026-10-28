@@ -14,7 +14,7 @@ export const SUMMARY_BATCH = 20;
 const SUMMARY_CHARS = 4000;
 const SUMMARY_TIMEOUT_MS = 3 * 60_000;
 
-export const SUMMARY_INSTRUCTIONS = "You keep the running summary of a conversation between a person and their bots in Gond. You only write the summary: you have no tools and do nothing else.";
+const SUMMARY_INSTRUCTIONS = "You keep the running summary of a conversation between a person and their bots in Gond. You only write the summary: you have no tools and do nothing else.";
 
 export function summaryPrompt(previous: string | null, lines: string): string {
   return [

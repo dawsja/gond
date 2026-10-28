@@ -1,7 +1,7 @@
 import Image from "next/image";
 import type { ReactNode } from "react";
 
-export function BrandMark({ size = 28 }: { size?: number }) {
+function BrandMark({ size = 28 }: { size?: number }) {
   return <Image src="/logo.png" alt="" width={size} height={size} className="rounded-full" style={{ width: size, height: size }} priority />;
 }
 

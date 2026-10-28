@@ -27,7 +27,7 @@ export function killTree(child, signal) {
   }
 }
 
-export function protocolLogger(dir, id) {
+function protocolLogger(dir, id) {
   if (!dir) return () => undefined;
   const file = path.join(dir, `${id}.ndjson`);
   return (direction, payload) => {
@@ -53,7 +53,7 @@ export function protocolLogger(dir, id) {
   };
 }
 
-export const MAX_RESULT_IMAGE_BYTES = 3 * 1024 * 1024;
+const MAX_RESULT_IMAGE_BYTES = 3 * 1024 * 1024;
 const RESULT_IMAGE_TYPES = new Set(["image/png", "image/jpeg"]);
 const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/;
 

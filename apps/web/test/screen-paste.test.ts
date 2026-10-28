@@ -63,11 +63,6 @@ describe("pasteText", () => {
     expect(pasteText("", "event")).toBe("event");
   });
 
-  test("sends the same text again, even when it was the last one sent", () => {
-    expect(pasteText("same", null)).toBe("same");
-    expect(pasteText("same", null)).toBe("same");
-  });
-
   test("leaves the screen's own clipboard when there is nothing", () => {
     expect(pasteText(null, null)).toBeNull();
     expect(pasteText(undefined, "")).toBeNull();

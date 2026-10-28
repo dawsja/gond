@@ -15,7 +15,7 @@ function clock(seconds: number) {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
-export type VoiceInput = ReturnType<typeof useVoiceInput>;
+type VoiceInput = ReturnType<typeof useVoiceInput>;
 
 /** Talking instead of typing: the recorder, its transcription into the draft, and what the button says. */
 export function useVoiceInput(threadId: string, onText: (text: string) => void) {

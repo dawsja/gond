@@ -11,7 +11,7 @@ import { sendPush } from "./push.ts";
 import { createRedactor } from "./redact.ts";
 
 /** SQLite holds a blob of at most a billion bytes; an export stops short of that and says so. */
-export const MAX_EXPORT_BYTES = 900 * 1024 * 1024;
+const MAX_EXPORT_BYTES = 900 * 1024 * 1024;
 
 const FORMAT = "gond-chat/1";
 
@@ -51,10 +51,10 @@ export function uniqueName(name: string, taken: Set<string>): string {
 const CARD_STATUS: Record<ApprovalStatus, string> = { pending: "waiting", allowed: "allowed", denied: "turned down", expired: "expired" };
 const CARD_OUTCOME: Record<NonNullable<Approval["outcome"]>, string> = { sent: "sent", saved: "saved as a draft", changes: "changes asked", aside: "set aside when you wrote instead" };
 
-export type ExportChat = { id: string; kind: "bot" | "room"; name: string; members: { id: string; name: string }[] };
+type ExportChat = { id: string; kind: "bot" | "room"; name: string; members: { id: string; name: string }[] };
 
 /** What a chat's lines need from outside them: names, where each file went in the zip, and how a card ended. */
-export type ExportContext = {
+type ExportContext = {
   nameOf: (author: MessageAuthor) => string;
   chatName: (threadId: string) => string | null;
   fileOf: (attachmentId: string) => string | null;
@@ -130,7 +130,7 @@ function redactDeep(value: unknown, redact: (text: string) => string): unknown {
 }
 
 /** A chat in full, for another app: every line with who wrote it, its reactions, its quote, its files and how a card ended. */
-export function chatJson(chat: ExportChat, messages: Message[], context: ExportContext, exportedAt: string): string {
+function chatJson(chat: ExportChat, messages: Message[], context: ExportContext, exportedAt: string): string {
   const doc = {
     format: FORMAT,
     exportedAt,
@@ -157,7 +157,7 @@ export function chatJson(chat: ExportChat, messages: Message[], context: ExportC
   return `${JSON.stringify(doc, null, 2)}\n`;
 }
 
-export function readme(input: { label: string; exportedAt: string; timeZone: string; chats: { folder: string; name: string; kind: "bot" | "room"; count: number }[] }): string {
+function readme(input: { label: string; exportedAt: string; timeZone: string; chats: { folder: string; name: string; kind: "bot" | "room"; count: number }[] }): string {
   const when = formatter(input.timeZone, { dateStyle: "long", timeStyle: "short" }).format(new Date(input.exportedAt));
   const rows = input.chats.map((c) => `| ${c.name.replace(/\|/g, "\\|")} | ${c.kind === "room" ? "Room" : "Bot"} | ${c.count} | \`${c.folder}/\` |`);
   return [

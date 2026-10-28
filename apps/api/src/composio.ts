@@ -6,10 +6,10 @@ import { readComposioKey, setComposioKey } from "./data/composio-keys.ts";
 import { getConnection, listConnections, removeConnection, removeConnections, saveConnection } from "./data/settings.ts";
 import { getUser, isAdmin } from "./data/users.ts";
 
-export const COMPOSIO_ADMIN_ENTITY = "krubot-owner";
-export const COMPOSIO_ENTITY_PREFIX = "kru-";
+const COMPOSIO_ADMIN_ENTITY = "krubot-owner";
+const COMPOSIO_ENTITY_PREFIX = "kru-";
 
-export function composioUserId(userId: string): string {
+function composioUserId(userId: string): string {
   return isAdmin(getUser(userId)) ? COMPOSIO_ADMIN_ENTITY : `${COMPOSIO_ENTITY_PREFIX}${userId}`;
 }
 
@@ -23,7 +23,7 @@ export type ComposioTool = {
 
 const clients = new Map<string, Promise<Composio>>();
 
-export function serverComposioKey(): string | null {
+function serverComposioKey(): string | null {
   const key = (process.env.COMPOSIO_API_KEY ?? "").trim();
   return key || null;
 }
@@ -217,7 +217,7 @@ export async function refreshConnection(userId: string, toolkit: string): Promis
  * made elsewhere) the person's live account for the app instead. Keeps the row as it was if Composio
  * can't be asked.
  */
-export async function healConnection(userId: string, toolkit: string): Promise<Connection | null> {
+async function healConnection(userId: string, toolkit: string): Promise<Connection | null> {
   const stored = await refreshConnection(userId, toolkit);
   if (stored?.status === "active") return stored;
   try {

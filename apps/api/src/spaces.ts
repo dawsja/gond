@@ -186,7 +186,7 @@ export function parseEvent(body: unknown): SpaceEvent | null {
 }
 
 // The invite: everything the other Gond needs to reach this one, in a link that works once.
-export type Invite = { v: 1; space: string; name: string; token: string; expires: number; host: WireCard; members: WireMember[] };
+type Invite = { v: 1; space: string; name: string; token: string; expires: number; host: WireCard; members: WireMember[] };
 
 export function inviteCode(invite: Invite): string {
   return INVITE_PREFIX + Buffer.from(JSON.stringify(invite)).toString("base64url");
@@ -699,7 +699,7 @@ async function answerAsGuest(bot: Bot, thread: Thread, message: Message, rule: S
  * One answer from a bot to someone on another Gond: no tools, or only the web with `search`, its words
  * redacted, in a session of its own that is closed again, on its owner's AI.
  */
-export async function guestReply(input: { bot: Bot; threadId: string; instructions: string; prompt: string; search: boolean; signal: AbortSignal }): Promise<string> {
+async function guestReply(input: { bot: Bot; threadId: string; instructions: string; prompt: string; search: boolean; signal: AbortSignal }): Promise<string> {
   const { bot, threadId, instructions, prompt, search, signal } = input;
   activity(threadId, bot.id, "Thinking…");
   const hide = createRedactor(allSecretValues(), Infinity);

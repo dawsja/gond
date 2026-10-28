@@ -27,7 +27,7 @@ export const GROK_MEDIA_HEADERS: Record<string, string> = { ...GROK_PLAN_HEADERS
 const RENEW_BEFORE_MS = 5 * 60_000;
 const ENDED = new Set(["invalid_grant", "invalid_refresh_token", "token_expired", "refresh_token_expired", "unauthorized_client", "invalid_client"]);
 
-export type GrokSignIn = { state: "waiting" | "done" | "failed"; url: string | null; code: string | null; expiresAt: number; error: string | null };
+type GrokSignIn = { state: "waiting" | "done" | "failed"; url: string | null; code: string | null; expiresAt: number; error: string | null };
 
 type Pending = GrokSignIn & { deviceCode: string; interval: number; timer: ReturnType<typeof setTimeout> | null };
 const holder = globalThis as typeof globalThis & { __gondGrokLogins?: Map<string, Pending>; __gondGrokRenewing?: Map<string, Promise<string | null>> };
@@ -152,7 +152,7 @@ export async function checkGrokLogin(userId: string): Promise<GrokSignIn | null>
   return grokSignIn(userId);
 }
 
-export function cancelGrokLogin(userId: string) {
+function cancelGrokLogin(userId: string) {
   const login = logins().get(userId);
   if (login?.timer) clearTimeout(login.timer);
   logins().delete(userId);

@@ -10,7 +10,7 @@ function isEngine(value: unknown): value is Engine {
   return typeof value === "string" && (ENGINES as readonly string[]).includes(value);
 }
 
-export function readEnabled(json: string | null, engine: Engine): Engine[] {
+function readEnabled(json: string | null, engine: Engine): Engine[] {
   let stored: unknown = null;
   try {
     stored = json ? JSON.parse(json) : null;

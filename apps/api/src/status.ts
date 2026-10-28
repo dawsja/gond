@@ -9,7 +9,7 @@ import { isUpdating } from "./updater.ts";
 const CHECK_CACHE_MS = 5 * 60 * 1000;
 const cachedChecks = new Map<string, { at: number; check: ClaudeCheck }>();
 
-export async function checkClaudeCached(box: BoxConfig, { fresh = false } = {}): Promise<ClaudeCheck> {
+async function checkClaudeCached(box: BoxConfig, { fresh = false } = {}): Promise<ClaudeCheck> {
   const key = box.user ?? "";
   const cached = cachedChecks.get(key);
   if (!fresh && cached && Date.now() - cached.at < CHECK_CACHE_MS) return cached.check;
@@ -64,7 +64,7 @@ async function versionsCached(box: BoxConfig, fresh = false): Promise<BoxVersion
   return versions;
 }
 
-export async function claudeStatus(box: BoxConfig | null, fresh = false): Promise<ClaudeStatus> {
+async function claudeStatus(box: BoxConfig | null, fresh = false): Promise<ClaudeStatus> {
   if (!box) return { status: "no-box", detail: "No box is configured. Set GOND_BOX_URL." };
   try {
     const [check, auth] = await Promise.all([checkClaudeCached(box, { fresh }), claudeAuth(box).catch(() => null)]);

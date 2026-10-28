@@ -102,6 +102,6 @@ async function wipe(id: string): Promise<void> {
 }
 
 /** A person's other profiles, gone before the person is. */
-export async function deleteProfilesOf(personId: string): Promise<void> {
+async function deleteProfilesOf(personId: string): Promise<void> {
   for (const profile of profilesOf(personId)) if (!profile.isDefault) await deleteProfile(profile.id);
 }

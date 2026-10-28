@@ -11,14 +11,14 @@ import { createRedactor } from "./redact.ts";
 import { botHome } from "./memory.ts";
 import { sendPush } from "./push.ts";
 
-export const DISPLAY = { width: 1024, height: 640 };
-export const MAX_ACTIONS = 300;
+const DISPLAY = { width: 1024, height: 640 };
+const MAX_ACTIONS = 300;
 
 export const DENIED_TEXT = "The person denied the computer for this turn; say what you would have done.";
-export const EXPIRED_TEXT = () => expiredText("to use the screen");
-export const TOO_MANY_TEXT = "Too many actions in one reply; finish, or tell the person where you got to.";
+const EXPIRED_TEXT = () => expiredText("to use the screen");
+const TOO_MANY_TEXT = "Too many actions in one reply; finish, or tell the person where you got to.";
 // How long a batch waits for another reply to finish with the desktop before the bot is told to end its turn.
-export const SCREEN_WAIT_MS = 90_000;
+const SCREEN_WAIT_MS = 90_000;
 
 class ScreenBusy extends Error {
   constructor(readonly holder: DesktopDriver) {
@@ -26,7 +26,7 @@ class ScreenBusy extends Error {
   }
 }
 
-export function screenBusyText(holder: DesktopDriver, bot: Pick<Bot, "id">): string {
+function screenBusyText(holder: DesktopDriver, bot: Pick<Bot, "id">): string {
   const who = holder.botId === bot.id ? "You are using your screen in another conversation" : `${getBot(holder.botId)?.name ?? "Another bot"} is using your screen`;
   return `${who}, so nothing in this batch ran: its mouse and keyboard go to one reply at a time, and your browser is on that screen too. End your turn: say in a line what you were about to do and that you'll carry on once your screen is free. You'll be told when it is.`;
 }
@@ -38,7 +38,7 @@ class ScreensFull extends Error {}
 
 const screensFull = (error: unknown) => error instanceof BoxError && error.status === 429 && error.code === "screens_full";
 // How long a batch waits for the person to give the screen back before the bot is told to end its turn.
-export const HANDBACK_WAIT_MS = 10 * 60 * 1000;
+const HANDBACK_WAIT_MS = 10 * 60 * 1000;
 export const PERSON_HAS_CONTROL_TEXT = `The person has taken control of the mouse and keyboard and kept it for ${HANDBACK_WAIT_MS / 60_000} minutes, so your input was not sent. End your turn: say in a line what you were doing and that you'll carry on when they give the screen back. You'll be told when they do; never fight for the mouse.`;
 export const HANDED_BACK_TEXT =
   "Nothing in this batch ran: the person took control of the screen while you were working and has now given it back. They may have changed things (moved on a step, closed or opened something, filled something in), so this is the screen as they left it. Carry on from here, not from where you were, and don't redo what they did.";
@@ -52,9 +52,9 @@ const CHALLENGE_HELP =
 const BROWSER_HELP =
   "Every answer lists the page's controls and headings on screen, one per line: `e12 button \"Add to cart\" @640,410`. Name one by its ref instead of x and y and it is found exactly, even if the page moved (a page that shifts after one click sends the next x and y somewhere else, so use x and y only for what the list doesn't name): click {ref}; hover {ref}; zoom {x, y, width, height} on the call (with view both or image) answers with just that part of the page, larger, for a small picture grid or a challenge's words; type {ref, text}; drag {ref, to_ref}; scroll {ref} brings it into view, or with direction scrolls inside it. On a page you haven't seen yet (one this batch opens), name an element by label instead: its visible text or name, with role (button, link, textbox, checkbox, …) when the text alone is ambiguous; the step waits up to 8 seconds for it to appear. So one batch can carry an errand across pages: navigate to the store, click {label: \"#1 Whataburger\"}, select {label: \"Drink\", option: \"Dr Pepper\"}, click {label: \"Add to order\", role: \"button\"}, wait_for {text: \"Total\"}, read {label: \"Total\"}. If a label isn't found the batch stops there and says so. Browser-only actions (each takes ref or label): fill {ref, text} replaces a field's text at once (use it rather than type for forms); select {ref, option} picks a dropdown option by its label or value; check {ref, checked?: false to untick} sets a checkbox, radio or switch and leaves it that way whatever it was, so use it rather than click for a form's options (a site that draws its own boxes is listed by the row you would click); type_login {ref, name} fills a sign-in detail, or a card's after use_card (CARD_NUMBER, CARD_EXPIRY, CARD_CVC…; add select: true for a dropdown); read {ref?} gives the text of the page or of one element, without a picture (prices, totals, a list); wait_for {text, gone?} or {url} waits until text appears or goes, or the address changes, instead of a guessed wait; upload {ref, path} sends a file from your home to a file field; dialog {accept, text?} answers an alert, confirm or prompt; navigate {url}; back; forward; reload; tab {index}; new_tab {url?}; close_tab {index?}. Refs only hold until the next answer, which brings a new list. Downloads go to ~/Downloads.";
 
-export const COMPUTER_DESCRIPTION = `Your whole desktop on the computer, for apps that aren't a web page (a file manager, a terminal window, a desktop program): send the actions to run, in order, and get back one fresh screenshot. Coordinates are pixels of the last screenshot. ${STEP_HELP} Batch what you're sure of (click a field, type, press Enter) and look before anything that depends on what appears. For a website use the browser tool instead. ${CHALLENGE_HELP} The person can take control of the mouse and keyboard; your actions are refused until they give it back.`;
+const COMPUTER_DESCRIPTION = `Your whole desktop on the computer, for apps that aren't a web page (a file manager, a terminal window, a desktop program): send the actions to run, in order, and get back one fresh screenshot. Coordinates are pixels of the last screenshot. ${STEP_HELP} Batch what you're sure of (click a field, type, press Enter) and look before anything that depends on what appears. For a website use the browser tool instead. ${CHALLENGE_HELP} The person can take control of the mouse and keyboard; your actions are refused until they give it back.`;
 
-export const BROWSER_DESCRIPTION = `Your browser on the computer: one Chrome window on the desktop the person watches, kept open between calls and replies, with its tabs and sign-ins. Send the actions to run, in order; the answer has the page's address, title and tabs, the list of what is on screen, what any read or copy returned, and a screenshot. ${BROWSER_HELP} ${STEP_HELP} ${CHALLENGE_HELP} Every answer costs a model turn, so do as much as you can per batch: plan several actions from one answer, and carry on into pages you expect by label. Open a search or a store by its address when you know it (a site's search URL with the query in it) rather than typing into its search box. Set view to "text" when you only need the list or a read, which is faster than a picture. The person can take control of the mouse and keyboard; your actions are refused until they give it back.`;
+const BROWSER_DESCRIPTION = `Your browser on the computer: one Chrome window on the desktop the person watches, kept open between calls and replies, with its tabs and sign-ins. Send the actions to run, in order; the answer has the page's address, title and tabs, the list of what is on screen, what any read or copy returned, and a screenshot. ${BROWSER_HELP} ${STEP_HELP} ${CHALLENGE_HELP} Every answer costs a model turn, so do as much as you can per batch: plan several actions from one answer, and carry on into pages you expect by label. Open a search or a store by its address when you know it (a site's search URL with the query in it) rather than typing into its search box. Set view to "text" when you only need the list or a read, which is faster than a picture. The person can take control of the mouse and keyboard; your actions are refused until they give it back.`;
 
 const SEND_SCREENSHOT_DESCRIPTION =
   "Show the person the screen: takes a fresh screenshot of your browser's page (or the whole desktop) and posts it in this conversation as a picture, with your caption. This is how you send a screenshot; never save one to a file. Use it when they ask to see the screen, and to end a task on something they should check with their own eyes: a cart before anything is bought, an order or booking confirmation, a finished form. Not for the steps on the way.";
@@ -146,11 +146,11 @@ function batchSchema(target: ScreenTarget) {
 }
 
 export const COMPUTER_SCHEMA = batchSchema("desktop");
-export const BROWSER_SCHEMA = batchSchema("browser");
+const BROWSER_SCHEMA = batchSchema("browser");
 
 export const COMPUTER_NATIVE = { type: "computer_20250124", name: "computer", display_width_px: DISPLAY.width, display_height_px: DISPLAY.height };
 
-export type Scale = { x: number; y: number };
+type Scale = { x: number; y: number };
 
 export function scaleOf(result: Pick<ScreenResult, "screen" | "width" | "height">): Scale | null {
   if (!result.width || !result.height || !result.screen?.width || !result.screen?.height) return null;
@@ -230,7 +230,7 @@ export function screenSteps(input: Record<string, unknown>, target: ScreenTarget
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
 /** The ways a dropdown may write a held value: a month as 08, 8, August or Aug, a year as 2028 or 28. */
-export function selectOptions(name: string, value: string): string[] {
+function selectOptions(name: string, value: string): string[] {
   if (name.endsWith("_MONTH") && /^\d{2}$/.test(value)) {
     const month = MONTHS[Number(value) - 1] ?? "";
     return [value, String(Number(value)), month, month.slice(0, 3)].filter(Boolean);
@@ -239,7 +239,7 @@ export function selectOptions(name: string, value: string): string[] {
   return [value];
 }
 
-export function usesInput(steps: ScreenStep[]): boolean {
+function usesInput(steps: ScreenStep[]): boolean {
   return steps.some((step) => !LOOK_STEPS.includes(step.type));
 }
 

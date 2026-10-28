@@ -5,7 +5,7 @@ import { CARD_FIELDS, cardFieldValue, coverLogin, LOGIN_FIELD_KINDS, type CardDe
 // remember live only here; remembered ones are also secrets with a site.
 const HELD_MS = 30 * 60 * 1000;
 // A card the person said yes to is for the checkout in front of the bot, not the rest of the afternoon.
-export const CARD_HELD_MS = 10 * 60 * 1000;
+const CARD_HELD_MS = 10 * 60 * 1000;
 
 type Held = { value: string; until: number };
 const holder = globalThis as typeof globalThis & { __gondLogins?: Map<string, Held> };
@@ -110,7 +110,7 @@ export function siteKeys(site: string): string[] {
   return [...new Set(keys)];
 }
 
-export type SavedLogin = { name: string; site: string; updatedAt: string };
+type SavedLogin = { name: string; site: string; updatedAt: string };
 
 /**
  * The saved details that sign in to this site, as the field's name for this request to the saved

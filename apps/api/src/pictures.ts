@@ -11,10 +11,10 @@ const XAI_API_URL = "https://api.x.ai/v1";
 const IMAGE_TIMEOUT_MS = 180_000;
 const PREVIEWS = 2;
 
-export type ImageAccess = { source: ImageSource; baseUrl: string; headers: Record<string, string> };
+type ImageAccess = { source: ImageSource; baseUrl: string; headers: Record<string, string> };
 export type ImageReference = { name: string; mediaType: string; data: Uint8Array };
-export type MadeImage = { data: Uint8Array; mediaType: "image/png" | "image/jpeg" | "image/webp"; source: ImageSource; usage?: StepUsage | null };
-export type ImageRequest = { prompt: string; aspect: ImageAspect; references: ImageReference[]; signal?: AbortSignal; onPreview?: (picture: MadeImage) => void };
+type MadeImage = { data: Uint8Array; mediaType: "image/png" | "image/jpeg" | "image/webp"; source: ImageSource; usage?: StepUsage | null };
+type ImageRequest = { prompt: string; aspect: ImageAspect; references: ImageReference[]; signal?: AbortSignal; onPreview?: (picture: MadeImage) => void };
 
 /** The person's first way to make pictures, in `IMAGE_SOURCES` order; null when they have none. */
 export async function imageAccess(userId: string): Promise<ImageAccess | null> {

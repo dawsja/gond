@@ -18,7 +18,7 @@ const tokenHolder = globalThis as typeof globalThis & { __gondSetupToken?: Token
 const ATTEMPT_WINDOW_MS = 10 * 60 * 1000;
 const MAX_WRONG_ATTEMPTS = 10;
 
-export function ensureSetupToken(): string {
+function ensureSetupToken(): string {
   let state = tokenHolder.__gondSetupToken;
   if (!state) {
     state = { token: env("SETUP_TOKEN")?.trim() || randomBytes(18).toString("base64url"), attempts: [], logged: false };
@@ -35,7 +35,7 @@ export function ensureSetupToken(): string {
   return state.token;
 }
 
-export function checkSetupToken(input: string): "ok" | "wrong" | "locked" {
+function checkSetupToken(input: string): "ok" | "wrong" | "locked" {
   const state = tokenHolder.__gondSetupToken;
   if (!state) return "wrong";
   const at = Date.now();
@@ -48,7 +48,7 @@ export function checkSetupToken(input: string): "ok" | "wrong" | "locked" {
   return ok ? "ok" : "wrong";
 }
 
-export function clearSetupToken() {
+function clearSetupToken() {
   tokenHolder.__gondSetupToken = undefined;
 }
 

@@ -18,7 +18,7 @@ export async function apiFetch(path: string, init: RequestInit = {}): Promise<Re
 export type SessionUser = Me;
 
 /** Who is signed in, or why nobody is: a refusal from the API is signed out, an API that doesn't answer is down, as while it restarts after an update. */
-export type Session = { user: SessionUser } | { signedOut: true } | { down: true };
+type Session = { user: SessionUser } | { signedOut: true } | { down: true };
 
 export async function getSessionUser(): Promise<Session> {
   let res: Response;

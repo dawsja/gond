@@ -25,7 +25,7 @@ const RESOURCE = "https://api.openai.com/v1";
 const SCOPES = "openid profile email offline_access resource.invoke chatgpt.tokens.use.direct";
 const PLAN_SCOPE = "chatgpt.tokens.use.direct";
 const FIRST_CLIENT = "dynamic_agent_client";
-export const CHATGPT_REDIRECT = `http://127.0.0.1:${MCP_LOOPBACK_PORT}/callback`;
+const CHATGPT_REDIRECT = `http://127.0.0.1:${MCP_LOOPBACK_PORT}/callback`;
 
 const RENEW_BEFORE_MS = 5 * 60_000;
 const LOGIN_TTL_MS = 10 * 60_000;

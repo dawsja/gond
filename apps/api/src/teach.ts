@@ -12,9 +12,7 @@ import {
   saveTeachingFrame,
   teachingAskedBy,
   teachingById,
-  teachingChanged,
   teachingFrame,
-  teachingFrames,
   teachingsIn,
   unfinishedTeachings,
   updateTeaching,
@@ -38,7 +36,7 @@ export class TeachError extends Error {
 }
 
 // The pictures a bot is shown of a recording: the key moments, as few as tell the story.
-export const LOOK_FRAMES = 16;
+const LOOK_FRAMES = 16;
 const SAVE_EVERY_MS = 350;
 // While the computer is away (an update takes minutes), a recording waits for it rather than losing its pictures.
 const FOLLOW_RETRIES = 90;
@@ -142,7 +140,7 @@ function busy(open: Teaching): TeachError {
 }
 
 /** Hears the box's steps for a recording until it ends, picking the stream up again if it drops. */
-export function follow(id: string): void {
+function follow(id: string): void {
   const { follow: followers } = state();
   if (followers.has(id)) return;
   const controller = new AbortController();
@@ -363,7 +361,7 @@ export function keyframes(steps: Pick<TeachStep, "n" | "frame" | "kind" | "skipp
 const clock = (ms: number) => `${Math.floor(ms / 60_000)}:${String(Math.floor((ms % 60_000) / 1000)).padStart(2, "0")}`;
 
 /** The steps as a bot reads them: skipped ones marked, hidden ones left out, notes in their place. */
-export function stepLines(teaching: Pick<Teaching, "steps" | "notes">): string {
+function stepLines(teaching: Pick<Teaching, "steps" | "notes">): string {
   const lines: string[] = [];
   for (const step of teaching.steps) {
     if (step.hidden) {
@@ -377,7 +375,7 @@ export function stepLines(teaching: Pick<Teaching, "steps" | "notes">): string {
   return lines.join("\n");
 }
 
-export function lookPrompt(teaching: Pick<Teaching, "id" | "steps" | "notes" | "endedWhy">, pictures: number): string {
+function lookPrompt(teaching: Pick<Teaching, "id" | "steps" | "notes" | "endedWhy">, pictures: number): string {
   const ended = teaching.endedWhy === "limit" ? " It stopped at the ten-minute limit, so it may not show the very end." : teaching.endedWhy === "away" ? " It ended when they left, so it may not show the very end." : teaching.endedWhy === "lost" || teaching.endedWhy === "restart" ? " The computer lost the end of it, so it may stop short." : "";
   return [
     `The person just showed you how to do something on your screen, so you can do it for them from now on.${ended} Below is every step they took, in order, with any notes they added.${pictures === 1 ? " A screenshot of the key moment is attached, named step-N.jpg after the step it follows." : pictures ? ` ${pictures} screenshots of the key moments are attached, named step-N.jpg after the step they follow.` : ""} A password or sign-in code shows only as the kind it was, never the value.`,
@@ -389,7 +387,7 @@ export function lookPrompt(teaching: Pick<Teaching, "id" | "steps" | "notes" | "
 }
 
 /** Posts the hidden prompt that has the bot look at a recording, with its key moments as pictures. */
-export function beginLooking(id: string, note?: string): void {
+function beginLooking(id: string, note?: string): void {
   const teaching = teachingById(id);
   if (!teaching) return;
   const bot = getBot(teaching.botId);
@@ -431,7 +429,7 @@ function hostOf(url: string | undefined): string {
 }
 
 /** A draft made from the steps themselves, for when the bot couldn't write one. */
-export function draftFromSteps(teaching: Pick<Teaching, "steps" | "notes">): TeachDraft {
+function draftFromSteps(teaching: Pick<Teaching, "steps" | "notes">): TeachDraft {
   const kept = teaching.steps.filter((step) => !step.skipped && !step.hidden);
   const site = kept.map((step) => hostOf(step.url)).find(Boolean);
   return {
@@ -586,8 +584,3 @@ export async function resumeTeachings(): Promise<void> {
   }
 }
 
-export function framesOf(id: string) {
-  return teachingFrames(id);
-}
-
-export { teachingChanged };

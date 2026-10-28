@@ -33,7 +33,7 @@ export function readsPdf(access: NativeAccess): boolean {
   return anthropicNative(access);
 }
 
-export type NativeTurn = {
+type NativeTurn = {
   access: NativeAccess;
   model: string;
 
@@ -95,7 +95,7 @@ export class SteerQueue {
   }
 }
 
-export type NativeResult = {
+type NativeResult = {
   ok: boolean;
   text: string;
   stopReason: string | null;
@@ -118,14 +118,14 @@ function billed(usage: Record<string, unknown>): number | null {
 }
 
 /** Anthropic's usage: its input leaves out what was read from or written to the cache. */
-export function anthropicUsage(raw: unknown): StepUsage | null {
+function anthropicUsage(raw: unknown): StepUsage | null {
   if (!raw || typeof raw !== "object") return null;
   const usage = raw as Record<string, unknown>;
   return { tokens: { input: count(usage.input_tokens), output: count(usage.output_tokens), cacheRead: count(usage.cache_read_input_tokens), cacheWrite: count(usage.cache_creation_input_tokens) }, cost: null };
 }
 
 /** A chat API's usage, whose prompt tokens include those read from the cache. */
-export function openAiUsage(raw: unknown): StepUsage | null {
+function openAiUsage(raw: unknown): StepUsage | null {
   if (!raw || typeof raw !== "object") return null;
   const usage = raw as Record<string, unknown>;
   const cached = count((usage.prompt_tokens_details as Record<string, unknown> | undefined)?.cached_tokens);
@@ -133,7 +133,7 @@ export function openAiUsage(raw: unknown): StepUsage | null {
 }
 
 /** The Responses API's usage. A plan's requests are the plan's, so nothing on them is a cost. */
-export function responsesUsage(raw: unknown): StepUsage | null {
+function responsesUsage(raw: unknown): StepUsage | null {
   if (!raw || typeof raw !== "object") return null;
   const usage = raw as Record<string, unknown>;
   const cached = count((usage.input_tokens_details as Record<string, unknown> | undefined)?.cached_tokens);
@@ -545,7 +545,7 @@ export function readOpenAi(payload: unknown): Step {
   };
 }
 
-export type ToolAnswer = { call: { id: string }; parts: ToolPart[]; isError: boolean };
+type ToolAnswer = { call: { id: string }; parts: ToolPart[]; isError: boolean };
 
 function toolAnswer(kind: ProviderKind, answer: ToolAnswer): unknown {
   const text = answer.parts.filter((part): part is Extract<ToolPart, { type: "text" }> => part.type === "text").map((part) => part.text);

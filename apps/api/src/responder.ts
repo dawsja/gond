@@ -47,7 +47,7 @@ const CONTEXT_LINES = 30;
 const ROOM_LOOKBACK = 30;
 
 /** What an agent's last turn ran on (`runKey`), and the last message its CLI session was given, if one was. */
-export type Seen = { run: string; at: string | null };
+type Seen = { run: string; at: string | null };
 
 const seenHolder = globalThis as typeof globalThis & { __gondSeen?: Map<string, Seen> };
 /** Per agent, what its last turn ran on and saw: the next turn on the same run sends only what is newer. */
@@ -96,7 +96,7 @@ export function activeTurns(): Map<string, Active> {
   return (holder.__gondActiveTurns ??= new Map());
 }
 
-export function agentIdFor(bot: Bot, thread: Thread) {
+function agentIdFor(bot: Bot, thread: Thread) {
   return `${bot.id}--${thread.id}`;
 }
 
@@ -125,19 +125,19 @@ export function unansweredEnding(name: string, cause: StopCause | null, failure:
  * What isn't set up when a turn couldn't run, as one sentence for the person's card: no AI picked or
  * signed in, the CLI missing from the computer (the box's 424) or signed out there. Null for any other failure.
  */
-export function setupProblem(failure: unknown, engine = ENGINE_LABELS.claude.name): string | null {
+function setupProblem(failure: unknown, engine = ENGINE_LABELS.claude.name): string | null {
   if (failure instanceof EngineSetupError) return failure.message;
   if (failure instanceof BoxError && failure.status === 424) return `${engine} isn't set up on the computer.`;
   if (failure && typeof failure === "object" && "signedOut" in failure && failure.signedOut === true) return `${engine} isn't signed in on the computer.`;
   return null;
 }
 
-export class TurnNotStarted extends Error {}
+class TurnNotStarted extends Error {}
 
 // The computer went away (restarting, updating, down): the messages it cut off wait, and new ones
 // aren't started until it answers, checked again this often; one waiting this long is given up on.
 const AWAY_RETRY_MS = 15_000;
-export const AWAY_GIVE_UP_MS = 30 * 60_000;
+const AWAY_GIVE_UP_MS = 30 * 60_000;
 const away = globalThis as typeof globalThis & { __gondComputerAway?: number };
 
 export function computerAway(): boolean {
@@ -150,7 +150,7 @@ async function computerAnswers(box: BoxConfig): Promise<boolean> {
   return answers;
 }
 
-export async function interrupt(threadId: string) {
+async function interrupt(threadId: string) {
   let stopped = 0;
   for (const [agentId, turn] of activeTurns()) {
     if (turn.threadId !== threadId) continue;
@@ -170,7 +170,7 @@ async function settled(threadId: string, ms = STOP_SETTLE_MS) {
 }
 
 /** What a stop halted: the turns and what they were answering, and everything they had set going. */
-export type StopReport = { stopped: number; dropped: number; tasks: string[]; screen: boolean; teammates: string[]; sent: number; followUps: number; recordings: number };
+type StopReport = { stopped: number; dropped: number; tasks: string[]; screen: boolean; teammates: string[]; sent: number; followUps: number; recordings: number };
 
 async function stopWorkFrom(threadId: string, since: string | null, seen: Set<string>, report: StopReport) {
   for (const handoff of openDelegationsFrom(threadId, since)) {
@@ -276,7 +276,7 @@ export async function stopAll(userId: string): Promise<{ stopped: number; droppe
   return total;
 }
 
-export async function interruptMessage(messageId: string): Promise<boolean> {
+async function interruptMessage(messageId: string): Promise<boolean> {
   for (const [agentId, turn] of activeTurns()) {
     if (turn.messageId !== messageId) continue;
     turn.controller.abort("stopped" satisfies StopCause);
@@ -325,7 +325,7 @@ export function steerText(body: string): string {
 }
 
 /** The bots answering in a conversation right now. */
-export function workingIn(threadId: string): string[] {
+function workingIn(threadId: string): string[] {
   return [...activeTurns().values()].filter((turn) => turn.threadId === threadId).map((turn) => turn.botId);
 }
 
@@ -343,7 +343,7 @@ export function asideText(body: string, teammate: string): string {
  * them took it, so nobody needs a new turn for it. A bot on a teammate's task
  * hears it as an aside (`asideText`), so it never sits unanswered behind the task.
  */
-export function steerableTurns(thread: Thread, message: Pick<Message, "author" | "body">, targets = targetsFor(message, thread, listBots({ includeHidden: true, userId: thread.userId }), roomBefore(thread), workingIn(thread.id))): { turns: Active[]; all: boolean } {
+function steerableTurns(thread: Thread, message: Pick<Message, "author" | "body">, targets = targetsFor(message, thread, listBots({ includeHidden: true, userId: thread.userId }), roomBefore(thread), workingIn(thread.id))): { turns: Active[]; all: boolean } {
   const running = [...activeTurns().values()].filter((turn) => turn.threadId === thread.id);
   const turns = targets.flatMap((bot) => running.find((turn) => turn.botId === bot.id) ?? []);
   return { turns, all: targets.length > 0 && turns.length === targets.length };
@@ -457,7 +457,7 @@ function visibleMembers(thread: Thread, bots: Bot[]): Bot[] {
 }
 
 /** The other bots a room's message wakes along with `bot`: their turns run beside its own, so neither sees the other's answer yet. */
-export function answeringAlongside(bot: Pick<Bot, "id">, thread: Thread, message: Message, bots: Bot[]): Bot[] {
+function answeringAlongside(bot: Pick<Bot, "id">, thread: Thread, message: Message, bots: Bot[]): Bot[] {
   if (thread.kind !== "room") return [];
   const answering = getBot(message.author) ? answeringOf(message.id) : null;
   const woken = answering ? wokenBy(message, thread, answering, bots) : targetsFor(message, thread, bots, roomBefore(thread, message));
@@ -465,7 +465,7 @@ export function answeringAlongside(bot: Pick<Bot, "id">, thread: Thread, message
 }
 
 /** A room's recent messages ahead of `message` (all of them for one not posted yet), oldest first; nothing for a 1:1. */
-export function roomBefore(thread: Thread, message?: Pick<Message, "id" | "createdAt">): Message[] {
+function roomBefore(thread: Thread, message?: Pick<Message, "id" | "createdAt">): Message[] {
   if (thread.kind !== "room") return [];
   const recent = recentMessages(thread.id, ROOM_LOOKBACK);
   return message ? recent.filter((m) => m.id !== message.id && m.createdAt <= message.createdAt) : recent;
@@ -516,7 +516,7 @@ function textAttachments(message: Message): string {
   return parts.join("\n");
 }
 
-export type PromptOptions = {
+type PromptOptions = {
   // The last message a resumed session already saw: only what is newer goes in.
   since?: string | null;
   // The conversation's running summary, for a prompt that starts from nothing.
@@ -860,7 +860,7 @@ function reactedOnly(bot: Bot, message: Message): boolean {
 
 const PEOPLE_AND_GOND = new Set(["you", "system", "routine"]);
 
-export type AnswerRoute = "person" | "teammate" | "chain";
+type AnswerRoute = "person" | "teammate" | "chain";
 
 /**
  * Where a turn's answer goes, the one decision both the prompt and the
@@ -936,11 +936,11 @@ export function wokenBy(line: Pick<Message, "author" | "body">, thread: Thread, 
 }
 
 /** Who has written in the conversation since `message`. */
-export function spokeSince(threadId: string, message: Pick<Message, "createdAt">): Set<string> {
+function spokeSince(threadId: string, message: Pick<Message, "createdAt">): Set<string> {
   return new Set(recentMessages(threadId, CONTEXT_LINES).filter((m) => m.createdAt > message.createdAt && m.kind === "message").map((m) => m.author));
 }
 
-export function roomLineText(name: string, line: string, same = true): string {
+function roomLineText(name: string, line: string, same = true): string {
   return `${name} just said in the room, ${same ? "answering the same message as you" : "while you were working"}:\n\n${line}\n\nRead it as you would in a group chat: don't repeat what ${name} covered or ask ${name} for it, and if it names you, that's about the part you're already answering, so cover it in your one answer. Don't answer this line on its own: if you already gave your answer, you're done, and never add ${QUIET_REPLY} to an answer.`;
 }
 
@@ -985,7 +985,7 @@ export async function reportBack(bot: Bot, message: Message, reply: string, stop
   finishDelegation(delegation.id, reply ? "done" : "failed", reply || "(no result)", posted?.id ?? null);
 }
 
-export function failedResult(name: string, broke: string | null): string {
+function failedResult(name: string, broke: string | null): string {
   if (!broke) return "Result for the task you handed me:\n\n(I couldn't finish it; see my conversation for what went wrong.)";
   return `I couldn't finish the task you handed me: my run stopped with: ${broke.slice(0, 600)}\n\nWhat I did so far is in my conversation and my files. Decide: send ${name} a brief to carry on from there, or a corrected one, with delegate_bot; or tell the person plainly what only they can fix.`;
 }
@@ -1054,9 +1054,3 @@ export async function answerMessage(message: Message): Promise<void> {
 
   if (notStarted) releaseClaim(message.id);
 }
-
-export function botById(id: string) {
-  return getBot(id);
-}
-
-export type { BoxConfig };

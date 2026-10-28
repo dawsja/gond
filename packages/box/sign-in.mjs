@@ -1,4 +1,4 @@
-export const SIGN_IN_TIMEOUT_MS = 10 * 60 * 1000;
+const SIGN_IN_TIMEOUT_MS = 10 * 60 * 1000;
 
 export const SIGN_IN_KEEP_MS = 5 * 60 * 1000;
 

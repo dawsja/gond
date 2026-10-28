@@ -31,7 +31,7 @@ type TeachingRow = {
 };
 
 /** Where a teaching is still in the person's hands or the bot's, so another can't start beside it. */
-export const OPEN_TEACHING: TeachStatus[] = ["recording", "paused", "review", "looking"];
+const OPEN_TEACHING: TeachStatus[] = ["recording", "paused", "review", "looking"];
 
 const parse = <T>(text: string | null, fallback: T): T => {
   if (!text) return fallback;
@@ -104,7 +104,7 @@ export function teachingAskedBy(messageId: string): string | null {
   return found?.id ?? null;
 }
 
-export function teachingChanged(id: string) {
+function teachingChanged(id: string) {
   const found = row(id);
   if (found) emit({ topic: "teaching", userId: found.user_id, teaching: build(found) });
 }
@@ -218,16 +218,12 @@ export function teachingFrame(teachingId: string, n: number): { data: Uint8Array
   return found ?? null;
 }
 
-export function teachingFrames(teachingId: string): { n: number; step: number | null }[] {
-  return ensureDatabase().query("SELECT n, step FROM gond_teaching_frames WHERE teaching_id = ? ORDER BY n").all(teachingId) as { n: number; step: number | null }[];
-}
-
 export function deleteTeachingFrames(teachingId: string) {
   ensureDatabase().query("DELETE FROM gond_teaching_frames WHERE teaching_id = ?").run(teachingId);
 }
 
 /** A recording's pictures are kept a week after it ended; the steps and the skill stay. */
-export const TEACH_FRAMES_KEEP_DAYS = 7;
+const TEACH_FRAMES_KEEP_DAYS = 7;
 
 export function expireTeachingFrames(at = Date.now()): number {
   const before = new Date(at - TEACH_FRAMES_KEEP_DAYS * 24 * 60 * 60_000).toISOString();

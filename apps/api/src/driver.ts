@@ -41,7 +41,7 @@ export function resultAsText(value: unknown): string {
   return JSON.stringify(value ?? "");
 }
 
-export function agentToolsFor(tools: Record<string, DriverTool>): AgentTool[] {
+function agentToolsFor(tools: Record<string, DriverTool>): AgentTool[] {
   return Object.entries(tools).map(([name, tool]) => ({ name, description: tool.description, inputSchema: tool.inputSchema ?? { type: "object", properties: {} } }));
 }
 
@@ -55,7 +55,7 @@ export function clipParts(parts: ToolPart[]): ToolPart[] {
   return parts.map((part) => (part.type === "text" ? { ...part, text: clipToolResult(part.text) } : part));
 }
 
-export type CliTurn = {
+type CliTurn = {
   box: BoxConfig;
   engine: Engine;
   access: BoxAccess;
@@ -90,7 +90,7 @@ export type CliTurn = {
   onLimits?: (limits: Record<string, { used: number; resetsAt: string }>) => void;
 };
 
-export type CliTurnResult = {
+type CliTurnResult = {
   ok: boolean;
   text: string;
   stopReason: string | null;

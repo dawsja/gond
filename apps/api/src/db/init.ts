@@ -35,7 +35,7 @@ const ENCRYPTED_COLUMNS = [
   ["gond_composio_keys", "api_key"],
 ] as const;
 
-export function rotateLegacySecrets(db: Database) {
+function rotateLegacySecrets(db: Database) {
   try {
     db.transaction(() => {
       for (const [table, column] of ENCRYPTED_COLUMNS) {

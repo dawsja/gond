@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 
 const BODY_LINES = 6;
 
-export const EMAIL_WORDS: Record<EmailDraft["mode"], { title: string; allow: string; deny: string; done: string; allowed: string; denied: string }> = {
+const EMAIL_WORDS: Record<EmailDraft["mode"], { title: string; allow: string; deny: string; done: string; allowed: string; denied: string }> = {
   send: { title: "Send this email?", allow: "Send", deny: "Don't send", done: "Email sent", allowed: "Sent", denied: "Not sent" },
   reply: { title: "Send this reply?", allow: "Send", deny: "Don't send", done: "Reply sent", allowed: "Sent", denied: "Not sent" },
   forward: { title: "Forward this email?", allow: "Forward", deny: "Don't forward", done: "Email forwarded", allowed: "Forwarded", denied: "Not forwarded" },
@@ -24,7 +24,7 @@ export const EMAIL_WORDS: Record<EmailDraft["mode"], { title: string; allow: str
 const EMAIL_ICONS: Record<EmailDraft["mode"], ReactNode> = { send: <Mail aria-hidden="true" />, reply: <CornerUpLeft aria-hidden="true" />, forward: <Forward aria-hidden="true" />, draft: <NotebookPen aria-hidden="true" /> };
 
 /** "To Dana Ruiz and 2 more · Launch plan", for the line a card folds to. */
-export function emailGist(draft: EmailDraft): string {
+function emailGist(draft: EmailDraft): string {
   const people = [...draft.to, ...draft.cc, ...draft.bcc];
   const who = people.length ? `To ${emailName(people[0])}${people.length > 1 ? ` and ${people.length - 1} more` : ""}` : draft.app;
   return draft.subject ? `${who} · ${draft.subject}` : who;
@@ -59,7 +59,7 @@ function Marked({ before, after }: { before: string | null; after: string }) {
 }
 
 /** The draft as a letter: who it goes to, the subject, the body and its files, exactly as it will go; a redraft marks what changed since `before`. */
-export function EmailLetter({ draft, before = null }: { draft: EmailDraft; before?: EmailDraft | null }) {
+function EmailLetter({ draft, before = null }: { draft: EmailDraft; before?: EmailDraft | null }) {
   const [addresses, setAddresses] = useState(false);
   const [open, setOpen] = useState(false);
   const body = draft.body ?? "";

@@ -8,7 +8,7 @@ import { useStableCallback } from "@/hooks/use-stable-callback";
 import { askNative, useNativeUi } from "@/lib/native-ui";
 import { cn } from "@/lib/utils";
 
-export type ViewerImage = { id: string; name: string };
+type ViewerImage = { id: string; name: string };
 
 const ZOOM = 2.5;
 const SWIPE_PX = 60;

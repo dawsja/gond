@@ -26,7 +26,7 @@ import { personOf } from "./data/profiles.ts";
 type ResourceMetadata = { authorization_servers?: string[]; scopes_supported?: string[]; resource?: string };
 type ServerMetadata = { authorization_endpoint?: string; token_endpoint?: string; registration_endpoint?: string; scopes_supported?: string[]; code_challenge_methods_supported?: string[] };
 
-export function callbackUrl(server?: Pick<McpServer, "oauthRedirect"> | null): string {
+function callbackUrl(server?: Pick<McpServer, "oauthRedirect"> | null): string {
   return server?.oauthRedirect === "localhost" ? MCP_LOOPBACK_CALLBACK : `${appUrl()}/api/mcp-servers/oauth/callback`;
 }
 
@@ -189,11 +189,11 @@ export function mcpLoginHandBack(nonce: string, query: URLSearchParams): string 
   return `${MCP_LOOPBACK_CALLBACK}?${forward}`;
 }
 
-export function mcpLoginThread(nonce: string): string | null {
+function mcpLoginThread(nonce: string): string | null {
   return logins().get(nonce)?.threadId ?? null;
 }
 
-export async function finishMcpLogin(nonce: string, code: string): Promise<string> {
+async function finishMcpLogin(nonce: string, code: string): Promise<string> {
   const login = logins().get(nonce);
   if (!login) throw new Error("This sign-in link is stale. Start again from Settings → Apps → MCP servers.");
   logins().delete(nonce);

@@ -90,7 +90,7 @@ function NoteField({ teaching, onDone }: { teaching: Teaching; onDone: () => voi
   );
 }
 
-export function NoteButton({ teaching, size = "lg", className }: { teaching: Teaching; size?: "lg" | "xl"; className?: string }) {
+function NoteButton({ teaching, size = "lg", className }: { teaching: Teaching; size?: "lg" | "xl"; className?: string }) {
   const [open, setOpen] = useState(false);
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -106,7 +106,7 @@ export function NoteButton({ teaching, size = "lg", className }: { teaching: Tea
 }
 
 /** Discard asks first: what was shown so far goes with it. */
-export function DiscardButton({ teaching, bot, className }: { teaching: Teaching; bot: Bot | undefined; className?: string }) {
+function DiscardButton({ teaching, bot, className }: { teaching: Teaching; bot: Bot | undefined; className?: string }) {
   const { discard } = useTeachActions(teaching);
   const [asking, setAsking] = useState(false);
   return (
@@ -275,7 +275,7 @@ export function TeachPhone({ teaching, bot }: { teaching: Teaching; bot: Bot | u
 }
 
 /** Over a conversation's composer while its bot is being shown how: where to go back to, or how to finish. */
-export function TeachPill({ teaching, onOpen }: { teaching: Teaching; onOpen: () => void }) {
+function TeachPill({ teaching, onOpen }: { teaching: Teaching; onOpen: () => void }) {
   const { resume, done } = useTeachActions(teaching);
   const paused = teaching.status === "paused";
   return (

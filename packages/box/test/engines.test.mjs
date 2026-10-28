@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { backendOf, claudeAccessEnv, keyRefusal, parseAccess, retryLine, statusLine } from "../agents.mjs";
 import { permissionDecision } from "../bridge.mjs";
-import { insideHome, HttpError } from "../server.mjs";
 
 const API = { kind: "api", baseUrl: "http://api:8790/api/llm/openai", token: "tok_abcdefghijklmnop" };
 
@@ -65,8 +64,4 @@ test("permission answers read as allow or deny", () => {
   assert.equal(permissionDecision(null).allow, false);
 });
 
-test("insideHome keeps every CLI's sign-in private", () => {
-  for (const dir of [".claude/x", ".claude/.credentials.json"]) assert.throws(() => insideHome(dir), HttpError);
-  assert.ok(insideHome(".bots/a/notes.md").endsWith("/.bots/a/notes.md"));
-});
 

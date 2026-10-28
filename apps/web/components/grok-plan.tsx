@@ -18,7 +18,7 @@ type GrokSignIn = { state: "waiting" | "done" | "failed"; url: string | null; co
 const POLL_MS = 3000;
 
 /** xAI's mark, ink in both themes. */
-export function GrokLogo({ className, size = 16 }: { className?: string; size?: number }) {
+function GrokLogo({ className, size = 16 }: { className?: string; size?: number }) {
   return (
     <svg viewBox="0 0 24 24" width={size} height={size} fill="currentColor" aria-hidden="true" className={cn("shrink-0", className)}>
       <path d="M6.469 8.776L16.512 23h-4.464L2.005 8.776H6.47zm-.004 7.9l2.233 3.164L6.467 23H2l4.465-6.324zM22 2.582V23h-3.659V7.764L22 2.582zM22 1l-9.952 14.095-2.233-3.163L17.533 1H22z" />

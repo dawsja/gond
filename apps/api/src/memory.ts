@@ -31,7 +31,7 @@ export const NEARLY_FULL = 0.8;
 export const UNREADABLE = Symbol("unreadable memory");
 export type LoadedMemory = string | null | typeof UNREADABLE;
 
-export type FittedMemory = { text: string; bytes: number; limit: number; cut: number };
+type FittedMemory = { text: string; bytes: number; limit: number; cut: number };
 
 export function kb(bytes: number): string {
   return `${Math.max(bytes ? 0.1 : 0, Math.round((bytes / 1024) * 10) / 10)} KB`;

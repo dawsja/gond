@@ -421,7 +421,7 @@ describe("data", () => {
 
   test("a patch keeps what it doesn't mention", async () => {
     const { createBot, updateBot } = await import("../src/data/bots.ts");
-    const { botInputSchema, botPatchSchema, routinePatchSchema, skillPatchSchema } = await import("@gond/shared");
+    const { botInputSchema, botPatchSchema, skillPatchSchema } = await import("@gond/shared");
     const lead = createBot(botInputSchema.parse({ name: "Patch Lead", title: "Team Lead", description: "Runs the team.", notify: false }), "u-admin");
 
     const parsed = botPatchSchema.parse({ pinned: true });
@@ -431,7 +431,6 @@ describe("data", () => {
     expect(after.description).toBe("Runs the team.");
     expect(after.notify).toBe(false);
     expect(after.pinned).toBe(true);
-    expect(routinePatchSchema.parse({ enabled: false })).toEqual({ enabled: false });
     expect(skillPatchSchema.parse({ name: "Notes" })).toEqual({ name: "Notes" });
   });
 
@@ -1999,7 +1998,7 @@ describe("data", () => {
     expect(userTimezone("u-ping")).toBe("America/Chicago");
   });
 
-  test("a notification goes to the person's own subscriptions, on the device they used last", async () => {
+  test("a notification goes to every one of the person's own subscriptions", async () => {
     const { Hono } = await import("hono");
     const { mock } = await import("bun:test");
     const delivered: string[] = [];

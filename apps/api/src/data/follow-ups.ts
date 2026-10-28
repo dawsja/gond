@@ -1,7 +1,7 @@
 import { ensureDatabase } from "../db/init.ts";
 import { newId, now } from "../ids.ts";
 
-export type FollowUp = { id: string; botId: string; threadId: string; note: string; dueAt: string; createdAt: string; firedAt: string | null };
+type FollowUp = { id: string; botId: string; threadId: string; note: string; dueAt: string; createdAt: string; firedAt: string | null };
 
 type Row = { id: string; bot_id: string; thread_id: string; note: string; due_at: string; created_at: string; fired_at: string | null };
 

@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 
-export type Decision = ApprovalAnswer["decision"];
+type Decision = ApprovalAnswer["decision"];
 
 type Shape = { icon: ReactNode; title: string; by: string; body: ReactNode; allow: string; deny: string; always: boolean; note?: string; allowed?: string; denied?: string };
 

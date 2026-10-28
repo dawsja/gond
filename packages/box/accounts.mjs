@@ -4,7 +4,7 @@ import path from "node:path";
 
 export const FIRST_UID = 2001;
 
-export const NAME_PREFIX = "gond-";
+const NAME_PREFIX = "gond-";
 
 const MAX_NAME = 32;
 export const USER_ID = /^[A-Za-z0-9_-]{1,64}$/;
@@ -389,7 +389,7 @@ export class Accounts {
 const BOT_KEEPS = new Set(["MEMORY.md", "SOUL.md", "memory"]);
 
 /** What `refreshHome` does with each path in a home: keep it, look inside it, or remove it. */
-export function homeKeeps(account) {
+function homeKeeps(account) {
   const exact = [account.claude, account.browser, account.browsers, account.skills].map((dir) => path.resolve(dir));
   const bots = path.resolve(account.bots);
   const team = path.resolve(account.team);
@@ -410,7 +410,7 @@ export function homeKeeps(account) {
 }
 
 /** Removes everything under `dir` that `decide` doesn't keep; links are never followed. Answers what went, relative to `dir`. */
-export function clearHome(dir, decide, root = dir) {
+function clearHome(dir, decide, root = dir) {
   const removed = [];
   let entries = [];
   try {

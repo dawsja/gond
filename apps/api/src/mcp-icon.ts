@@ -1,7 +1,7 @@
 import { APP_CATALOG, appLogoUrl, type McpServer } from "@gond/shared";
 import { pictureType } from "./images.ts";
 
-export type McpIconResult = { kind: "redirect"; url: string } | { kind: "image"; type: string; bytes: ArrayBuffer } | null;
+type McpIconResult = { kind: "redirect"; url: string } | { kind: "image"; type: string; bytes: ArrayBuffer } | null;
 
 const ICON_SERVICE = "https://icons.duckduckgo.com/ip3/";
 const CACHE_MS = 24 * 60 * 60 * 1000;
@@ -22,7 +22,7 @@ export function iconHosts(url: string | undefined): string[] {
   return labels.length > 2 ? [host, labels.slice(-2).join(".")] : [host];
 }
 
-export function catalogLogoFor(name: string): string | null {
+function catalogLogoFor(name: string): string | null {
   const wanted = name.trim().toLowerCase();
   const app = APP_CATALOG.find((entry) => entry.toolkit === wanted || entry.name.toLowerCase() === wanted);
   return app ? appLogoUrl(app.toolkit) : null;
