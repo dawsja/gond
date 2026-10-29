@@ -27,7 +27,7 @@ export type GondMobile = {
   /** What else this iPhone app draws, which an older one doesn't: "call" for a call's bar, "scale" for its chrome at the page's size. */
   features?(): string[];
 
-  /** How many points a CSS pixel takes in the zoomed page (`appScale`), so the iPhone app draws its chrome to match. */
+  /** How much bigger the page's design is drawn on this phone (`SIZE_SCRIPT`), so the iPhone app draws its chrome to match. */
   setScale?(scale: number): void;
 };
 

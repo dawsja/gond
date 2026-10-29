@@ -156,13 +156,11 @@
      page here, and each raised surface (a filled button, a card, a dialog, a sheet) sets its own. */
   --surface: var(--background);
   /* The Android app draws the page under its bars and says how tall they are
-     (--shell-inset-*); a WebView's env() can't be relied on for it. The apps say it in points, and
-     the phone apps zoom the page (--page-scale, set by the theme init script). */
-  --page-scale: 1;
-  --safe-top: max(env(safe-area-inset-top), calc(var(--shell-inset-top, 0px) / var(--page-scale)));
-  --safe-bottom: max(env(safe-area-inset-bottom), calc(var(--shell-inset-bottom, 0px) / var(--page-scale)));
-  --safe-left: max(env(safe-area-inset-left), calc(var(--shell-inset-left, 0px) / var(--page-scale)));
-  --safe-right: max(env(safe-area-inset-right), calc(var(--shell-inset-right, 0px) / var(--page-scale)));
+     (--shell-inset-*); a WebView's env() can't be relied on for it. */
+  --safe-top: max(env(safe-area-inset-top), var(--shell-inset-top, 0px));
+  --safe-bottom: max(env(safe-area-inset-bottom), var(--shell-inset-bottom, 0px));
+  --safe-left: max(env(safe-area-inset-left), var(--shell-inset-left, 0px));
+  --safe-right: max(env(safe-area-inset-right), var(--shell-inset-right, 0px));
   --carbon: #1b1a18;
   --paper-white: #ffffff;
   --linen: #f5f3ee;

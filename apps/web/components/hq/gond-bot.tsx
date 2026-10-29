@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type CSSProperties } from "react";
+import { rem } from "@/lib/utils";
 
 type GondBotExpression = "happy" | "wink" | "surprised";
 type GondBotShape = "cog" | "gumdrop" | "cloud" | "circle" | "triangle";
@@ -92,7 +93,7 @@ export function GondBot({
   return (
     <div
       className={`gb${hello ? ` gb-${hello}` : ""}${asleep ? " gb-asleep" : ""}`}
-      style={{ width: size, height: size, "--tilt": `${tilt}deg` } as CSSProperties}
+      style={{ width: rem(size), height: rem(size), "--tilt": `${tilt}deg` } as CSSProperties}
       onClick={sayHello}
       role="img"
       aria-label={label}

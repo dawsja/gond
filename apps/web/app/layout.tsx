@@ -1,10 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
-import { headers } from "next/headers";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/toast";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { appScale, THEME_INIT_SCRIPT } from "@/lib/theme/theme";
+import { THEME_INIT_SCRIPT } from "@/lib/theme/theme";
 import "./globals.css";
 
 const inter = Inter({ variable: "--font-inter", subsets: ["latin"], weight: ["400", "500", "600", "700"] });
@@ -20,8 +19,11 @@ export const metadata: Metadata = {
   appleWebApp: { capable: true, title: "Gond", statusBarStyle: "default" },
 };
 
-const VIEWPORT: Viewport = {
+export const viewport: Viewport = {
   colorScheme: "light dark",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
   userScalable: false,
   viewportFit: "cover",
   interactiveWidget: "resizes-content",
@@ -30,14 +32,6 @@ const VIEWPORT: Viewport = {
     { media: "(prefers-color-scheme: dark)", color: "#121212" },
   ],
 };
-
-// The phone apps' pages arrive zoomed (`appScale`). The theme init script writes the width before
-// the first layout (`ZOOM_SCRIPT`); Next fills in width=device-width unless the key is there, undefined.
-export async function generateViewport(): Promise<Viewport> {
-  const scale = appScale((await headers()).get("user-agent"));
-  if (scale === 1) return { ...VIEWPORT, width: "device-width", initialScale: 1, maximumScale: 1 };
-  return { ...VIEWPORT, width: undefined, initialScale: scale, minimumScale: scale, maximumScale: scale };
-}
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

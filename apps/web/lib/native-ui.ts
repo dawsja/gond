@@ -2,7 +2,6 @@
 
 import { useEffect, useSyncExternalStore } from "react";
 import { mobileShell, type GondMobile } from "@/lib/shell";
-import { pageScale } from "@/lib/theme/theme";
 
 /*
  * The iPhone app draws a few things itself, in Liquid Glass: a destructive confirm, a message's
@@ -87,11 +86,6 @@ export function askNative<K extends NativeRequest["kind"]>(request: Extract<Nati
   listen();
   const id = `native-${++next}`;
   const { kind, ...rest } = request;
-  // The app places the lifted bubble in points; a zoomed page's pixels are bigger.
-  if ("rect" in rest) {
-    const scale = pageScale();
-    rest.rect = { x: rest.rect.x * scale, y: rest.rect.y * scale, width: rest.rect.width * scale, height: rest.rect.height * scale };
-  }
   return new Promise((resolve) => {
     waiting.set(id, (value) => resolve(value as NativeAnswer[K] | null));
     native.present(kind, JSON.stringify({ id, ...rest }));

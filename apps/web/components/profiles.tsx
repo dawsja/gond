@@ -19,7 +19,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { del, patch, post } from "@/lib/api";
-import { cn } from "@/lib/utils";
+import { cn, rem } from "@/lib/utils";
 
 /** "Aa" stands for the first letter of the name, before there is one. */
 const LETTER = "Aa";
@@ -32,7 +32,7 @@ export function ProfileMark({ profile, size = 40, className }: { profile: Pick<P
       aria-hidden="true"
       data-mark={profile.accent}
       className={cn("inline-flex shrink-0 items-center justify-center rounded-full bg-(--mark) leading-none font-semibold text-tint-foreground", className)}
-      style={{ width: size, height: size, fontSize: Math.max(9, Math.round(size * (profile.icon ? 0.52 : letter === LETTER ? 0.36 : 0.42))) }}
+      style={{ width: rem(size), height: rem(size), fontSize: rem(Math.max(9, Math.round(size * (profile.icon ? 0.52 : letter === LETTER ? 0.36 : 0.42)))) }}
     >
       {/* Emoji fonts set their glyphs about 0.06em low in the line, so the icon is lifted to the circle's middle. */}
       {profile.icon ? <span className="-translate-y-[0.06em]">{profile.icon}</span> : letter}

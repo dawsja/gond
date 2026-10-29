@@ -553,18 +553,17 @@ One line each: where to start, and what must not change.
   conversation on screen is repeated in the sheet.
 - **Templates** (`bot-template.tsx`, `SharedTemplate` in the shell).
 - **Transfer primary** (`transfer-primary.tsx`).
-- **Zoom** (`appScale` in `lib/theme/theme.ts`, `generateViewport` in
-  `app/layout.tsx`): the phone apps' pages are laid out at 115%
-  (`PHONE_SCALE`), with no setting. The server reads the app from the user
-  agent and sends `initial-scale` with no width; the theme init script adds
-  the width (screen over scale) before the first layout and keeps every
-  viewport tag to it (`ZOOM_SCRIPT`), since Android's WebView lays a tag
-  with no width out 980 px wide. Never rem or text zoom. What the
-  apps report in points (`--shell-inset-*`, the native composer) is divided
-  by `--page-scale`, and a rect sent to the app multiplied (`askNative`).
-  An iPhone app is zoomed only from 0.2.91 (`IOS_SCALES_FROM`), which draws
-  its chrome at the page's size (`setScale`, `chromeScale` in
-  `NativeViews.swift`); menus and toasts stay the system's.
+- **Phone size** (`postcss-rem.mjs`, `SIZE_SCRIPT` in `lib/theme/theme.ts`):
+  the phone apps draw the design 15% bigger (`PHONE_SCALE`), with no
+  setting and no zoom. Sizes are written in px and built as rem (16px to
+  1rem; under 2px and media conditions stay), and the theme init script
+  sets the apps' root font to 115% before the first paint. A size set from
+  JavaScript goes through `rem()` in `lib/utils.ts`, never raw px, or it
+  won't grow; measured values (the composer's height, a swipe) stay px.
+  The insets stay px, since the bars don't grow. An iPhone app gets it
+  only with "scale" in `features()`, and draws its chrome to match
+  (`setScale`, `chromeScale` in `NativeViews.swift`); menus and toasts
+  stay the system's.
 - **Personalization** (`personalization-card.tsx`): `REPLY_STYLES`, emoji
   amount, `PUT /api/me/talk`.
 - **About** (`server-update-card.tsx`, `about-card.tsx`). `VersionWatch`

@@ -45,43 +45,18 @@ export function applyAccent(accent: string) {
   }
 }
 
-/** How much bigger the phone apps draw everything than a browser would. */
+/** How much bigger the phone apps draw everything than a browser would: their root font size. */
 const PHONE_SCALE = 1.15;
 
-/** The first iPhone app that draws its own header and composer at the page's scale ("scale" in features()). */
-const IOS_SCALES_FROM = [0, 2, 91] as const;
-
-/**
- * The scale a page is laid out at, from the app named in the user agent ("Gond/0.2.91 (iOS)"):
- * the phone apps' pages are zoomed so words, bubbles and touch targets are bigger; a browser's
- * and the desktop app's aren't.
- */
-export function appScale(userAgent: string | null): number {
-  const app = /\bGond\/(\d+)\.(\d+)\.(\d+) \((Android|iOS)\)/.exec(userAgent ?? "");
-  if (!app) return 1;
-  if (app[4] === "Android") return PHONE_SCALE;
-  const rank = ([major, minor, patch]: readonly number[]) => major! * 1e6 + minor! * 1e3 + patch!;
-  return rank(app.slice(1, 4).map(Number)) >= rank(IOS_SCALES_FROM) ? PHONE_SCALE : 1;
-}
-
-/** How many device points a CSS pixel takes now: 1 unless a phone app is zoomed. */
-export function pageScale(): number {
-  return Number.parseFloat(document.documentElement.style.getPropertyValue("--page-scale")) || 1;
-}
-
 /*
- * The zoom the server picked (`appScale`, as initial-scale in the viewport tag). Android's WebView
- * lays a tag with no width out 980 pixels wide, so the width is written here, before the first
- * layout: the screen's width over the scale (screen.width is the portrait width on an iPhone in
- * either orientation, so the orientation picks the side). Next adds its own tag again after
- * hydration, and the last one wins, so every one in the head is kept to it. --page-scale turns
- * what the apps report in points (insets, the composer) into CSS pixels; setScale tells the iPhone
- * app, which draws its own header and composer at it.
+ * Every size is built as rem (postcss-rem.mjs), so the phone apps' bigger root font grows the whole
+ * design, before the first paint and with no zoom. On the iPhone only in an app that draws its own
+ * header and composer to match ("scale" in features()), which setScale tells.
  */
-const ZOOM_SCRIPT = `var V='meta[name="viewport"]',h=document.head,v=h.querySelector(V),x=v&&/initial-scale=([\\d.]+)/.exec(v.content),s=x?parseFloat(x[1]):1,m=window.gondMobile;if(s>1){var p=0,fit=function(){var o=screen.orientation?screen.orientation.type.indexOf("landscape")===0:Math.abs(window.orientation||0)===90,w=o?Math.max(screen.width,screen.height):Math.min(screen.width,screen.height),k=Math.round(w/s),q=Math.round(w/k*1e4)/1e4,c="width="+k+", initial-scale="+q+", minimum-scale="+q+", maximum-scale="+q+", user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content";if(q!==p){p=q;r.style.setProperty("--page-scale",String(q));if(m&&typeof m.setScale==="function")m.setScale(q)}h.querySelectorAll(V).forEach(function(e){if(e.content!==c)e.content=c})};fit();new MutationObserver(fit).observe(h,{childList:true,subtree:true,attributes:true,attributeFilter:["content"]});addEventListener("resize",fit);if(screen.orientation)screen.orientation.addEventListener("change",fit)}`;
+const SIZE_SCRIPT = `var m=window.gondMobile;if(m&&(m.platform()!=="ios"||(typeof m.features==="function"&&m.features().indexOf("scale")>=0))){r.style.fontSize="${Math.round(PHONE_SCALE * 100)}%";if(typeof m.setScale==="function")m.setScale(${PHONE_SCALE})}`;
 
 export const THEME_INIT_SCRIPT = `(function(){try{var r=document.documentElement,t=localStorage.getItem(${JSON.stringify(
   THEME_STORAGE_KEY,
 )});var d=t==="dark"||(t!=="light"&&matchMedia(${JSON.stringify(
   DARK_QUERY,
-)}).matches);r.classList.toggle("dark",d);var a=localStorage.getItem(${JSON.stringify(ACCENT_STORAGE_KEY)});if(a&&/^[a-z]+$/.test(a))r.setAttribute("data-accent",a);if(window.gondMobile)r.setAttribute("data-shell","phone");${ZOOM_SCRIPT}}catch(e){}})()`;
+)}).matches);r.classList.toggle("dark",d);var a=localStorage.getItem(${JSON.stringify(ACCENT_STORAGE_KEY)});if(a&&/^[a-z]+$/.test(a))r.setAttribute("data-accent",a);if(window.gondMobile)r.setAttribute("data-shell","phone");${SIZE_SCRIPT}}catch(e){}})()`;

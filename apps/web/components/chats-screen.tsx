@@ -80,7 +80,7 @@ export function ChatsScreen({ className }: { className?: string }) {
       <div data-chats-list="" className="min-h-0 flex-1 overflow-y-auto px-3 pt-[calc(56px+max(12px,var(--safe-top))+var(--call-pill-space))] pb-[calc(16px+var(--safe-bottom))]">
         <BotRows rows={rows} hits={hits} query={query} setQuery={setQuery} lookAs="sheet" onOpen={onOpen} onAsk={setAsk} />
       </div>
-      <MessageScrollerEdges viewport="[data-chats-list]" top="calc(56px + max(12px, var(--safe-top)) + var(--call-pill-space) + 16px)" bottom="0px" />
+      <MessageScrollerEdges viewport="[data-chats-list]" top="calc(3.5rem + max(0.75rem, var(--safe-top)) + var(--call-pill-space) + 1rem)" bottom="0px" />
       <ThreadConfirms ask={ask} onClose={() => setAsk(null)} />
     </div>
   );

@@ -4,13 +4,13 @@ import type { Bot } from "@gond/shared";
 import { Globe, Users } from "lucide-react";
 import { GondBot } from "@/components/hq/gond-bot";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { cn } from "@/lib/utils";
+import { cn, rem } from "@/lib/utils";
 
 export function BotAvatar({ bot, size = 24, greet = false, className, style }: { bot: Pick<Bot, "name" | "title" | "color" | "expression" | "primary"> & Partial<Pick<Bot, "shape" | "avatar">>; size?: number; greet?: boolean; className?: string; style?: React.CSSProperties }) {
   const disc = Math.max(12, Math.round(size * 0.3));
   const label = `${bot.name}${bot.title ? `, ${bot.title}` : ""}${bot.primary ? ", primary bot" : ""}`;
   return (
-    <span data-slot="bot-avatar" className={cn("relative inline-flex shrink-0 items-center justify-center", className)} style={{ width: size, height: size, ...style }}>
+    <span data-slot="bot-avatar" className={cn("relative inline-flex shrink-0 items-center justify-center", className)} style={{ width: rem(size), height: rem(size), ...style }}>
       {bot.avatar ? (
         <Avatar className="size-full border border-primary-edge after:hidden" role="img" aria-label={label}>
           <AvatarImage src={bot.avatar} alt="" />
@@ -20,7 +20,7 @@ export function BotAvatar({ bot, size = 24, greet = false, className, style }: {
         <GondBot color={bot.color} size={size} expression={bot.expression} shape={bot.shape} greet={greet} label={label} />
       )}
       {bot.primary && size >= 24 ? (
-        <span aria-hidden="true" className={cn("absolute right-0 bottom-0 flex items-center justify-center rounded-full bg-gold-coin text-gold-foreground ring-[1.5px] ring-(--surface)", disc >= 18 && "gold-coin-shine")} style={{ width: disc, height: disc }}>
+        <span aria-hidden="true" className={cn("absolute right-0 bottom-0 flex items-center justify-center rounded-full bg-gold-coin text-gold-foreground ring-[1.5px] ring-(--surface)", disc >= 18 && "gold-coin-shine")} style={{ width: rem(disc), height: rem(disc) }}>
           <CrownMark size={crownSize(disc)} />
         </span>
       ) : null}
@@ -40,7 +40,7 @@ function crownSize(disc: number) {
 // Button resizes any svg inside it that has no size class (the conversation header's bot pill).
 function CrownMark({ size }: { size: number }) {
   return (
-    <svg viewBox="0 -1.5 24 24" style={{ width: size, height: size }} fill="currentColor" stroke="currentColor" strokeWidth={1.5} strokeLinejoin="round">
+    <svg viewBox="0 -1.5 24 24" style={{ width: rem(size), height: rem(size) }} fill="currentColor" stroke="currentColor" strokeWidth={1.5} strokeLinejoin="round">
       <path d="M11.562 3.266a.5.5 0 0 1 .876 0L15.39 8.87a1 1 0 0 0 1.516.294L21.183 5.5a.5.5 0 0 1 .798.519l-2.834 10.246a1 1 0 0 1-.956.734H5.81a1 1 0 0 1-.957-.734L2.02 6.02a.5.5 0 0 1 .798-.519l4.276 3.664a1 1 0 0 0 1.516-.294z" />
     </svg>
   );
@@ -48,9 +48,9 @@ function CrownMark({ size }: { size: number }) {
 
 export function PersonAvatar({ name, avatar, size = 24, className }: { name: string; avatar: string | null; size?: number; className?: string }) {
   return (
-    <Avatar className={cn("after:hidden", className)} style={{ width: size, height: size }} aria-label={name}>
+    <Avatar className={cn("after:hidden", className)} style={{ width: rem(size), height: rem(size) }} aria-label={name}>
       {avatar ? <AvatarImage src={avatar} alt="" /> : null}
-      <AvatarFallback className="border border-primary-edge bg-primary font-semibold text-primary-foreground" style={{ fontSize: Math.max(10, Math.round(size * 0.4)) }}>
+      <AvatarFallback className="border border-primary-edge bg-primary font-semibold text-primary-foreground" style={{ fontSize: rem(Math.max(10, Math.round(size * 0.4))) }}>
         {name.charAt(0).toUpperCase() || "Y"}
       </AvatarFallback>
     </Avatar>
@@ -75,10 +75,10 @@ export function RoomAvatar({ bots, size = 40, space = false, className }: { bots
   const chip = Math.round(size * 0.42);
   const lift = Math.round(size / 16);
   return (
-    <span data-slot="space-avatar" className={cn("relative inline-block shrink-0", className)} style={{ width: size, height: size }}>
+    <span data-slot="space-avatar" className={cn("relative inline-block shrink-0", className)} style={{ width: rem(size), height: rem(size) }}>
       <RoomFaces bots={bots} size={size} className="absolute top-0 left-0" />
-      <span role="img" aria-label="Space" className="absolute flex items-center justify-center rounded-full bg-control text-control-foreground ring-2 ring-(--surface)" style={{ width: chip, height: chip, top: -lift, right: -lift }}>
-        <Globe strokeWidth={2.25} style={{ width: Math.round(chip * 0.6), height: Math.round(chip * 0.6) }} aria-hidden="true" />
+      <span role="img" aria-label="Space" className="absolute flex items-center justify-center rounded-full bg-control text-control-foreground ring-2 ring-(--surface)" style={{ width: rem(chip), height: rem(chip), top: rem(-lift), right: rem(-lift) }}>
+        <Globe strokeWidth={2.25} style={{ width: rem(Math.round(chip * 0.6)), height: rem(Math.round(chip * 0.6)) }} aria-hidden="true" />
       </span>
     </span>
   );
@@ -93,13 +93,13 @@ function RoomFaces({ bots, size, className }: { bots: Face[]; size: number; clas
   const more = bots.length - 2;
   const chip = Math.round(size * 0.36);
   return (
-    <span data-slot="room-avatar" role="img" aria-label={bots.map((bot) => bot.name).join(", ")} className={cn("relative inline-block shrink-0", className)} style={{ width: size, height: size }}>
+    <span data-slot="room-avatar" role="img" aria-label={bots.map((bot) => bot.name).join(", ")} className={cn("relative inline-block shrink-0", className)} style={{ width: rem(size), height: rem(size) }}>
       <BotAvatar bot={back} size={face} className="absolute top-0 left-0" />
-      <span className="absolute rounded-full bg-(--surface)" style={{ padding: cut, right: -cut, bottom: -cut }}>
+      <span className="absolute rounded-full bg-(--surface)" style={{ padding: rem(cut), right: rem(-cut), bottom: rem(-cut) }}>
         <BotAvatar bot={front} size={face} className="block" />
       </span>
       {more > 0 ? (
-        <span aria-hidden="true" className="absolute -bottom-0.5 -left-0.5 flex items-center justify-center rounded-full border border-primary-edge bg-primary font-semibold text-primary-foreground tabular-nums ring-2 ring-(--surface)" style={{ height: chip, minWidth: chip, paddingInline: Math.round(size * 0.06), fontSize: Math.max(9, Math.round(size * 0.2)) }}>
+        <span aria-hidden="true" className="absolute -bottom-0.5 -left-0.5 flex items-center justify-center rounded-full border border-primary-edge bg-primary font-semibold text-primary-foreground tabular-nums ring-2 ring-(--surface)" style={{ height: rem(chip), minWidth: rem(chip), paddingInline: rem(Math.round(size * 0.06)), fontSize: rem(Math.max(9, Math.round(size * 0.2))) }}>
           +{more}
         </span>
       ) : null}
@@ -109,8 +109,8 @@ function RoomFaces({ bots, size, className }: { bots: Face[]; size: number; clas
 
 function RoomIcon({ size, className }: { size: number; className?: string }) {
   return (
-    <span className={cn("inline-flex shrink-0 items-center justify-center rounded-full border border-primary-edge bg-primary text-muted-foreground", className)} style={{ width: size, height: size }}>
-      <Users style={{ width: size * 0.4, height: size * 0.4 }} aria-hidden="true" />
+    <span className={cn("inline-flex shrink-0 items-center justify-center rounded-full border border-primary-edge bg-primary text-muted-foreground", className)} style={{ width: rem(size), height: rem(size) }}>
+      <Users style={{ width: rem(size * 0.4), height: rem(size * 0.4) }} aria-hidden="true" />
     </span>
   );
 }
