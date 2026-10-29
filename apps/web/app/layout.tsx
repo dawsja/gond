@@ -31,9 +31,8 @@ const VIEWPORT: Viewport = {
   ],
 };
 
-// The phone apps' pages arrive zoomed (`appScale`): with no width, the viewport is the screen's
-// width over the scale, so the page is laid out at that size from its first byte. Next fills in
-// width=device-width unless the key is there, undefined.
+// The phone apps' pages arrive zoomed (`appScale`). The theme init script writes the width before
+// the first layout (`ZOOM_SCRIPT`); Next fills in width=device-width unless the key is there, undefined.
 export async function generateViewport(): Promise<Viewport> {
   const scale = appScale((await headers()).get("user-agent"));
   if (scale === 1) return { ...VIEWPORT, width: "device-width", initialScale: 1, maximumScale: 1 };

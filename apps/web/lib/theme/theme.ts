@@ -70,11 +70,15 @@ export function pageScale(): number {
 }
 
 /*
- * The zoom the server laid the page out at (`appScale` in the viewport tag), as --page-scale, which
- * turns what the apps report in points (insets, the composer) into CSS pixels; setScale tells the
- * iPhone app, which draws its own header and composer at it.
+ * The zoom the server picked (`appScale`, as initial-scale in the viewport tag). Android's WebView
+ * lays a tag with no width out 980 pixels wide, so the width is written here, before the first
+ * layout: the screen's width over the scale (screen.width is the portrait width on an iPhone in
+ * either orientation, so the orientation picks the side). Next adds its own tag again after
+ * hydration, and the last one wins, so every one in the head is kept to it. --page-scale turns
+ * what the apps report in points (insets, the composer) into CSS pixels; setScale tells the iPhone
+ * app, which draws its own header and composer at it.
  */
-const ZOOM_SCRIPT = `var v=document.querySelector('meta[name="viewport"]'),x=v&&/initial-scale=([\\d.]+)/.exec(v.content),q=x?parseFloat(x[1]):1,m=window.gondMobile;if(q>1){r.style.setProperty("--page-scale",String(q));if(m&&typeof m.setScale==="function")m.setScale(q)}`;
+const ZOOM_SCRIPT = `var V='meta[name="viewport"]',h=document.head,v=h.querySelector(V),x=v&&/initial-scale=([\\d.]+)/.exec(v.content),s=x?parseFloat(x[1]):1,m=window.gondMobile;if(s>1){var p=0,fit=function(){var o=screen.orientation?screen.orientation.type.indexOf("landscape")===0:Math.abs(window.orientation||0)===90,w=o?Math.max(screen.width,screen.height):Math.min(screen.width,screen.height),k=Math.round(w/s),q=Math.round(w/k*1e4)/1e4,c="width="+k+", initial-scale="+q+", minimum-scale="+q+", maximum-scale="+q+", user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content";if(q!==p){p=q;r.style.setProperty("--page-scale",String(q));if(m&&typeof m.setScale==="function")m.setScale(q)}h.querySelectorAll(V).forEach(function(e){if(e.content!==c)e.content=c})};fit();new MutationObserver(fit).observe(h,{childList:true,subtree:true,attributes:true,attributeFilter:["content"]});addEventListener("resize",fit);if(screen.orientation)screen.orientation.addEventListener("change",fit)}`;
 
 export const THEME_INIT_SCRIPT = `(function(){try{var r=document.documentElement,t=localStorage.getItem(${JSON.stringify(
   THEME_STORAGE_KEY,

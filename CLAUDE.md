@@ -556,8 +556,10 @@ One line each: where to start, and what must not change.
 - **Zoom** (`appScale` in `lib/theme/theme.ts`, `generateViewport` in
   `app/layout.tsx`): the phone apps' pages are laid out at 115%
   (`PHONE_SCALE`), with no setting. The server reads the app from the user
-  agent and sends `initial-scale` with no width, so the page arrives at that
-  size and nothing rewrites the viewport; never rem or text zoom. What the
+  agent and sends `initial-scale` with no width; the theme init script adds
+  the width (screen over scale) before the first layout and keeps every
+  viewport tag to it (`ZOOM_SCRIPT`), since Android's WebView lays a tag
+  with no width out 980 px wide. Never rem or text zoom. What the
   apps report in points (`--shell-inset-*`, the native composer) is divided
   by `--page-scale`, and a rect sent to the app multiplied (`askNative`).
   An iPhone app is zoomed only from 0.2.91 (`IOS_SCALES_FROM`), which draws
