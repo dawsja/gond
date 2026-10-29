@@ -10,17 +10,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Field, FieldDescription, FieldGroup, FieldSeparator, FieldTitle } from "@/components/ui/field";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "@/components/ui/toast";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { api } from "@/lib/api";
-import { useSizeOffered } from "@/lib/shell";
-import { applySize, isSize, isTheme, readStoredSize, SIZE_LABELS, SIZES, type Theme } from "@/lib/theme/theme";
+import { isTheme, type Theme } from "@/lib/theme/theme";
 
 const subscribeNever = () => () => {};
-
-function subscribeSize(onChange: () => void) {
-  window.addEventListener("gond:size", onChange);
-  return () => window.removeEventListener("gond:size", onChange);
-}
 
 const THEME_OPTIONS: Record<Theme, { Icon: typeof Sun; label: string }> = {
   system: { Icon: SunMoon, label: "System" },
@@ -53,8 +46,6 @@ export function AppearanceCard() {
   const { theme, setTheme } = useTheme();
   const { me, setMe } = useStore();
   const mounted = useSyncExternalStore(subscribeNever, () => true, () => false);
-  const size = useSyncExternalStore(subscribeSize, readStoredSize, () => "default" as const);
-  const sizeOffered = useSizeOffered();
 
   async function pick(accent: Accent) {
     if (accent === me.accent) return;
@@ -72,7 +63,7 @@ export function AppearanceCard() {
     <Card>
       <CardHeader>
         <CardTitle>Theme and color</CardTitle>
-        <CardDescription>{sizeOffered ? "The theme and size are this phone's own." : "The theme is this device's own."} Your color follows you to every device.</CardDescription>
+        <CardDescription>The theme is this device&apos;s own. Your color follows you to every device.</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-5">
         <FieldGroup>
@@ -127,24 +118,6 @@ export function AppearanceCard() {
               </SelectContent>
             </Select>
           </Field>
-          {sizeOffered ? (
-            <>
-              <FieldSeparator />
-              <Field>
-                <div className="flex flex-col gap-1">
-                  <FieldTitle id="size-label">Size</FieldTitle>
-                  <FieldDescription>Makes everything bigger on this phone: words, bubbles and buttons.</FieldDescription>
-                </div>
-                <ToggleGroup aria-labelledby="size-label" variant="pill" value={[size]} onValueChange={(next) => isSize(next[0]) && next[0] !== size && applySize(next[0])} className="w-full">
-                  {SIZES.map((value) => (
-                    <ToggleGroupItem key={value} value={value} className="flex-1">
-                      {SIZE_LABELS[value]}
-                    </ToggleGroupItem>
-                  ))}
-                </ToggleGroup>
-              </Field>
-            </>
-          ) : null}
         </FieldGroup>
 
         <div className="flex flex-col gap-2" aria-label="Preview" role="group">

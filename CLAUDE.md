@@ -553,15 +553,15 @@ One line each: where to start, and what must not change.
   conversation on screen is repeated in the sheet.
 - **Templates** (`bot-template.tsx`, `SharedTemplate` in the shell).
 - **Transfer primary** (`transfer-primary.tsx`).
-- **Size** (`appearance-card.tsx`, `SIZES` in `lib/theme/theme.ts`): Default
-  or Large (115%), the phone apps only and each device's own. It is page
-  zoom: the theme init script writes every viewport tag in the head (Next
-  adds its own after hydration) as the screen's width over the scale, so
-  everything grows and reflows; never rem or text zoom. What the apps
-  report in points (`--shell-inset-*`, the native composer) is divided by
-  `--page-scale`, and a rect sent to the app multiplied (`askNative`). An
-  iPhone app offers it only with "scale" in `features()`, and draws its
-  chrome at the page's size (`setScale`, `chromeScale` in
+- **Zoom** (`appScale` in `lib/theme/theme.ts`, `generateViewport` in
+  `app/layout.tsx`): the phone apps' pages are laid out at 115%
+  (`PHONE_SCALE`), with no setting. The server reads the app from the user
+  agent and sends `initial-scale` with no width, so the page arrives at that
+  size and nothing rewrites the viewport; never rem or text zoom. What the
+  apps report in points (`--shell-inset-*`, the native composer) is divided
+  by `--page-scale`, and a rect sent to the app multiplied (`askNative`).
+  An iPhone app is zoomed only from 0.2.91 (`IOS_SCALES_FROM`), which draws
+  its chrome at the page's size (`setScale`, `chromeScale` in
   `NativeViews.swift`); menus and toasts stay the system's.
 - **Personalization** (`personalization-card.tsx`): `REPLY_STYLES`, emoji
   amount, `PUT /api/me/talk`.

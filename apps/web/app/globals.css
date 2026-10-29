@@ -157,7 +157,7 @@
   --surface: var(--background);
   /* The Android app draws the page under its bars and says how tall they are
      (--shell-inset-*); a WebView's env() can't be relied on for it. The apps say it in points, and
-     a zoomed page (Settings → Appearance → Size, which sets --page-scale) draws a pixel bigger. */
+     the phone apps zoom the page (--page-scale, set by the theme init script). */
   --page-scale: 1;
   --safe-top: max(env(safe-area-inset-top), calc(var(--shell-inset-top, 0px) / var(--page-scale)));
   --safe-bottom: max(env(safe-area-inset-bottom), calc(var(--shell-inset-bottom, 0px) / var(--page-scale)));
