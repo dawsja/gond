@@ -100,6 +100,11 @@ The address rules are mirrored in each app with the same tests.
   phone up (`syncPhonePush`) through `pushState` and `setPushDevice`
   (`GondPush`, kept off `GondMobile` so an older app needn't offer it), as
   in the iPhone app.
+  A call keeps going in the background through `CallService`, a
+  microphone foreground service with an "On a call with …" notice (End
+  there is `gond:call-end`), started by `setCall` (`GondCall`, off
+  `GondMobile` too) once the page's mic runs, since Android refuses it
+  otherwise.
 - `apps/ios`: Swift and SwiftUI, iPhone only, iOS 17 and up. Connect is
   native (`ConnectView.swift`, Liquid Glass from iOS 26 via `glassEffect`
   and `.glassProminent`, a material before, over faces drawn from the
@@ -535,7 +540,9 @@ One line each: where to start, and what must not change.
   `/api/calls/:id/socket`, falling back to SSE and POSTs. No mic or
   speaker setting. In the call's chat the composer is `CallComposer`;
   elsewhere `CallPill` (sets `--call-pill-space`) or `CallBar`. Leaving
-  the chat never hangs up; one call at a time. A call is heard, never
+  the chat never hangs up, nor does leaving the app (Android's
+  `CallService`, the iPhone's `audio` background mode, without which
+  WebKit stops the mic); one call at a time. A call is heard, never
   read: one line "Call · 5 min"; what was said is `Message.spoken`, kept
   for the bot and left out of the messages route, previews, unread,
   search and exports. Voice pick: `call-voice-card.tsx`

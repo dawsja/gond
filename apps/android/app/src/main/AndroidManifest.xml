@@ -7,6 +7,9 @@
     <!-- The composer's voice button; WebView wants both for getUserMedia. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <!-- A call with a bot keeps going with the app in the background (CallService.kt). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
 
     <queries>
         <intent>
@@ -66,6 +69,12 @@
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />
             </intent-filter>
         </service>
+        <!-- A call with a bot while the app is in the background; it ends with the app's task. -->
+        <service
+            android:name=".CallService"
+            android:exported="false"
+            android:foregroundServiceType="microphone"
+            android:stopWithTask="true" />
         <!-- Approve and Deny on a card's notification. -->
         <receiver
             android:name=".AnswerReceiver"

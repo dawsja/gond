@@ -2,9 +2,11 @@
 
 import { CALL_SAMPLE_RATE, type CallEvent, type CallInfo } from "@gond/shared";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useStore } from "@/components/store";
 import { toast } from "@/components/ui/toast";
 import { api, del, post } from "@/lib/api";
 import { CallPlayer, levelOf, MicError, startCapture, type Capture } from "@/lib/call-audio";
+import { callBridge } from "@/lib/shell";
 
 export type CallPhase = "connecting" | "live";
 
@@ -13,6 +15,8 @@ export type CallView = {
   phase: CallPhase;
   muted: boolean;
   speaking: boolean;
+  /** The microphone is running, which the Android app needs before it can keep the call in the background. */
+  mic: boolean;
 };
 
 type Levels = { you: () => number; bot: () => number };
@@ -133,7 +137,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       }
       const current: Live = { info, context, player: new CallPlayer(context), capture: null, socket: null, source: null, queue: [], sending: false, closed: false, muted: false };
       live.current = current;
-      setCall({ info, phase: "connecting", muted: false, speaking: false });
+      setCall({ info, phase: "connecting", muted: false, speaking: false, mic: false });
 
       const read = (data: string) => {
         try {
@@ -189,6 +193,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
         current.capture.stop();
         return;
       }
+      setCall((c) => (c && c.info.id === info.id ? { ...c, mic: true } : c));
       const buffer = new Float32Array(512);
       const mic = current.capture.analyser;
       levels.current = { you: () => levelOf(mic, buffer), bot: () => levelOf(current.player.analyser, buffer) };
@@ -224,6 +229,22 @@ export function CallProvider({ children }: { children: ReactNode }) {
     }, 200);
     return () => window.clearInterval(timer);
   }, [callId]);
+
+  // Switching apps mid-call leaves it running: the Android app holds it with a notice (End there
+  // comes back as `gond:call-end`); the iPhone's audio background mode needs nothing from the page.
+  const { bots } = useStore();
+  const botName = call ? (bots.find((b) => b.id === call.info.botId)?.name ?? "your bot") : null;
+  const startedAt = call?.mic ? call.info.startedAt : null;
+  useEffect(() => {
+    const shell = callBridge();
+    if (!shell || !botName || !startedAt) return;
+    shell.setCall(botName, startedAt);
+    window.addEventListener("gond:call-end", end);
+    return () => {
+      window.removeEventListener("gond:call-end", end);
+      shell.setCall("", "");
+    };
+  }, [botName, startedAt, end]);
 
   useEffect(() => () => void teardown(false, null), [teardown]);
 

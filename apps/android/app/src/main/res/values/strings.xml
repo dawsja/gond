@@ -22,4 +22,9 @@
     <string name="answer_failed">Couldn\'t answer the card</string>
     <string name="answer_open">Open Gond to answer the card.</string>
     <string name="answer_offline">Gond didn\'t answer. Open the app to answer the card.</string>
+    <string name="call_channel">Calls</string>
+    <string name="call_channel_description">While you\'re on a call with a bot and the app is in the background.</string>
+    <string name="call_title">On a call with %1$s</string>
+    <string name="call_text">Tap to go back</string>
+    <string name="call_end">End call</string>
 </resources>

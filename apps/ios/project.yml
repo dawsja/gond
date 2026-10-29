@@ -48,8 +48,11 @@ targets:
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
         # A card answered elsewhere comes as a background push that takes its notification away.
+        # A call with a bot goes on in the background: WebKit keeps a page's microphone running there
+        # only for an app with the audio mode, and iOS shows the call in the status bar meanwhile.
         UIBackgroundModes:
           - remote-notification
+          - audio
         # The app delegate hands Firebase the APNs token itself (Push.swift).
         FirebaseAppDelegateProxyEnabled: false
     # The App Group shares the push keys' keychain with the notification service extension.

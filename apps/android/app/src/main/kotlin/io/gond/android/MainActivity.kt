@@ -139,7 +139,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        if (shown?.get() === this) shown = null
+        if (shown?.get() === this) {
+            shown = null
+            // The page that held the call goes with the activity.
+            CallService.set(this, "", "")
+        }
         web.destroy()
         super.onDestroy()
     }
@@ -521,6 +525,13 @@ class MainActivity : AppCompatActivity() {
         /** The push token changed: the web app signs this phone up with it. */
         fun pushChanged() {
             shown?.get()?.let { activity -> activity.runOnUiThread { activity.web.evaluateJavascript("window.dispatchEvent(new Event('gond:push'))", null) } }
+        }
+
+        /** End from the call's notice: the page hangs up. False when there's no page to tell. */
+        fun endCall(): Boolean {
+            val activity = shown?.get() ?: return false
+            activity.runOnUiThread { activity.web.evaluateJavascript("window.dispatchEvent(new Event('gond:call-end'))", null) }
+            return true
         }
 
         /** Kept in step with MCP_LOOPBACK_PORT in packages/shared. */

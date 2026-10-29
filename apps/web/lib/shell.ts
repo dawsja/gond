@@ -40,6 +40,16 @@ export type GondPush = {
   setPushDevice(json: string | null): void;
 };
 
+/**
+ * The Android app's word that a call is on (`CallService.kt`), so it keeps going with the app in the
+ * background and shows a notice saying so. Kept off GondMobile: the iPhone keeps a call through its
+ * audio background mode and needs nothing.
+ */
+export type GondCall = {
+  /** The bot's name and when the call started; an empty name ends it. */
+  setCall(bot: string, startedAt: string): void;
+};
+
 export type GondDesktop = {
   platform?: () => Promise<string>;
   version?: () => Promise<string>;
@@ -91,6 +101,11 @@ export function mobileShell(): GondMobile | null {
 export function pushBridge(): GondPush | null {
   const mobile = mobileShell() as (GondMobile & Partial<GondPush>) | null;
   return mobile && typeof mobile.pushState === "function" && typeof mobile.setPushDevice === "function" ? (mobile as GondMobile & GondPush) : null;
+}
+
+export function callBridge(): GondCall | null {
+  const mobile = mobileShell() as (GondMobile & Partial<GondCall>) | null;
+  return mobile && typeof mobile.setCall === "function" ? (mobile as GondMobile & GondCall) : null;
 }
 
 export function desktopShell(): GondDesktop | null {
