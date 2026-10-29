@@ -24,8 +24,11 @@ export type GondMobile = {
   present?(kind: string, request: string): void;
   /** A conversation's header and composer, drawn by the iPhone app from this state; null takes them away. */
   chrome?(state: string): void;
-  /** What else this iPhone app draws, which an older one doesn't: "call" for a call's bar. */
+  /** What else this iPhone app draws, which an older one doesn't: "call" for a call's bar, "scale" for its chrome at the page's size. */
   features?(): string[];
+
+  /** How many points a CSS pixel takes (Settings → Appearance → Size), so the iPhone app draws its chrome to match. */
+  setScale?(scale: number): void;
 };
 
 /**
@@ -131,6 +134,17 @@ export function isPhoneShell(shell: NativeShell | null): shell is "android" | "i
 }
 
 const never = () => () => {};
+
+/** Size in Settings: a phone app's, and on the iPhone only one that scales its own chrome too. */
+function sizeOffered(): boolean {
+  const mobile = mobileShell();
+  if (!mobile) return false;
+  return mobile.platform() !== "ios" || (typeof mobile.features === "function" && mobile.features().includes("scale"));
+}
+
+export function useSizeOffered(): boolean {
+  return useSyncExternalStore(never, sizeOffered, () => false);
+}
 
 export function useNativeShell(): NativeShell | null {
   return useSyncExternalStore(never, nativeShell, () => null);

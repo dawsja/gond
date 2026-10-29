@@ -55,10 +55,24 @@ struct NativeLayer: View {
                 .zIndex(3)
             }
         }
+        .environment(\.chromeScale, ui.scale)
         .animation(.easeOut(duration: 0.2), value: ui.chrome?.thread)
         .animation(.easeOut(duration: 0.2), value: ui.chats == nil)
         // SwiftUI's own Quick Look: a QLPreviewController presented from a SwiftUI app shows no Done or Share.
         .quickLookPreview(Binding(get: { ui.picture }, set: { ui.showPicture($0) }), in: ui.pictureFiles)
+    }
+}
+
+private struct ChromeScaleKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 1
+}
+
+extension EnvironmentValues {
+    /// How many points a CSS pixel takes on the page (Settings → Appearance → Size). The chrome sits
+    /// where the page's own would, so it is drawn at the page's size; menus and toasts stay the system's.
+    var chromeScale: CGFloat {
+        get { self[ChromeScaleKey.self] }
+        set { self[ChromeScaleKey.self] = newValue }
     }
 }
 
@@ -67,6 +81,7 @@ struct NativeLayer: View {
 /// Your picture (Settings), Search and New, where the page's own sit: a 48-point band below the
 /// status bar (at least 12 points down), 16 points in from the sides.
 struct ChatsHeaderView: View {
+    @Environment(\.chromeScale) private var s
     @ObservedObject var ui: NativeUI
     let state: ChatsState
 
@@ -80,9 +95,9 @@ struct ChatsHeaderView: View {
                     buttons
                 }
             }
-            .padding(.horizontal, 16)
-            .frame(height: 48)
-            .padding(.top, max(12, insets.top))
+            .padding(.horizontal, 16 * s)
+            .frame(height: 48 * s)
+            .padding(.top, max(12 * s, insets.top))
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
         .ignoresSafeArea()
@@ -90,16 +105,16 @@ struct ChatsHeaderView: View {
 
     private var buttons: some View {
             GlassGroup {
-                HStack(spacing: 8) {
+                HStack(spacing: 8 * s) {
                     Button { ui.send(["type": "settings"]) } label: {
                         Group {
                             if let face = ui.chatsFace {
                                 Image(uiImage: face).resizable().aspectRatio(contentMode: .fill)
                             } else {
-                                Text(state.initial).font(.system(size: 18, weight: .semibold))
+                                Text(state.initial).font(.system(size: 18 * s, weight: .semibold))
                             }
                         }
-                        .frame(width: 44, height: 44)
+                        .frame(width: 44 * s, height: 44 * s)
                         .clipShape(Circle())
                         .contentShape(Circle())
                     }
@@ -112,8 +127,8 @@ struct ChatsHeaderView: View {
 
                     Button { ui.send(["type": "search"]) } label: {
                         Image(systemName: "magnifyingglass")
-                            .font(.system(size: 18, weight: .medium))
-                            .frame(width: 44, height: 44)
+                            .font(.system(size: 18 * s, weight: .medium))
+                            .frame(width: 44 * s, height: 44 * s)
                             .contentShape(Circle())
                     }
                     .buttonStyle(.plain)
@@ -129,8 +144,8 @@ struct ChatsHeaderView: View {
                         .disabled(!state.canNewRoom)
                     } label: {
                         Image(systemName: "plus")
-                            .font(.system(size: 20, weight: .medium))
-                            .frame(width: 44, height: 44)
+                            .font(.system(size: 20 * s, weight: .medium))
+                            .frame(width: 44 * s, height: 44 * s)
                             .contentShape(Circle())
                     }
                     .buttonStyle(.plain)
@@ -145,17 +160,18 @@ struct ChatsHeaderView: View {
 
 /// The Chats screen's search, an iOS search field in glass with Cancel; what it finds is the page's list.
 private struct ChatsSearchBar: View {
+    @Environment(\.chromeScale) private var s
     @ObservedObject var ui: NativeUI
     @State private var query = ""
     @FocusState private var focused: Bool
 
     var body: some View {
         GlassGroup {
-            HStack(spacing: 8) {
-                HStack(spacing: 8) {
-                    Image(systemName: "magnifyingglass").font(.system(size: 16, weight: .medium)).foregroundStyle(Theme.muted)
+            HStack(spacing: 8 * s) {
+                HStack(spacing: 8 * s) {
+                    Image(systemName: "magnifyingglass").font(.system(size: 16 * s, weight: .medium)).foregroundStyle(Theme.muted)
                     TextField("Search bots and messages", text: $query)
-                        .font(.system(size: 16))
+                        .font(.system(size: 16 * s))
                         .focused($focused)
                         .submitLabel(.search)
                         .autocorrectionDisabled()
@@ -166,12 +182,12 @@ private struct ChatsSearchBar: View {
                             .accessibilityLabel("Clear")
                     }
                 }
-                .padding(.horizontal, 14)
-                .frame(height: 44)
+                .padding(.horizontal, 14 * s)
+                .frame(height: 44 * s)
                 .glassControl(in: Capsule(), interactive: false)
 
                 Button { ui.send(["type": "cancel-search"]) } label: {
-                    Text("Cancel").font(.system(size: 15, weight: .medium)).padding(.horizontal, 14).frame(height: 44).contentShape(Capsule())
+                    Text("Cancel").font(.system(size: 15 * s, weight: .medium)).padding(.horizontal, 14 * s).frame(height: 44 * s).contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
                 .glassControl(in: Capsule())
@@ -187,6 +203,7 @@ private struct ChatsSearchBar: View {
 
 /// Where the page's own sits (16 points in, at least 16 down), and stays while the page scrolls under it.
 struct SettingsBackView: View {
+    @Environment(\.chromeScale) private var s
     @ObservedObject var ui: NativeUI
     let state: SettingsState
 
@@ -194,15 +211,15 @@ struct SettingsBackView: View {
         GeometryReader { _ in
             let insets = UIApplication.shared.windowInsets
             Button { ui.send(["type": "back"]) } label: {
-                Image(systemName: "chevron.left").font(.system(size: 18, weight: .semibold)).frame(width: 44, height: 44).contentShape(Circle())
+                Image(systemName: "chevron.left").font(.system(size: 18 * s, weight: .semibold)).frame(width: 44 * s, height: 44 * s).contentShape(Circle())
             }
             .buttonStyle(.plain)
             .foregroundStyle(Theme.foreground)
             .glassControl(in: Circle())
             .accessibilityLabel(state.label)
             .accessibilityIdentifier("settings.back")
-            .padding(.leading, 16)
-            .padding(.top, max(16, insets.top))
+            .padding(.leading, 16 * s)
+            .padding(.top, max(16 * s, insets.top))
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .ignoresSafeArea()
@@ -248,6 +265,7 @@ struct ToastView: View {
 // MARK: A conversation's header and composer
 
 struct ChromeView: View {
+    @Environment(\.chromeScale) private var s
     @ObservedObject var ui: NativeUI
     let state: ChromeState
 
@@ -268,14 +286,14 @@ struct ChromeView: View {
             let bottom = composerBottom(safeBottom: insets.bottom)
             VStack(spacing: 0) {
                 header
-                    .padding(.horizontal, 12)
-                    .frame(height: 64)
+                    .padding(.horizontal, 12 * s)
+                    .frame(height: 64 * s)
                 if let screens = state.screens, !screens.isEmpty {
                     screenPills(screens)
                 }
                 Spacer(minLength: 0)
                 composerBlock
-                    .padding(.horizontal, 12)
+                    .padding(.horizontal, 12 * s)
                     // A field of the page's own is being typed in; the keyboard covers this one anyway.
                     .opacity(keyboard > 0 && !focused ? 0 : 1)
             }
@@ -309,7 +327,7 @@ struct ChromeView: View {
     /// From the screen's bottom edge to the composer's, as the page's own would sit: clear of the
     /// home indicator, or 12 points over the keyboard while this field has it.
     private func composerBottom(safeBottom: CGFloat) -> CGFloat {
-        focused && keyboard > 0 ? keyboard + 12 : max(12, safeBottom)
+        focused && keyboard > 0 ? keyboard + 12 * s : max(12 * s, safeBottom)
     }
 
     private func push(bottom: CGFloat) {
@@ -333,11 +351,11 @@ struct ChromeView: View {
 
     private var header: some View {
         GlassGroup {
-            HStack(spacing: 8) {
+            HStack(spacing: 8 * s) {
                 Button { ui.send(["type": "back"]) } label: {
                     Image(systemName: "chevron.left")
-                        .font(.system(size: 18, weight: .semibold))
-                        .frame(width: 44, height: 44)
+                        .font(.system(size: 18 * s, weight: .semibold))
+                        .frame(width: 44 * s, height: 44 * s)
                         .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
@@ -346,19 +364,19 @@ struct ChromeView: View {
                 .accessibilityIdentifier("chrome.back")
 
                 Button { ui.send(["type": "details"]) } label: {
-                    HStack(spacing: 8) {
+                    HStack(spacing: 8 * s) {
                         FacesView(faces: ui.faces, more: state.more, primary: state.primary, space: state.space ?? false)
-                            .frame(width: 32, height: 32)
+                            .frame(width: 32 * s, height: 32 * s)
                         VStack(alignment: .leading, spacing: 0) {
                             Text(state.title)
-                                .font(.system(size: 15, weight: .semibold))
+                                .font(.system(size: 15 * s, weight: .semibold))
                                 .lineLimit(1)
                             Subtitle(text: state.subtitle, working: state.working)
                         }
                     }
-                    .padding(.leading, 6)
-                    .padding(.trailing, 16)
-                    .frame(height: 44)
+                    .padding(.leading, 6 * s)
+                    .padding(.trailing, 16 * s)
+                    .frame(height: 44 * s)
                     .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
@@ -383,8 +401,8 @@ struct ChromeView: View {
                         }
                     } label: {
                         Image(systemName: "ellipsis")
-                            .font(.system(size: 17, weight: .semibold))
-                            .frame(width: 44, height: 44)
+                            .font(.system(size: 17 * s, weight: .semibold))
+                            .frame(width: 44 * s, height: 44 * s)
                             .contentShape(Circle())
                     }
                     .buttonStyle(.plain)
@@ -399,80 +417,80 @@ struct ChromeView: View {
 
     /// The composer and what sits on it: the room's bots to @mention, the files going with it, the quote being answered.
     private var composerBlock: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 8 * s) {
             if let mentions = state.mentions, !mentions.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     GlassGroup {
-                        HStack(spacing: 6) {
+                        HStack(spacing: 6 * s) {
                             ForEach(mentions) { mention in
                                 Button { ui.send(["type": "mention", "id": mention.id]) } label: {
-                                    HStack(spacing: 6) {
+                                    HStack(spacing: 6 * s) {
                                         if let face = ui.mentionFaces[mention.id] {
-                                            Image(uiImage: face).resizable().frame(width: 20, height: 20)
+                                            Image(uiImage: face).resizable().frame(width: 20 * s, height: 20 * s)
                                         }
-                                        Text("@\(mention.handle)").font(.system(size: 13, weight: .medium))
+                                        Text("@\(mention.handle)").font(.system(size: 13 * s, weight: .medium))
                                     }
-                                    .padding(.leading, 5)
-                                    .padding(.trailing, 11)
-                                    .frame(height: 32)
+                                    .padding(.leading, 5 * s)
+                                    .padding(.trailing, 11 * s)
+                                    .frame(height: 32 * s)
                                     .contentShape(Capsule())
                                 }
                                 .buttonStyle(.plain)
                                 .glassControl(in: Capsule())
                             }
                         }
-                        .padding(.vertical, 2)
+                        .padding(.vertical, 2 * s)
                     }
                 }
                 .scrollClipDisabled()
             }
             if let files = state.files, !files.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
+                    HStack(spacing: 6 * s) {
                         ForEach(Array(files.enumerated()), id: \.offset) { index, file in
-                            HStack(spacing: 8) {
-                                Image(systemName: "paperclip").font(.system(size: 14))
+                            HStack(spacing: 8 * s) {
+                                Image(systemName: "paperclip").font(.system(size: 14 * s))
                                 VStack(alignment: .leading, spacing: 0) {
-                                    Text(file.name).font(.system(size: 13, weight: .medium)).lineLimit(1)
-                                    Text(file.size).font(.system(size: 11)).foregroundStyle(Theme.muted)
+                                    Text(file.name).font(.system(size: 13 * s, weight: .medium)).lineLimit(1)
+                                    Text(file.size).font(.system(size: 11 * s)).foregroundStyle(Theme.muted)
                                 }
                                 Button { ui.send(["type": "remove-file", "index": index]) } label: {
-                                    Image(systemName: "xmark").font(.system(size: 11, weight: .bold)).frame(width: 28, height: 28).contentShape(Circle())
+                                    Image(systemName: "xmark").font(.system(size: 11 * s, weight: .bold)).frame(width: 28 * s, height: 28 * s).contentShape(Circle())
                                 }
                                 .buttonStyle(.plain)
                                 .accessibilityLabel("Remove \(file.name)")
                             }
-                            .padding(.leading, 12)
-                            .padding(.trailing, 4)
-                            .frame(height: 44)
-                            .frame(maxWidth: 240)
+                            .padding(.leading, 12 * s)
+                            .padding(.trailing, 4 * s)
+                            .frame(height: 44 * s)
+                            .frame(maxWidth: 240 * s)
                             .glassControl(in: Capsule(), interactive: false)
                         }
                     }
-                    .padding(.vertical, 2)
+                    .padding(.vertical, 2 * s)
                 }
                 .scrollClipDisabled()
             }
             if state.call == nil, let replying = state.replying {
-                HStack(spacing: 10) {
-                    Image(systemName: "arrowshape.turn.up.left").font(.system(size: 14)).foregroundStyle(Theme.muted)
-                    Capsule().fill(UIColor(css: replying.color).map { Color(uiColor: $0) } ?? Theme.muted).frame(width: 3, height: 30)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(replying.name).font(.system(size: 13, weight: .semibold))
-                        Text(replying.text).font(.system(size: 13)).foregroundStyle(Theme.muted).lineLimit(1)
+                HStack(spacing: 10 * s) {
+                    Image(systemName: "arrowshape.turn.up.left").font(.system(size: 14 * s)).foregroundStyle(Theme.muted)
+                    Capsule().fill(UIColor(css: replying.color).map { Color(uiColor: $0) } ?? Theme.muted).frame(width: 3 * s, height: 30 * s)
+                    VStack(alignment: .leading, spacing: 1 * s) {
+                        Text(replying.name).font(.system(size: 13 * s, weight: .semibold))
+                        Text(replying.text).font(.system(size: 13 * s)).foregroundStyle(Theme.muted).lineLimit(1)
                     }
                     Spacer(minLength: 0)
                     Button { ui.send(["type": "cancel-reply"]) } label: {
-                        Image(systemName: "xmark").font(.system(size: 13, weight: .bold)).frame(width: 36, height: 36).contentShape(Circle())
+                        Image(systemName: "xmark").font(.system(size: 13 * s, weight: .bold)).frame(width: 36 * s, height: 36 * s).contentShape(Circle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Don't reply to it")
                 }
-                .padding(.leading, 14)
-                .padding(.trailing, 4)
-                .padding(.vertical, 6)
+                .padding(.leading, 14 * s)
+                .padding(.trailing, 4 * s)
+                .padding(.vertical, 6 * s)
                 .fixedSize(horizontal: false, vertical: true)
-                .glassControl(in: RoundedRectangle(cornerRadius: 22, style: .continuous), interactive: false)
+                .glassControl(in: RoundedRectangle(cornerRadius: 22 * s, style: .continuous), interactive: false)
             }
             if let call = state.call {
                 callBar(call)
@@ -485,12 +503,12 @@ struct ChromeView: View {
         .overlay(alignment: .topTrailing) {
             if state.jump == true {
                 Button { ui.send(["type": "jump"]) } label: {
-                    Image(systemName: "arrow.down").font(.system(size: 16, weight: .semibold)).frame(width: 40, height: 40).contentShape(Circle())
+                    Image(systemName: "arrow.down").font(.system(size: 16 * s, weight: .semibold)).frame(width: 40 * s, height: 40 * s).contentShape(Circle())
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(Theme.foreground)
                 .glassControl(in: Circle())
-                .offset(y: -48)
+                .offset(y: -48 * s)
                 .accessibilityLabel("Scroll to end")
                 .transition(.scale.combined(with: .opacity))
             }
@@ -501,13 +519,13 @@ struct ChromeView: View {
     /// The bots' screens in use, a pill each under the header, as the page's were.
     private func screenPills(_ screens: [ChromeState.Screen]) -> some View {
         GlassGroup {
-            HStack(spacing: 8) {
+            HStack(spacing: 8 * s) {
                 ForEach(screens) { screen in
                     Button { ui.send(["type": "screen", "id": screen.id]) } label: {
                         Label(screen.label, systemImage: "display")
-                            .font(.system(size: 14, weight: .medium))
-                            .padding(.horizontal, 16)
-                            .frame(height: 40)
+                            .font(.system(size: 14 * s, weight: .medium))
+                            .padding(.horizontal, 16 * s)
+                            .frame(height: 40 * s)
                             .contentShape(Capsule())
                     }
                     .buttonStyle(.plain)
@@ -523,11 +541,11 @@ struct ChromeView: View {
     private func callBar(_ call: ChromeState.Call) -> some View {
         let bot = UIColor(css: call.color).map { Color(uiColor: $0) } ?? Theme.foreground
         return GlassGroup {
-            HStack(spacing: 10) {
+            HStack(spacing: 10 * s) {
                 Button { ui.send(["type": "call-mute"]) } label: {
                     Image(systemName: call.muted ? "mic.slash.fill" : "mic")
-                        .font(.system(size: 18, weight: .medium))
-                        .frame(width: 44, height: 44)
+                        .font(.system(size: 18 * s, weight: .medium))
+                        .frame(width: 44 * s, height: 44 * s)
                         .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
@@ -535,9 +553,9 @@ struct ChromeView: View {
                 .accessibilityLabel(call.muted ? "Unmute" : "Mute")
                 .accessibilityIdentifier("chrome.call-mute")
 
-                HStack(spacing: 10) {
+                HStack(spacing: 10 * s) {
                     Text(call.label)
-                        .font(.system(size: 14, weight: .medium))
+                        .font(.system(size: 14 * s, weight: .medium))
                         .lineLimit(1)
                         .opacity(call.connecting ? 0.6 : 1)
                     CallClock(since: call.since)
@@ -545,18 +563,18 @@ struct ChromeView: View {
                     CallBars(color: call.speaking ? bot : tint, quiet: call.muted && !call.speaking)
                         .accessibilityHidden(true)
                 }
-                .padding(.leading, 18)
-                .padding(.trailing, 16)
-                .frame(height: 44)
+                .padding(.leading, 18 * s)
+                .padding(.trailing, 16 * s)
+                .frame(height: 44 * s)
                 .frame(maxWidth: .infinity)
                 .glassControl(in: Capsule(), interactive: false)
                 .accessibilityElement(children: .combine)
 
                 Button { ui.send(["type": "call-end"]) } label: {
                     Image(systemName: "phone.down.fill")
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(.system(size: 18 * s, weight: .semibold))
                         .foregroundStyle(.white)
-                        .frame(width: 44, height: 44)
+                        .frame(width: 44 * s, height: 44 * s)
                         .background(Circle().fill(Theme.hangup))
                         .contentShape(Circle())
                 }
@@ -570,14 +588,14 @@ struct ChromeView: View {
 
     private var composer: some View {
         GlassGroup {
-            HStack(alignment: .bottom, spacing: 10) {
+            HStack(alignment: .bottom, spacing: 10 * s) {
                 Menu {
                     Button { ui.pickPhotos() } label: { Label("Photo Library", systemImage: "photo.on.rectangle") }
                     Button { ui.pickFiles() } label: { Label("Files", systemImage: "folder") }
                 } label: {
                     Image(systemName: "plus")
-                        .font(.system(size: 20, weight: .medium))
-                        .frame(width: 44, height: 44)
+                        .font(.system(size: 20 * s, weight: .medium))
+                        .frame(width: 44 * s, height: 44 * s)
                         .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
@@ -585,21 +603,21 @@ struct ChromeView: View {
                 .accessibilityLabel("Attach files")
                 .accessibilityIdentifier("chrome.attach")
 
-                HStack(alignment: .bottom, spacing: 2) {
+                HStack(alignment: .bottom, spacing: 2 * s) {
                     TextField(state.composer.placeholder, text: $text, axis: .vertical)
                         .lineLimit(1...6)
-                        .font(.system(size: 16))
+                        .font(.system(size: 16 * s))
                         .focused($focused)
-                        .padding(.leading, 16)
-                        .padding(.vertical, 12)
+                        .padding(.leading, 16 * s)
+                        .padding(.vertical, 12 * s)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .accessibilityIdentifier("chrome.field")
                     trailing
-                        .padding(.trailing, 6)
-                        .padding(.bottom, 6)
+                        .padding(.trailing, 6 * s)
+                        .padding(.bottom, 6 * s)
                 }
-                .frame(minHeight: 44)
-                .glassControl(in: RoundedRectangle(cornerRadius: 22, style: .continuous), interactive: false)
+                .frame(minHeight: 44 * s)
+                .glassControl(in: RoundedRectangle(cornerRadius: 22 * s, style: .continuous), interactive: false)
             }
             .foregroundStyle(Theme.foreground)
         }
@@ -608,19 +626,19 @@ struct ChromeView: View {
     @ViewBuilder
     private var trailing: some View {
         let composer = state.composer
-        HStack(spacing: 2) {
+        HStack(spacing: 2 * s) {
             if composer.later {
                 Button("Later") { ui.send(["type": "send", "later": true]) }
-                    .font(.system(size: 13, weight: .semibold))
-                    .padding(.horizontal, 10)
-                    .frame(height: 32)
+                    .font(.system(size: 13 * s, weight: .semibold))
+                    .padding(.horizontal, 10 * s)
+                    .frame(height: 32 * s)
                     .accessibilityLabel("Send after it finishes")
             }
             if composer.voice == "recording" {
                 Text("\(composer.seconds / 60):\(composer.seconds % 60 < 10 ? "0" : "")\(composer.seconds % 60)")
-                    .font(.system(size: 12).monospacedDigit())
+                    .font(.system(size: 12 * s).monospacedDigit())
                     .foregroundStyle(Theme.muted)
-                    .padding(.horizontal, 4)
+                    .padding(.horizontal, 4 * s)
             }
             Button { ui.send(["type": "voice"]) } label: {
                 Group {
@@ -628,10 +646,10 @@ struct ChromeView: View {
                         ProgressView()
                     } else {
                         Image(systemName: composer.voice == "recording" ? "stop.fill" : "mic")
-                            .font(.system(size: 16, weight: .medium))
+                            .font(.system(size: 16 * s, weight: .medium))
                     }
                 }
-                .frame(width: 32, height: 32)
+                .frame(width: 32 * s, height: 32 * s)
                 .background(Circle().fill(composer.voice == "recording" ? Theme.foreground.opacity(0.12) : .clear))
                 .contentShape(Circle())
             }
@@ -645,11 +663,11 @@ struct ChromeView: View {
                     if composer.sending {
                         ProgressView().tint(.white)
                     } else {
-                        Image(systemName: "arrow.up").font(.system(size: 15, weight: .bold))
+                        Image(systemName: "arrow.up").font(.system(size: 15 * s, weight: .bold))
                     }
                 }
                 .foregroundStyle(.white)
-                .frame(width: 32, height: 32)
+                .frame(width: 32 * s, height: 32 * s)
                 .background(Circle().fill(tint))
                 .contentShape(Circle())
             }
@@ -664,13 +682,14 @@ struct ChromeView: View {
 
 /// "1:31", how long the call has run, ticking each second.
 private struct CallClock: View {
+    @Environment(\.chromeScale) private var s
     let since: Double
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             let seconds = max(0, Int(context.date.timeIntervalSince1970 - since / 1000))
             Text("\(seconds / 60):\(seconds % 60 < 10 ? "0" : "")\(seconds % 60)")
-                .font(.system(size: 12).monospacedDigit())
+                .font(.system(size: 12 * s).monospacedDigit())
                 .foregroundStyle(Theme.muted)
         }
     }
@@ -679,6 +698,7 @@ private struct CallClock: View {
 /// The call's five bars, in the person's colour while they talk and the bot's while it does. The app
 /// doesn't hear the audio, so they sway rather than follow it; still while muted or under reduced motion.
 private struct CallBars: View {
+    @Environment(\.chromeScale) private var s
     let color: Color
     let quiet: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -687,31 +707,32 @@ private struct CallBars: View {
     private func height(of bar: Int, at time: Double) -> CGFloat {
         let index = Double(bar)
         let sway: Double = quiet ? 0.18 : reduceMotion ? 0.5 : 0.25 + 0.75 * abs(sin(time * (4 + index) + index * 1.3))
-        return max(4, 20 * Self.heights[bar] * CGFloat(sway))
+        return max(4, 20 * Self.heights[bar] * CGFloat(sway)) * s
     }
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 0.08, paused: quiet || reduceMotion)) { context in
             let t = context.date.timeIntervalSinceReferenceDate
-            HStack(spacing: 3) {
+            HStack(spacing: 3 * s) {
                 ForEach(0..<5, id: \.self) { i in
                     Capsule()
                         .fill(quiet ? Theme.muted.opacity(0.5) : color)
-                        .frame(width: 3, height: height(of: i, at: t))
+                        .frame(width: 3 * s, height: height(of: i, at: t))
                 }
             }
-            .frame(height: 20)
+            .frame(height: 20 * s)
         }
     }
 }
 
 /// "Systems Administrator · working", breathing while a bot works, as the page's shimmer does.
 private struct Subtitle: View {
+    @Environment(\.chromeScale) private var s
     let text: String
     let working: Bool
 
     var body: some View {
-        let line = Text(text).font(.system(size: 11)).lineLimit(1)
+        let line = Text(text).font(.system(size: 11 * s)).lineLimit(1)
         if working {
             line.phaseAnimator([0.8, 0.35]) { content, phase in content.opacity(phase) } animation: { _ in .easeInOut(duration: 0.9) }
         } else {

@@ -553,6 +553,16 @@ One line each: where to start, and what must not change.
   conversation on screen is repeated in the sheet.
 - **Templates** (`bot-template.tsx`, `SharedTemplate` in the shell).
 - **Transfer primary** (`transfer-primary.tsx`).
+- **Size** (`appearance-card.tsx`, `SIZES` in `lib/theme/theme.ts`): Default
+  or Large (115%), the phone apps only and each device's own. It is page
+  zoom: the theme init script writes every viewport tag in the head (Next
+  adds its own after hydration) as the screen's width over the scale, so
+  everything grows and reflows; never rem or text zoom. What the apps
+  report in points (`--shell-inset-*`, the native composer) is divided by
+  `--page-scale`, and a rect sent to the app multiplied (`askNative`). An
+  iPhone app offers it only with "scale" in `features()`, and draws its
+  chrome at the page's size (`setScale`, `chromeScale` in
+  `NativeViews.swift`); menus and toasts stay the system's.
 - **Personalization** (`personalization-card.tsx`): `REPLY_STYLES`, emoji
   amount, `PUT /api/me/talk`.
 - **About** (`server-update-card.tsx`, `about-card.tsx`). `VersionWatch`

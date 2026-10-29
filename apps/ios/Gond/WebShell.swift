@@ -114,7 +114,7 @@ final class WebShell: NSObject {
           window.gondMobile = {
             platform: function () { return "ios"; },
             version: function () { return \(json(version)); },
-            features: function () { return ["call"]; },
+            features: function () { return ["call", "scale"]; },
             changeServer: function () { post("changeServer"); },
             notify: function (title, body, url, tag) { post("notify", [String(title || ""), String(body || ""), String(url || ""), String(tag || "")]); },
             notificationsState: function () { return state; },
@@ -124,6 +124,7 @@ final class WebShell: NSObject {
             setTheme: function (background, dark, system) { post("setTheme", [String(background || ""), Boolean(dark), Boolean(system)]); },
             present: function (kind, request) { post("present", [String(kind || ""), String(request || "")]); },
             chrome: function (state) { post("chrome", [String(state || "null")]); },
+            setScale: function (scale) { post("setScale", [Number(scale) || 1]); },
             pushState: function () { return push; },
             setPushDevice: function (json) { post("setPushDevice", [json == null ? "" : String(json)]); }
           };
@@ -183,6 +184,8 @@ final class WebShell: NSObject {
         #endif
         case "chrome":
             model?.ui.setChrome(text(0))
+        case "setScale":
+            model?.ui.setScale((args.first as? NSNumber)?.doubleValue ?? 1)
         case "setPushDevice":
             Push.shared.save(text(0))
         default:

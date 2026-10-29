@@ -1438,7 +1438,8 @@ export function Conversation({ threadId }: { threadId: string }) {
           data-native-composer={nativeChrome ? "" : undefined}
           // Under the app's composer the page keeps its own in place, unseen, so what sits above it (the
           // bots to mention, files, a quote, the / list) and the messages' padding stay where they were.
-          style={nativeChrome ? { paddingBottom: "var(--native-composer-bottom, max(12px, var(--safe-bottom)))" } : undefined}
+          // The app measures in points, which a zoomed page draws bigger than its pixels.
+          style={nativeChrome ? { paddingBottom: "calc(var(--native-composer-bottom, max(12px, var(--safe-bottom)) * var(--page-scale)) / var(--page-scale))" } : undefined}
           className={cn("pointer-events-none absolute inset-x-0 bottom-0 z-20 px-3 pt-2.5 pb-[max(12px,var(--safe-bottom))] sm:px-4 sm:pt-3 [&>*]:pointer-events-auto", nativeChrome && "transition-[padding] duration-250 ease-out")}
         >
           {chips.length && !nativeChrome ? (
@@ -1501,7 +1502,7 @@ export function Conversation({ threadId }: { threadId: string }) {
             <TooltipContent>Attach files</TooltipContent>
           </Tooltip>
 
-          <InputGroup variant="pill" className={cn("min-h-11 rounded-[22px] pr-1.5", nativeChrome && "invisible overflow-hidden")} style={nativeChrome ? { height: "var(--native-composer-height, 44px)" } : undefined}>
+          <InputGroup variant="pill" className={cn("min-h-11 rounded-[22px] pr-1.5", nativeChrome && "invisible overflow-hidden")} style={nativeChrome ? { height: "calc(var(--native-composer-height, 44px * var(--page-scale)) / var(--page-scale))" } : undefined}>
             <InputGroupTextarea
               ref={textarea}
               value={draft}

@@ -180,6 +180,8 @@ final class NativeUI: ObservableObject {
     @Published private(set) var faces: [UIImage] = []
     @Published private(set) var message: MessageMenu?
     @Published private(set) var opening = false
+    /// How many points a CSS pixel takes on the page (Settings → Appearance → Size); the chrome is drawn at it.
+    @Published private(set) var scale: CGFloat = 1
     /// The picture Quick Look shows, and the ones it swipes through.
     @Published private(set) var picture: URL?
     @Published private(set) var pictureFiles: [URL] = []
@@ -190,6 +192,11 @@ final class NativeUI: ObservableObject {
     private var attaching: AttachPicker?
 
     // MARK: From the page
+
+    func setScale(_ value: Double) {
+        let next = CGFloat(min(max(value.isFinite ? value : 1, 1), 1.5))
+        if next != scale { scale = next }
+    }
 
     func setChrome(_ json: String) {
         struct Screen: Decodable { let screen: String? }
