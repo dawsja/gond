@@ -139,9 +139,20 @@ function quoteOf(id: string): Quote | null {
   return quoteFrom(id, ensureDatabase().query("SELECT id, author, body, attachments FROM gond_messages WHERE id = ?").get(id) as QuotedRow | null);
 }
 
+/**
+ * A message asking one question with choices is quoted as that question and its options, whatever
+ * came before, so a pick sent as a reply says what it answers.
+ */
+function quotedWords(body: string): string {
+  const rows = [...body.matchAll(/::choices\[[^\]]*\]/g)];
+  if (rows.length !== 1) return plainMarkdown(body);
+  const question = body.slice(0, rows[0]!.index).trimEnd().split(/\n\s*\n/).at(-1) ?? "";
+  return plainMarkdown(`${question}\n\n${rows[0]![0]}`);
+}
+
 function quoteFrom(id: string, row: QuotedRow | null): Quote | null {
   if (!row) return null;
-  const words = plainMarkdown(row.body);
+  const words = quotedWords(row.body);
   const text = words || parseAttachments(row.attachments)[0]?.name || "";
   return { id, author: row.author, text: text.length > QUOTE_CHARS ? `${text.slice(0, QUOTE_CHARS - 1)}…` : text };
 }
@@ -375,6 +386,22 @@ export function failuresAnswering(message: Pick<Message, "id" | "threadId">, set
     .query("SELECT * FROM gond_messages WHERE thread_id = ? AND answering = ? AND ((kind = 'event' AND author = 'system') OR (kind = 'signin' AND approval_id = ?))")
     .all(message.threadId, message.id, setupCard) as MessageRow[];
   return toMessages(rows);
+}
+
+/** Every card of this kind in the person's conversations, oldest first. */
+export function cardsOf(userId: string, approvalId: string): Message[] {
+  const rows = ensureDatabase()
+    .query("SELECT m.* FROM gond_messages m JOIN gond_threads t ON t.id = m.thread_id WHERE t.user_id = ? AND m.kind = 'signin' AND m.approval_id = ? ORDER BY m.rowid")
+    .all(userId, approvalId) as MessageRow[];
+  return toMessages(rows);
+}
+
+/** The people with a card of this kind in any conversation. */
+export function cardHolders(approvalId: string): string[] {
+  const rows = ensureDatabase()
+    .query("SELECT DISTINCT t.user_id AS user FROM gond_messages m JOIN gond_threads t ON t.id = m.thread_id WHERE m.kind = 'signin' AND m.approval_id = ? AND t.user_id IS NOT NULL")
+    .all(approvalId) as { user: string }[];
+  return rows.map((row) => row.user);
 }
 
 /** Takes a message out of its conversation, as a routine run with nothing to say does. */

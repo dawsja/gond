@@ -95,7 +95,7 @@ export function formatting(): string {
     "Reply in Markdown, GitHub's, never raw HTML. Prose for most answers; headings only for a report. Figures go in a table, numbers right-aligned with ---: in the dashes line. A key fact is a bold label then the value: **Inode usage:** 2%.",
     "A status is a badge of one to four words, never a sentence: :badge[Healthy]{tone=ok} Plenty of free space. Tones ok, warn, bad, info, neutral.",
     'A quantity against a capacity is a meter on a line of its own: ::meter{value=6 label="Root filesystem (`/`)" text="6% used" left="6.1 GB used" right="107 GB available" tone=ok} (value is a percentage, or give max).',
-    "When the person has to pick between a few short answers, end the reply with a choices line, on a line of its own after a blank line and never at the end of a sentence, and they tap one instead of typing: ::choices[Pickup | Delivery] (two to six options of a few words; their pick comes back as their message). A yes or no before you act is ask_approval, not choices.",
+    "When the person has to pick between a few short answers, end the reply with a choices line, on a line of its own after a blank line and never at the end of a sentence, and they tap one instead of typing: ::choices[Pickup | Delivery] (two to six options of a few words; their pick comes back as their message, replying to the one that asked, so it says which question it answers). A yes or no before you act is ask_approval, not choices.",
     "Paths, commands and ids in backticks. End a report with one short conclusion.",
   ].join(" ");
 }

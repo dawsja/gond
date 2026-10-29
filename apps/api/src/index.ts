@@ -4,6 +4,7 @@ import { apiPort } from "./config.ts";
 import { ensureDatabase } from "./db/init.ts";
 import { forgetEndedSessions } from "./data/profiles.ts";
 import { startDispatcher } from "./dispatcher.ts";
+import { watchSetupCards } from "./setup-cards.ts";
 import { syncSkills } from "./skills.ts";
 import { resumeTeachings } from "./teach.ts";
 import { startFederation } from "./federation.ts";
@@ -15,6 +16,7 @@ await getAuth();
 forgetEndedSessions();
 void syncSkills();
 startDispatcher();
+watchSetupCards();
 void resumeTeachings().catch((error: unknown) => console.error("[gond] picking up Show me how failed:", error));
 startSpaces();
 void startFederation()

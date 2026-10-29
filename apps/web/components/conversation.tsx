@@ -16,6 +16,7 @@ import { useCall } from "@/components/call/call-provider";
 import { ConversationChrome } from "@/components/conversation-chrome";
 import { NoteBadge } from "@/components/note-badge";
 import { copyToClipboard } from "@/components/hq/clipboard";
+import { choiceAnswers, joinPicks, splitPicks } from "@/lib/choices";
 import { copyText } from "@/lib/markdown";
 import { canReact, react, ReactionBadges, ReactionPicker } from "@/components/reactions";
 import { pollInterval, useLiveEvents } from "@/components/hq/live-events";
@@ -303,7 +304,7 @@ function quoteText(message: Message): string {
 }
 
 /** `unread` is what shows under the person's line no bot has read yet; only such a line edits in place or unsends. */
-const Line = memo(function Line({ message, threadId, bots, threads, bot, approvals, isRoom, space, editing, latestHandOff, stops, touch, answer, inert, sentTo, noticed, reveal, highlighted, unread, onPick, onView, onDecide, onOpenExchange, onEdit, onUnsend, onSelectText, onReacted, onReply, onJump }: { message: Message; threadId: string; bots: Bot[]; threads: ThreadRow[]; bot: Bot | null; approvals: Map<string, Approval>; isRoom: boolean; space: ThreadSpace | null; editing: boolean; latestHandOff: boolean; stops: boolean; touch: boolean; answer: string | undefined; inert: boolean; sentTo: string | undefined; noticed: Noticed | undefined; reveal: PictureReveal | undefined; highlighted: boolean; unread: string | undefined; onPick: (option: string, from: string) => Promise<void>; onView: (attachmentId: string) => void; onDecide: (id: string, answer: ApprovalAnswer) => Promise<void>; onOpenExchange: (withThreadId: string) => void; onEdit: (message: Message | null, text?: string) => Promise<boolean>; onUnsend: (message: Message) => void; onSelectText: (text: string) => void; onReacted: (message: Message) => void; onReply: (message: Message) => void; onJump: (id: string) => void }) {
+const Line = memo(function Line({ message, threadId, bots, threads, bot, approvals, isRoom, space, editing, latestHandOff, stops, touch, picks, closedBy, inert, sentTo, noticed, reveal, highlighted, unread, onPick, onView, onDecide, onOpenExchange, onEdit, onUnsend, onSelectText, onReacted, onReply, onJump }: { message: Message; threadId: string; bots: Bot[]; threads: ThreadRow[]; bot: Bot | null; approvals: Map<string, Approval>; isRoom: boolean; space: ThreadSpace | null; editing: boolean; latestHandOff: boolean; stops: boolean; touch: boolean; picks: string; closedBy: string | null; inert: boolean; sentTo: string | undefined; noticed: Noticed | undefined; reveal: PictureReveal | undefined; highlighted: boolean; unread: string | undefined; onPick: (option: string, from: Message) => Promise<void>; onView: (attachmentId: string) => void; onDecide: (id: string, answer: ApprovalAnswer) => Promise<void>; onOpenExchange: (withThreadId: string) => void; onEdit: (message: Message | null, text?: string) => Promise<boolean>; onUnsend: (message: Message) => void; onSelectText: (text: string) => void; onReacted: (message: Message) => void; onReply: (message: Message) => void; onJump: (id: string) => void }) {
   const mine = message.author === "you";
   const bubble = useRef<HTMLDivElement>(null);
   const native = useNativeUi();
@@ -315,7 +316,7 @@ const Line = memo(function Line({ message, threadId, bots, threads, bot, approva
   const [swipe, setSwipe] = useState(0);
   const replyable = message.kind === "message" && !message.fromThreadId && message.author !== "routine" && message.author !== "system";
   useSwipeToReply(bubble, touch && replyable, setSwipe, () => onReply(message));
-  const choices = useMemo(() => (mine || inert ? {} : { pick: (option: string) => onPick(option, message.author), picked: answer }), [mine, inert, onPick, message.author, answer]);
+  const choices = useMemo(() => (mine || inert ? {} : { pick: (option: string) => onPick(option, message), answer: { picks: splitPicks(picks), closedBy } }), [mine, inert, onPick, message, picks, closedBy]);
 
   const author = mine ? null : bots.find((b) => b.id === message.author) ?? null;
   const remote = remoteMember(space, message.author);
@@ -755,18 +756,7 @@ export function Conversation({ threadId }: { threadId: string }) {
     return map;
   }, [approvals, resolved]);
 
-  /** For a bot's message, what the person said next, which closes any choices it offered; none yet leaves them open. */
-  const answers = useMemo(() => {
-    const map = new Map<string, string>();
-    let next: string | undefined;
-    for (let i = messages.length - 1; i >= 0; i -= 1) {
-      const m = messages[i]!;
-      // A pick in a room names the bot it answers ("@patch Run a sweep"); the option is what's left.
-      if (m.author === "you" && m.kind === "message") next = m.body.replace(/^(?:\s*@[\w-]+[\s,]*)+/, "");
-      else if (next !== undefined) map.set(m.id, next);
-    }
-    return map;
-  }, [messages]);
+  const answers = useMemo(() => choiceAnswers(messages), [messages]);
 
   const history = useMemo(() => sentHistory(messages), [messages]);
   // Until the conversation's details load, whether it is a space is unknown, so assume it is.
@@ -1041,12 +1031,13 @@ export function Conversation({ threadId }: { threadId: string }) {
     window.requestAnimationFrame(focusField);
   }
 
-  async function pick(option: string, from: string) {
-    // In a room the option goes to the bot that offered it, as the person would say it.
-    const offeredBy = isRoom ? bots.find((b) => b.id === from) : undefined;
+  async function pick(option: string, from: Message) {
+    // In a room the option goes to the bot that offered it, as the person would say it. It replies to
+    // the message that asked, so the bot knows which question it answers and only that one closes.
+    const offeredBy = isRoom ? bots.find((b) => b.id === from.author) : undefined;
     const body = offeredBy ? `@${handleOf(offeredBy.name)} ${option}` : option;
     try {
-      const data = await api<{ message: Message }>(`/api/threads/${threadId}/messages`, { method: "POST", body: JSON.stringify({ body }) });
+      const data = await api<{ message: Message }>(`/api/threads/${threadId}/messages`, { method: "POST", body: JSON.stringify({ body, replyTo: from.id }) });
       append([data.message]);
       setSent(data.message.id);
     } catch (failure) {
@@ -1399,7 +1390,7 @@ export function Conversation({ threadId }: { threadId: string }) {
                 <WatchesContext.Provider value={watches}>
                 {messages.map((m) => (
                   <MessageScrollerItem key={m.id} messageId={m.id}>
-                    <Line message={m} threadId={threadId} bots={bots} threads={threads} bot={bot} approvals={approvalMap} isRoom={Boolean(isRoom)} space={info?.thread.space ?? null} editing={editing === m.id} latestHandOff={m.id === handOff?.id} stops={Boolean(info?.answering?.includes(m.id))} touch={touch} answer={answers.get(m.id)} inert={inert.has(m.id)} sentTo={sentTo.get(m.id)} noticed={runs.get(m.id)} reveal={revealIn(m, reveals)} highlighted={m.id === flash} unread={unreadNote.get(m.id)} onPick={onPick} onView={setViewing} onDecide={onDecide} onOpenExchange={setExchange} onEdit={onEdit} onUnsend={onUnsend} onSelectText={setSelectText} onReacted={replaceMessage} onReply={onReply} onJump={onJump} />
+                    <Line message={m} threadId={threadId} bots={bots} threads={threads} bot={bot} approvals={approvalMap} isRoom={Boolean(isRoom)} space={info?.thread.space ?? null} editing={editing === m.id} latestHandOff={m.id === handOff?.id} stops={Boolean(info?.answering?.includes(m.id))} touch={touch} picks={joinPicks(answers.get(m.id))} closedBy={answers.get(m.id)?.closedBy ?? null} inert={inert.has(m.id)} sentTo={sentTo.get(m.id)} noticed={runs.get(m.id)} reveal={revealIn(m, reveals)} highlighted={m.id === flash} unread={unreadNote.get(m.id)} onPick={onPick} onView={setViewing} onDecide={onDecide} onOpenExchange={setExchange} onEdit={onEdit} onUnsend={onUnsend} onSelectText={setSelectText} onReacted={replaceMessage} onReply={onReply} onJump={onJump} />
                   </MessageScrollerItem>
                 ))}
                 </WatchesContext.Provider>

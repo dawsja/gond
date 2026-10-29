@@ -6,6 +6,7 @@ import { createContext, useContext, useState, type ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ProgressIndicator, ProgressTrack } from "@/components/ui/progress";
+import type { ChoiceAnswer } from "@/lib/choices";
 import type { Badge as BadgeRecord, Meter as MeterRecord, Tone } from "@/lib/markdown";
 import { cn } from "@/lib/utils";
 
@@ -57,16 +58,19 @@ export function Meter({ meter, children }: { meter: MeterRecord; children: React
 }
 
 /**
- * Where a message's choices can go: `pick` sends one as the person's message while the question
- * is still open; `picked` is what they answered once they have, which closes it.
+ * Where a message's choices can go: `pick` sends one as the person's reply to the message while the
+ * question is open; `answer` is how they answered (`choiceAnswers`). A row closes once one of its
+ * options was picked, or once something else they said closed the message's questions.
  */
-export const ChoicesContext = createContext<{ pick?: (option: string) => Promise<void>; picked?: string | null }>({});
+export const ChoicesContext = createContext<{ pick?: (option: string) => Promise<void>; answer?: ChoiceAnswer }>({});
 
 export function Choices({ options }: { options: string[] }) {
-  const { pick, picked } = useContext(ChoicesContext);
+  const { pick, answer } = useContext(ChoicesContext);
   const [sending, setSending] = useState<string | null>(null);
-  const open = Boolean(pick) && picked === undefined;
-  const chosen = (sending ?? picked)?.trim().toLowerCase() ?? null;
+  const lowered = options.map((option) => option.toLowerCase());
+  const picked = answer?.picks.findLast((said) => lowered.includes(said.toLowerCase())) ?? null;
+  const open = Boolean(pick) && !picked && (answer?.closedBy ?? null) === null;
+  const chosen = (sending ?? picked ?? answer?.closedBy)?.trim().toLowerCase() ?? null;
   return (
     <div data-slot="choices" role="group" aria-label="Choices" className="flex flex-wrap gap-2 pt-1 select-none">
       {options.map((option) => {

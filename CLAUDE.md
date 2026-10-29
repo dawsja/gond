@@ -357,8 +357,11 @@ The address rules are mirrored in each app with the same tests.
   `role="heading"`, never h1–h6. Chat directives
   (`components/chat-blocks.tsx`): `:badge[…]{tone=}`, `::meter{…}` and
   `::choices[A | B]` (two to six options, filled pills while open, the
-  picked one pressed; a tap sends the option; the row closes once the
-  person says anything after it; only the conversation
+  picked one pressed; a tap sends the option as a reply to the message
+  that asked, quoted as its question (`quotedWords`), so it closes only
+  that row (`choiceAnswers` in `lib/choices.ts`) and never sets a waiting
+  card aside (`keepCards`); anything else the person says closes every row
+  above it; only the conversation
   provides `ChoicesContext`, so it is inert elsewhere). `prepareMarkdown`
   moves a trailing `::choices` onto its own line; `badgeOf` / `meterOf` /
   `choicesOf` validate; anything else renders as raw source. Copy leaves
@@ -554,15 +557,15 @@ One line each: where to start, and what must not change.
   conversation on screen is repeated in the sheet.
 - **Templates** (`bot-template.tsx`, `SharedTemplate` in the shell).
 - **Transfer primary** (`transfer-primary.tsx`).
-- **Phone size** (`postcss-rem.mjs`, `SIZE_SCRIPT` in `lib/theme/theme.ts`):
-  the phone apps draw the design 15% bigger (`PHONE_SCALE`), with no
-  setting and no zoom. Sizes are written in px and built as rem (16px to
-  1rem; under 2px and media conditions stay), and the theme init script
-  sets the apps' root font to 115% before the first paint. A size set from
-  JavaScript goes through `rem()` in `lib/utils.ts`, never raw px, or it
-  won't grow; measured values (the composer's height, a swipe) stay px.
-  The insets stay px, since the bars don't grow. An iPhone app gets it
-  only with "scale" in `features()`, and draws its chrome to match
+- **Size** (`appearance-card.tsx`, `SIZES` in `lib/theme/theme.ts`,
+  `postcss-rem.mjs`): Default or Large (115%), each device's own, with no
+  zoom. Sizes are written in px and built as rem (16px to 1rem; under 2px
+  and media conditions stay), and the theme init script (`SIZE_SCRIPT`)
+  sets the root font before the first paint. A size set from JavaScript
+  goes through `rem()` in `lib/utils.ts`, never raw px, or it won't grow;
+  measured values (the composer's height, a swipe) stay px. The insets
+  stay px, since the bars don't grow. An iPhone app offers it only with
+  "scale" in `features()` (`sizeOffered`), and draws its chrome to match
   (`setScale`, `chromeScale` in `NativeViews.swift`); menus and toasts
   stay the system's.
 - **Personalization** (`personalization-card.tsx`): `REPLY_STYLES`, emoji
@@ -742,7 +745,8 @@ One line each: where to start, and what must not change.
   `--replay-user-messages`, Gond's own engines read a `SteerQueue`); a
   driver that can't answers false, never guesses.
   Neither reads a line while a tool waits on a card, so a line a turn
-  took sets that bot's waiting cards there aside (`setAside`: `expired`,
+  took sets that bot's waiting cards there aside, unless it replies to a
+  message (a tap on choices), which waits for the card (`setAside`: `expired`,
   outcome `aside`, "Set aside"), and the tool hears `setAsideText` with
   the line after it. Its decision is "deny", so a caller that never looks
   at `aside` still runs nothing.
@@ -793,7 +797,10 @@ One line each: where to start, and what must not change.
   box's 424) or a signed-out one (`signedOut` from the box's `settle`)
   is `setupProblem`: a `signin` card with `AI_SETUP_CARD`, never an
   incident, and one per bot and conversation unless each answers a
-  line of the person's (a hidden prompt's adds none beside one).
+  line of the person's (a hidden prompt's adds none beside one). Once the
+  person's AI works (`aiWorks`, checked on every `ai` event and at start),
+  `settleSetupCards` takes the cards away, puts the message each waited
+  on back to wait, and has a bot that never spoke greet.
 
 ### Bots and teammates
 

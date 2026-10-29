@@ -234,6 +234,9 @@ describe("data", () => {
     const waitingId = cardIn(one.threadId);
     expect(await steer([turn(false)], "Actually, deploy to staging")).toEqual([false]);
     expect(getApproval(waitingId)?.status).toBe("pending");
+    // A tap on another question's choices replies to it: the card waits for its own answer.
+    expect(await steer([turn(true)], "Yes", { keepCards: true })).toEqual([true]);
+    expect(getApproval(waitingId)?.status).toBe("pending");
     expect(await steer([turn(true)], "Actually, deploy to staging")).toEqual([true]);
     expect(await waiting).toMatchObject({ aside: true });
     deleteBot(one.id);
@@ -2706,6 +2709,13 @@ describe("stop", () => {
     const { message } = (await res.json()) as { message: { id: string; replyTo: unknown } };
     expect(message.replyTo).toEqual({ id: said.id, author: bot.id, text: "Want me to also check the backups on the NAS?" });
     expect(transcriptLines([getMessage(message.id)!], [bot], bot)).toBe('Person: (replying to Quoted (you): "Want me to also check the backups on the NAS?") Yes, and tonight');
+
+    // A pick is a reply to the message that asked, quoted as its question, so two open at once stay apart.
+    const first = postMessage({ threadId: bot.threadId, author: bot.id, body: "The backups all ran.\n\nShould I delete the old ones? ::choices[Yes | No]", answered: true });
+    const second = postMessage({ threadId: bot.threadId, author: bot.id, body: "Also, restart the NAS tonight?\n\n::choices[Yes | No]", answered: true });
+    const picked = (await (await post(bot.threadId, { body: "Yes", replyTo: second.id })).json()) as { message: { id: string } };
+    expect(transcriptLines([getMessage(picked.message.id)!], [bot], bot)).toBe('Person: (replying to Quoted (you): "Also, restart the NAS tonight? Yes or No?") Yes');
+    expect(getMessage((await (await post(bot.threadId, { body: "No", replyTo: first.id })).json() as { message: { id: string } }).message.id)!.replyTo!.text).toBe("Should I delete the old ones? Yes or No?");
 
     const away = postMessage({ threadId: other.threadId, author: other.id, body: "Elsewhere", answered: true });
     expect((await post(bot.threadId, { body: "x", replyTo: away.id })).status).toBe(400);
@@ -5895,6 +5905,35 @@ describe("failed turns, Try again, and taking lines back", () => {
         expect(incidents()).toBe(1);
       },
     );
+  });
+
+  test("once the AI works, its setup cards go: the message they held waits again, and a bot that never spoke greets", async () => {
+    await seedUsers(["u-settle", "user"]);
+    const { createBot } = await import("../src/data/bots.ts");
+    const { postMessage, listMessages, markAnswered } = await import("../src/data/threads.ts");
+    const { updateAi } = await import("../src/data/ai.ts");
+    const { saveProvider } = await import("../src/data/providers.ts");
+    const { ensureDatabase } = await import("../src/db/init.ts");
+    const { settleSetupCards } = await import("../src/setup-cards.ts");
+    const { AI_SETUP_CARD, botInputSchema } = await import("@gond/shared");
+    const bot = createBot(botInputSchema.parse({ name: "Settle" }), "u-settle");
+    const card = (answering: string | null) => postMessage({ threadId: bot.threadId, author: bot.id, kind: "signin", approvalId: AI_SETUP_CARD, body: "Claude Code isn't set up on the computer.", answered: true, answering });
+    const cards = () => listMessages(bot.threadId).filter((m) => m.approvalId === AI_SETUP_CARD);
+    const answeredAt = (id: string) => (ensureDatabase().query("SELECT answered_at FROM gond_messages WHERE id = ?").get(id) as { answered_at: string | null }).answered_at;
+
+    card(null);
+    const asked = postMessage({ threadId: bot.threadId, author: "you", body: "Check the backups" });
+    markAnswered(asked.id);
+    card(asked.id);
+    updateAi("u-settle", { engine: "api", enabled: ["api"], engines: { api: { access: "api", model: "small-model", provider: "openai" } } });
+    await settleSetupCards("u-settle");
+    expect(cards()).toHaveLength(2);
+
+    saveProvider("u-settle", "openai", { baseUrl: "http://127.0.0.1:9/v1", apiKey: "sk-settle-key-123456" });
+    await settleSetupCards("u-settle");
+    expect(cards()).toHaveLength(0);
+    expect(answeredAt(asked.id)).toBeNull();
+    expect(listMessages(bot.threadId).filter((m) => m.kind === "prompt" && m.body.startsWith("The person just created you"))).toHaveLength(1);
   });
 
   test("Try again clears the failure and puts the message back to wait, telling the bot what ran", async () => {

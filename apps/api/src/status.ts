@@ -27,6 +27,12 @@ export function forgetClaudeCheck(userId?: string) {
   cachedVersions = null;
 }
 
+/** Claude Code is installed and signed in on the computer for this person, as Settings → AI reads it. */
+export async function claudeSignedIn(userId: string): Promise<boolean> {
+  const box = boxConfig(userId);
+  return box ? (await checkClaudeCached(box).catch(() => null))?.status === "ok" : false;
+}
+
 const watched = new Map<string, ReturnType<typeof setInterval>>();
 const WATCH_MS = 3_000;
 const WATCH_LIMIT_MS = 11 * 60 * 1000;

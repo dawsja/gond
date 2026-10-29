@@ -351,13 +351,15 @@ function steerableTurns(thread: Thread, message: Pick<Message, "author" | "body"
 
 /**
  * A person's line into running turns. A turn that took it while waiting on a card can't read it until
- * the card is answered, so the card is set aside once the line is in, and the turn reads it next.
+ * the card is answered, so the card is set aside once the line is in, and the turn reads it next. A
+ * line replying to a message (a tap on its choices, or a quote) answers that message, not the card:
+ * the card stays for its own answer, and the turn reads the line after it.
  */
-export async function steer(turns: Active[], body: string): Promise<boolean[]> {
+export async function steer(turns: Active[], body: string, { keepCards = false } = {}): Promise<boolean[]> {
   return Promise.all(
     turns.map(async (turn) => {
       const taken = await turn.steer(turn.route === "person" ? steerText(body) : asideText(body, teammateOf(turn))).catch(() => false);
-      if (taken) setAside(turn.botId, turn.threadId);
+      if (taken && !keepCards) setAside(turn.botId, turn.threadId);
       return taken;
     }),
   );
@@ -380,7 +382,7 @@ export async function postFromPerson(thread: Thread, input: PersonLine): Promise
   // Taken by every bot it is for, the line needs no turn of its own; else the idle ones answer it as usual, while those mid-answer already have it.
   const message = postMessage({ threadId: thread.id, author: "you", body: input.body, attachments: input.attachments, steered: all, replyTo: input.replyTo });
   if (turns.length) {
-    const taken = await steer(turns, `${replyLine(message.replyTo, (author) => (author === "you" ? "you" : (getBot(author)?.name ?? author)))}${input.body}`);
+    const taken = await steer(turns, `${replyLine(message.replyTo, (author) => (author === "you" ? "you" : (getBot(author)?.name ?? author)))}${input.body}`, { keepCards: Boolean(message.replyTo) });
     if (all && !taken.some(Boolean)) unsteer(message.id);
   }
   return getMessage(message.id) ?? message;
@@ -414,7 +416,7 @@ async function routeAndDeliver(thread: Thread, message: Message, input: PersonLi
   if (!stillRouting(message.id)) return;
   if (routed) setSentTo(message.id, targets.map((b) => b.id));
   const { turns, all } = !input.after && !input.attachments?.length ? steerableTurns(thread, message, targets) : { turns: [], all: false };
-  const taken = turns.length ? await steer(turns, `${replyLine(message.replyTo, (author) => (author === "you" ? "you" : (getBot(author)?.name ?? author)))}${input.body}`) : [];
+  const taken = turns.length ? await steer(turns, `${replyLine(message.replyTo, (author) => (author === "you" ? "you" : (getBot(author)?.name ?? author)))}${input.body}`, { keepCards: Boolean(message.replyTo) }) : [];
   if (all && taken.some(Boolean)) markSteered(message.id);
   else releaseClaim(message.id);
   threadChanged(thread.id);
