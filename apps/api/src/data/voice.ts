@@ -1,10 +1,10 @@
-import { CALL_VOICE_ID, VOICE_MODELS, VOICE_PROVIDERS, isXaiUrl, type VoiceProvider, type VoiceSettings } from "@gond/shared";
+import { CALL_MODELS, CALL_VOICE_ID, OPENAI_CALL_MODELS, OPENAI_TRANSCRIBE_MODELS, VOICE_MODELS, VOICE_PROVIDERS, isRetired, isXaiUrl, type VoiceProvider, type VoiceSettings } from "@gond/shared";
 import { ensureDatabase } from "../db/init.ts";
 import { emit } from "../events.ts";
 import { now } from "../ids.ts";
 import { providerBaseUrl } from "./providers.ts";
 
-type Row = { voice_model: string | null; call_voice: string | null };
+type Row = { voice_model: string | null; call_voice: string | null; call_model: string | null };
 
 function callVoiceOf(raw: string | null | undefined): VoiceSettings["callVoice"] {
   try {
@@ -21,17 +21,41 @@ function voiceProvider(userId: string): VoiceProvider | null {
   return baseUrl ? (isXaiUrl(baseUrl) ? "xai" : "openai") : null;
 }
 
-export function getVoice(userId: string): VoiceSettings {
-  const row = ensureDatabase().query("SELECT voice_model, call_voice FROM gond_user_prefs WHERE user_id = ?").get(userId) as Row | null;
-  return { using: voiceProvider(userId), openaiModel: row?.voice_model || VOICE_MODELS.openai.model, callVoice: callVoiceOf(row?.call_voice) };
+/** A picked model OpenAI has since shut down reads as the recommended one, so the microphone and calls keep working. */
+function transcribeModel(id: string | null | undefined): string {
+  const known = OPENAI_TRANSCRIBE_MODELS.find((model) => model.id === id);
+  return id && !(known && isRetired(known)) ? id : VOICE_MODELS.openai.model;
 }
 
-/** An empty `openaiModel` puts OpenAI's own model back. */
-export function setVoice(userId: string, patch: { openaiModel: string }): VoiceSettings {
-  const model = patch.openaiModel.trim() || VOICE_MODELS.openai.model;
-  ensureDatabase()
-    .query("INSERT INTO gond_user_prefs (user_id, voice_model, updated_at) VALUES (?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET voice_model = excluded.voice_model, updated_at = excluded.updated_at")
-    .run(userId, model === VOICE_MODELS.openai.model ? null : model, now());
+function callModel(id: string | null | undefined): string {
+  const known = OPENAI_CALL_MODELS.find((model) => model.id === id);
+  return known && !isRetired(known) ? known.id : CALL_MODELS.openai.model;
+}
+
+export function getVoice(userId: string): VoiceSettings {
+  const row = ensureDatabase().query("SELECT voice_model, call_voice, call_model FROM gond_user_prefs WHERE user_id = ?").get(userId) as Row | null;
+  return { using: voiceProvider(userId), openaiModel: transcribeModel(row?.voice_model), callModel: callModel(row?.call_model), callVoice: callVoiceOf(row?.call_voice) };
+}
+
+/** An empty `openaiModel` puts OpenAI's own model back; a `callModel` must be one of `OPENAI_CALL_MODELS`. */
+export function setVoice(userId: string, patch: { openaiModel?: string; callModel?: string }): VoiceSettings {
+  const db = ensureDatabase();
+  if (patch.openaiModel !== undefined) {
+    const model = patch.openaiModel.trim() || VOICE_MODELS.openai.model;
+    db.query("INSERT INTO gond_user_prefs (user_id, voice_model, updated_at) VALUES (?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET voice_model = excluded.voice_model, updated_at = excluded.updated_at").run(
+      userId,
+      model === VOICE_MODELS.openai.model ? null : model,
+      now(),
+    );
+  }
+  if (patch.callModel !== undefined) {
+    const model = callModel(patch.callModel);
+    db.query("INSERT INTO gond_user_prefs (user_id, call_model, updated_at) VALUES (?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET call_model = excluded.call_model, updated_at = excluded.updated_at").run(
+      userId,
+      model === CALL_MODELS.openai.model ? null : model,
+      now(),
+    );
+  }
   emit({ topic: "ai", userId });
   return getVoice(userId);
 }

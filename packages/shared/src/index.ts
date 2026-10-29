@@ -625,11 +625,58 @@ export function isXaiUrl(url: string): boolean {
   }
 }
 
+/**
+ * An OpenAI speech model a person can pick, with what it's for and its price as OpenAI's docs and pricing
+ * page put them on `VOICE_PRICES_AS_OF`, since its API lists only ids. One past `retires` (an ISO date,
+ * OpenAI's shutdown) gives way to the recommended one.
+ */
+export type VoiceModel = { id: string; name: string; about: string; price: string; recommended?: boolean; retires?: string };
+export const VOICE_PRICES_AS_OF = "2026-10-29";
+
+/** For the microphone, on `audio/transcriptions`. `hints` takes the chat's names as keywords. */
+export const OPENAI_TRANSCRIBE_MODELS: (VoiceModel & { hints?: boolean })[] = [
+  { id: "gpt-transcribe", name: "GPT Transcribe", about: "OpenAI's most accurate. It takes the names in the chat as hints, so it spells them right.", price: "$0.0045 a minute", recommended: true, hints: true },
+  { id: "gpt-4o-mini-transcribe", name: "GPT-4o mini Transcribe", about: "Cheaper, and a little less accurate.", price: "About $0.003 a minute", retires: "2027-02-26" },
+  { id: "gpt-4o-transcribe", name: "GPT-4o Transcribe", about: "OpenAI's accurate one before GPT Transcribe.", price: "About $0.006 a minute", retires: "2027-02-26" },
+  { id: "whisper-1", name: "Whisper", about: "The original. Plain transcripts with no hints.", price: "$0.006 a minute", retires: "2027-02-26" },
+];
+
+/**
+ * For calls. `live` is GPT-Live's own session, full duplex; `realtime` is the Realtime API, which takes
+ * turns and hands work over by a function call, as xAI's does.
+ */
+export const OPENAI_CALL_MODELS: (VoiceModel & { protocol: "live" | "realtime" })[] = [
+  { id: "gpt-live-1", name: "GPT-Live", about: "OpenAI's most natural voice. It listens while it talks, so interrupting it feels like a real conversation.", price: "$0.05 a minute", recommended: true, protocol: "live" },
+  {
+    id: "gpt-realtime-2.1",
+    name: "GPT-Realtime 2.1",
+    about: "Takes turns rather than talking over you, and is steadier with spelled-out names, numbers and noisy rooms. Fewer voices.",
+    price: "$32 per million audio tokens in, $64 out, plus $0.0045 a minute to write down what you say",
+    protocol: "realtime",
+  },
+  {
+    id: "gpt-realtime-2.1-mini",
+    name: "GPT-Realtime 2.1 mini",
+    about: "The cheapest. Quick, and a little less sharp than 2.1. Fewer voices.",
+    price: "$10 per million audio tokens in, $20 out, plus $0.0045 a minute to write down what you say",
+    protocol: "realtime",
+  },
+];
+
+/** What `/api/voice/models` offers: the catalog's models the key lists, and a server of the person's own its own ids. */
+export type VoiceModelList = { transcribe: VoiceModel[]; call: VoiceModel[]; others: string[] };
+
+export function isRetired(model: { retires?: string }, at = Date.now()): boolean {
+  return Boolean(model.retires && Date.parse(model.retires) <= at);
+}
+
 /** `openaiModel` is for an OpenAI-compatible server that names its own models, like a local Whisper. */
 export type VoiceSettings = {
   /** Null without a voice key. */
   using: VoiceProvider | null;
   openaiModel: string;
+  /** The model a call on OpenAI runs on, one of `OPENAI_CALL_MODELS`. */
+  callModel: string;
   /** The voice a call speaks in, per provider, since each has its own; missing is the provider's default. */
   callVoice: Partial<Record<VoiceProvider, string>>;
 };
@@ -641,7 +688,8 @@ export const TRANSCRIBE_MAX_SECONDS = 120;
 
 /**
  * A live call with the primary bot runs on a speaking model with the person's own key: OpenAI's
- * GPT-Live or xAI's realtime voice. It only talks; anything past small talk it hands to the bot's own turn.
+ * (GPT-Live unless they picked another of `OPENAI_CALL_MODELS`) or xAI's realtime voice. It only talks;
+ * anything past small talk it hands to the bot's own turn.
  */
 export const CALL_MODELS: Record<VoiceProvider, { model: string; voice: string; label: string }> = {
   xai: { model: "grok-voice-latest", voice: "eve", label: "xAI Grok" },
@@ -681,6 +729,14 @@ export const OPENAI_CALL_VOICES: CallVoice[] = [
     ] as const
   ).map(([id, detail]) => ({ id, name: id[0]!.toUpperCase() + id.slice(1), detail })),
 ];
+/** The Realtime API's voices; GPT-Live has these and more. */
+const REALTIME_VOICES = new Set(["marin", "cedar", "alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse"]);
+
+/** The voices an OpenAI call model speaks in. */
+export function openAiCallVoices(model: string): CallVoice[] {
+  const realtime = OPENAI_CALL_MODELS.find((candidate) => candidate.id === model)?.protocol === "realtime";
+  return realtime ? OPENAI_CALL_VOICES.filter((voice) => REALTIME_VOICES.has(voice.id)) : OPENAI_CALL_VOICES;
+}
 
 /** Both sides of a call are mono 16-bit PCM at this rate. */
 export const CALL_SAMPLE_RATE = 24_000;

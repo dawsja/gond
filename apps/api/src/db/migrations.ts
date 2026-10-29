@@ -1045,6 +1045,8 @@ const MIGRATIONS: Array<string | ((db: Database) => void)> = [
   );
   CREATE INDEX gond_push_devices_user ON gond_push_devices (user_id);
   `,
+  // The model a call on OpenAI runs on; null is GPT-Live.
+  `ALTER TABLE gond_user_prefs ADD COLUMN call_model TEXT;`,
 ];
 
 /**

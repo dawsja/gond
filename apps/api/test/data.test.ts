@@ -1228,7 +1228,7 @@ describe("data", () => {
       return app.request("/api/transcribe", { method: "POST", body: form });
     };
     try {
-      expect(getVoice("u-voice")).toEqual({ using: null, openaiModel: "gpt-transcribe", callVoice: {} });
+      expect(getVoice("u-voice")).toEqual({ using: null, openaiModel: "gpt-transcribe", callModel: "gpt-live-1", callVoice: {} });
       expect((await send()).status).toBe(409);
       // The bots' OpenAI-compatible key is theirs alone.
       saveProvider("u-voice", "openai", { baseUrl: `http://127.0.0.1:${upstream.port}/v1`, apiKey: "sk-bots-key-123456" });
@@ -1248,6 +1248,10 @@ describe("data", () => {
       expect((await app.request("/api/voice", { method: "PUT", body: JSON.stringify({ openaiModel: "bad model" }) })).status).toBe(400);
       expect((await app.request("/api/voice", { method: "PUT", body: JSON.stringify({}) })).status).toBe(400);
       expect(setVoice("u-voice", { openaiModel: "" }).openaiModel).toBe("gpt-transcribe");
+      const realtime = await app.request("/api/voice", { method: "PUT", body: JSON.stringify({ callModel: "gpt-realtime-2.1" }) });
+      expect(await realtime.json()).toMatchObject({ callModel: "gpt-realtime-2.1", openaiModel: "gpt-transcribe" });
+      expect((await app.request("/api/voice", { method: "PUT", body: JSON.stringify({ callModel: "gpt-image-2" }) })).status).toBe(400);
+      expect(setVoice("u-voice", { callModel: "gpt-live-1" }).callModel).toBe("gpt-live-1");
 
       saveProvider("u-voice", "voice", { baseUrl: "https://api.x.ai/v1", apiKey: "xai-voice-key-123456" });
       expect(getVoice("u-voice").using).toBe("xai");
@@ -5376,6 +5380,7 @@ describe("call voices", () => {
       port: 0,
       async fetch(request) {
         const path = new URL(request.url).pathname;
+        if (path === "/v1/models") return Response.json({ data: [{ id: "gpt-live-1" }, { id: "gpt-realtime-2.1-mini" }, { id: "my-whisper" }] });
         if (path === "/x/v1/tts/voices") return Response.json({ voices: [{ voice_id: "eve", name: "Eve", language: "en" }, { voice_id: "ara", name: "Ara", language: "en" }, { voice_id: "../bad", name: "Bad" }] });
         said.push({ path, body: await request.json() });
         return new Response(new Uint8Array([0xff, 0xfb, 1, 2]), { headers: { "content-type": "audio/mpeg" } });
@@ -5407,6 +5412,20 @@ describe("call voices", () => {
       // Picking the default forgets the choice, so a provider's new default follows.
       await app.request("/api/voice/call-voice", { method: "PUT", body: JSON.stringify({ voice: "marin" }) });
       expect(getVoice("u-voices").callVoice).toEqual({ xai: "ara" });
+
+      // The models the key lists, described; a server of one's own adds its own ids.
+      const models = (await (await app.request("/api/voice/models")).json()) as { call: { id: string; price: string }[]; transcribe: { id: string }[]; others: string[] };
+      expect(models.call.map((m) => m.id)).toEqual(["gpt-live-1", "gpt-realtime-2.1-mini"]);
+      expect(models.call[0]!.price).toBe("$0.05 a minute");
+      expect(models.transcribe[0]!.id).toBe("gpt-transcribe");
+      expect(models.others).toEqual(["my-whisper"]);
+      // A GPT-Live voice the Realtime API doesn't have reads as the default there.
+      await app.request("/api/voice/call-voice", { method: "PUT", body: JSON.stringify({ voice: "quartz" }) });
+      expect(((await (await app.request("/api/voice/voices")).json()) as { chosen: string }).chosen).toBe("quartz");
+      await app.request("/api/voice", { method: "PUT", body: JSON.stringify({ callModel: "gpt-realtime-2.1-mini" }) });
+      const realtime = (await (await app.request("/api/voice/voices")).json()) as { voices: { id: string }[]; chosen: string };
+      expect(realtime.chosen).toBe("marin");
+      expect(realtime.voices.map((v) => v.id)).not.toContain("quartz");
     } finally {
       restore();
       upstream.stop(true);

@@ -1,4 +1,4 @@
-import { CALL_MODELS, CALL_SAMPLE_RATE, type VoiceProvider } from "@gond/shared";
+import { CALL_MODELS, CALL_SAMPLE_RATE, OPENAI_CALL_MODELS, VOICE_MODELS, type VoiceProvider } from "@gond/shared";
 
 /** What a speaking model said or asked for, the same whichever model it is. */
 export type VoiceSignal =
@@ -37,6 +37,8 @@ type LinkOptions = {
   history: string;
   greeting: string;
   botName: string;
+  /** The model the call runs on: the person's pick on OpenAI, xAI's own on xAI. */
+  model: string;
   /** The person's pick for this provider, else its default. */
   voice: string | undefined;
   on: (signal: VoiceSignal) => void;
@@ -94,8 +96,8 @@ const ASK_TOOL = "ask_bot";
 const STATUS_TOOL = "bot_status";
 const END_TOOL = "end_call";
 
-/** xAI's realtime voice: the OpenAI Realtime events, with the hand-over as a function call. */
-export function readXaiEvent(event: Event): VoiceSignal[] {
+/** The Realtime events, xAI's and OpenAI's alike, with the hand-over as a function call. */
+export function readRealtimeEvent(event: Event): VoiceSignal[] {
   switch (event.type) {
     case "session.updated":
       return [{ kind: "ready" }];
@@ -160,7 +162,7 @@ function connect(url: URL, key: string, options: LinkOptions, read: (event: Even
 }
 
 function liveLink(options: LinkOptions): VoiceLink {
-  const { model } = CALL_MODELS.openai;
+  const { model } = options;
   const voice = options.voice ?? CALL_MODELS.openai.voice;
   let started = false;
   const { socket, send } = connect(
@@ -215,8 +217,8 @@ const SPEAK_RETRY_MS = 1500;
 const SPEAK_TRIES = 4;
 
 /**
- * xAI speaks one response at a time and refuses a response.create while one runs, and a refused one is
- * simply gone. So asks wait their turn, and one that never starts (refused, or lost in a race with a
+ * A realtime voice speaks one response at a time and refuses a response.create while one runs, and on
+ * xAI a refused one is simply gone. So asks wait their turn, and one that never starts (refused, or lost in a race with a
  * reply the person's own words set off) is asked again, a few times.
  */
 export class SpeakQueue {
@@ -360,16 +362,33 @@ export class AnswerWatch {
   }
 }
 
-function xaiLink(options: LinkOptions): VoiceLink {
-  const { model } = CALL_MODELS.xai;
-  const voice = options.voice ?? CALL_MODELS.xai.voice;
+type Tool = { type: "function"; name: string; description: string; parameters: object };
+
+/** The session a realtime call opens with: xAI's own shape, or OpenAI's, which also writes down what the person says. */
+export function realtimeSession(provider: VoiceProvider, model: string, voice: string, instructions: string, tools: Tool[]): object {
+  const format = { type: "audio/pcm", rate: CALL_SAMPLE_RATE };
+  if (provider === "xai") return { voice, instructions, turn_detection: { type: "server_vad" }, audio: { input: { format }, output: { format } }, tools };
+  return {
+    type: "realtime",
+    model,
+    output_modalities: ["audio"],
+    instructions,
+    audio: { input: { format, turn_detection: { type: "server_vad" }, transcription: { model: VOICE_MODELS.openai.model } }, output: { format, voice } },
+    tools,
+  };
+}
+
+function realtimeLink(provider: VoiceProvider, options: LinkOptions): VoiceLink {
+  const { model } = options;
+  const voice = options.voice ?? CALL_MODELS[provider].voice;
+  const who = provider === "xai" ? "xAI" : "OpenAI";
   const url = socketUrl(options.baseUrl, "realtime");
   url.searchParams.set("model", model);
   let ready = false;
   const speak = new SpeakQueue(
     (ask) => send(ask ? { type: "response.create", response: ask } : { type: "response.create" }),
     undefined,
-    () => console.warn("[gond] call: xAI never started a reply it was asked for"),
+    () => console.warn(`[gond] call: ${who} never started a reply it was asked for`),
   );
   // Said now, with what to say in this one response's own instructions, so the voice says it rather than filling.
   const sayNow = (what: string) => speak.ask({ instructions: `${options.instructions}\n\n${what}` });
@@ -378,7 +397,7 @@ function xaiLink(options: LinkOptions): VoiceLink {
       sayNow(
         `${options.botName}'s answer just came in: ${untold.map((answer) => `"${answer}"`).join(" and ")}. Tell the person now, in your own words, plainly and briefly, keeping names, numbers and codes exact. Don't wait to be asked, and don't say you're still working on it.`,
       ),
-    () => console.warn("[gond] call: xAI didn't tell an answer after being asked three times"),
+    () => console.warn(`[gond] call: ${who} didn't tell an answer after being asked three times`),
     () => speak.pending,
   );
   const system = (content: string) => send({ type: "conversation.item.create", item: { type: "message", role: "system", content: [{ type: "input_text", text: clip(content, 4000) }] } });
@@ -386,26 +405,20 @@ function xaiLink(options: LinkOptions): VoiceLink {
     url,
     options.key,
     options,
-    readXaiEvent,
+    readRealtimeEvent,
     (send) =>
       send({
         type: "session.update",
-        session: {
-          voice,
-          instructions: options.instructions,
-          turn_detection: { type: "server_vad" },
-          audio: { input: { format: { type: "audio/pcm", rate: CALL_SAMPLE_RATE } }, output: { format: { type: "audio/pcm", rate: CALL_SAMPLE_RATE } } },
-          tools: [
-            {
-              type: "function",
-              name: ASK_TOOL,
-              description: `Hand what the person wants to ${options.botName}'s work: anything past small talk, any question that needs facts, memory or a look-up, and any task. Say in a few words that you're on it as you call this. The answer arrives on its own later, and you'll be asked to tell it then.`,
-              parameters: { type: "object", properties: { request: { type: "string", description: "What the person wants, in full, with every detail they gave." } }, required: ["request"] },
-            },
-            { type: "function", name: STATUS_TOOL, description: `Where ${options.botName}'s work stands right now, for when the person asks how it's going.`, parameters: { type: "object", properties: {} } },
-            { type: "function", name: END_TOOL, description: "Hang up, once the person is done and you've said a short goodbye.", parameters: { type: "object", properties: {} } },
-          ],
-        },
+        session: realtimeSession(provider, model, voice, options.instructions, [
+          {
+            type: "function",
+            name: ASK_TOOL,
+            description: `Hand what the person wants to ${options.botName}'s work: anything past small talk, any question that needs facts, memory or a look-up, and any task. Say in a few words that you're on it as you call this. The answer arrives on its own later, and you'll be asked to tell it then.`,
+            parameters: { type: "object", properties: { request: { type: "string", description: "What the person wants, in full, with every detail they gave." } }, required: ["request"] },
+          },
+          { type: "function", name: STATUS_TOOL, description: `Where ${options.botName}'s work stands right now, for when the person asks how it's going.`, parameters: { type: "object", properties: {} } },
+          { type: "function", name: END_TOOL, description: "Hang up, once the person is done and you've said a short goodbye.", parameters: { type: "object", properties: {} } },
+        ]),
       }),
     (event) => {
       if (event.type === "response.created") {
@@ -448,11 +461,12 @@ function xaiLink(options: LinkOptions): VoiceLink {
   };
 }
 
-/** Called when the voice hands a request over: xAI's function call is answered at once, quietly, since the voice said it's on it as it called. */
-export function acknowledge(link: VoiceLink, provider: VoiceProvider, id: string, botName: string) {
-  if (provider === "xai") link.handed(id, `Handed to ${botName}. Its answer comes on its own when it's ready; don't say anything more about it until then.`);
+/** Called when the voice hands a request over: a realtime voice's function call is answered at once, quietly, since the voice said it's on it as it called. */
+export function acknowledge(link: VoiceLink, id: string, botName: string) {
+  link.handed(id, `Handed to ${botName}. Its answer comes on its own when it's ready; don't say anything more about it until then.`);
 }
 
 export function openVoiceLink(provider: VoiceProvider, options: LinkOptions): VoiceLink {
-  return provider === "openai" ? liveLink(options) : xaiLink(options);
+  const live = provider === "openai" && OPENAI_CALL_MODELS.find((model) => model.id === options.model)?.protocol !== "realtime";
+  return live ? liveLink(options) : realtimeLink(provider, options);
 }

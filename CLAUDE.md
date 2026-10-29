@@ -526,7 +526,8 @@ One line each: where to start, and what must not change.
   is never sent for them. Only the voice key can transcribe; without one
   the mic is dimmed and says where to add one. Always the
   system's default input. `Permissions-Policy` allows the microphone for
-  the app's own origin only.
+  the app's own origin only. The model is picked from `VoiceModelChoices`
+  (`voice-models.tsx`), each row with what it's for and its price.
 - **Calls** (`components/call/`, `CallProvider` in `call-provider.tsx`):
   only the primary bot, only its own chat (`CallButton`; on iPhone "Call"
   in ⋯, `useDial`). The `AudioContext` is made in the tap, before any
@@ -538,7 +539,7 @@ One line each: where to start, and what must not change.
   audio runs late, fades over gaps), never a buffer per chunk: the joins
   click at 44.1 kHz. One WebSocket
   `/api/calls/:id/socket`, falling back to SSE and POSTs. No mic or
-  speaker setting. In the call's chat the composer is `CallComposer`;
+  speaker setting. The model is picked in `call-voice-card.tsx`. In the call's chat the composer is `CallComposer`;
   elsewhere `CallPill` (sets `--call-pill-space`) or `CallBar`. Leaving
   the chat never hangs up, nor does leaving the app (Android's
   `CallService`, the iPhone's `audio` background mode, without which
@@ -975,6 +976,15 @@ One line each: where to start, and what must not change.
   is only the bots'. No engine takes it (`EngineProviderKind`), and the
   LLM proxy refuses it, so nothing on the computer reaches it.
   `VOICE_KEYS` copied each person's OpenAI-compatible key into it.
+- **Voice models** (`OPENAI_TRANSCRIBE_MODELS`, `OPENAI_CALL_MODELS` in
+  shared, `GET /api/voice/models`, `voiceModelsFrom`): OpenAI's speech
+  models, described and priced by hand from its docs
+  (`VOICE_PRICES_AS_OF`), since its API lists only ids. They are the one
+  price list Gond keeps; check them when OpenAI changes its speech line.
+  The route offers those the key's `/models` lists, and a server of the
+  person's own its own ids. A model past `retires` reads as the
+  recommended one (`getVoice`), so a shutdown never breaks the mic or a
+  call.
 - **Transcription** (`src/routes/voice.ts`, `src/data/voice.ts`,
   `voiceProvider`, `VOICE_MODELS`): the person's voice key, through
   `upstreamUrl` and `authHeaders`, on xAI's `stt` when it points at xAI. The format comes from the file's
@@ -982,7 +992,11 @@ One line each: where to start, and what must not change.
   stored or logged.
 - **Calls** (`src/calls.ts`, `src/voice-link.ts`, `src/routes/calls.ts`):
   `POST /api/threads/:id/call` takes only the primary bot's own chat
-  (`callableBot`, so the route decides, not the button). The API holds
+  (`callableBot`, so the route decides, not the button). On OpenAI the
+  person's `callModel` picks the protocol: GPT-Live's own session, or the
+  Realtime API (`realtimeLink`, `realtimeSession`, the path xAI takes,
+  transcribing the person with `gpt-transcribe`), whose voices are fewer
+  (`openAiCallVoices`). The API holds
   the provider socket with the person's voice key (`CALL_MODELS`), so the key
   never reaches the page. `upgradeCallSocket` runs ahead of Hono and
   checks the Origin (a WebSocket carries the cookie from any site), the

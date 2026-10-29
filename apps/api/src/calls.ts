@@ -1,4 +1,4 @@
-import { CALL_MAX_MINUTES, isStopRequest, plainMarkdown, type Bot, type CallEvent, type CallInfo, type Message, type Thread, type VoiceProvider } from "@gond/shared";
+import { CALL_MAX_MINUTES, CALL_MODELS, isStopRequest, openAiCallVoices, plainMarkdown, type Bot, type CallEvent, type CallInfo, type Message, type Thread, type VoiceProvider, type VoiceSettings } from "@gond/shared";
 import { getBot } from "./data/bots.ts";
 import { providerBaseUrl, providerKey } from "./data/providers.ts";
 import { getThread, listMessages, postMessage, recentMessages } from "./data/threads.ts";
@@ -133,6 +133,12 @@ function callableBot(thread: Thread): Bot | null {
   return bot?.primary ? bot : null;
 }
 
+/** The person's voice for this provider, unless their OpenAI call model doesn't speak in it. */
+function callVoice(settings: VoiceSettings, provider: VoiceProvider): string | undefined {
+  const voice = settings.callVoice[provider];
+  return provider === "openai" && voice && !openAiCallVoices(settings.callModel).some((candidate) => candidate.id === voice) ? undefined : voice;
+}
+
 export function startCall(thread: Thread, userId: string): StartCall {
   const bot = callableBot(thread);
   if (!bot) return { ok: false, status: 400, error: "You can only call your primary bot, from its own chat." };
@@ -182,7 +188,8 @@ export function startCall(thread: Thread, userId: string): StartCall {
     history: historyOf(thread, bot),
     greeting: greetingFor(bot),
     botName: bot.name,
-    voice: voiceSettings.callVoice[provider],
+    model: provider === "openai" ? voiceSettings.callModel : CALL_MODELS.xai.model,
+    voice: callVoice(voiceSettings, provider),
     on: (signal) => onSignal(call, provider, signal),
   });
   call.orphan = setTimeout(() => endCall(info.id, null), ORPHAN_MS);
@@ -221,7 +228,7 @@ function onSignal(call: Call, provider: VoiceProvider, signal: VoiceSignal) {
       return;
     case "delegate":
       settleHeard(call);
-      handOver(call, provider, signal.id, signal.request);
+      handOver(call, signal.id, signal.request);
       return;
     case "status":
       call.link.status(signal.id, statusLine(call));
@@ -282,12 +289,12 @@ function wrapUp(call: Call) {
   call.closing = setTimeout(() => endCall(call.info.id, null), saidBye && !call.said ? GOODBYE_TAIL_MS : GOODBYE_WAIT_MS);
 }
 
-function handOver(call: Call, provider: VoiceProvider, id: string, request: string | null) {
+function handOver(call: Call, id: string, request: string | null) {
   const asked = request ?? call.asked.join(" ");
   call.asked = [];
   const prompt = postMessage({ threadId: call.info.threadId, author: "system", kind: "prompt", body: callPrompt(asked) });
   call.handed.set(prompt.id, id);
-  acknowledge(call.link, provider, id, call.bot.name);
+  acknowledge(call.link, id, call.bot.name);
 }
 
 /** A turn answering a hand-over speaks its answer, so nothing streams into the chat for it. */

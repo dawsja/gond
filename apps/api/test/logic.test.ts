@@ -2092,16 +2092,45 @@ describe("calls", () => {
   });
 
   test("each voice's events read as the same signals", async () => {
-    const { readLiveEvent, readXaiEvent } = await import("../src/voice-link.ts");
+    const { readLiveEvent, readRealtimeEvent } = await import("../src/voice-link.ts");
     expect(readLiveEvent({ type: "session.started" })).toEqual([{ kind: "ready" }]);
     expect(readLiveEvent({ type: "session.input_transcript.delta", delta: "Find me" })).toEqual([{ kind: "heard", text: "Find me", final: false }]);
     expect(readLiveEvent({ type: "session.delegation.created", delegation: { id: "item_1", type: "delegation", target: "client" } })).toEqual([{ kind: "delegate", id: "item_1", request: null }]);
     expect(readLiveEvent({ type: "session.closed", reason: "expired" })).toEqual([{ kind: "closed", reason: "expired" }]);
-    expect(readXaiEvent({ type: "response.function_call_arguments.done", name: "ask_bot", call_id: "c1", arguments: '{"request":"Book it"}' })).toEqual([{ kind: "delegate", id: "c1", request: "Book it" }]);
-    expect(readXaiEvent({ type: "response.function_call_arguments.done", name: "ask_bot", call_id: "c1", arguments: "{oops" })).toEqual([{ kind: "delegate", id: "c1", request: null }]);
-    expect(readXaiEvent({ type: "response.function_call_arguments.done", name: "end_call", call_id: "c3", arguments: "{}" })).toEqual([{ kind: "hang-up", id: "c3" }]);
-    expect(readXaiEvent({ type: "input_audio_buffer.speech_started" })).toEqual([{ kind: "interrupt" }]);
-    expect(readXaiEvent({ type: "error", error: { message: "bad key" } })).toEqual([{ kind: "error", message: "bad key" }]);
+    expect(readRealtimeEvent({ type: "response.function_call_arguments.done", name: "ask_bot", call_id: "c1", arguments: '{"request":"Book it"}' })).toEqual([{ kind: "delegate", id: "c1", request: "Book it" }]);
+    expect(readRealtimeEvent({ type: "response.function_call_arguments.done", name: "ask_bot", call_id: "c1", arguments: "{oops" })).toEqual([{ kind: "delegate", id: "c1", request: null }]);
+    expect(readRealtimeEvent({ type: "response.function_call_arguments.done", name: "end_call", call_id: "c3", arguments: "{}" })).toEqual([{ kind: "hang-up", id: "c3" }]);
+    expect(readRealtimeEvent({ type: "input_audio_buffer.speech_started" })).toEqual([{ kind: "interrupt" }]);
+    expect(readRealtimeEvent({ type: "error", error: { message: "bad key" } })).toEqual([{ kind: "error", message: "bad key" }]);
+  });
+
+  test("an OpenAI realtime call writes down what the person says and speaks in the picked voice; xAI keeps its own shape", async () => {
+    const { realtimeSession } = await import("../src/voice-link.ts");
+    expect(realtimeSession("openai", "gpt-realtime-2.1", "cedar", "Be brief.", [])).toMatchObject({
+      type: "realtime",
+      model: "gpt-realtime-2.1",
+      audio: { input: { format: { rate: 24_000 }, transcription: { model: "gpt-transcribe" } }, output: { voice: "cedar" } },
+    });
+    const xai = realtimeSession("xai", "grok-voice-latest", "eve", "Be brief.", []) as Record<string, unknown>;
+    expect(xai).toMatchObject({ voice: "eve", turn_detection: { type: "server_vad" } });
+    expect(xai.type).toBeUndefined();
+  });
+
+  test("voice models offered are the catalog's the key lists, never a retired one, and a server of one's own adds its own ids", async () => {
+    const { voiceModelsFrom } = await import("../src/routes/voice.ts");
+    const { isRetired, openAiCallVoices } = await import("@gond/shared");
+    const ids = (list: { id: string }[]) => list.map((model) => model.id);
+    const openai = voiceModelsFrom(["gpt-transcribe", "whisper-1", "gpt-live-1", "gpt-realtime-2.1", "gpt-image-2"], true);
+    expect(ids(openai.call)).toEqual(["gpt-live-1", "gpt-realtime-2.1"]);
+    expect(openai.transcribe[0]).toMatchObject({ id: "gpt-transcribe", recommended: true, price: "$0.0045 a minute" });
+    expect(openai.others).toEqual([]);
+    // Unlisted (or a server that won't say): the whole catalog.
+    expect(ids(voiceModelsFrom(null, true).call)).toEqual(["gpt-live-1", "gpt-realtime-2.1", "gpt-realtime-2.1-mini"]);
+    expect(voiceModelsFrom(["Systran/faster-whisper-small"], false).others).toEqual(["Systran/faster-whisper-small"]);
+    expect(isRetired({ retires: "2027-02-26" }, Date.parse("2027-02-27"))).toBe(true);
+    expect(isRetired({}, Date.parse("2030-01-01"))).toBe(false);
+    expect(ids(openAiCallVoices("gpt-realtime-2.1"))).not.toContain("quartz");
+    expect(ids(openAiCallVoices("gpt-live-1"))).toContain("quartz");
   });
 
   test("speech said apart is joined as sentences, and a word split across fragments stays whole", async () => {
