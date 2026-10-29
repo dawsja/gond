@@ -285,12 +285,21 @@ export function retryLine(event) {
 }
 
 /**
+ * Handing work to a teammate ends nothing: a bot that answers and then tells another bot meant what
+ * it wrote first for the person, so it stays part of the reply. Before any other tool it was narration.
+ */
+export function isHandoff(name) {
+  return typeof name === "string" && /^(?:mcp__gond__)?(?:message_bot|delegate_bot)$/.test(name);
+}
+
+/**
  * The words of a reply as the model writes them, from the CLI's partial messages: a delta of text,
- * or the end of the text so far when a tool call starts (that text was narration, not the reply).
+ * or the end of the text so far when a tool call starts (that text was narration, not the reply). A
+ * handoff only starts a new paragraph.
  */
 export function streamText(event) {
   if (event?.type === "content_block_delta" && event.delta?.type === "text_delta" && typeof event.delta.text === "string") return { type: "text_delta", text: event.delta.text };
-  if (event?.type === "content_block_start" && /tool_use$/.test(event.content_block?.type ?? "")) return { type: "text_end" };
+  if (event?.type === "content_block_start" && /tool_use$/.test(event.content_block?.type ?? "")) return isHandoff(event.content_block?.name) ? { type: "text_delta", text: "\n\n" } : { type: "text_end" };
   return null;
 }
 
@@ -298,7 +307,7 @@ export function readReply(reply, event) {
   const blocks = Array.isArray(event?.message?.content) ? event.message.content : [];
   for (const block of blocks) {
     if (block?.type === "text" && typeof block.text === "string") reply.block(block.text);
-    else if (block?.type === "tool_use") reply.tool();
+    else if (block?.type === "tool_use" && !isHandoff(block.name)) reply.tool();
   }
 }
 

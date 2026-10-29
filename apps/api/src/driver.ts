@@ -207,7 +207,8 @@ export async function cliTurn(turn: CliTurn): Promise<CliTurnResult> {
           inflight.push(handleCall(event.callId, event.name, event.input));
         } else if (event.type === "text_delta") {
           segment += event.text;
-          turn.onText?.(segment);
+          // A handoff sends a paragraph break, which on its own is nothing to show.
+          if (segment.trim()) turn.onText?.(segment.trimStart());
         } else if (event.type === "text_end") {
           if (segment) turn.onText?.(null);
           segment = "";

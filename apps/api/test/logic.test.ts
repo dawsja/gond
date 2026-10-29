@@ -628,6 +628,92 @@ describe("calling an API directly", () => {
     expect(ran).toEqual(["ls", "ls"]);
   });
 
+  test("what a bot wrote before handing work to a teammate stays on screen and in its answer", async () => {
+    const { anthropicAssembler, isHandoff, nativeTurn, openAiAssembler, responsesText } = await import("../src/native.ts");
+    expect(isHandoff("message_bot")).toBe(true);
+    expect(isHandoff("Bash")).toBe(false);
+
+    const said: (string | null)[] = [];
+    const anthropic = anthropicAssembler((text) => said.push(text));
+    for (const event of [
+      { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
+      { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "The sky is blue." } },
+      { type: "content_block_start", index: 1, content_block: { type: "tool_use", id: "tu_1", name: "message_bot", input: {} } },
+    ]) anthropic.push(event);
+    expect(said).toEqual(["The sky is blue."]);
+
+    said.length = 0;
+    const openai = openAiAssembler((text) => said.push(text));
+    for (const chunk of [
+      { choices: [{ delta: { content: "The sky is blue." } }] },
+      { choices: [{ delta: { tool_calls: [{ index: 0, id: "c1", function: { name: "message_", arguments: "" } }] } }] },
+      { choices: [{ delta: { tool_calls: [{ index: 0, function: { name: "bot", arguments: "{}" } }] } }] },
+    ]) openai.push(chunk);
+    expect(said).toEqual(["The sky is blue."]);
+
+    said.length = 0;
+    const words = responsesText((text) => said.push(text));
+    for (const event of [{ type: "response.output_text.delta", delta: "The sky is blue." }, { type: "response.output_item.added", item: { type: "function_call", name: "delegate_bot" } }]) words(event);
+    expect(said).toEqual(["The sky is blue."]);
+
+    const told: string[] = [];
+    const tools = {
+      message_bot: {
+        description: "Tells a teammate.",
+        inputSchema: { type: "object", properties: { text: { type: "string" } } },
+        execute: async (input: Record<string, unknown>) => {
+          told.push(String(input.text));
+          return "Sent.";
+        },
+      },
+    };
+    let step = 0;
+    const fake = Bun.serve({
+      port: 0,
+      async fetch() {
+        step += 1;
+        return step === 1
+          ? Response.json({ content: [{ type: "text", text: "You're right, the sky is blue." }, { type: "tool_use", id: "tu_1", name: "message_bot", input: { text: "The sky is blue." } }], stop_reason: "tool_use" })
+          : Response.json({ content: [{ type: "text", text: "I let Net know too." }], stop_reason: "end_turn" });
+      },
+    });
+    try {
+      const result = await nativeTurn({ access: { kind: "anthropic", baseUrl: `http://127.0.0.1:${fake.port}`, token: "t" }, model: "m", instructions: "", prompt: "The sky is blue", tools });
+      expect(result.text).toBe("You're right, the sky is blue.\n\nI let Net know too.");
+      expect(told).toEqual(["The sky is blue."]);
+    } finally {
+      fake.stop(true);
+    }
+  });
+
+  test("a Claude Code reply streams on through a handoff, the break never shown alone", async () => {
+    const { cliTurn } = await import("../src/driver.ts");
+    const events = [
+      { type: "text_delta", text: "The sky is blue." },
+      { type: "text_delta", text: "\n\n" },
+      { type: "text_delta", text: "I let Net know." },
+      { type: "result", ok: true, text: "The sky is blue.\n\nI let Net know.", stopReason: null, recovered: false },
+    ];
+    const fake = Bun.serve({ port: 0, fetch: () => new Response(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(""), { headers: { "content-type": "text/event-stream" } }) });
+    const shown: (string | null)[] = [];
+    try {
+      const result = await cliTurn({ box: { url: `http://127.0.0.1:${fake.port}`, token: "t", user: null }, engine: "claude", access: { kind: "plan" }, agentId: "a", botId: "b", modelId: "m", permission: "ask", instructions: "", prompt: "p", tools: {}, timeoutMs: 5000, onText: (text) => shown.push(text) });
+      expect(result.text).toBe("The sky is blue.\n\nI let Net know.");
+    } finally {
+      fake.stop(true);
+    }
+    expect(shown).toEqual(["The sky is blue.", "The sky is blue.\n\n", "The sky is blue.\n\nI let Net know."]);
+
+    const lone = Bun.serve({ port: 0, fetch: () => new Response([{ type: "text_delta", text: "\n\n" }, { type: "result", ok: true, text: "", stopReason: null, recovered: false }].map((event) => `data: ${JSON.stringify(event)}\n\n`).join(""), { headers: { "content-type": "text/event-stream" } }) });
+    const none: (string | null)[] = [];
+    try {
+      await cliTurn({ box: { url: `http://127.0.0.1:${lone.port}`, token: "t", user: null }, engine: "claude", access: { kind: "plan" }, agentId: "a", botId: "b", modelId: "m", permission: "ask", instructions: "", prompt: "p", tools: {}, timeoutMs: 5000, onText: (text) => none.push(text) });
+    } finally {
+      lone.stop(true);
+    }
+    expect(none).toEqual([]);
+  });
+
   test("a steer is read after the next tool results, or sends a finished answer round again", async () => {
     const { nativeTurn, SteerQueue } = await import("../src/native.ts");
     for (const kind of ["anthropic", "openai"] as const) {

@@ -96,7 +96,8 @@ test("settle keeps a failed result's text as the error and flags a signed-out CL
 
 const say = (...content) => ({ type: "assistant", message: { content } });
 const text = (t) => ({ type: "text", text: t });
-const call = { type: "tool_use", name: "mcp__gond__delegate_bot", input: {} };
+const call = { type: "tool_use", name: "Bash", input: {} };
+const handoff = { type: "tool_use", name: "mcp__gond__message_bot", input: {} };
 
 test("the reply is what comes after the last tool call", () => {
   const reply = new ReplyText();
@@ -104,6 +105,13 @@ test("the reply is what comes after the last tool call", () => {
   readReply(reply, say(call));
   readReply(reply, say(text("It says hello.")));
   assert.equal(reply.text(), "It says hello.");
+});
+
+test("what a bot wrote before handing work to a teammate stays in the reply", () => {
+  const reply = new ReplyText();
+  readReply(reply, say(text("You're right, the sky is blue."), handoff));
+  readReply(reply, say(text("I let Net know too.")));
+  assert.equal(reply.text(), "You're right, the sky is blue.\n\nI let Net know too.");
 });
 
 test("a turn that ends on tool calls keeps every word it wrote", () => {

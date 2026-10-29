@@ -248,6 +248,19 @@ export function planError(status: number, body: unknown): string {
 
 type TextSink = (text: string | null) => void;
 
+const HANDOFFS = ["message_bot", "delegate_bot"];
+
+/**
+ * Handing work to a teammate ends nothing: a bot that answers and then tells another bot meant what
+ * it wrote first for the person, so it stays part of the reply. Before any other tool it was narration.
+ */
+export function isHandoff(name: unknown): boolean {
+  return typeof name === "string" && HANDOFFS.includes(name);
+}
+
+/** A call's name as far as it has streamed in could still be a handoff's. */
+const couldBeHandoff = (name: string) => HANDOFFS.some((handoff) => handoff.startsWith(name));
+
 /** Anthropic's streamed events back into the message an unstreamed call answers, telling `onText` the reply's words on the way. */
 export function anthropicAssembler(onText?: TextSink) {
   let message: Record<string, unknown> = {};
@@ -263,8 +276,10 @@ export function anthropicAssembler(onText?: TextSink) {
       else if (event.type === "content_block_start" && event.content_block) {
         blocks[index] = { ...event.content_block };
         const type = String(event.content_block.type ?? "");
-        // What came before a tool call or a search narrated it; the reply is what follows.
-        if (type.endsWith("tool_use") || type === "web_search_tool_result") {
+        // What came before a tool call or a search narrated it; the reply is what follows. A handoff only starts a paragraph.
+        if (type.endsWith("tool_use") && isHandoff(event.content_block.name)) {
+          if (text) text += "\n\n";
+        } else if (type.endsWith("tool_use") || type === "web_search_tool_result") {
           if (text) onText?.(null);
           text = "";
         }
@@ -306,6 +321,7 @@ export function openAiAssembler(onText?: TextSink) {
   let finish: unknown = null;
   let failure: unknown = null;
   let usage: unknown = null;
+  let narrated = false;
   return {
     push(raw: unknown) {
       const chunk = (raw ?? {}) as { choices?: { delta?: Record<string, unknown>; finish_reason?: unknown }[]; error?: unknown; usage?: unknown };
@@ -316,13 +332,17 @@ export function openAiAssembler(onText?: TextSink) {
       if (choice.finish_reason) finish = choice.finish_reason;
       for (const [key, value] of Object.entries(choice.delta ?? {})) {
         if (key === "tool_calls" && Array.isArray(value)) {
-          if (!calls.length && typeof message.content === "string" && message.content) onText?.(null);
           for (const part of value as { index?: number; id?: string; type?: string; function?: { name?: string; arguments?: string } }[]) {
             const call = (calls[part.index ?? 0] ??= { function: { name: "", arguments: "" } });
             if (part.id) call.id = part.id;
             if (part.type) call.type = part.type;
             if (part.function?.name) call.function.name += part.function.name;
             if (part.function?.arguments) call.function.arguments += part.function.arguments;
+          }
+          // The words so far narrated the call, unless it hands work to a teammate; a name still streaming in may yet be one.
+          if (!narrated && typeof message.content === "string" && message.content && calls.some((call) => call?.function.name && !couldBeHandoff(call.function.name))) {
+            narrated = true;
+            onText?.(null);
           }
         } else if (key === "role") message.role = value;
         // Every other field a provider streams (the content, a model's reasoning) is text to join, as it arrives whole when not streamed.
@@ -343,11 +363,15 @@ export function openAiAssembler(onText?: TextSink) {
 export function responsesText(onText?: TextSink) {
   let text = "";
   return (raw: unknown) => {
-    const event = (raw ?? {}) as { type?: string; delta?: unknown; item?: { type?: string } };
+    const event = (raw ?? {}) as { type?: string; delta?: unknown; item?: { type?: string; name?: unknown } };
     if (event.type === "response.output_text.delta" && typeof event.delta === "string") {
       text += event.delta;
       onText?.(text);
     } else if (event.type === "response.output_item.added" && event.item?.type === "function_call") {
+      if (isHandoff(event.item.name)) {
+        if (text) text += "\n\n";
+        return;
+      }
       if (text) onText?.(null);
       text = "";
     }
@@ -603,7 +627,8 @@ export async function nativeTurn(turn: NativeTurn): Promise<NativeResult> {
       turn.onStep?.(labelStep({ id: search.id, tool: search.name, input: search.input, status: "done" }));
     }
     if (answer.text && turn.onLog) turn.onLog(answer.text.replace(/\s+/g, " ").slice(0, 200));
-    if (answer.text.trim() && answer.calls.length) turn.onStep?.({ id: `note-${crypto.randomUUID()}`, kind: "note", title: answer.text.trim().replace(/\s+/g, " ").slice(0, 200), detail: answer.text.trim(), status: "done" });
+    const handsOff = answer.calls.length > 0 && answer.calls.every((call) => isHandoff(call.name));
+    if (answer.text.trim() && answer.calls.length && !handsOff) turn.onStep?.({ id: `note-${crypto.randomUUID()}`, kind: "note", title: answer.text.trim().replace(/\s+/g, " ").slice(0, 200), detail: answer.text.trim(), status: "done" });
     if (!answer.calls.length && answer.stopReason === "pause_turn") {
       // The provider's search loop paused; sending its turn back as it is resumes it.
       if (answer.text) said.push(answer.text);
@@ -621,7 +646,8 @@ export async function nativeTurn(turn: NativeTurn): Promise<NativeResult> {
       const empty = answer.stopReason === "max_tokens" ? "The model spent its whole reply thinking and wrote nothing. Try again, or a model that thinks less." : "The API answered with nothing.";
       return { ok: Boolean(text), text, stopReason: answer.stopReason, error: text ? null : empty };
     }
-    turn.onText?.(null);
+    if (!handsOff) turn.onText?.(null);
+    else if (answer.text.trim()) said.push(answer.text.trim());
     messages.push(...answer.raw);
     const answers = await Promise.all(
       answer.calls.map(async (call) => {

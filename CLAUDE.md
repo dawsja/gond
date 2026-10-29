@@ -753,7 +753,11 @@ One line each: where to start, and what must not change.
 - **Streaming** (`createWriting` in `src/writing.ts`): the whole redacted
   text so far, at most every `WRITING_INTERVAL_MS`, only for a turn whose
   answer goes to the person, never while it could still be `NOTHING_NEW`
-  (`couldBeQuiet`), null when a tool call starts or the turn ends. Claude
+  (`couldBeQuiet`), null when a tool call starts or the turn ends. A
+  handoff (`message_bot`, `delegate_bot`; `isHandoff` in the box's
+  `agents.mjs` and in `native.ts`) ends nothing: what the bot wrote before
+  it stays on screen and in the reply, since it was meant for the person;
+  before any other tool it was narration and is dropped (`ReplyText`). Claude
   Code streams with `--include-partial-messages` (the box's `streamText`);
   `native.ts` streams all three API shapes (`anthropicAssembler`,
   `openAiAssembler`, `responsesText` over `sseStream` in `src/sse.ts`).
