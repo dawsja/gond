@@ -738,6 +738,21 @@ export function Conversation({ threadId }: { threadId: string }) {
   const [viewing, setViewing] = useState<string | null>(null);
   const [resolved, setResolved] = useState<Map<string, Approval>>(new Map());
   const textarea = useRef<HTMLTextAreaElement>(null);
+  // A message past one line takes the pill's full width, its buttons on a row of their own beneath;
+  // it stays that way until it's empty, or the wider text could fit one line again and flip back.
+  const [stacked, setStacked] = useState(false);
+  const heightWatch = useRef<ResizeObserver | null>(null);
+  const composerField = useCallback((node: HTMLTextAreaElement | null) => {
+    textarea.current = node;
+    heightWatch.current?.disconnect();
+    heightWatch.current = null;
+    if (!node || typeof ResizeObserver === "undefined") return;
+    heightWatch.current = new ResizeObserver(() => {
+      if (!node.value) setStacked(false);
+      else if (node.offsetHeight > parseFloat(getComputedStyle(node).minHeight) + 4) setStacked(true);
+    });
+    heightWatch.current.observe(node);
+  }, []);
   const composer = useRef<HTMLFormElement>(null);
   const [composerHeight, setComposerHeight] = useState(COMPOSER_HEIGHT);
   useEffect(() => {
@@ -1494,7 +1509,7 @@ export function Conversation({ threadId }: { threadId: string }) {
 
           <InputGroup variant="pill" className={cn("min-h-11 rounded-[22px] pr-1.5", nativeChrome && "invisible overflow-hidden")} style={nativeChrome ? { height: "var(--native-composer-height, 2.75rem)" } : undefined}>
             <InputGroupTextarea
-              ref={textarea}
+              ref={composerField}
               value={draft}
               onChange={(e) => {
                 setDraft(e.target.value);
@@ -1513,7 +1528,7 @@ export function Conversation({ threadId }: { threadId: string }) {
               // An empty field is one row whatever its hint, so a long one never makes the pill taller.
               className="max-h-40 min-h-[42px] px-4 py-2.5 text-[16px] leading-5 placeholder-shown:h-[42px] placeholder-shown:overflow-hidden placeholder-shown:[field-sizing:fixed] placeholder:truncate sm:text-[14px]"
             />
-            <InputGroupAddon align="inline-end" className="mr-0 gap-1 self-end pt-0 pr-0 pb-[5px] has-[>button]:mr-0">
+            <InputGroupAddon align={stacked && !nativeChrome ? "block-end" : "inline-end"} className={cn("mr-0 gap-1 pt-0 pr-0 pb-[5px] has-[>button]:mr-0", stacked && !nativeChrome ? "justify-end pl-2" : "self-end")}>
 
               {busy && draft.trim() && !files.length ? (
                 <Tooltip>

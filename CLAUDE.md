@@ -45,6 +45,13 @@ functions to start from; the code holds the details.
   placeholder alert its extension rewrites, and a `quiet` push (taking a
   notice back) as a background one. `api.gond.io` is every Gond's push
   relay (`PUSH_RELAY_URL`), with no setting.
+  It also keeps the public token count (`usage.ts`, `/v1/usage`): a Gond
+  signs a running total (`UsageReport`, an `epoch` per time sharing was
+  turned on), the relay keeps the last per key and what each report added
+  per UTC day, at most one report every `usageEveryMs` and growth held to
+  `usageTokensPerHour`, in one Durable Object (`UsageTotals`) on
+  Cloudflare. Anyone reads the totals; gond.io/usage (the landing site's,
+  its own private repo) draws them.
 - `docker-compose.yml` runs the three services; CI builds the images (and
   `gond-relay`'s) and publishes them to GHCR. Builds start alongside the
   checks and nothing is published or released unless they pass. When a
@@ -458,6 +465,9 @@ One line each: where to start, and what must not change.
   isn't woken by it (`spokeSince`). `message_bot` from a room turn to a
   member is said in the room as an @mention. A `::choices` tap in a room
   goes as `@handle option` to the bot that offered it.
+- **The composer**: a message past one line moves its buttons (Later,
+  the mic, Send) to a row beneath (`stacked`), held until it's empty so
+  the wider text can't flip it back.
 - **Drafts and history** (`lib/drafts.ts`, `lib/sent-history.ts`): a
   draft is per conversation in `localStorage`, shown as "Draft: …". Up in
   an empty composer recalls sent lines (`historyStep`), only on the first
@@ -523,7 +533,11 @@ One line each: where to start, and what must not change.
   refused, and the text view hides every secret.
 - **Usage** (`usage-section.tsx`, `GET /api/usage?range=`): spent is
   dollars only where the provider billed them; Gond keeps no price list.
-  Refetches on `usage` and `ai`.
+  Refetches on `usage` and `ai`. Usage metrics (`SharingCard`, the
+  admin's, off by default; `InfoTip` explains it on hover or tap) is
+  `src/usage-sharing.ts`: while on, about hourly, the whole server's tokens
+  since it was turned on (`serverTokens`, one number) go signed to the
+  relay; nothing else does.
 - **Voice input** (`voice-button.tsx`, `hooks/use-recorder.ts`,
   `/api/transcribe`, `voice-card.tsx`): the text lands in the draft and
   is never sent for them. Only the voice key can transcribe; without one

@@ -38,6 +38,11 @@ export const LIMITS = {
   pushesPerMinute: 120,
   /** How far a push's time may be from the relay's, either way. */
   pushSkewMs: 5 * 60 * 1000,
+  /** How often one key may report its usage, and how many tokens an hour a report may add. */
+  usageEveryMs: 10 * 60 * 1000,
+  usageTokensPerHour: 250_000_000,
+  /** Days of daily counts `/v1/usage` gives back. */
+  usageDays: 90,
 } as const;
 
 export type Envelope = {
@@ -112,6 +117,28 @@ export type PushRequest = {
 
 export type PushResult = "sent" | "gone" | "failed";
 
+/**
+ * A Gond's count of the tokens its bots used since its admin turned sharing on (`epoch` names that
+ * time), which the relay adds to the public total (`/v1/usage`). Only the number crosses: no people,
+ * bots, models or messages. A running total, so a report sent twice counts once.
+ */
+export type UsageReport = {
+  v: 1;
+  from: string;
+  at: number;
+  /** Chosen when sharing was turned on; a new one starts the count from nothing. */
+  epoch: string;
+  tokens: number;
+  /** Ed25519 by `from` over `signedUsage`. */
+  sig: string;
+};
+
+/**
+ * What anyone may read at `/v1/usage`: every reporting Gond's tokens together, how many Gonds, since
+ * when, and what was counted each UTC day of the last `usageDays`, oldest first (days with none left out).
+ */
+export type UsageTotals = { tokens: number; gonds: number; since: number | null; days: { day: string; tokens: number }[] };
+
 export const PUSH_PLATFORMS = ["android", "ios"] as const;
 export type PushPlatform = (typeof PUSH_PLATFORMS)[number];
 
@@ -152,6 +179,19 @@ export function signedEnvelope(e: Omit<Envelope, "sig">): Uint8Array {
 export function signedPush(p: Omit<PushRequest, "sig">): Uint8Array {
   // `quiet` came later, so a push without it signs exactly as before.
   return utf8([`gond-relay/${PROTOCOL} push`, p.id, p.from, String(p.at), p.platform, p.token, p.data, p.collapse ?? "", ...(p.quiet ? ["quiet"] : [])].join("\n"));
+}
+
+export function signedUsage(u: Omit<UsageReport, "sig">): Uint8Array {
+  return utf8([`gond-relay/${PROTOCOL} usage`, u.from, String(u.at), u.epoch, String(u.tokens)].join("\n"));
+}
+
+export function parseUsage(value: unknown): UsageReport | null {
+  if (!value || typeof value !== "object") return null;
+  const u = value as Record<string, unknown>;
+  if (u.v !== 1 || !isKey(u.from) || !isId(u.epoch) || !isB64(u.sig, 128)) return null;
+  if (typeof u.at !== "number" || !Number.isSafeInteger(u.at) || u.at < 0) return null;
+  if (typeof u.tokens !== "number" || !Number.isSafeInteger(u.tokens) || u.tokens < 0) return null;
+  return { v: 1, from: u.from, at: u.at, epoch: u.epoch, tokens: u.tokens, sig: u.sig };
 }
 
 const PUSH_TOKEN = /^[\w:.-]{20,512}$/;

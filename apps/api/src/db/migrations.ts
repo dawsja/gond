@@ -1047,6 +1047,8 @@ const MIGRATIONS: Array<string | ((db: Database) => void)> = [
   `,
   // The model a call on OpenAI runs on; null is GPT-Live.
   `ALTER TABLE gond_user_prefs ADD COLUMN call_model TEXT;`,
+  // Sharing the server's token count (Settings → Usage), as {"epoch","since"} while on; null is off.
+  `ALTER TABLE gond_settings ADD COLUMN usage_sharing TEXT;`,
 ];
 
 /**

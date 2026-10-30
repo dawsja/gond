@@ -5322,6 +5322,50 @@ describe("show me how", () => {
 });
 
 describe("usage", () => {
+  test("sharing the token count is the admin's, off until turned on, and sends only the server's total since then", async () => {
+    const { recordUsage } = await import("../src/data/usage.ts");
+    const { usageRoutes } = await import("../src/routes/usage.ts");
+    const { reportUsage, sharingState } = await import("../src/usage-sharing.ts");
+    const { requireAdmin } = await import("../src/access.ts");
+    const { createRelayServer } = await import("../../../packages/relay/src/server.ts");
+    const { Database } = await import("bun:sqlite");
+    const { Hono } = await import("hono");
+    await seedUsers(["u-share-admin", "admin"], ["u-share-user", "user"]);
+    const routes = (who: string) => {
+      const app = new Hono();
+      app.use("*", async (c: { set: (key: string, value: unknown) => void }, next: () => Promise<void>) => {
+        c.set("session", { user: { id: who, role: who === "u-share-admin" ? "admin" : "user" } });
+        await next();
+      });
+      app.use("/api/usage/sharing", requireAdmin);
+      return app.route("/api", usageRoutes());
+    };
+    const put = (who: string, body: unknown) => routes(who).request("/api/usage/sharing", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    const relay = createRelayServer({ port: 0, hostname: "127.0.0.1", database: new Database(":memory:", { strict: true }) });
+    try {
+      recordUsage({ userId: "u-share-user", botId: null, threadId: null, source: "claude", model: "m", tokens: { input: 900, output: 0, cacheRead: 0, cacheWrite: 0 }, cost: null });
+      expect(sharingState()).toEqual({ on: false, since: null, tokens: 0 });
+      expect(await reportUsage(relay.url)).toBe(false);
+      expect((await put("u-share-user", { on: true })).status).toBe(403);
+      expect((await put("u-share-admin", { on: "yes" })).status).toBe(400);
+
+      const on = (await (await put("u-share-admin", { on: true })).json()) as { on: boolean; since: string };
+      expect(on.on).toBe(true);
+      // Only what's used from now on counts, everyone's together.
+      recordUsage({ userId: "u-share-user", botId: null, threadId: null, source: "claude", model: "m", tokens: { input: 100, output: 20, cacheRead: 5, cacheWrite: 0 }, cost: null });
+      recordUsage({ userId: "u-share-admin", botId: null, threadId: null, source: "openai", model: "m", tokens: { input: 50, output: 0, cacheRead: 0, cacheWrite: 0 }, cost: null });
+      expect(sharingState().tokens).toBe(175);
+      expect(await reportUsage(relay.url)).toBe(true);
+      expect(relay.usage.totals()).toMatchObject({ tokens: 175, gonds: 1 });
+
+      expect((await (await put("u-share-admin", { on: false })).json()) as unknown).toEqual({ on: false, since: null, tokens: 0 });
+      expect(await reportUsage(relay.url)).toBe(false);
+      expect((await routes("u-share-user").request("/api/usage/sharing")).status).toBe(403);
+    } finally {
+      relay.stop();
+    }
+  });
+
   test("ranges start at midnight where the person is, across a clock change", async () => {
     const { rangeStart } = await import("../src/data/usage.ts");
     // Saturday Oct 24, 11 PM in New York.

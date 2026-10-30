@@ -35,6 +35,11 @@ export function sourceTotals(userId: string, source: UsageSource, since: Date): 
   return { tokens: row.tokens, cost: row.cost };
 }
 
+/** Every token this server's bots used since then, everyone's: the one number usage sharing sends. */
+export function serverTokens(since: string): number {
+  return (ensureDatabase().query(`SELECT ${TOKENS_SQL} AS tokens FROM gond_usage WHERE created_at >= ?`).get(since) as { tokens: number }).tokens;
+}
+
 export function botTotals(userId: string, since: Date): { botId: string | null; tokens: number; cost: number | null }[] {
   return ensureDatabase()
     .query(`SELECT bot_id AS botId, ${TOKENS_SQL} AS tokens, SUM(cost) AS cost FROM gond_usage WHERE user_id = ? AND created_at >= ? GROUP BY bot_id ORDER BY tokens DESC`)

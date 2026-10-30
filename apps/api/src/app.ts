@@ -79,7 +79,7 @@ export function createApp() {
     await next();
   });
 
-  for (const path of ["/api/server/update", "/api/box/update", "/api/box/reset", "/api/onboarding/*", "/api/users", "/api/users/*", "/api/oidc", "/api/oidc/*"]) {
+  for (const path of ["/api/server/update", "/api/box/update", "/api/box/reset", "/api/onboarding/*", "/api/users", "/api/users/*", "/api/oidc", "/api/oidc/*", "/api/usage/sharing"]) {
     app.use(path, requireAdmin);
   }
   app.on(["POST", "PATCH", "PUT", "DELETE"], ["/api/settings"], requireAdmin);

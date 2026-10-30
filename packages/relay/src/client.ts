@@ -7,6 +7,7 @@ import {
   signedEnvelope,
   signedHello,
   signedPush,
+  signedUsage,
   toB64,
   utf8,
   verifySignature,
@@ -16,6 +17,7 @@ import {
   type PushRequest,
   type Refusal,
   type RelayFrame,
+  type UsageReport,
 } from "./protocol.ts";
 
 /**
@@ -54,6 +56,12 @@ async function sign(identity: Identity, message: Uint8Array): Promise<string> {
 }
 
 /** A push for one phone, signed by this Gond, for a relay's `/v1/push`. `data` is already sealed for the phone. */
+/** A usage report: this Gond's tokens since sharing was turned on (`epoch`), signed, for `/v1/usage`. */
+export async function usageReport(identity: Identity, input: { epoch: string; tokens: number; at?: number }): Promise<UsageReport> {
+  const unsigned: Omit<UsageReport, "sig"> = { v: 1, from: identity.key, at: input.at ?? Date.now(), epoch: input.epoch, tokens: Math.max(0, Math.floor(input.tokens)) };
+  return { ...unsigned, sig: await sign(identity, signedUsage(unsigned)) };
+}
+
 export async function pushRequest(identity: Identity, input: { token: string; data: string; collapse: string | null; platform?: PushPlatform; quiet?: boolean; at?: number }): Promise<PushRequest> {
   const unsigned: Omit<PushRequest, "sig"> = {
     v: 1,

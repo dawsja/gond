@@ -1,6 +1,7 @@
 import { challenge, createStore, ownerFrame, provesKey, receive, type Sql, type SqlValue, type Store } from "./mailbox.ts";
-import { LIMITS, info, isKey, parseClientFrame, parseEnvelope, parsePush, type Envelope, type Refusal, type RelayFrame } from "./protocol.ts";
+import { LIMITS, info, isKey, parseClientFrame, parseEnvelope, parsePush, type Envelope, type Refusal, type RelayFrame, type UsageTotals as Totals } from "./protocol.ts";
 import { createFcm, handlePush, type Fcm } from "./push.ts";
+import { createUsageStore, handleUsage, usageJson, type UsageStore } from "./usage.ts";
 
 /**
  * gond-relay on Cloudflare (api.gond.io): the Worker sends each socket to the Durable Object
@@ -33,13 +34,15 @@ interface DurableObjectNamespace {
   idFromName(name: string): unknown;
   get(id: unknown): DurableObjectStub;
 }
-type Env = { MAILBOXES: DurableObjectNamespace; FCM_SERVICE_ACCOUNT?: string };
+type Env = { MAILBOXES: DurableObjectNamespace; USAGE: DurableObjectNamespace; FCM_SERVICE_ACCOUNT?: string };
 
 const WebSocketPair = (globalThis as unknown as { WebSocketPair: new () => { 0: CfSocket; 1: CfSocket } }).WebSocketPair;
 const SWEEP_MS = 24 * 60 * 60 * 1000;
 // Only a Durable Object calls this; the Worker never forwards it, so nobody outside can.
 const RECEIVE = "https://mailbox.internal/receive";
 const PUSH = "https://mailbox.internal/push";
+const USAGE_REPORT = "https://usage.internal/report";
+const USAGE_TOTALS = "https://usage.internal/totals";
 
 type Attachment = { key: string; nonce: string; authed: boolean };
 
@@ -59,6 +62,10 @@ export default {
       if (!push) return Response.json({ error: "That isn't a version 1 push." }, { status: 400 });
       return env.MAILBOXES.get(env.MAILBOXES.idFromName(push.from)).fetch(PUSH, { method: "POST", body: JSON.stringify(push) });
     }
+    // The public count lives in one Durable Object, so every report and read sees the same total.
+    const usage = () => env.USAGE.get(env.USAGE.idFromName("totals"));
+    if (url.pathname === "/v1/usage" && request.method === "POST") return usage().fetch(USAGE_REPORT, { method: "POST", body: await request.text() });
+    if (url.pathname === "/v1/usage") return usageJson((await (await usage().fetch(USAGE_TOTALS)).json()) as Totals);
     if (url.pathname === "/healthz") return new Response("ok");
     if (url.pathname === "/" || url.pathname === "/v1") return Response.json(info());
     return Response.json({ error: "Not found" }, { status: 404 });
@@ -170,5 +177,24 @@ export class Mailbox {
       return ((await answer.json()) as { refused: Refusal | null }).refused;
     });
     if (reply) this.send(ws, reply);
+  }
+}
+
+/** The public token count (`usage.ts`), with its own SQLite. Only the Worker reaches it. */
+export class UsageTotals {
+  private readonly store: UsageStore;
+
+  constructor(ctx: DurableObjectState) {
+    const sql = ctx.storage.sql;
+    this.store = createUsageStore({
+      all: (query, ...params) => sql.exec(query, ...params).toArray(),
+      run: (query, ...params) => void sql.exec(query, ...params).toArray(),
+    });
+  }
+
+  async fetch(request: Request): Promise<Response> {
+    if (request.url === USAGE_TOTALS) return Response.json(this.store.totals());
+    const answer = await handleUsage(await request.json().catch(() => null), this.store);
+    return Response.json(answer.body, { status: answer.status });
   }
 }

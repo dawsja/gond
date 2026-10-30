@@ -1233,6 +1233,13 @@ export function isUsageRange(value: unknown): value is UsageRange {
 /** A plan's window: what share of it is left, 0 to 100, and when it starts again. */
 export type PlanWindow = { name: "session" | "weekly" | "monthly"; left: number; resetsAt: string | null };
 
+/**
+ * Settings → Usage → Share usage, the admin's: while on, this server's total tokens since `since` go
+ * to api.gond.io about once an hour, adding to the public count at gond.io/usage. Only that number.
+ */
+export type UsageSharing = { on: boolean; since: string | null; tokens: number };
+export const USAGE_SHARING_URL = "https://gond.io/usage";
+
 export type UsageReport = {
   /** What the bots run on now, and the host of its key when it is one. */
   source: UsageSource;

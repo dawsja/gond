@@ -1,15 +1,19 @@
 "use client";
 
-import { CHATGPT_USAGE_URL, USAGE_RANGES, type Bot, type PlanWindow, type UsageRange, type UsageReport, type UsageSource } from "@gond/shared";
+import { CHATGPT_USAGE_URL, USAGE_RANGES, USAGE_SHARING_URL, type Bot, type PlanWindow, type UsageRange, type UsageReport, type UsageSharing, type UsageSource } from "@gond/shared";
 import { Info } from "lucide-react";
 import { useEffect, useState } from "react";
 import { BotAvatar } from "@/components/bot-avatar";
+import { failed } from "@/components/failed";
+import { InfoTip } from "@/components/info-tip";
 import { useLiveEvents } from "@/components/hq/live-events";
 import { LoadFailed } from "@/components/load-failed";
 import { useSingleFlight, useStore } from "@/components/store";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Field, FieldContent, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Progress, ProgressLabel, ProgressValue } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { api } from "@/lib/api";
 
@@ -180,7 +184,66 @@ function BotsCard({ report, range, onRange }: { report: UsageReport; range: Usag
   );
 }
 
+/** The admin's: whether this server's token count adds to the public one at gond.io/usage. */
+function SharingCard() {
+  const [sharing, setSharing] = useState<UsageSharing | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const load = useSingleFlight(async () => {
+    const data = await api<UsageSharing>("/api/usage/sharing").catch(() => null);
+    setLoadFailed(!data);
+    if (data) setSharing(data);
+  });
+  useEffect(() => {
+    void Promise.resolve().then(load);
+  }, [load]);
+  useLiveEvents((event) => {
+    if (event.topic === "usage" || event.topic === "settings") void load();
+  });
+
+  async function change(on: boolean) {
+    setSaving(true);
+    try {
+      setSharing(await api<UsageSharing>("/api/usage/sharing", { method: "PUT", body: JSON.stringify({ on }) }));
+    } catch (error) {
+      failed(on ? "Couldn't turn sharing on." : "Couldn't turn sharing off.")(error);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const since = sharing?.since ? new Date(sharing.since).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : null;
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Usage metrics</CardTitle>
+        <CardDescription>For the whole server. Only you, the admin, can change it.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {!sharing ? (
+          loadFailed ? <LoadFailed what="usage sharing" onRetry={() => void load()} /> : <Skeleton className="h-12 rounded-xl" />
+        ) : (
+          <Field orientation="horizontal" data-disabled={saving || undefined}>
+            <FieldContent>
+              <div className="flex items-center gap-1">
+                <FieldLabel htmlFor="share-usage">Share usage metrics</FieldLabel>
+                <InfoTip label="What sharing sends">
+                  <p>Adds this server&apos;s token count to the public total anyone can see at {USAGE_SHARING_URL.replace("https://", "")}.</p>
+                  <p>Only that one number goes, about once an hour: everyone&apos;s bots here together, counted from when you turn it on. No names, bots, models, messages or costs.</p>
+                </InfoTip>
+              </div>
+              <FieldDescription>{sharing.on && since ? `${tokens(sharing.tokens)} tokens counted since ${since}.` : "Off. Nothing is sent."}</FieldDescription>
+            </FieldContent>
+            <Switch id="share-usage" checked={sharing.on} disabled={saving} onCheckedChange={(on) => void change(on)} />
+          </Field>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export function UsageSection() {
+  const { admin } = useStore();
   const [range, setRange] = useState<UsageRange>("month");
   const [report, setReport] = useState<UsageReport | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -202,6 +265,7 @@ export function UsageSection() {
     <>
       <PlanCard report={report} />
       <BotsCard report={report} range={range} onRange={setRange} />
+      {admin ? <SharingCard /> : null}
     </>
   );
 }

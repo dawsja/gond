@@ -55,6 +55,27 @@ export function updateSettings(patch: Partial<Settings>): Settings {
   return getSettings();
 }
 
+/** While on, the epoch the relay knows this count by and when it began; a new one each time it's turned on. */
+export type UsageSharingState = { epoch: string; since: string } | null;
+
+export function usageSharing(): UsageSharingState {
+  const row = ensureDatabase().query("SELECT usage_sharing FROM gond_settings WHERE id = 1").get() as { usage_sharing: string | null } | null;
+  try {
+    const stored = JSON.parse(row?.usage_sharing ?? "null") as { epoch?: unknown; since?: unknown } | null;
+    return stored && typeof stored.epoch === "string" && typeof stored.since === "string" ? { epoch: stored.epoch, since: stored.since } : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setUsageSharing(on: boolean): UsageSharingState {
+  if (on === (usageSharing() !== null)) return usageSharing();
+  const next = on ? { epoch: `ep_${crypto.randomUUID().replaceAll("-", "")}`, since: now() } : null;
+  ensureDatabase().query("UPDATE gond_settings SET usage_sharing = ?, updated_at = ? WHERE id = 1").run(next ? JSON.stringify(next) : null, now());
+  settingsChanged();
+  return next;
+}
+
 type ConnectionRow = { user_id: string; toolkit: string; name: string; account_id: string; status: string; created_at: string };
 
 function toConnection(row: ConnectionRow): Connection {

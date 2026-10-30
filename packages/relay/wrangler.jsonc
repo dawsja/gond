@@ -8,7 +8,13 @@
   "preview_urls": false,
   "routes": [{ "pattern": "api.gond.io", "custom_domain": true }],
   "durable_objects": {
-    "bindings": [{ "name": "MAILBOXES", "class_name": "Mailbox" }]
+    "bindings": [
+      { "name": "MAILBOXES", "class_name": "Mailbox" },
+      { "name": "USAGE", "class_name": "UsageTotals" }
+    ]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Mailbox"] }]
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["Mailbox"] },
+    { "tag": "v2", "new_sqlite_classes": ["UsageTotals"] }
+  ]
 }

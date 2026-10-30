@@ -5,6 +5,7 @@ import type { ServerWebSocket } from "bun";
 import { challenge, createStore, ownerFrame, provesKey, receive, type Sql, type SqlValue, type Store } from "./mailbox.ts";
 import { LIMITS, VERSIONS, info, isKey, parseClientFrame, type RelayFrame } from "./protocol.ts";
 import { handlePush, type Fcm } from "./push.ts";
+import { createUsageStore, handleUsage, usageJson } from "./usage.ts";
 
 /**
  * gond-relay on your own machine: one Bun process, every mailbox in one SQLite file. Run it
@@ -26,6 +27,7 @@ function sqlOf(db: Database): Sql {
 export function createRelayServer(options: RelayServerOptions = {}) {
   const db = options.database ?? openDatabase(options.dataDir ?? "data");
   const store: Store = createStore(sqlOf(db), options.now);
+  const usage = createUsageStore(sqlOf(db), options.now);
   const owners = new Map<string, ServerWebSocket<Socket>>();
 
   const send = (ws: ServerWebSocket<Socket>, frame: RelayFrame) => void ws.send(JSON.stringify(frame));
@@ -41,6 +43,11 @@ export function createRelayServer(options: RelayServerOptions = {}) {
         const answer = await handlePush(raw, { fcm: options.fcm ?? null, spend: (key, limit) => store.spend(key, limit), now: store.now });
         return Response.json(answer.body, { status: answer.status });
       }
+      if (url.pathname === "/v1/usage" && request.method === "POST") {
+        const answer = await handleUsage(await request.json().catch(() => null), usage);
+        return Response.json(answer.body, { status: answer.status });
+      }
+      if (url.pathname === "/v1/usage") return usageJson(usage.totals());
       if (url.pathname === "/v1/connect") {
         const key = url.searchParams.get("key");
         if (!isKey(key)) return Response.json({ error: "Connect with your server's key as ?key=" }, { status: 400 });
@@ -99,6 +106,7 @@ export function createRelayServer(options: RelayServerOptions = {}) {
   return {
     server,
     store,
+    usage,
     url: `http://${server.hostname}:${server.port}`,
     stop() {
       clearInterval(sweeper);

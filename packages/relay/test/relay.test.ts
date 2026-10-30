@@ -559,3 +559,52 @@ describe("push", () => {
     expect(() => createFcm("{}")).toThrow();
   });
 });
+
+// Bun relay only: a run against GOND_RELAY_TEST_URL must never add to a real count.
+describe("usage", () => {
+  const post = (url: string, body: unknown) => fetch(`${url}/v1/usage`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+
+  test("a Gond's signed running total is counted once, grows only so fast, and anyone can read the sum", async () => {
+    const { usageReport } = await import("../src/client.ts");
+    let clock = 10_000_000;
+    const relay = bunRelay(() => clock);
+    const gond = await createIdentity();
+    const other = await createIdentity();
+
+    const first = await post(relay.url, await usageReport(gond, { epoch: "epoch-one", tokens: 1200, at: clock }));
+    expect(first.status).toBe(200);
+    expect(await first.json()).toEqual({ result: "counted" });
+    // Too soon, a forged one, or one too far from the relay's time count nothing.
+    expect((await post(relay.url, await usageReport(gond, { epoch: "epoch-one", tokens: 5000, at: clock }))).status).toBe(429);
+    const forged = await usageReport(gond, { epoch: "epoch-one", tokens: 5000, at: clock });
+    expect((await post(relay.url, { ...forged, from: other.key })).status).toBe(401);
+    expect((await post(relay.url, await usageReport(other, { epoch: "epoch-two", tokens: 1, at: clock - LIMITS.pushSkewMs - 1 }))).status).toBe(400);
+    expect((await post(relay.url, { v: 1, from: gond.key, at: clock, epoch: "epoch-one", tokens: -1, sig: forged.sig })).status).toBe(400);
+
+    clock += LIMITS.usageEveryMs;
+    // The same total twice is counted once; a smaller one never takes any back.
+    await post(relay.url, await usageReport(gond, { epoch: "epoch-one", tokens: 1200, at: clock }));
+    expect(relay.usage.totals().tokens).toBe(1200);
+    clock += LIMITS.usageEveryMs;
+    await post(relay.url, await usageReport(gond, { epoch: "epoch-one", tokens: 900, at: clock }));
+    expect(relay.usage.totals().tokens).toBe(1200);
+
+    // A claim faster than any Gond could spend is held to the hourly most.
+    clock += 3_600_000;
+    await post(relay.url, await usageReport(other, { epoch: "epoch-two", tokens: LIMITS.usageTokensPerHour * 10, at: clock }));
+    expect(relay.usage.totals().tokens).toBe(1200 + LIMITS.usageTokensPerHour);
+
+    // Sharing turned off and on again starts a new epoch: the old count stays in the sum.
+    clock += LIMITS.usageEveryMs;
+    await post(relay.url, await usageReport(gond, { epoch: "epoch-three", tokens: 300, at: clock }));
+    const { days, ...totals } = relay.usage.totals();
+    expect(totals).toEqual({ tokens: 1500 + LIMITS.usageTokensPerHour, gonds: 2, since: 10_000_000 });
+    // Each day holds what was counted on it, so the days add up to the total.
+    expect(days.reduce((sum, d) => sum + d.tokens, 0)).toBe(totals.tokens);
+    expect(days.map((d) => d.day)).toEqual(["1970-01-01"]);
+
+    const read = await fetch(`${relay.url}/v1/usage`);
+    expect(read.headers.get("access-control-allow-origin")).toBe("*");
+    expect(await read.json()).toEqual(relay.usage.totals());
+  });
+});

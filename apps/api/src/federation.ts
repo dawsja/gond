@@ -1,6 +1,6 @@
 import { GOND_RELAY_URL, type Federation, type FederationState } from "@gond/shared";
-import { RelayClient, createIdentity, inviteToken, keyCard, open, pushRequest, seal, type Identity, type KeyCard } from "@gond/relay/client";
-import type { PushRequest } from "@gond/relay/protocol";
+import { RelayClient, createIdentity, inviteToken, keyCard, open, pushRequest, seal, usageReport, type Identity, type KeyCard } from "@gond/relay/client";
+import type { PushRequest, UsageReport } from "@gond/relay/protocol";
 import type { Envelope } from "@gond/relay/protocol";
 import { dropOutboxFor, dueOutbox, enqueue, outboxDueNow, federationRow, firstSight, getPeer, outboxDone, outboxLater, saveFederation, sweepSpaces, touchPeer, type FederationRow } from "./data/spaces.ts";
 import { emit } from "./events.ts";
@@ -142,6 +142,11 @@ export function ownKey(): string | null {
 /** A push for one phone, signed with this Gond's key, which the relay checks before passing it to Firebase. */
 export async function signPush(input: { token: string; data: string; collapse: string | null; platform: PushRequest["platform"]; quiet?: boolean }): Promise<PushRequest> {
   return pushRequest(await identity(), input);
+}
+
+/** This server's token count for the public total, signed with this Gond's key. */
+export async function signUsage(input: { epoch: string; tokens: number }): Promise<UsageReport> {
+  return usageReport(await identity(), input);
 }
 
 export async function ownCard(): Promise<KeyCard> {
