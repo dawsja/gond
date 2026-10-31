@@ -20,6 +20,7 @@ import { getBot } from "../data/bots.ts";
 import { providerBaseUrl, providerKey } from "../data/providers.ts";
 import { getVoice, setCallVoice, setVoice } from "../data/voice.ts";
 import { authHeaders, upstreamUrl } from "../providers.ts";
+import { readBody } from "./body.ts";
 
 // Both APIs read the format from the file name, and Bun's multipart parser drops a part's own
 // type for one guessed from the name, so the name's extension is what counts.
@@ -94,8 +95,8 @@ export function voiceRoutes() {
   app.get("/voice", (c) => c.json(getVoice(userId(c))));
 
   app.put("/voice", async (c) => {
-    const body = (await c.req.json().catch(() => null)) as { openaiModel?: unknown; callModel?: unknown } | null;
-    const { openaiModel, callModel } = body ?? {};
+    const body = await readBody(c);
+    const { openaiModel, callModel } = body;
     if (openaiModel === undefined && callModel === undefined) return c.json({ error: "There was nothing to change" }, 400);
     if (openaiModel !== undefined && (typeof openaiModel !== "string" || (openaiModel.trim() && !VOICE_MODEL_ID.test(openaiModel.trim())))) return c.json({ error: "That isn't a model id" }, 400);
     const call = OPENAI_CALL_MODELS.find((model) => model.id === callModel);
@@ -126,10 +127,10 @@ export function voiceRoutes() {
 
   app.put("/voice/call-voice", async (c) => {
     const who = userId(c);
-    const body = (await c.req.json().catch(() => null)) as { voice?: unknown } | null;
+    const body = await readBody(c);
     const provider = getVoice(who).using;
     if (!provider) return c.json({ error: "Add a voice key in Settings → Voice first" }, 409);
-    if (body?.voice !== null && (typeof body?.voice !== "string" || !CALL_VOICE_ID.test(body.voice))) return c.json({ error: "That isn't a voice" }, 400);
+    if (body.voice !== null && (typeof body.voice !== "string" || !CALL_VOICE_ID.test(body.voice))) return c.json({ error: "That isn't a voice" }, 400);
     return c.json(setCallVoice(who, provider, body.voice === CALL_MODELS[provider].voice ? null : body.voice));
   });
 

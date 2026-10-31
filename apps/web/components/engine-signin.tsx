@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { api, del, post } from "@/lib/api";
 import { isPhoneShell, useNativeShell } from "@/lib/shell";
+import { pollWhileShown } from "@/lib/poll";
 
 const POLL_MS = 2_000;
 
@@ -90,7 +91,7 @@ export function EngineSignInDialog({ engine, onOpenChange, onDone }: { engine: E
         if (current && current.state !== "done" && current.state !== "failed") setSignIn(current);
         else void start(engine);
       });
-    const timer = window.setInterval(() => {
+    const stop = pollWhileShown(() => {
       if (!live.current) return;
       void readSignIn(engine)
         .then((current) => {
@@ -102,7 +103,7 @@ export function EngineSignInDialog({ engine, onOpenChange, onDone }: { engine: E
     }, POLL_MS);
     return () => {
       alive = false;
-      window.clearInterval(timer);
+      stop();
     };
   }, [engine, start]);
 

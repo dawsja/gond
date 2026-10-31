@@ -1552,9 +1552,9 @@ export function Conversation({ threadId }: { threadId: string }) {
           )}
         </form>
       </section>
-      {panel && info ? <RightPanel thread={info.thread} bot={bot} working={busy} screen={screenProps} /> : null}
-      {info ? <DetailsSheet open={details} onOpenChange={setDetails} thread={info.thread} bot={bot} working={busy} screen={screenProps} /> : null}
-      {screen ? <ScreenPanel threadId={threadId} botId={screen} expanded onExpand={() => setScreen(screen)} onCollapse={() => setScreen(null)} /> : null}
+      {panel && info ? <RightPanel thread={info.thread} bot={bot} screen={screenProps} /> : null}
+      {info ? <DetailsSheet open={details} onOpenChange={setDetails} thread={info.thread} bot={bot} screen={screenProps} /> : null}
+      {screen ? <ScreenPanel botId={screen} expanded onExpand={() => setScreen(screen)} onCollapse={() => setScreen(null)} /> : null}
       {nativeChrome && chips.length ? (
         // The room's faces, unseen, for the app's @mention chips.
         <div aria-hidden="true" className="invisible absolute size-0 overflow-hidden">

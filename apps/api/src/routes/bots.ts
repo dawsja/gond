@@ -1,4 +1,4 @@
-import { AVATAR_MAX_BYTES, BOT_TEMPLATES, botInputSchema, botPatchSchema, pickBotName } from "@gond/shared";
+import { AVATAR_MAX_BYTES, BOT_TEMPLATES, MODEL_ID_PATTERN, botInputSchema, botPatchSchema, pickBotName } from "@gond/shared";
 import { forgetBotTeachings } from "../teach.ts";
 import { refreshSpaces } from "../spaces.ts";
 import { Hono } from "hono";
@@ -13,6 +13,21 @@ import { addFromTemplate, greet, templateById } from "../templates.ts";
 import { MAX_BOT_BUNDLE_BYTES, unpackBot } from "../bot-bundle.ts";
 import { addFromBundle, botFile, bundleOf, sharedBot, shareToken, summaryOf } from "../bot-templates.ts";
 import { appUrl } from "../config.ts";
+import { getAi } from "../data/ai.ts";
+import { currentModel } from "../engines.ts";
+import { readBody } from "./body.ts";
+
+/**
+ * A bot's own model from a request: absent leaves it, empty goes back to Settings → AI's, and an id is
+ * kept with where the person's AI runs now, so it never follows the AI somewhere it means nothing.
+ */
+function modelFrom(body: Record<string, unknown>, owner: string): { model?: string; modelFor?: string } | { error: string } {
+  if (body.model === undefined) return {};
+  if (typeof body.model !== "string") return { error: "Pick a model from the list" };
+  const model = body.model.trim();
+  if (!MODEL_ID_PATTERN.test(model)) return { error: "A model id is letters, digits and . _ : / -, up to 120 characters, and may end in [1m]" };
+  return { model, modelFor: model ? currentModel(getAi(owner), owner).source : "" };
+}
 
 export function botsRoutes() {
   const app = new Hono<Env>();
@@ -78,9 +93,13 @@ export function botsRoutes() {
   });
 
   app.post("/bots", async (c) => {
-    const parsed = botInputSchema.safeParse(await c.req.json().catch(() => ({})));
+    const body = await readBody(c);
+    const parsed = botInputSchema.safeParse(body);
     if (!parsed.success) return c.json({ error: parsed.error.issues[0]?.message ?? "Bad bot" }, 400);
-    const bot = createBot(parsed.data, userId(c));
+    const model = modelFrom(body, userId(c));
+    if ("error" in model) return c.json(model, 400);
+    const made = createBot(parsed.data, userId(c));
+    const bot = model.model ? (updateBot(made.id, model) ?? made) : made;
     postMessage({ threadId: bot.threadId, author: "system", kind: "event", body: `${bot.name} joined${bot.title ? ` as ${bot.title}` : ""}.`, answered: true });
     await syncSoul(bot);
     greet(bot);
@@ -88,7 +107,7 @@ export function botsRoutes() {
   });
 
   app.post("/bots/from-template", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { templateId?: string; enableRoutine?: boolean };
+    const body = await readBody(c);
     const template = templateById(String(body.templateId ?? ""));
     if (!template) return c.json({ error: "Couldn't find that template" }, 404);
     const bot = await addFromTemplate(template, userId(c), { enableRoutine: body.enableRoutine === true });
@@ -101,10 +120,12 @@ export function botsRoutes() {
   });
 
   app.patch("/bots/:id", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const body = await readBody(c);
     const parsed = botPatchSchema.safeParse(body);
     if (!parsed.success) return c.json({ error: parsed.error.issues[0]?.message ?? "Bad bot" }, 400);
-    const extra: { hidden?: boolean; pinned?: boolean; position?: number } = {};
+    const model = modelFrom(body, userId(c));
+    if ("error" in model) return c.json(model, 400);
+    const extra: { hidden?: boolean; pinned?: boolean; position?: number; model?: string; modelFor?: string } = { ...model };
     if (typeof body.hidden === "boolean") extra.hidden = body.hidden;
     if (typeof body.pinned === "boolean") extra.pinned = body.pinned;
     if (typeof body.position === "number") extra.position = body.position;
@@ -170,8 +191,8 @@ export function botsRoutes() {
 
   app.get("/bots/:id/rules", (c) => (ownBot(c, c.req.param("id")) ? c.json({ rules: listRules(c.req.param("id")) }) : c.json({ error: "Couldn't find that bot" }, 404)));
   app.delete("/bots/:id/rules", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { rule?: string };
-    if (!body.rule) return c.json({ error: "Say which rule to forget" }, 400);
+    const body = await readBody(c);
+    if (typeof body.rule !== "string" || !body.rule) return c.json({ error: "Say which rule to forget" }, 400);
     if (!ownBot(c, c.req.param("id"))) return c.json({ error: "Couldn't find that bot" }, 404);
     removeRule(c.req.param("id"), body.rule);
     return c.body(null, 204);

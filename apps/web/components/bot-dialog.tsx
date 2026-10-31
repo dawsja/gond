@@ -1,9 +1,10 @@
 "use client";
 
-import { APPROVAL_LEVELS, APPROVAL_LEVEL_LABELS, BOT_COLORS, BOT_EXPRESSIONS, BOT_LIMITS, BOT_SHAPES, BOT_SHAPE_LABELS, type Bot, type BotExpression, type BotShape } from "@gond/shared";
+import { APPROVAL_LEVELS, APPROVAL_LEVEL_LABELS, BOT_COLORS, BOT_EXPRESSIONS, BOT_LIMITS, BOT_SHAPES, BOT_SHAPE_LABELS, botModelFor, type Bot, type BotExpression, type BotShape } from "@gond/shared";
 import { useRouter } from "next/navigation";
 import { Bell, BellOff, ImagePlus, Upload } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
+import { BotModelField, useBotModels } from "@/components/bot-model-field";
 import { CheckInsFields, useCheckIns } from "@/components/check-ins-fields";
 import { useDiscardChanges } from "@/components/discard-changes";
 import { GondBot } from "@/components/hq/gond-bot";
@@ -59,7 +60,12 @@ export function BotDialog({ botId, onClose }: { botId: string | null; onClose: (
   const hereChanged = here !== null && here === mutedHere;
   // Check-ins are the primary bot's, kept for the profile and saved with the dialog.
   const checkIns = useCheckIns(Boolean(existing?.primary));
-  const dirty = photo !== undefined || hereChanged || checkIns.changed || (existing ? JSON.stringify(form) !== JSON.stringify(pick(existing)) : Boolean(form.title.trim() || form.description.trim()));
+  // A bot's own model counts only where the AI runs now, so it is sent only when the person changed it.
+  const models = useBotModels();
+  const ownModel = models ? botModelFor(existing, models.current.source) : "";
+  const [model, setModel] = useState<string | null>(null);
+  const modelChanged = model !== null && model !== ownModel;
+  const dirty = photo !== undefined || hereChanged || checkIns.changed || modelChanged || (existing ? JSON.stringify(form) !== JSON.stringify(pick(existing)) : Boolean(form.title.trim() || form.description.trim()));
   const discard = useDiscardChanges(dirty && !busy, onClose);
 
   useEffect(() => {
@@ -73,7 +79,8 @@ export function BotDialog({ botId, onClose }: { botId: string | null; onClose: (
     setBusy(true);
     setError(null);
     try {
-      const bot = existing ? (await patch<{ bot: Bot }>(`/api/bots/${existing.id}`, form)).bot : (await post<{ bot: Bot }>("/api/bots", form)).bot;
+      const body = modelChanged ? { ...form, model } : form;
+      const bot = existing ? (await patch<{ bot: Bot }>(`/api/bots/${existing.id}`, body)).bot : (await post<{ bot: Bot }>("/api/bots", body)).bot;
       if (photo) {
         const upload = new FormData();
         upload.append("file", photo.blob, photo.blob.type === "image/gif" ? "picture.gif" : "picture.png");
@@ -209,8 +216,10 @@ export function BotDialog({ botId, onClose }: { botId: string | null; onClose: (
                   </SelectGroup>
                 </SelectContent>
               </Select>
-              <FieldDescription>{APPROVAL_LEVEL_LABELS[form.approval].detail} Every bot runs on the model chosen under Settings. Any bot can add teammates and hand work to them; your primary bot is the one that coordinates.</FieldDescription>
+              <FieldDescription>{APPROVAL_LEVEL_LABELS[form.approval].detail} Any bot can add teammates and hand work to them; your primary bot is the one that coordinates.</FieldDescription>
             </Field>
+
+            <BotModelField models={models} value={model ?? ownModel} disabled={busy} onChange={setModel} />
 
             <div className="flex flex-col divide-y border-y">
               <BellField title="Notify me" label={`Notify me about ${form.name.trim() || "this bot"}`} pressed={form.notify} onPressedChange={(on) => set("notify", on)} />

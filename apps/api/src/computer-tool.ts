@@ -379,13 +379,18 @@ export function computerTool(context: Context): { computer: DriverTool; browser:
       try {
         result = await send(target, [{ type: "screenshot" }], target === "browser" ? "image" : undefined);
       } catch (error) {
-        if (error instanceof ScreenBusy) return screenBusyText(error.holder, bot);
-        if (error instanceof ScreensFull) return SCREENS_FULL_TEXT;
-        throw error;
+        return screenTrouble(error);
       }
       if (target === "browser" && (!result.url || result.url === "about:blank")) return "NOT sent: the browser has no page open. Open the page first, or send the desktop.";
       return share(result, caption);
     },
+  };
+
+  /** Another conversation on this bot's screen, or every screen taken, as words for the model; anything else is thrown on. */
+  const screenTrouble = (error: unknown): string => {
+    if (error instanceof ScreenBusy) return screenBusyText(error.holder, bot);
+    if (error instanceof ScreensFull) return SCREENS_FULL_TEXT;
+    throw error;
   };
 
   const handOver: DriverTool = {
@@ -426,9 +431,7 @@ export function computerTool(context: Context): { computer: DriverTool; browser:
     try {
       result = await send(target, [{ type: "screenshot" }]);
     } catch (error) {
-      if (error instanceof ScreenBusy) return screenBusyText(error.holder, bot);
-      if (error instanceof ScreensFull) return SCREENS_FULL_TEXT;
-      throw error;
+      return screenTrouble(error);
     }
     const shown = answer(result, 0);
     return typeof shown === "string" ? `${HANDED_BACK_TEXT}\n${shown}` : [{ type: "text", text: HANDED_BACK_TEXT }, ...shown];
@@ -459,7 +462,13 @@ export function computerTool(context: Context): { computer: DriverTool; browser:
     ...(target === "desktop" ? { native: { anthropic: COMPUTER_NATIVE } } : {}),
     execute: async (raw) => {
       const pointed = target === "desktop" && hasCoordinates(raw);
-      if (pointed && !scale) await send("desktop", [{ type: "screenshot" }]);
+      if (pointed && !scale) {
+        try {
+          await send("desktop", [{ type: "screenshot" }]);
+        } catch (error) {
+          return screenTrouble(error);
+        }
+      }
       const typed = await typeSecrets(raw);
       if (typed) return typed;
       const parsed = screenSteps(raw, target, scale, (name) => heldLogin(thread.id, name));
@@ -482,11 +491,9 @@ export function computerTool(context: Context): { computer: DriverTool; browser:
         const note = await share(result, caption);
         return typeof shown === "string" ? `${shown}\n${note}` : [...shown, { type: "text", text: note }];
       } catch (error) {
-        if (error instanceof ScreenBusy) return screenBusyText(error.holder, bot);
-        if (error instanceof ScreensFull) return SCREENS_FULL_TEXT;
         if (personHasControl(error)) return afterHandBack(target);
         if (error instanceof BoxError && error.status === 400) return `NOT done: ${error.message}. Nothing in this batch ran.`;
-        throw error;
+        return screenTrouble(error);
       }
     },
   });

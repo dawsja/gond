@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Spinner } from "@/components/ui/spinner";
 import { api, post } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { pollWhileShown } from "@/lib/poll";
 
 const never = () => () => {};
 
@@ -77,8 +78,7 @@ export function ServerUpdateCard() {
   const phase = update?.phase;
   useEffect(() => {
     if (!working(phase)) return;
-    const timer = window.setInterval(() => void load(), 2_000);
-    return () => window.clearInterval(timer);
+    return pollWhileShown(() => void load(), 2_000);
   }, [phase, load]);
 
   const check = async () => {

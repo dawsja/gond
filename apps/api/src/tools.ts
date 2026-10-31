@@ -1,4 +1,7 @@
-import { BOT_LIMITS, CHECK_IN_HOURS, isCheckInHours, type CheckIns, isNoteKind, NOTE_KINDS, type NoteKind, AVATAR_MAX_BYTES, CARD_FIELDS, cardLabel, IMAGE_ASPECTS, IMAGE_MODELS, MAX_IMAGE_REFERENCES, isImageAspect, ROOM_MAX_BOTS, draftIdOf, emailDraftOf, emailName, sendDraftAction, QUIET_REPLY, REACTIONS, isReaction, BOT_COLORS, BOT_EXPRESSIONS, BOT_SHAPES, LOGIN_FIELD_KINDS, MAX_SENT_FILE_BYTES, SKILL_LIMITS, botInputSchema, composioCard, handleOf, joinCommandLine, mentionsIn, mediaTypeFor, mcpServerInputSchema, hasKeyHeader, pickBotName, plainMarkdown, skillFilePath, type Bot, type BotExpression, type BotShape, type McpServer, type McpServerInput, type Message, type SkillInput, type Thread } from "@gond/shared";
+import { BOT_LIMITS, CHECK_IN_HOURS, isCheckInHours, type CheckIns, isNoteKind, NOTE_KINDS, type NoteKind, AVATAR_MAX_BYTES, CARD_FIELDS, cardLabel, IMAGE_ASPECTS, IMAGE_MODELS, MAX_IMAGE_REFERENCES, isImageAspect, ROOM_MAX_BOTS, draftIdOf, emailDraftOf, emailName, sendDraftAction, QUIET_REPLY, REACTIONS, isReaction, BOT_COLORS, BOT_EXPRESSIONS, BOT_SHAPES, LOGIN_FIELD_KINDS, MAX_SENT_FILE_BYTES, SKILL_LIMITS, botInputSchema, botModelFor, composioCard, handleOf, joinCommandLine, mentionsIn, mediaTypeFor, mcpServerInputSchema, hasKeyHeader, pickBotName, plainMarkdown, skillFilePath, type Bot, type BotExpression, type BotShape, type McpServer, type McpServerInput, type Message, type SkillInput, type Thread } from "@gond/shared";
+import { getAi } from "./data/ai.ts";
+import { currentModel } from "./engines.ts";
+import { matchModel, modelsInUse } from "./models.ts";
 import { askApproval, ENGINE_FILES_TEXT, expiredText, requestApproval, SCRIPTED_SCREEN_TEXT, scriptsTheScreen, setAsideText, summarize, touchesEngine } from "./approvals.ts";
 import { boxHome, previewBoxImage, readBoxFileBytes, uploadBoxFile, writeBoxFile, type BoxConfig } from "./box.ts";
 import { exactApp, searchIndex } from "./catalog.ts";
@@ -31,18 +34,12 @@ import { relaySpaces } from "./spaces.ts";
 import { offerTeaching, proposeDraft } from "./teach.ts";
 import { teachingsIn } from "./data/teachings.ts";
 import { recordUsage } from "./data/usage.ts";
+import { authorName } from "./transcript.ts";
+import { MAX_CHAIN, MAX_ROOM_LINES } from "./limits.ts";
 
 
 // Pieces of a card a bot used to ask for one by one: SONIC_CARD_NUMBER, CARD_CVV and the like.
 const CARD_PART = /(^|_)(CARD|CC|CREDIT|DEBIT)(_[A-Z0-9]+)*_(NUMBER|NUM|CVV|CVV2|CVC|EXP|EXPIRY|EXPIRATION|EXPIRES)$|^(CVV|CVC|CVV2)$/;
-
-export const MAX_CHAIN = 4;
-
-export function resultDepth(briefDepth: number): number {
-  return Math.max(0, briefDepth - 1);
-}
-
-export const MAX_ROOM_LINES = 20;
 
 export function roomOpener(text: string, invited: Bot[]): string {
   const named = new Set(mentionsIn(text));
@@ -103,7 +100,7 @@ export const TOOL_NOTES = [
   "ask_bot asks a teammate a short question and waits for the answer. Only for a consultation you need before you can reply; never for assigned work.",
   "create_room opens a group chat with teammates (and you and the person) when the person asks for one or a discussion needs several of you at once; its first message @mentions who should answer. For assigned work, delegate_bot is still the way: its result comes back to you, a room's talk doesn't.",
   "create_bot adds a new teammate when the person asks for one: a name, a job title, its instructions in the description field (what it owns, sources, boundaries, what it returns; the app shows them as Instructions and they become its SOUL), and optionally a mascot colour, expression, shape and connected apps. Then brief it with delegate_bot if there is work for it.",
-  "update_bot changes a teammate's profile when the person asks you to: its name, title, instructions (the description field, its SOUL), mascot colour, expression, shape or picture. 'Make @Web Designer a Coder' means title: Coder and matching instructions.",
+  "update_bot changes a teammate's profile when the person asks you to: its name, title, instructions (the description field, its SOUL), mascot colour, expression, shape or picture. 'Make @Web Designer a Coder' means title: Coder and matching instructions. It also sets the model a teammate runs on, only when the person asks: a lighter one for quick jobs like checking email, a stronger one for long work like coding, or default to follow Settings → AI.",
   "Those are every bot's, not only the primary bot's: who adds teammates and hands out work is a matter of the job, not of what you are allowed to call. Unless you are the primary bot, use them when the person asks you to, not on your own.",
   `Routines are yours to make and change: the person can only see them and switch them on or off, so when they want one made, changed, removed or run, you do it. create_routine schedules a prompt for yourself on a cron in the person's time zone, optionally with one of their skills, paused until they turn it on unless they asked for it in this conversation. list_routines shows yours; update_routine changes or pauses one, delete_routine removes it, run_routine runs it once now. When a routine fires (a message that starts [Routine: …] or [Watch: …]) and there is nothing new worth telling the person since its last run, answer with exactly ${QUIET_REPLY} and nothing else: the run then leaves no trace in the chat and nobody is notified. Anything they would want to know, say as usual.`,
   `Speak up before you're asked. A watch is a routine with watch: true that checks something for a change (a calendar clash, a flight, a price, a reply they're waiting on, a status page, a charge on an account) and speaks only when the change matters to the person; its run shows them "<your name> noticed". When the person asks about the same thing a second time, or about anything that will change later, offer once to keep an eye on it, in one line ending with ::choices (like "Want me to watch your calendar for clashes like this?" ::choices[Yes, always | Work only | No thanks]); on a yes, create_routine with watch: true and enabled: true, a cron no more often than the thing changes, and a prompt that says exactly what counts as worth telling. Don't offer again for something they turned down. When a watch speaks, lead with what changed and what it means for them, in a line or two, then the one thing you can do about it (draft the reply and ask_approval to send it, say). A morning briefing is a plain routine, not a watch. "Less like this" on something you noticed means it wasn't worth it: tighten that watch's prompt with update_routine so it won't come up again.`,
@@ -238,6 +235,19 @@ function profilePatch(input: Record<string, unknown>): { name?: string; title?: 
     patch.shape = shape as BotShape;
   }
   return patch;
+}
+
+/**
+ * A teammate's own model from what a bot asked for, checked against what the person's AI lists, so a
+ * typo never leaves a bot on a model that can't answer. Words for the model when it can't be set.
+ */
+async function botModelPatch(userId: string, asked: string): Promise<{ model: string; modelFor: string } | string> {
+  if (/^(default|none|settings)$/i.test(asked.trim())) return { model: "", modelFor: "" };
+  const { current, choices } = await modelsInUse(userId);
+  if (!choices.length) return "NOT changed: the person's AI didn't list its models just now, so the model couldn't be checked. The person can pick one in the bot's Edit profile.";
+  const choice = matchModel(asked, choices);
+  if (!choice) return `NOT changed: "${asked.trim()}" isn't one model the person's AI offers. Pick one of: ${choices.map((c) => (c.name ? `${c.id} (${c.name})` : c.id)).join(", ")}; or default.`;
+  return { model: choice.id, modelFor: current.source };
 }
 
 const NAMED_COLORS: Record<string, string> = { orange: "#E04E0A", blue: "#2F6FD6", red: "#D03A3A", yellow: "#D98A08", amber: "#D98A08", purple: "#7650D8", violet: "#7650D8", pink: "#CF3D85", teal: "#11998A", green: "#189C47", sky: "#0B8EC8", "light blue": "#0B8EC8", coral: "#D8620F" };
@@ -710,10 +720,17 @@ export function baseTools(context: Context): Record<string, DriverTool> {
     list_bots: {
       description: "The team: every bot with its id, job, and which is the person's primary bot.",
       inputSchema: schema({}),
-      execute: async () =>
-        listBots({ userId: bot.userId })
-          .map((b) => `- ${b.id} · ${b.name} (@${handleOf(b.name)})${b.title ? ` · ${b.title}` : ""}${b.primary ? " · primary bot" : ""}${b.id === bot.id ? " · (you)" : ""}`)
-          .join("\n") || "No bots.",
+      execute: async () => {
+        const { source } = currentModel(getAi(bot.userId), bot.userId);
+        return (
+          listBots({ userId: bot.userId })
+            .map((b) => {
+              const model = botModelFor(b, source);
+              return `- ${b.id} · ${b.name} (@${handleOf(b.name)})${b.title ? ` · ${b.title}` : ""}${model ? ` · model ${model}` : ""}${b.primary ? " · primary bot" : ""}${b.id === bot.id ? " · (you)" : ""}`;
+            })
+            .join("\n") || "No bots."
+        );
+      },
     },
     message_bot: {
       description:
@@ -1246,7 +1263,7 @@ export function baseTools(context: Context): Record<string, DriverTool> {
           .filter((m) => m.kind !== "prompt" && m.kind !== "activity")
           .slice(-limit)
           .map((m) => {
-            const who = m.author === "you" ? "Person" : m.author === "routine" ? "Routine" : m.author === "system" ? "Gond" : `${names.get(m.author) ?? m.author}${m.author === bot.id ? " (you)" : ""}`;
+            const who = authorName(m.author, m.threadId, names, bot.id);
             const body = m.body.length > 3000 ? `${m.body.slice(0, 3000)} [… ${m.body.length - 3000} more characters]` : m.body;
             return `[${ago(m.createdAt)}] ${who}: ${m.kind === "approval" ? `(asked for approval: ${body})` : body}`;
           });
@@ -1268,7 +1285,7 @@ export function baseTools(context: Context): Record<string, DriverTool> {
           found
             .map((m) => {
               const where = threads.get(m.threadId);
-              const who = m.author === "you" ? "Person" : m.author === "routine" ? "Routine" : m.author === "system" ? "Gond" : (names.get(m.author) ?? m.author);
+              const who = authorName(m.author, m.threadId, names);
               return `- [${ago(m.createdAt)}] in ${where?.kind === "room" ? `the room "${where.name}"` : `${where?.name ?? "a conversation"}'s conversation`}, ${who}: ${snippetAround(m.body, query)}`;
             })
             .join("\n"),
@@ -1472,7 +1489,7 @@ export function teamTools(context: Context): Record<string, DriverTool> {
       },
     },
     update_bot: {
-      description: "Change a teammate's profile when the person asks: name, job title, how it works (its SOUL), mascot colour, expression, shape or profile picture.",
+      description: "Change a teammate's profile when the person asks: name, job title, how it works (its SOUL), mascot colour, expression, shape, profile picture or the model it runs on.",
       inputSchema: schema({
         bot: { type: "string", description: "The teammate's id, name or @handle." },
         name: { type: "string" },
@@ -1482,13 +1499,17 @@ export function teamTools(context: Context): Record<string, DriverTool> {
         expression: { type: "string", description: `One of: ${BOT_EXPRESSIONS.join(", ")}.` },
         shape: { type: "string", description: `One of: ${BOT_SHAPES.join(", ")}; cog unless the person asks for another.` },
         picture: { type: "string", description: "A profile picture for it to wear instead of its mascot: a picture's path in your home, like images/… from create_image. none puts the mascot back." },
+        model: { type: "string", description: "The model it runs on, only when the person asks: an id or name from the models their AI offers, like haiku or sonnet. default follows Settings → AI again." },
       }, ["bot"]),
       execute: async (input) => {
         const target = findBot(String(input.bot ?? ""), listBots({ includeHidden: true, userId: bot.userId }));
         if (!target) return `NOT changed: no bot called "${String(input.bot ?? "")}". Use list_bots.`;
         if (target.id === bot.id) return "That's you: use set_profile.";
-        const patch = profilePatch(input);
-        if ("error" in patch) return patch.error;
+        const fields = profilePatch(input);
+        if ("error" in fields) return fields.error;
+        const runsOn = typeof input.model === "string" && input.model.trim() ? await botModelPatch(bot.userId, input.model) : null;
+        if (typeof runsOn === "string") return runsOn;
+        const patch = { ...fields, ...runsOn };
         const picture = typeof input.picture === "string" ? input.picture.trim() : "";
         if (Object.keys(patch).length === 0 && !picture) return "Nothing to change.";
         const changed: string[] = [];
@@ -1501,7 +1522,8 @@ export function teamTools(context: Context): Record<string, DriverTool> {
         const updated = updateBot(target.id, patch);
         if (!updated) return "NOT changed: that bot is gone.";
         await context.syncSoul(updated);
-        return `${updated.name}'s profile updated (${[...changed, ...Object.keys(patch)].join(", ")}). It reads its new SOUL on its next turn.`;
+        const said = [...changed, ...Object.keys(fields), ...(runsOn ? [runsOn.model ? `model ${runsOn.model}` : "model back to the default"] : [])];
+        return `${updated.name}'s profile updated (${said.join(", ")}). It reads its new SOUL${runsOn ? " and runs on that model" : ""} from its next turn.`;
       },
     },
     ask_bot: {

@@ -1,4 +1,4 @@
-import { APPROVAL_LEVELS, AVATAR_MAX_BYTES, BOT_EXPRESSIONS, BOT_SHAPES, DEFAULT_MODEL, type ApprovalLevel, type Bot, type BotExpression, type BotInput, type BotShape } from "@gond/shared";
+import { APPROVAL_LEVELS, AVATAR_MAX_BYTES, BOT_EXPRESSIONS, BOT_SHAPES, type ApprovalLevel, type Bot, type BotExpression, type BotInput, type BotShape } from "@gond/shared";
 import type { Database } from "bun:sqlite";
 import { ensureDatabase, transaction } from "../db/init.ts";
 import { botsChanged } from "../events.ts";
@@ -16,6 +16,7 @@ type Row = {
   shape: string;
   tilt: number;
   model: string;
+  model_for: string;
   approval: string;
   is_primary: number;
   thread_id: string;
@@ -47,6 +48,8 @@ function toBot(row: Row): Bot {
     pinned: row.pinned === 1,
     notify: row.notify !== 0,
     position: row.position,
+    model: row.model,
+    modelFor: row.model_for,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -69,11 +72,6 @@ export function listBots(options: { includeHidden?: boolean; userId?: string } =
 
 export function getBot(id: string): Bot | null {
   const row = ensureDatabase().query(`${SELECT} WHERE id = ?`).get(id) as Row | null;
-  return row ? toBot(row) : null;
-}
-
-export function getBotByThread(threadId: string): Bot | null {
-  const row = ensureDatabase().query(`${SELECT} WHERE thread_id = ?`).get(threadId) as Row | null;
   return row ? toBot(row) : null;
 }
 
@@ -128,7 +126,7 @@ export function createBot(input: BotInput, userId: string): Bot {
       input.expression,
       input.shape ?? "cog",
       0,
-      DEFAULT_MODEL,
+      "",
       input.approval,
       input.notify ? 1 : 0,
       threadId,
@@ -143,13 +141,13 @@ export function createBot(input: BotInput, userId: string): Bot {
   });
 }
 
-export function updateBot(id: string, patch: Partial<BotInput> & { hidden?: boolean; pinned?: boolean; position?: number }): Bot | null {
+export function updateBot(id: string, patch: Partial<BotInput> & { hidden?: boolean; pinned?: boolean; position?: number; model?: string; modelFor?: string }): Bot | null {
   const current = getBot(id);
   if (!current) return null;
   const next = { ...current, ...patch, updatedAt: now() };
   transaction((db) => {
     db.query(
-      `UPDATE gond_bots SET name = ?, title = ?, description = ?, color = ?, expression = ?, shape = ?, approval = ?, notify = ?, hidden = ?, pinned = ?, position = ?, updated_at = ? WHERE id = ?`,
+      `UPDATE gond_bots SET name = ?, title = ?, description = ?, color = ?, expression = ?, shape = ?, approval = ?, notify = ?, hidden = ?, pinned = ?, position = ?, model = ?, model_for = ?, updated_at = ? WHERE id = ?`,
     ).run(
       next.name,
       next.title,
@@ -162,6 +160,8 @@ export function updateBot(id: string, patch: Partial<BotInput> & { hidden?: bool
       next.hidden ? 1 : 0,
       next.pinned ? 1 : 0,
       next.position,
+      next.model ? next.model : "",
+      next.model ? next.modelFor : "",
       next.updatedAt,
       id,
     );
@@ -176,6 +176,10 @@ export function deleteBot(id: string): Bot | null {
   const bot = getBot(id);
   if (!bot) return null;
   transaction((db) => {
+    // Attachments, handoffs and secret requests carry no foreign key, so they go by hand.
+    db.query("DELETE FROM gond_attachments WHERE message_id IN (SELECT id FROM gond_messages WHERE thread_id = ?)").run(bot.threadId);
+    db.query("DELETE FROM gond_delegations WHERE from_bot_id = ? OR to_bot_id = ?").run(id, id);
+    db.query("DELETE FROM gond_secret_requests WHERE bot_id = ?").run(id);
     db.query("DELETE FROM gond_threads WHERE id = ?").run(bot.threadId);
     db.query("DELETE FROM gond_thread_members WHERE bot_id = ?").run(id);
     db.query("DELETE FROM gond_approvals WHERE bot_id = ?").run(id);

@@ -15,6 +15,7 @@ import { Field, FieldDescription, FieldError } from "@/components/ui/field";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { failed } from "@/components/failed";
 import { patch } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -115,7 +116,7 @@ function ClaudeAccount({ ready, onRefresh }: { ready: Readiness; onRefresh: () =
 
   async function check() {
     setChecking(true);
-    await onRefresh().catch(() => undefined);
+    await onRefresh().catch(failed("Couldn't check the sign-in. Try again."));
     setChecking(false);
   }
 

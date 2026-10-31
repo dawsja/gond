@@ -4,6 +4,7 @@ import type { Env } from "../app.ts";
 import { recordingFrame, boxConfig } from "../box.ts";
 import { getTeaching, openTeaching, teachingFrame } from "../data/teachings.ts";
 import { addNote, discardTeaching, editDraft, finishTeaching, lookAfterReview, pauseTeaching, reviseTeaching, saveTeaching, skipStep, startTeaching, TeachError, tryTeaching } from "../teach.ts";
+import { readBody } from "./body.ts";
 
 const IMAGE_HEADERS = {
   "Content-Type": "image/jpeg",
@@ -21,7 +22,6 @@ export function teachingsRoutes() {
     console.error("[gond] show me how failed:", error);
     return c.json({ error: "Something went wrong. Try again in a moment." }, 500);
   };
-  const body = async (c: Context<Env>) => (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
 
   app.get("/teachings/open", (c) => c.json({ teaching: openTeaching(userId(c)) }));
 
@@ -32,7 +32,7 @@ export function teachingsRoutes() {
 
   // From a bot's screen: starts at once, and the card goes in the bot's own chat.
   app.post("/teachings", async (c) => {
-    const { botId } = await body(c);
+    const { botId } = await readBody(c);
     if (typeof botId !== "string" || !ownBot(c, botId)) return c.json({ error: "Couldn't find that bot" }, 404);
     try {
       return c.json({ teaching: await startTeaching(userId(c), { botId }) });
@@ -76,7 +76,7 @@ export function teachingsRoutes() {
   });
 
   app.post("/teachings/:id/notes", async (c) => {
-    const { text } = await body(c);
+    const { text } = await readBody(c);
     try {
       return c.json({ teaching: addNote(userId(c), c.req.param("id"), typeof text === "string" ? text : "") });
     } catch (error) {
@@ -85,7 +85,7 @@ export function teachingsRoutes() {
   });
 
   app.patch("/teachings/:id/steps/:n", async (c) => {
-    const { skipped } = await body(c);
+    const { skipped } = await readBody(c);
     const n = Number(c.req.param("n"));
     if (!Number.isInteger(n) || n < 1 || typeof skipped !== "boolean") return c.json({ error: "Pick a step to skip or keep" }, 400);
     try {
@@ -96,7 +96,7 @@ export function teachingsRoutes() {
   });
 
   app.post("/teachings/:id/look", async (c) => {
-    const { hidden } = await body(c);
+    const { hidden } = await readBody(c);
     const list = Array.isArray(hidden) ? hidden.filter((n): n is number => Number.isInteger(n)) : [];
     try {
       return c.json({ teaching: lookAfterReview(userId(c), c.req.param("id"), list) });
@@ -122,7 +122,7 @@ export function teachingsRoutes() {
   });
 
   app.post("/teachings/:id/revise", async (c) => {
-    const { note } = await body(c);
+    const { note } = await readBody(c);
     try {
       return c.json({ teaching: reviseTeaching(userId(c), c.req.param("id"), typeof note === "string" ? note : "") });
     } catch (error) {
@@ -132,7 +132,7 @@ export function teachingsRoutes() {
 
   app.put("/teachings/:id/draft", async (c) => {
     try {
-      return c.json({ teaching: editDraft(userId(c), c.req.param("id"), await body(c)) });
+      return c.json({ teaching: editDraft(userId(c), c.req.param("id"), await readBody(c)) });
     } catch (error) {
       return failed(c, error);
     }

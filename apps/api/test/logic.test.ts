@@ -28,6 +28,8 @@ const bot: Bot = {
   pinned: false,
   notify: true,
   position: 1,
+  model: "",
+  modelFor: "",
   createdAt: "",
   updatedAt: "",
 };
@@ -513,7 +515,7 @@ describe("calling an API directly", () => {
   });
 
   test("a ChatGPT plan's models keep its order and only the listed ones", async () => {
-    const { readModels } = await import("../src/routes/llm.ts");
+    const { readModels } = await import("../src/models.ts");
     expect(readModels({ models: [{ slug: "gpt-5.5", display_name: "GPT-5.5", visibility: "list" }, { slug: "gpt-old", visibility: "hide" }, { slug: "gpt-5.5-mini", display_name: "GPT-5.5 mini", visibility: "list" }] })).toEqual([
       { id: "gpt-5.5", name: "GPT-5.5" },
       { id: "gpt-5.5-mini", name: "GPT-5.5 mini" },
@@ -523,7 +525,7 @@ describe("calling an API directly", () => {
 
   test("a Grok plan is the Responses API with plain tools, its reasoning carried and its own refusals", async () => {
     const { readResponses, grokError, toolList } = await import("../src/native.ts");
-    const { readModels } = await import("../src/routes/llm.ts");
+    const { readModels } = await import("../src/models.ts");
     const { authHeaders } = await import("../src/providers.ts");
     const { grokAccount } = await import("../src/grok.ts");
     const step = readResponses(
@@ -914,7 +916,7 @@ describe("viewing", () => {
 
 describe("handoff depth", () => {
   test("a result lands at the delegator's own depth, so wave after wave can go out", async () => {
-    const { MAX_CHAIN, resultDepth } = await import("../src/tools.ts");
+    const { MAX_CHAIN, resultDepth } = await import("../src/limits.ts");
 
     let depth = 0;
     for (let wave = 0; wave < 10; wave += 1) {
@@ -2363,5 +2365,17 @@ describe("check-ins", () => {
     for (const text of [offerText(true, true), offerText(false, true)]) expect(text).not.toContain("—");
     expect(checkInsText("Sentry", { enabled: true, everyHours: 3, quietFrom: 21, quietTo: 8, email: true }, true)).toBe("Check-ins are on: every 3 hours except from 9 PM to 8 AM, looking at the bots and loose ends and their Gmail.");
     expect(checkInsText("Sentry", { enabled: false, everyHours: 3, quietFrom: 21, quietTo: 8, email: true }, true)).toStartWith("Check-ins are off.");
+  });
+});
+
+describe("a model asked for by a bot", () => {
+  test("matches an id or a name as people say it, and never guesses", async () => {
+    const { matchModel } = await import("../src/models.ts");
+    const plan = [{ id: "opus", name: "Opus 5.5" }, { id: "sonnet", name: "Sonnet 5.5" }, { id: "haiku", name: "Haiku 5.5" }];
+    const key = [{ id: "claude-haiku-5-5" }, { id: "claude-opus-5-5" }];
+    expect(matchModel(" Sonnet 5.5 ", plan)?.id).toBe("sonnet");
+    expect(matchModel("haiku", key)?.id).toBe("claude-haiku-5-5");
+    expect(matchModel("5.5", plan)).toBeNull();
+    expect(matchModel("haiku-9", plan)).toBeNull();
   });
 });

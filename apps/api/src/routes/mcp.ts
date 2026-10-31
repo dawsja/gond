@@ -8,6 +8,7 @@ import { McpSession, forwardMcp } from "../mcp-client.ts";
 import { resolveMcpIcon } from "../mcp-icon.ts";
 import { timingSafeEqualString } from "../ids.ts";
 import { completeChatGptLogin, completeChatGptLoginFrom, isChatGptState } from "../chatgpt.ts";
+import { readBody } from "./body.ts";
 
 function validate(input: unknown) {
   const parsed = mcpServerInputSchema.safeParse(input);
@@ -51,7 +52,7 @@ export function mcpRoutes() {
   app.patch("/mcp-servers/:id", async (c) => {
     const current = ownServer(c, c.req.param("id"));
     if (!current) return c.json({ error: "Couldn't find that server" }, 404);
-    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const body = await readBody(c);
     const result = validate({ ...current, ...body });
     if ("error" in result) return c.json({ error: result.error }, 400);
     const server = updateMcpServer(current.id, result.data!);
@@ -100,7 +101,7 @@ export function mcpRoutes() {
     const server = ownServer(c, c.req.param("id"));
     if (!server) return c.json({ error: "Couldn't find that server" }, 404);
 
-    const body = (await c.req.json().catch(() => ({}))) as { threadId?: unknown; app?: unknown };
+    const body = await readBody(c);
     const threadId = typeof body.threadId === "string" && ownsThread(c, body.threadId) ? body.threadId : undefined;
     try {
       return c.json({ url: await startMcpLogin(server.id, { threadId, app: body.app === "desktop" ? "desktop" : undefined }) });
@@ -123,7 +124,7 @@ export function mcpRoutes() {
   });
 
   app.post("/mcp-servers/oauth/complete", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { url?: unknown };
+    const body = await readBody(c);
     if (typeof body.url !== "string" || !body.url.trim() || body.url.length > 8000) return c.json({ error: "Paste the address the sign-in ended on." }, 400);
     const state = URL.canParse(body.url.trim()) ? new URL(body.url.trim()).searchParams.get("state") : null;
     if (isChatGptState(state)) {

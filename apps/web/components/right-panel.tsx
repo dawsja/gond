@@ -41,7 +41,7 @@ function ComputerSlot({ thread, bot, screen }: { thread: Thread; bot: Bot; scree
   if (screen?.open === bot.id) {
     return <div className="flex aspect-[16/10] w-full items-center justify-center rounded-xl border bg-muted text-[12px] text-muted-foreground">Showing on screen</div>;
   }
-  if (live && screen) return <ScreenPanel threadId={thread.id} botId={bot.id} expanded={false} onExpand={() => screen.onExpand(bot.id)} onCollapse={screen.onCollapse} />;
+  if (live && screen) return <ScreenPanel botId={bot.id} expanded={false} onExpand={() => screen.onExpand(bot.id)} onCollapse={screen.onCollapse} />;
   return <SleepingScreen bot={bot} onWake={open} />;
 }
 
@@ -61,7 +61,7 @@ function RoutineRow({ routine, onOpen, onChange }: { routine: Routine; onOpen: (
 /** Which bot's screen the conversation shows full size, if any. */
 type ScreenProps = { open: string | null; onExpand: (botId: string) => void; onCollapse: () => void };
 
-function RightPanelContent({ thread, bot, screen }: { thread: Thread; bot: Bot | null; working: boolean; screen?: ScreenProps }) {
+function RightPanelContent({ thread, bot, screen }: { thread: Thread; bot: Bot | null; screen?: ScreenProps }) {
   const { bots } = useStore();
   const [routines, setRoutines] = useState<Routine[] | null>(null);
   const [routinesFailed, setRoutinesFailed] = useState(false);
@@ -167,7 +167,7 @@ function RightPanelContent({ thread, bot, screen }: { thread: Thread; bot: Bot |
   );
 }
 
-export function RightPanel(props: { thread: Thread; bot: Bot | null; working: boolean; screen?: ScreenProps }) {
+export function RightPanel(props: { thread: Thread; bot: Bot | null; screen?: ScreenProps }) {
   return (
     <aside className="hidden w-72 shrink-0 flex-col gap-5 overflow-y-auto border-l bg-background p-4 xwide:flex">
       <RightPanelContent {...props} />
@@ -175,7 +175,7 @@ export function RightPanel(props: { thread: Thread; bot: Bot | null; working: bo
   );
 }
 
-export function DetailsSheet({ open, onOpenChange, ...props }: { open: boolean; onOpenChange: (open: boolean) => void; thread: Thread; bot: Bot | null; working: boolean; screen?: ScreenProps }) {
+export function DetailsSheet({ open, onOpenChange, ...props }: { open: boolean; onOpenChange: (open: boolean) => void; thread: Thread; bot: Bot | null; screen?: ScreenProps }) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="bottom" className="gap-0 xwide:hidden">

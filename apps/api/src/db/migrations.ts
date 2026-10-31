@@ -1049,6 +1049,11 @@ const MIGRATIONS: Array<string | ((db: Database) => void)> = [
   `ALTER TABLE gond_user_prefs ADD COLUMN call_model TEXT;`,
   // Sharing the server's token count (Settings → Usage), as {"epoch","since"} while on; null is off.
   `ALTER TABLE gond_settings ADD COLUMN usage_sharing TEXT;`,
+  // A bot's own model, kept with where it was picked; the old column only ever held the default, read by nothing.
+  `
+  UPDATE gond_bots SET model = '';
+  ALTER TABLE gond_bots ADD COLUMN model_for TEXT NOT NULL DEFAULT '';
+  `,
 ];
 
 /**

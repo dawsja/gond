@@ -433,7 +433,7 @@ export function DesktopView({
     setStatus("starting");
     setMessage(null);
 
-    void (async () => {
+    const open = async () => {
       const { viewOnly, quality } = settings.current;
       // Nobody resizes the session: every view sees the bots' own screen, fitted inside it.
       const res = await fetch(`${screenUrl(botId)}/connections`, {
@@ -490,7 +490,12 @@ export function DesktopView({
       client.addEventListener("clipboard", (event) => onRemoteClipboard(event.detail.text));
       rfb.current = client;
       channel.start();
-    })();
+    };
+    open().catch(() => {
+      if (disposed) return;
+      setStatus("error");
+      setMessage("Couldn't reach the screen. Check your connection and try again.");
+    });
 
     return () => {
       disposed = true;

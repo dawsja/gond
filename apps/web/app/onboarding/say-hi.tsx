@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { WorkLine } from "@/components/work-log";
 import { api, post } from "@/lib/api";
 import { HELLO, helloOutcome } from "@/lib/hello";
+import { pollWhileShown } from "@/lib/poll";
 
 /**
  * Onboarding's last step: one real message to the primary bot, so the person sees their AI answer
@@ -95,8 +96,7 @@ export function SayHi({ bot, sent, onSent, onBack, onDone }: { bot: Bot; sent: M
   // A safety net while the answer is on its way, in case a live event went missing.
   useEffect(() => {
     if (!sent || answered || stuck) return;
-    const timer = window.setInterval(() => void load(), 5_000);
-    return () => window.clearInterval(timer);
+    return pollWhileShown(() => void load(), 5_000);
   }, [sent, answered, stuck, load]);
 
   return (

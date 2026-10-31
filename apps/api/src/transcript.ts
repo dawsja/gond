@@ -42,8 +42,7 @@ export function transcriptLines(lines: Message[], bots: Bot[], self: Pick<Bot, "
   const names = new Map(bots.map((b) => [b.id, b.name]));
   return lines
     .map((m) => {
-      const nameOf = (author: string) =>
-        author === "you" ? "Person" : author === "routine" ? "Routine" : author === "system" ? "Gond" : isRemoteAuthor(author) ? fromAfar(m.threadId, author) : (names.get(author) ?? author) + (author === self?.id ? " (you)" : "");
+      const nameOf = (author: string) => authorName(author, m.threadId, names, self?.id);
       const via = m.fromThreadId && names.has(m.author) && m.author !== self?.id ? (m.note === "action" ? " (teammate, action for you)" : m.note === "info" ? " (teammate, for your information)" : " (teammate, by message)") : "";
       const said = m.spoken ? (m.author === self?.id ? " (your voice, on a call)" : " (on a call)") : "";
       const files = m.attachments.length ? ` [attached: ${m.attachments.map((a) => a.name).join(", ")}]` : "";
@@ -52,6 +51,15 @@ export function transcriptLines(lines: Message[], bots: Bot[], self: Pick<Bot, "
       return `${nameOf(m.author)}${via}${said}: ${replyLine(m.replyTo, nameOf)}${m.kind === "approval" ? `(asked for approval: ${body}${approvalEnding(m)})` : m.kind === "signin" ? `(posted a sign-in card: ${body})` : m.kind === "teach" ? `(posted a Show me how card: ${body})` : m.kind === "control" ? "(posted a Take Control card)" : body}${files}${reactions}`;
     })
     .join("\n");
+}
+
+/** Who said a line, as a bot reading a conversation back should see them. */
+export function authorName(author: string, threadId: string, names: Map<string, string>, selfId?: string): string {
+  if (author === "you") return "Person";
+  if (author === "routine") return "Routine";
+  if (author === "system") return "Gond";
+  if (isRemoteAuthor(author)) return fromAfar(threadId, author);
+  return (names.get(author) ?? author) + (author === selfId ? " (you)" : "");
 }
 
 /** How an approval card ended, so a bot reading back knows its person's answer and not only that it asked. */

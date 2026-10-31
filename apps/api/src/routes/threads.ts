@@ -11,6 +11,7 @@ import { isHeic } from "../images.ts";
 import { previewOf } from "../pictures.ts";
 import { activeTurns, postFromPerson, stopThread } from "../responder.ts";
 import { workFor } from "../work.ts";
+import { readBody } from "./body.ts";
 
 const MAX_BODY = 20_000;
 
@@ -79,8 +80,8 @@ export function threadsRoutes() {
     const message = ownsThread(c, id) ? getMessage(c.req.param("messageId")) : null;
     if (!message || message.threadId !== id) return c.json({ error: "Couldn't find that message" }, 404);
     if (message.kind !== "message" || ["you", "system", "routine"].includes(message.author)) return c.json({ error: "Only a bot's message takes a reaction" }, 400);
-    const body = (await c.req.json().catch(() => null)) as { emoji?: unknown } | null;
-    const emoji = body?.emoji ?? null;
+    const body = await readBody(c);
+    const emoji = body.emoji ?? null;
     if (emoji !== null && !isReaction(emoji)) return c.json({ error: "Pick one of the reactions on offer" }, 400);
     return c.json({ reactions: setReaction(message, "you", emoji) });
   });
@@ -91,8 +92,8 @@ export function threadsRoutes() {
     const message = thread ? getMessage(c.req.param("messageId")) : null;
     if (!thread || !message || message.threadId !== thread.id) return c.json({ error: "Couldn't find that message" }, 404);
     if (message.kind !== "message" || !getBot(message.author)) return c.json({ error: "Only something a bot said takes this" }, 400);
-    const body = (await c.req.json().catch(() => null)) as { watch?: unknown } | null;
-    const watch = typeof body?.watch === "string" ? body.watch.replace(/["\r\n]/g, " ").trim().slice(0, 80) : "";
+    const body = await readBody(c);
+    const watch = typeof body.watch === "string" ? body.watch.replace(/["\r\n]/g, " ").trim().slice(0, 80) : "";
     const said = plainMarkdown(message.body).slice(0, 300);
     postMessage({
       threadId: thread.id,
@@ -135,8 +136,8 @@ export function threadsRoutes() {
   app.patch("/threads/:id/messages/:messageId", async (c) => {
     const found = unreadLine(c);
     if (!found.message) return c.json({ error: found.error }, found.status);
-    const json = (await c.req.json().catch(() => null)) as { body?: unknown } | null;
-    if (typeof json?.body !== "string") return c.json({ error: "Say something" }, 400);
+    const json = await readBody(c);
+    if (typeof json.body !== "string") return c.json({ error: "Say something" }, 400);
     const body = json.body.trim();
     if (!body && found.message.attachments.length === 0) return c.json({ error: "Say something" }, 400);
     if (body.length > MAX_BODY) return c.json({ error: "That message is too long" }, 400);
@@ -183,7 +184,7 @@ export function threadsRoutes() {
         attachments.push(storeAttachment({ name: file.name.slice(0, 200), mediaType: attachmentType(file), data }));
       }
     } else {
-      const json = (await c.req.json().catch(() => ({}))) as { body?: string; after?: boolean; replyTo?: unknown };
+      const json = await readBody(c);
       body = String(json.body ?? "");
       after = json.after === true;
       replyTo = typeof json.replyTo === "string" ? json.replyTo : null;
@@ -210,7 +211,7 @@ export function threadsRoutes() {
   });
 
   app.post("/rooms", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { name?: string; members?: string[] };
+    const body = await readBody(c);
     const mine = listBots({ includeHidden: true, userId: userId(c) });
     const members = [...new Set(Array.isArray(body.members) ? body.members.map(String) : [])].filter((id) => mine.some((b) => b.id === id));
     if (members.length < ROOM_MIN_BOTS) return c.json({ error: "Pick at least two bots for a room" }, 400);
@@ -224,7 +225,7 @@ export function threadsRoutes() {
   });
 
   app.patch("/rooms/:id", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { name?: unknown; members?: unknown; pinned?: unknown };
+    const body = await readBody(c);
     const before = ownThread(c, c.req.param("id"));
     if (!before || before.kind !== "room") return c.json({ error: "Couldn't find that room" }, 404);
     const bots = listBots({ includeHidden: true, userId: userId(c) });

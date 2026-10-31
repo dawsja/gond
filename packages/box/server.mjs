@@ -57,7 +57,6 @@ const MAX_TURN_BODY_BYTES = 16 * 1024 * 1024;
 const DEFAULT_EXEC_TIMEOUT_MS = 10 * 60 * 1000;
 const MAX_EXEC_TIMEOUT_MS = 30 * 60 * 1000;
 
-const FEED_BYTES = 256 * 1024;
 const SSE_KEEPALIVE_MS = 15_000;
 
 const DESKTOP_DISPLAY = Number(process.env.DESKTOP_DISPLAY || 1);
@@ -225,64 +224,6 @@ export class HttpError extends Error {
     this.status = status;
     this.code = code;
   }
-}
-
-export class Feed {
-  constructor(limit = FEED_BYTES) {
-    this.limit = limit;
-    this.lines = [];
-    this.size = 0;
-    this.subscribers = new Set();
-    this.closed = false;
-  }
-
-  publish(event) {
-    const line = JSON.stringify(event);
-    this.lines.push(line);
-    this.size += line.length;
-    while (this.size > this.limit && this.lines.length > 1) {
-      this.size -= this.lines.shift().length;
-    }
-    for (const send of this.subscribers) send(line);
-  }
-
-  subscribe(send) {
-    for (const line of this.lines) send(line);
-    if (this.closed) {
-      send(JSON.stringify({ type: "end" }));
-      return () => undefined;
-    }
-    this.subscribers.add(send);
-    return () => this.subscribers.delete(send);
-  }
-
-  close() {
-    if (this.closed) return;
-    this.closed = true;
-    this.publish({ type: "end" });
-    this.subscribers.clear();
-  }
-}
-
-function streamFeed(request, response, feed) {
-  response.writeHead(200, {
-    "Content-Type": "text/event-stream",
-    "Cache-Control": "no-cache, no-transform",
-    Connection: "keep-alive",
-    "X-Accel-Buffering": "no",
-  });
-  response.write(": connected\n\n");
-  const send = (line) => response.write(`data: ${line}\n\n`);
-  const unsubscribe = feed.subscribe(send);
-  const keepalive = setInterval(() => response.write(": ping\n\n"), SSE_KEEPALIVE_MS);
-  const stop = () => {
-    clearInterval(keepalive);
-    unsubscribe();
-    response.end();
-  };
-  request.on("close", stop);
-  if (feed.closed) stop();
-  return stop;
 }
 
 export function inside(root, relative) {
@@ -1624,34 +1565,37 @@ function refuseWhileUpdating() {
   if (update && update.finishedAt === null) throw new HttpError(503, "The computer is updating; try again in a few minutes.");
 }
 
+/** Ends an agent and removes what it left on disk; the session is kept for a later resume only when asked. */
+async function closeAgent(id, agent, { keepSession }) {
+  agents.delete(id);
+  try {
+    await agent.close({ keepSession });
+  } finally {
+    dropAgent(agent);
+  }
+}
+
+async function closeAgentsOf(account, options) {
+  for (const [id, agent] of [...agents]) if (agent.user === account.id) await closeAgent(id, agent, options);
+}
+
 async function pauseEverything() {
   stopAllDesktops({ suspend: true });
   cancelSignIns();
-  await Promise.allSettled([...agents.values()].map((agent) => agent.close({ keepSession: true })));
-  agents.clear();
+  await Promise.allSettled([...agents].map(([id, agent]) => closeAgent(id, agent, { keepSession: true })));
 }
 
 async function closeAccountWork(account) {
   stopDesktop(account);
   cancelSignIns(account);
-  for (const [id, agent] of [...agents]) {
-    if (agent.user !== account.id) continue;
-    agents.delete(id);
-    await agent.close({ keepSession: false });
-    dropAgent(agent);
-  }
+  await closeAgentsOf(account, { keepSession: false });
   sessions.forgetUser(account.id);
 }
 
 async function resetAccountHome(account) {
   stopDesktop(account);
   cancelSignIns(account);
-  for (const [id, agent] of [...agents]) {
-    if (agent.user !== account.id) continue;
-    agents.delete(id);
-    await agent.close({ keepSession: true });
-    dropAgent(agent);
-  }
+  await closeAgentsOf(account, { keepSession: true });
   const removed = accounts.refreshHome(account);
   return { ok: true, removed: removed.length };
 }
@@ -1853,9 +1797,7 @@ async function agentFor(account, id, bot, engine = "claude", guest = null) {
   let agent = agents.get(id);
   if (agent && agent.user !== account.id) throw new HttpError(404, "No such agent");
   if (agent && (agent.engine !== engine || (agent.guest ?? null) !== guest)) {
-    agents.delete(id);
-    await agent.close({ keepSession: false });
-    dropAgent(agent);
+    await closeAgent(id, agent, { keepSession: false });
     sessions.forget(id);
     agent = undefined;
   }
@@ -1990,11 +1932,7 @@ async function agentRoute(request, response, parts, account) {
   }
   if (request.method === "DELETE" && !action) {
     const agent = ownAgent(account, id);
-    if (agent) {
-      agents.delete(id);
-      await agent.close({ keepSession: false });
-      dropAgent(agent);
-    }
+    if (agent) await closeAgent(id, agent, { keepSession: false });
     sessions.forget(id, account.id);
     return { ok: true };
   }
@@ -2080,11 +2018,9 @@ async function route(request, response, url) {
     if (!ID.test(parts[1])) throw new HttpError(400, "Bad bot id");
     if (request.method === "POST") return { ok: true, dir: botDir(account, parts[1]) };
     if (request.method === "DELETE") {
-      for (const [id, agent] of agents) {
+      for (const [id, agent] of [...agents]) {
         if (agent.user === account.id && (id === parts[1] || id.startsWith(`${parts[1]}--`))) {
-          agents.delete(id);
-          await agent.close({ keepSession: false });
-          dropAgent(agent);
+          await closeAgent(id, agent, { keepSession: false });
           sessions.forget(id);
         }
       }

@@ -38,7 +38,8 @@ import { clearWork, clipOutput, createTurnClock, labelStep, recordStep, timingLi
 import { boxPermission, endTurnOnExpiry, setAside } from "./approvals.ts";
 import { noteInterrupted, takeInterrupted, wasInterrupted } from "./resume.ts";
 import { turnTiming } from "./config.ts";
-import { appTools, baseTools, MAX_CHAIN, MAX_ROOM_LINES, permissionTool, resultDepth, teamTools, TOOL_NOTES } from "./tools.ts";
+import { MAX_CHAIN, MAX_ROOM_LINES, resultDepth } from "./limits.ts";
+import { appTools, baseTools, permissionTool, teamTools, TOOL_NOTES } from "./tools.ts";
 import { guestWorkers, hasGuestWork, isSpace, keepHere, memoryAllowed, postInSpace, SPACE_TURN, spaceNote, spaceTargets, stopGuestWork } from "./spaces.ts";
 import { saveClaudeLimits, usageRecorder } from "./usage.ts";
 import { loadMemory, loadTeamMemory, transcript } from "./transcript.ts";
@@ -100,6 +101,20 @@ function agentIdFor(bot: Bot, thread: Thread) {
   return `${bot.id}--${thread.id}`;
 }
 
+function turnsIn(threadId: string): Active[] {
+  return [...activeTurns().values()].filter((turn) => turn.threadId === threadId);
+}
+
+function turnOf(botId: string, threadId: string): Active | undefined {
+  return turnsIn(threadId).find((turn) => turn.botId === botId);
+}
+
+async function abortTurn(agentId: string, turn: Active) {
+  turn.controller.abort("stopped" satisfies StopCause);
+  const box = boxConfig(turn.userId);
+  if (box) await interruptAgent(box, agentId).catch(() => undefined);
+}
+
 export function isBusy(botId: string, threadId?: string) {
   for (const turn of activeTurns().values()) {
     if (turn.botId === botId && (!threadId || turn.threadId === threadId)) return true;
@@ -154,9 +169,7 @@ async function interrupt(threadId: string) {
   let stopped = 0;
   for (const [agentId, turn] of activeTurns()) {
     if (turn.threadId !== threadId) continue;
-    turn.controller.abort("stopped" satisfies StopCause);
-    const box = boxConfig(turn.userId);
-    if (box) await interruptAgent(box, agentId).catch(() => undefined);
+    await abortTurn(agentId, turn);
     stopped += 1;
   }
   return stopped;
@@ -166,7 +179,7 @@ const STOP_SETTLE_MS = 5_000;
 
 async function settled(threadId: string, ms = STOP_SETTLE_MS) {
   const until = Date.now() + ms;
-  while ([...activeTurns().values()].some((turn) => turn.threadId === threadId) && Date.now() < until) await new Promise((resolve) => setTimeout(resolve, 100));
+  while (turnsIn(threadId).length && Date.now() < until) await new Promise((resolve) => setTimeout(resolve, 100));
 }
 
 /** What a stop halted: the turns and what they were answering, and everything they had set going. */
@@ -193,7 +206,7 @@ const quietStops = new Set<string>();
 
 export async function stopThread(threadId: string, options: { quiet?: boolean } = {}): Promise<StopReport> {
   const owner = getThread(threadId)?.userId;
-  const running = [...activeTurns().values()].filter((turn) => turn.threadId === threadId);
+  const running = turnsIn(threadId);
   const report: StopReport = {
     stopped: 0,
     dropped: 0,
@@ -253,17 +266,12 @@ export function stoppedReply(report: StopReport): string {
 
 /** Whether a stop in this conversation would halt anything. */
 export function hasWork(threadId: string): boolean {
-  return [...activeTurns().values()].some((turn) => turn.threadId === threadId) || openDelegationsFrom(threadId).length > 0 || threadBusy(threadId) || teachingIn(threadId) || hasGuestWork(threadId);
+  return turnsIn(threadId).length > 0 || openDelegationsFrom(threadId).length > 0 || threadBusy(threadId) || teachingIn(threadId) || hasGuestWork(threadId);
 }
 
 export async function stopBot(bot: Bot) {
   await stopThread(bot.threadId);
-  for (const [agentId, turn] of activeTurns()) {
-    if (turn.botId !== bot.id) continue;
-    turn.controller.abort("stopped" satisfies StopCause);
-    const box = boxConfig(turn.userId);
-    if (box) await interruptAgent(box, agentId).catch(() => undefined);
-  }
+  for (const [agentId, turn] of activeTurns()) if (turn.botId === bot.id) await abortTurn(agentId, turn);
 }
 
 export async function stopAll(userId: string): Promise<{ stopped: number; dropped: number }> {
@@ -279,9 +287,7 @@ export async function stopAll(userId: string): Promise<{ stopped: number; droppe
 async function interruptMessage(messageId: string): Promise<boolean> {
   for (const [agentId, turn] of activeTurns()) {
     if (turn.messageId !== messageId) continue;
-    turn.controller.abort("stopped" satisfies StopCause);
-    const box = boxConfig(turn.userId);
-    if (box) await interruptAgent(box, agentId).catch(() => undefined);
+    await abortTurn(agentId, turn);
     return true;
   }
   return false;
@@ -306,7 +312,7 @@ async function carryOn(userId: string, drivers: DesktopDriver[], steerWith: stri
     const thread = getThread(driver.threadId);
     const bot = getBot(driver.botId);
     if (!thread || !bot || thread.userId !== userId) continue;
-    const turn = [...activeTurns().values()].find((t) => t.botId === bot.id && t.threadId === thread.id);
+    const turn = turnOf(bot.id, thread.id);
     if (turn && (await turn.steer(steerWith).catch(() => false))) continue;
     const body = thread.kind === "bot" ? prompt : `@${handleOf(bot.name)} ${prompt}`;
     postMessage({ threadId: thread.id, author: "system", kind: "prompt", body });
@@ -326,7 +332,7 @@ export function steerText(body: string): string {
 
 /** The bots answering in a conversation right now. */
 function workingIn(threadId: string): string[] {
-  return [...activeTurns().values()].filter((turn) => turn.threadId === threadId).map((turn) => turn.botId);
+  return turnsIn(threadId).map((turn) => turn.botId);
 }
 
 /**
@@ -344,7 +350,7 @@ export function asideText(body: string, teammate: string): string {
  * hears it as an aside (`asideText`), so it never sits unanswered behind the task.
  */
 function steerableTurns(thread: Thread, message: Pick<Message, "author" | "body">, targets = targetsFor(message, thread, listBots({ includeHidden: true, userId: thread.userId }), roomBefore(thread), workingIn(thread.id))): { turns: Active[]; all: boolean } {
-  const running = [...activeTurns().values()].filter((turn) => turn.threadId === thread.id);
+  const running = turnsIn(thread.id);
   const turns = targets.flatMap((bot) => running.find((turn) => turn.botId === bot.id) ?? []);
   return { turns, all: targets.length > 0 && turns.length === targets.length };
 }
@@ -427,7 +433,7 @@ async function routeAndDeliver(thread: Thread, message: Message, input: PersonLi
 // stay on this Gond: they're said to its own bots, not to the room.
 export async function stopFromMessage(thread: Thread, body: string, options: { spoken?: boolean } = {}): Promise<Message> {
   const message = keepHere(() => postMessage({ threadId: thread.id, author: "you", body, answered: true, spoken: options.spoken }));
-  const working = [...activeTurns().values()].find((turn) => turn.threadId === thread.id)?.botId ?? guestWorkers(thread.id)[0];
+  const working = turnsIn(thread.id)[0]?.botId ?? guestWorkers(thread.id)[0];
   const bots = listBots({ includeHidden: true, userId: thread.userId });
   const author = working ?? targetsFor({ author: "you", body }, thread, bots, roomBefore(thread))[0]?.id;
   const report = await stopThread(thread.id, { quiet: true });
@@ -706,7 +712,7 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
   try {
     const mcpServers = boxMcpServers(bot);
     const skills = listSkills(bot.userId);
-    const run = engineRun(getAi(thread.userId), thread.userId);
+    const run = engineRun(getAi(thread.userId), thread.userId, bot);
     engineName = ENGINE_LABELS[run.engine].name;
     const onUsage = usageRecorder(thread.userId, bot.id, thread.id, run);
 
@@ -888,7 +894,7 @@ function answersMyNote(message: Pick<Message, "threadId" | "fromThreadId" | "cre
  */
 export function reportTo(bot: Bot, fromThreadId: string, asker: Bot, body: string, depth: number): Message | null {
   if (depth > MAX_CHAIN || !awaitsReport(asker.threadId, fromThreadId, new Date().toISOString())) return null;
-  const turn = [...activeTurns().values()].find((t) => t.botId === asker.id && t.threadId === asker.threadId);
+  const turn = turnOf(asker.id, asker.threadId);
   const message = postMessage({ threadId: asker.threadId, author: bot.id, body, depth, fromThreadId, note: "info", steered: Boolean(turn) });
   if (turn) {
     void turn
@@ -959,8 +965,8 @@ function postReply(bot: Bot, thread: Thread, message: Message, reply: string) {
   // Every other bot still answering the person here sees this line arrive, as in a group chat, whichever
   // of their messages it answers: so none asks for what was just said, and one it names covers it in the
   // answer it is writing (the dispatcher then skips the turn the mention would start, see `spokeSince`).
-  for (const turn of activeTurns().values()) {
-    if (turn.threadId === thread.id && turn.botId !== bot.id && turn.route === "person") void turn.steer(roomLineText(bot.name, reply, turn.messageId === message.id)).catch(() => false);
+  for (const turn of turnsIn(thread.id)) {
+    if (turn.botId !== bot.id && turn.route === "person") void turn.steer(roomLineText(bot.name, reply, turn.messageId === message.id)).catch(() => false);
   }
 }
 

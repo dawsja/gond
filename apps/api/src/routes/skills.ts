@@ -5,6 +5,7 @@ import type { Env } from "../app.ts";
 import { createSkill, deleteSkill, deleteSkillFile, getSkill, installPackagedSkill, listSkills, putSkillFile, renameSkillFile, SkillFilesError, skillFile, skillFiles, updateSkill } from "../data/skills.ts";
 import { isText, looksExecutable, nameFromFolder, packSkill, parseSkillMd, unpackSkill } from "../skill-bundle.ts";
 import { syncSkills } from "../skills.ts";
+import { readBody } from "./body.ts";
 
 const MAX_UPLOAD_BYTES = SKILL_LIMITS.totalBytes + 5 * 1024 * 1024;
 
@@ -34,7 +35,7 @@ export function skillsRoutes() {
   });
 
   app.post("/skills/install", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { id?: string };
+    const body = await readBody(c);
     const skill = installPackagedSkill(userId(c), String(body.id ?? ""));
     if (!skill) return c.json({ error: "Couldn't find that built-in skill" }, 404);
     changed(c);
@@ -125,7 +126,7 @@ export function skillsRoutes() {
   app.put("/skills/:id/file", async (c) => {
     const skill = own(c);
     if (!skill) return c.json({ error: "Couldn't find that skill" }, 404);
-    const body = (await c.req.json().catch(() => ({}))) as { path?: unknown; content?: unknown; executable?: unknown };
+    const body = await readBody(c);
     const path = skillFilePath(String(body.path ?? ""));
     if (!path) return c.json({ error: "Give the file a path inside the skill, like scripts/run.py" }, 400);
     if (typeof body.content !== "string") return c.json({ error: "The file's content must be text" }, 400);
@@ -166,7 +167,7 @@ export function skillsRoutes() {
   app.patch("/skills/:id/file", async (c) => {
     const skill = own(c);
     if (!skill) return c.json({ error: "Couldn't find that skill" }, 404);
-    const body = (await c.req.json().catch(() => ({}))) as { path?: unknown; to?: unknown; executable?: unknown };
+    const body = await readBody(c);
     const from = skillFilePath(String(body.path ?? ""));
     const current = from ? skillFile(skill.id, from) : null;
     if (!from || !current) return c.json({ error: "Couldn't find that file" }, 404);

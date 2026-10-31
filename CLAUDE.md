@@ -354,7 +354,8 @@ The address rules are mirrored in each app with the same tests.
   `useSingleFlight`). A message is a memoized `Line` with stable
   callbacks (`useStableCallback`), so typing or streaming doesn't redraw
   the conversation; a GET several cards make at once goes through
-  `apiShared`. Background polls skip a hidden page.
+  `apiShared`. Background polls skip a hidden page (`pollWhileShown` in
+  `lib/poll.ts`).
 - **A bot's message is GitHub Markdown** (`lib/markdown.ts`, mdast with
   GFM and directives; `components/markdown.tsx` walks the tree into
   React), so nothing a bot writes is ever injected as markup. Raw HTML
@@ -619,8 +620,11 @@ One line each: where to start, and what must not change.
 - Routes live in `src/routes/*.ts`, one file per area, mounted in
   `app.ts`. Everything under `/api` needs the session; unsafe methods
   must be same-origin (enforced in `app.ts`).
-- Validate bodies by hand at the route (shape, ranges, allowed values)
-  and answer `{ error }` with a fitting status. A partial update parses
+- Read a body with `readBody` (`routes/body.ts`), never a cast: every
+  field is `unknown` until checked. Validate by hand at the route (shape,
+  ranges, allowed values) and answer `{ error }` with a fitting status.
+  A box route goes through `withBox` or `withBot` (`routes/box.ts`).
+  A partial update parses
   with the `*PatchSchema` from shared, never `inputSchema.partial()`:
   zod 4 fills every missing field with its default, so a pin would wipe a
   bot's job and approval level.
@@ -927,6 +931,15 @@ One line each: where to start, and what must not change.
   session class in the box (`ensure`, `turnWith`, `steer`, `answerTool`,
   `close`, permissions through `askPermission`) and an entry in
   `CLI_ENGINES` in both box and shared.
+- **A bot's own model** (`BotModelField` in its Edit dialog, `model` on
+  `POST`/`PATCH /api/bots`): one of the models the engine in use lists,
+  kept with where it was picked (`modelSource`: engine and plan or API,
+  `currentModel`), and run by `engineRun` only while the AI still runs
+  there (`botModelFor`), so moving the AI never sends an id it doesn't
+  know. Empty is Settings → AI's. `update_bot` sets it only to a model the
+  AI lists (`matchModel`, `modelsInUse` in `src/models.ts`), never a guess;
+  `list_bots` shows it. The router and check-ins keep the small model;
+  templates never carry it.
 - **Claude Code** runs on the person's plan (signed in inside their box
   account, `/api/box/engines/:engine/sign-in`, `engine-signin.tsx`) or an
   Anthropic-compatible key (`engines.claude.access` `api`): `engineRun`
@@ -1449,6 +1462,25 @@ a restart resumes (`resumeTeachings`), pictures expire a week after
   the page. Screenshots are shot as the person, read back without
   following links (`readFrame`) and kept under `/state/teach/<user>/<id>`,
   root's alone; leftovers go after a week (`sweep`).
+
+## Tests
+
+Prioritize development velocity without sacrificing meaningful
+correctness.
+
+- Don't write tests automatically for every function or change. Add one
+  when it protects important behaviour, prevents a realistic regression
+  or checks a meaningful edge case.
+- Prefer a few high-value behavioural tests over exhaustive variations.
+  Avoid redundant tests, heavy mocking and tests that only restate the
+  implementation.
+- While developing, run only the tests for the code you changed, not the
+  full suite after every small edit. Run the full relevant suite before
+  finishing a substantial change.
+- Never change or delete an existing test just to make a failing
+  implementation pass.
+- Keep tests deterministic, fast and maintainable. Working, correct
+  software matters more than test counts or coverage.
 
 ## Before a commit
 

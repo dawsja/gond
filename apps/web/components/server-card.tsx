@@ -6,6 +6,7 @@ import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle }
 import { Field, FieldContent, FieldDescription, FieldTitle } from "@/components/ui/field";
 import { toast } from "@/components/ui/toast";
 import { changeServer, desktopShell, useNativeShell, type DesktopUpdate, type GondDesktop } from "@/lib/shell";
+import { pollWhileShown } from "@/lib/poll";
 
 const never = () => () => {};
 
@@ -35,8 +36,7 @@ function UpdateField() {
     if (!app) return;
     const read = () => app.updateState().then(setUpdate, () => undefined);
     void read();
-    const timer = window.setInterval(read, busy ? 2_000 : 60_000);
-    return () => window.clearInterval(timer);
+    return pollWhileShown(read, busy ? 2_000 : 60_000);
   }, [busy]);
 
   const check = () => {

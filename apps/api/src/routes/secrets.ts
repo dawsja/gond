@@ -7,6 +7,7 @@ import { changeSecret, deleteSecret, getSecretRequest, listSecrets, readCard, re
 import { threadRefs } from "../data/threads.ts";
 import { forgetHeldLogin, holdCard, holdLogin, rememberable } from "../logins.ts";
 import { answerSecretRequest } from "../secret-requests.ts";
+import { readBody } from "./body.ts";
 
 export function secretsRoutes() {
   const app = new Hono<Env>();
@@ -20,7 +21,7 @@ export function secretsRoutes() {
     const request = getSecretRequest(c.req.param("id"));
     if (!request || !ownsThread(c, request.threadId)) return c.json({ error: "Couldn't find that request" }, 404);
     if (request.status !== "pending") return c.json({ request });
-    const body = (await c.req.json().catch(() => ({}))) as { value?: string; values?: Record<string, unknown>; saved?: unknown; remember?: boolean; decline?: boolean; card?: Record<string, unknown>; nickname?: unknown };
+    const body = await readBody(c);
     if (body.decline) return c.json({ request: answerSecretRequest(request.id, "declined") });
     if (request.target === "card") {
       // A saved card the person picked, or one typed in now; either way only this conversation holds it, for a few minutes.
@@ -45,7 +46,7 @@ export function secretsRoutes() {
     }
     try {
       if (request.target === "login") {
-        const values = body.values && typeof body.values === "object" ? body.values : {};
+        const values = (body.values && typeof body.values === "object" ? body.values : {}) as Record<string, unknown>;
         // A saved sign-in the person picked fills what it covers; its values never leave the API.
         const site = typeof body.saved === "string" ? body.saved : null;
         const savedNames = site ? listSecrets(userId(c)).filter((s) => s.site === site).map((s) => s.name) : [];
@@ -80,7 +81,7 @@ export function secretsRoutes() {
 
   // The person replaces a value they already have; nobody ever reads one back, here or anywhere.
   app.put("/secrets/:name", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { value?: unknown };
+    const body = await readBody(c);
     if (typeof body.value !== "string" || !body.value) return c.json({ error: "Type the new value" }, 400);
     if (body.value.length > 8_000) return c.json({ error: "That's too long" }, 400);
     const name = c.req.param("name");
@@ -90,7 +91,7 @@ export function secretsRoutes() {
   });
 
   app.post("/cards", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { card?: Record<string, unknown>; nickname?: unknown };
+    const body = await readBody(c);
     const checked = checkCard(body.card ?? {});
     if ("error" in checked) return c.json({ error: checked.error }, 400);
     const name = saveCard(userId(c), checked.card as CardDetails, typeof body.nickname === "string" ? body.nickname : "");
@@ -102,7 +103,7 @@ export function secretsRoutes() {
     const name = c.req.param("name");
     const saved = readCard(userId(c), name);
     if (!saved) return c.json({ error: "Couldn't find that card" }, 404);
-    const body = (await c.req.json().catch(() => ({}))) as { card?: Record<string, unknown>; nickname?: unknown };
+    const body = await readBody(c);
     const checked = checkCard(body.card ?? {}, true);
     if ("error" in checked) return c.json({ error: checked.error }, 400);
     saveCard(userId(c), { ...saved.card, ...checked.card }, typeof body.nickname === "string" ? body.nickname : saved.meta.nickname, name);
@@ -111,7 +112,7 @@ export function secretsRoutes() {
 
   // Keys that are one card split up, as bots asked for them before there were cards, become one card.
   app.post("/cards/combine", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { prefix?: unknown };
+    const body = await readBody(c);
     const me = userId(c);
     const group = looseCards(listSecrets(me).filter((s) => !s.card && !s.site).map((s) => s.name)).find((g) => g.prefix === body.prefix);
     if (!group) return c.json({ error: "Couldn't find those keys" }, 404);

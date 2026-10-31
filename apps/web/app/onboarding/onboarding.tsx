@@ -23,6 +23,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { api, patch, post } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { SayHi } from "./say-hi";
+import { pollWhileShown } from "@/lib/poll";
 
 type Step = "welcome" | "team" | "ai" | "hello";
 const STEPS: Step[] = ["welcome", "team", "ai", "hello"];
@@ -97,10 +98,10 @@ export function Onboarding() {
         .then((d) => alive && setStatus(d.status))
         .catch(() => undefined);
     void Promise.resolve().then(check);
-    const timer = window.setInterval(check, 5_000);
+    const stop = pollWhileShown(check, 5_000);
     return () => {
       alive = false;
-      window.clearInterval(timer);
+      stop();
     };
   }, [step]);
 

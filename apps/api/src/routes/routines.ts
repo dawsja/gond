@@ -3,6 +3,7 @@ import { ownBot, userId } from "../access.ts";
 import type { Env } from "../app.ts";
 import { listBots } from "../data/bots.ts";
 import { getRoutine, listRoutines, updateRoutine } from "../data/routines.ts";
+import { readBody } from "./body.ts";
 
 export function routinesRoutes() {
   const app = new Hono<Env>();
@@ -21,7 +22,7 @@ export function routinesRoutes() {
 
   // A person only switches a routine on or off; making, changing, removing and running one is the bot's (its routine tools).
   app.patch("/routines/:id", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { enabled?: unknown };
+    const body = await readBody(c);
     if (typeof body.enabled !== "boolean") return c.json({ error: "A routine can only be switched on or off here. Ask its bot to change it." }, 400);
     const current = ownRoutine(c, c.req.param("id"));
     if (!current) return c.json({ error: "Couldn't find that routine" }, 404);

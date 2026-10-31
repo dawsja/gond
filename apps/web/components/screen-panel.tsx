@@ -93,7 +93,7 @@ export function SleepingScreen({ bot, onWake }: { bot: Pick<Bot, "name" | "color
   );
 }
 
-export function ScreenPanel({ botId, expanded, onExpand, onCollapse }: { threadId: string; botId: string; expanded: boolean; onExpand: () => void; onCollapse: () => void }) {
+export function ScreenPanel({ botId, expanded, onExpand, onCollapse }: { botId: string; expanded: boolean; onExpand: () => void; onCollapse: () => void }) {
   const { desktop, botById } = useStore();
   const control = screenOf(desktop, botId).control;
   const bot = botById(botId);

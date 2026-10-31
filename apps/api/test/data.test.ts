@@ -53,12 +53,11 @@ function routeHost(host: string, port: number | undefined): () => void {
 
 describe("data", () => {
   test("creates a bot with its thread, posts and claims messages", async () => {
-    const { createBot, listBots, getBotByThread } = await import("../src/data/bots.ts");
+    const { createBot, listBots } = await import("../src/data/bots.ts");
     const { postMessage, claimPendingMessages, markAnswered, listMessages, getThread } = await import("../src/data/threads.ts");
     const { botInputSchema } = await import("@gond/shared");
     const bot = createBot(botInputSchema.parse({ name: "Pip", title: "Coordinator" }), "u-admin");
     expect(listBots()).toHaveLength(1);
-    expect(getBotByThread(bot.threadId)?.id).toBe(bot.id);
     const thread = getThread(bot.threadId)!;
     expect(thread.members).toEqual([bot.id]);
     postMessage({ threadId: bot.threadId, author: "you", body: "hello" });
@@ -1205,6 +1204,31 @@ describe("data", () => {
 
     expect(() => engineRun({ ...ai, engines: { ...ai.engines, claude: { access: "api" as const, model: "" } } }, "u-kimi")).toThrow("Pick a model");
     deleteProvider("u-kimi", "anthropic");
+  });
+
+  test("a bot's own model runs only on the plan or key it was picked for", async () => {
+    const { saveProvider, deleteProvider } = await import("../src/data/providers.ts");
+    const { engineRun, currentModel } = await import("../src/engines.ts");
+    const { getAi } = await import("../src/data/ai.ts");
+    const { createBot, updateBot } = await import("../src/data/bots.ts");
+    const { botInputSchema } = await import("@gond/shared");
+    const base = getAi("u-model");
+    const plan = { ...base, engine: "claude" as const, enabled: ["claude" as const], engines: { ...base.engines, claude: { access: "plan" as const, model: "opus" } } };
+
+    const made = createBot(botInputSchema.parse({ name: "Inbox" }), "u-model");
+    expect(engineRun(plan, "u-model", made).model).toBe("opus");
+    updateBot(made.id, { model: "haiku", modelFor: currentModel(plan, "u-model").source });
+    // Every update rewrites the row, so a change to anything else must keep the model.
+    const light = updateBot(made.id, { name: "Inbox bot" })!;
+    expect(engineRun(plan, "u-model", light).model).toBe("haiku");
+
+    // On a key the plan's alias means nothing, so the key's model runs, background calls too.
+    saveProvider("u-model", "anthropic", { baseUrl: "https://api.kimi.com/coding/", apiKey: "sk-kimi-1234567890" });
+    const keyed = { ...plan, engines: { ...plan.engines, claude: { access: "api" as const, model: "kimi-for-coding" } } };
+    expect(engineRun(keyed, "u-model", light)).toMatchObject({ model: "kimi-for-coding", access: { smallModel: "kimi-for-coding" } });
+    const onKey = { ...light, model: "kimi-k2", modelFor: currentModel(keyed, "u-model").source };
+    expect(engineRun(keyed, "u-model", onKey)).toMatchObject({ model: "kimi-k2", access: { smallModel: "kimi-k2" } });
+    deleteProvider("u-model", "anthropic");
   });
 
   test("voice transcribes through its own key, never the bots', on xAI's own endpoint when it points at xAI", async () => {

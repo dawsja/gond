@@ -8,6 +8,7 @@ import { emit } from "../events.ts";
 import { federationFor, flush, startFederation } from "../federation.ts";
 import { allowKnownGonds, announceGond, blockGond, changeRule, closeAllSpaces, createInvite, joinSpace, leaveSpace, previewInvite, currentRule, spaceDetails, SpaceError, startSpace, type InviteDays } from "../spaces.ts";
 import { keyWords } from "../words.ts";
+import { readBody } from "./body.ts";
 
 /** Spaces: this Gond among others (the admin's), each person's defaults, invites, joining and each space's rules. */
 export function spacesRoutes() {
@@ -18,13 +19,12 @@ export function spacesRoutes() {
     console.error("[gond] a space request failed:", error);
     return c.json({ error: error instanceof Error && /relay/i.test(error.message) ? error.message : "Something went wrong. Try again in a moment." }, 500);
   };
-  const body = async (c: Context<Env>) => (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
   const canInvite = (c: Context<Env>) => federationFor(admin(c)).canInvite;
 
   app.get("/spaces/federation", (c) => c.json({ federation: federationFor(admin(c)), peers: admin(c) ? listPeers(userId(c)) : [] }));
 
   app.put("/spaces/federation", requireAdmin, async (c) => {
-    const given = await body(c);
+    const given = await readBody(c);
     const before = federationRow();
     const patch: Parameters<typeof saveFederation>[0] = {};
     if (given.enabled !== undefined) {
@@ -71,7 +71,7 @@ export function spacesRoutes() {
   app.get("/spaces/defaults", (c) => c.json({ defaults: spaceDefaults(userId(c)) }));
 
   app.put("/spaces/defaults", async (c) => {
-    const given = await body(c);
+    const given = await readBody(c);
     if (!SPACE_LEVELS.includes(given.level as SpaceLevel)) return c.json({ error: "Pick what your bots may do" }, 400);
     if (given.level === "full") return c.json({ error: "Always allow is chosen for one bot in one space, never for every space" }, 400);
     const mine = new Set(listBots({ userId: userId(c) }).map((b) => b.id));
@@ -83,7 +83,7 @@ export function spacesRoutes() {
   });
 
   app.post("/spaces", async (c) => {
-    const given = await body(c);
+    const given = await readBody(c);
     if (!canInvite(c)) return c.json({ error: "Only the admin can start spaces on this Gond" }, 403);
     const botIds = Array.isArray(given.botIds) ? given.botIds.map(String) : [];
     try {
@@ -94,7 +94,7 @@ export function spacesRoutes() {
   });
 
   app.post("/spaces/invites", async (c) => {
-    const given = await body(c);
+    const given = await readBody(c);
     if (!canInvite(c)) return c.json({ error: "Only the admin can invite people from other Gonds here" }, 403);
     const thread = ownThread(c, String(given.threadId ?? ""));
     if (!thread) return c.json({ error: "Couldn't find that room" }, 404);
@@ -108,7 +108,7 @@ export function spacesRoutes() {
   });
 
   app.post("/spaces/preview", async (c) => {
-    const given = await body(c);
+    const given = await readBody(c);
     if (!canInvite(c)) return c.json({ error: "Only the admin can join spaces from this Gond" }, 403);
     try {
       const invite = previewInvite(String(given.link ?? ""));
@@ -120,7 +120,7 @@ export function spacesRoutes() {
   });
 
   app.post("/spaces/join", async (c) => {
-    const given = await body(c);
+    const given = await readBody(c);
     if (!canInvite(c)) return c.json({ error: "Only the admin can join spaces from this Gond" }, 403);
     const botIds = Array.isArray(given.botIds) ? given.botIds.map(String) : [];
     try {
@@ -139,7 +139,7 @@ export function spacesRoutes() {
   app.put("/spaces/threads/:id/rules/:botId", async (c) => {
     const thread = ownThread(c, c.req.param("id"));
     if (!thread) return c.json({ error: "Couldn't find that space" }, 404);
-    const given = await body(c);
+    const given = await readBody(c);
     const optional = (value: unknown) => value === undefined || typeof value === "boolean";
     if (!SPACE_LEVELS.includes(given.level as SpaceLevel) || typeof given.memory !== "boolean" || typeof given.botsWake !== "boolean" || !optional(given.relay) || !optional(given.peopleWake)) return c.json({ error: "Pick what this bot may do here" }, 400);
     try {
@@ -168,14 +168,14 @@ export function spacesRoutes() {
   app.post("/spaces/gonds/:key/verify", async (c) => {
     const key = c.req.param("key") ?? "";
     if (!admin(c) && !spacesWith(key).some((s) => s.user_id === userId(c))) return c.json({ error: "Couldn't find that Gond" }, 404);
-    const given = await body(c);
+    const given = await readBody(c);
     setPeerChecked(userId(c), key, given.verified !== false);
     emit({ topic: "spaces", userId: userId(c) });
     return c.json({ ok: true });
   });
 
   app.post("/spaces/gonds/:key/block", requireAdmin, async (c) => {
-    const given = await body(c);
+    const given = await readBody(c);
     if (typeof given.blocked !== "boolean") return c.json({ error: "Blocked is on or off" }, 400);
     await blockGond(c.req.param("key") ?? "", given.blocked);
     emit({ topic: "spaces" });

@@ -31,6 +31,7 @@ import { releaseRoutes } from "./routes/release.ts";
 import { voiceRoutes } from "./routes/voice.ts";
 import { callsRoutes } from "./routes/calls.ts";
 import { usageRoutes } from "./routes/usage.ts";
+import { readBody } from "./routes/body.ts";
 
 export type Env = { Variables: { session: Session; profile?: string } };
 
@@ -53,7 +54,7 @@ export function createApp() {
 
   app.post("/api/register", async (c) => {
     if (!isSameOrigin(c.req.raw)) return c.json({ error: "Cross-site request blocked" }, 403);
-    const body = (await c.req.json().catch(() => ({}))) as { token?: string; username?: string; password?: string; confirm?: string };
+    const body = await readBody(c);
     if (body.password !== body.confirm) return c.json({ error: "The passwords don't match." }, 400);
     const result = await registerAccount({ token: String(body.token ?? ""), username: String(body.username ?? ""), password: String(body.password ?? "") }, c.req.raw.headers);
     if (result.error) return c.json(result, 400);
@@ -118,18 +119,18 @@ export function createApp() {
   });
 
   app.put("/api/me/accent", async (c) => {
-    const body = (await c.req.json().catch(() => null)) as { accent?: unknown } | null;
-    if (!isAccent(body?.accent)) return c.json({ error: "Pick one of the colors on offer" }, 400);
+    const body = await readBody(c);
+    if (!isAccent(body.accent)) return c.json({ error: "Pick one of the colors on offer" }, 400);
     setUserAccent(userId(c), body.accent);
     return c.json({ accent: body.accent });
   });
 
   app.put("/api/me/talk", async (c) => {
-    const body = (await c.req.json().catch(() => null)) as { style?: unknown; emoji?: unknown } | null;
+    const body = await readBody(c);
     const talk = userTalk(userId(c));
-    if (body?.style !== undefined && !isReplyStyle(body.style)) return c.json({ error: "Pick one of the styles on offer" }, 400);
-    if (body?.emoji !== undefined && !isEmojiLevel(body.emoji)) return c.json({ error: "Pick more, default or less emoji" }, 400);
-    const next = { style: isReplyStyle(body?.style) ? body.style : talk.style, emoji: isEmojiLevel(body?.emoji) ? body.emoji : talk.emoji };
+    if (body.style !== undefined && !isReplyStyle(body.style)) return c.json({ error: "Pick one of the styles on offer" }, 400);
+    if (body.emoji !== undefined && !isEmojiLevel(body.emoji)) return c.json({ error: "Pick more, default or less emoji" }, 400);
+    const next = { style: isReplyStyle(body.style) ? body.style : talk.style, emoji: isEmojiLevel(body.emoji) ? body.emoji : talk.emoji };
     setUserTalk(userId(c), next);
     return c.json(next);
   });

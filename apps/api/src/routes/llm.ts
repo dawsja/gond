@@ -1,52 +1,19 @@
-import { ENGINE_LABELS, PROVIDER_LABELS, isCliEngine, isOpenAiShaped, isPlanProvider, providerInputSchema, type Engine, type ModelChoice, type ModelGroup, type ModelList, type ProviderKind } from "@gond/shared";
+import { PROVIDER_LABELS, isPlanProvider, providerInputSchema, type ModelList, type ProviderKind } from "@gond/shared";
 import { Hono } from "hono";
 import type { Env } from "../app.ts";
 import { userId } from "../access.ts";
 import { getAi, releaseEngines } from "../data/ai.ts";
-import { boxConfig, engineModels } from "../box.ts";
-import { deleteProvider, getProvider, isProviderKind, listProviders, providerBaseUrl, providerByToken, providerKey, recordProviderCheck, saveProvider } from "../data/providers.ts";
-import { chatGptAccessToken, signOutChatGpt, startChatGptLogin } from "../chatgpt.ts";
-import { ANTHROPIC_VERSION, authHeaders, coderOnlyRefusal, proxiedUrl, upstreamUrl } from "../providers.ts";
-import { grokAccessToken, grokSignIn, signOutGrok, startGrokLogin } from "../grok.ts";
+import { deleteProvider, getProvider, isProviderKind, listProviders, providerBaseUrl, providerByToken, recordProviderCheck, saveProvider } from "../data/providers.ts";
+import { signOutChatGpt, startChatGptLogin } from "../chatgpt.ts";
+import { authHeaders, coderOnlyRefusal, proxiedUrl } from "../providers.ts";
+import { currentModel } from "../engines.ts";
+import { keyFor, modelsFor, modelsRequest } from "../models.ts";
+import { grokSignIn, signOutGrok, startGrokLogin } from "../grok.ts";
 
 const HOP = new Set(["host", "connection", "content-length", "transfer-encoding", "keep-alive", "cookie", "authorization", "x-api-key", "x-gond-llm-token", "accept-encoding"]);
 
-/** A key as saved, or for a plan an access token renewed when it's near its end. */
-async function keyFor(userId: string, kind: ProviderKind): Promise<string | null> {
-  if (kind === "chatgpt") return chatGptAccessToken(userId);
-  if (kind === "grok") return grokAccessToken(userId);
-  return providerKey(userId, kind);
-}
-
 // A plan's token is for answering a person, so the proxy passes nothing else through.
 const PLAN_PATHS = new Set(["responses", "models"]);
-
-function modelsRequest(kind: ProviderKind, baseUrl: string, key: string): { url: URL; headers: Record<string, string> } {
-  return {
-    url: upstreamUrl(baseUrl, isOpenAiShaped(kind) ? "models" : "v1/models", ""),
-    headers: { ...authHeaders(kind, baseUrl, key), ...(isOpenAiShaped(kind) ? {} : { "anthropic-version": ANTHROPIC_VERSION }) },
-  };
-}
-
-/** A plan's list comes best first, so it keeps its order; a key's is sorted. */
-export function readModels(payload: unknown, ranked = false): ModelChoice[] {
-  const rows = (payload as { data?: unknown; models?: unknown })?.data ?? (payload as { models?: unknown })?.models;
-  if (!Array.isArray(rows)) return [];
-  const out: ModelChoice[] = [];
-  // A ChatGPT plan lists `slug`s, best first, with the ones to offer marked `visibility: "list"`.
-  for (const row of rows) {
-    const entry = row as { id?: unknown; slug?: unknown; display_name?: unknown; visibility?: unknown };
-    if (typeof entry?.slug === "string") {
-      ranked = true;
-      if (entry.visibility !== undefined && entry.visibility !== "list") continue;
-    }
-    const id = typeof row === "string" ? row : typeof entry?.id === "string" ? entry.id : typeof entry?.slug === "string" ? entry.slug : null;
-    if (!id) continue;
-    const name = typeof entry?.display_name === "string" ? entry.display_name : undefined;
-    out.push(name ? { id, name } : { id });
-  }
-  return ranked ? out : out.sort((a, b) => a.id.localeCompare(b.id));
-}
 
 export function presentedToken(headers: Headers): string {
   const bearer = /^Bearer\s+(.+)$/i.exec(headers.get("authorization") ?? "")?.[1];
@@ -127,34 +94,10 @@ export function providerRoutes() {
     const who = userId(c);
     const ai = getAi(who);
     const groups = await Promise.all(ai.enabled.map((engine) => modelsFor(who, engine)));
-    return c.json({ groups } satisfies ModelList);
+    return c.json({ groups, current: currentModel(ai, who) } satisfies ModelList);
   });
 
   return app;
-}
-
-async function modelsFor(userId: string, engine: Engine): Promise<ModelGroup> {
-  const keyed = engine === "claude" && getAi(userId).engines.claude.access === "api";
-  if (isCliEngine(engine) && !keyed) {
-    const box = boxConfig(userId);
-    if (!box) return { engine, models: [], source: "none", detail: "The computer isn't reachable." };
-    const { models } = await engineModels(box, engine).catch(() => ({ models: [] as ModelChoice[] }));
-    return models.length ? { engine, models, source: "engine", detail: null } : { engine, models: [], source: "none", detail: `${ENGINE_LABELS[engine].name} didn't list its models. Type the model id you want.` };
-  }
-  const info = ENGINE_LABELS[engine];
-  const kind = keyed ? "anthropic" : (getAi(userId).engines[engine].provider ?? info.providers.find((p) => getProvider(userId, p)) ?? info.provider);
-  const baseUrl = providerBaseUrl(userId, kind);
-  const key = await keyFor(userId, kind);
-  if (!baseUrl || !key) return { engine, models: [], source: "none", detail: isPlanProvider(kind) ? `Sign in with ${PROVIDER_LABELS[kind].short} again to see your plan's models.` : "No API key saved yet." };
-  const { url, headers } = modelsRequest(kind, baseUrl, key);
-  try {
-    const res = await fetch(url, { headers, redirect: "manual", signal: AbortSignal.timeout(15_000) });
-    const models = res.ok ? readModels(await res.json().catch(() => null), isPlanProvider(kind)) : [];
-    if (models.length) return { engine, models, source: "provider", detail: null };
-    return { engine, models: [], source: "none", detail: res.ok ? "The API listed no models. Type the model id you want." : "The API wouldn't list its models. Type the model id you want." };
-  } catch {
-    return { engine, models: [], source: "none", detail: "The API didn't answer. Type the model id you want." };
-  }
 }
 
 export function llmProxyRoutes() {

@@ -51,7 +51,7 @@ import { sendPush } from "./push.ts";
 import { nativeTurn } from "./native.ts";
 import { createRedactor } from "./redact.ts";
 import { formatting } from "./souls.ts";
-import { MAX_ROOM_LINES } from "./tools.ts";
+import { MAX_ROOM_LINES } from "./limits.ts";
 import { loadMemory, transcriptLines } from "./transcript.ts";
 import { keyWords } from "./words.ts";
 import { usageRecorder } from "./usage.ts";
@@ -704,7 +704,7 @@ async function guestReply(input: { bot: Bot; threadId: string; instructions: str
   activity(threadId, bot.id, "Thinking…");
   const hide = createRedactor(allSecretValues(), Infinity);
   try {
-    const run = engineRun(getAi(bot.userId), bot.userId);
+    const run = engineRun(getAi(bot.userId), bot.userId, bot);
     const onUsage = usageRecorder(bot.userId, bot.id, threadId, run);
     let reply = "";
     if (run.native) {

@@ -5,6 +5,7 @@ import { Copy, ExternalLink } from "lucide-react";
 import { useEffect, useEffectEvent, useState } from "react";
 import { PlanSignedIn } from "@/components/plan-engine";
 import { ProviderCheck } from "@/components/providers-card";
+import { copyToClipboard } from "@/components/hq/clipboard";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -12,6 +13,7 @@ import { toast } from "@/components/ui/toast";
 import { api, post } from "@/lib/api";
 import { mobileShell } from "@/lib/shell";
 import { cn, rem } from "@/lib/utils";
+import { pollWhileShown } from "@/lib/poll";
 
 type GrokSignIn = { state: "waiting" | "done" | "failed"; url: string | null; code: string | null; expiresAt: number; error: string | null };
 
@@ -47,7 +49,7 @@ export function SignInWithGrok({ onDone }: { onDone: () => void }) {
 
   useEffect(() => {
     if (!waiting) return;
-    const timer = setInterval(() => {
+    return pollWhileShown(() => {
       void api<{ signIn: GrokSignIn | null }>("/api/providers/grok/sign-in")
         .then(({ signIn: next }) => {
           setSignIn(next);
@@ -55,7 +57,6 @@ export function SignInWithGrok({ onDone }: { onDone: () => void }) {
         })
         .catch(() => undefined);
     }, POLL_MS);
-    return () => clearInterval(timer);
   }, [waiting]);
 
   async function begin() {
@@ -79,9 +80,8 @@ export function SignInWithGrok({ onDone }: { onDone: () => void }) {
 
   function copyCode() {
     if (!signIn?.code) return;
-    void navigator.clipboard.writeText(signIn.code).then(
-      () => toast.add({ type: "success", title: "Code copied." }),
-      () => undefined,
+    void copyToClipboard(signIn.code).then((copied) =>
+      copied ? toast.add({ type: "success", title: "Code copied." }) : toast.add({ type: "error", title: "Couldn't copy the code. Select it and copy it yourself." }),
     );
   }
 

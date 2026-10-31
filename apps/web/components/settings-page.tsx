@@ -75,7 +75,12 @@ export function SettingsPage({ user, section, index = false }: { user: SessionUs
     setAiFailed(!a);
     if (a) setAi(a.ai);
     if (st) setStatus(st.status);
+    return Boolean(a && st);
   }, []);
+
+  const refreshAi = useCallback(async () => {
+    if (!(await load(true))) throw new Error("Couldn't check the computer. Try again.");
+  }, [load]);
 
   useEffect(() => {
     const connected = params.get("connected");
@@ -184,11 +189,11 @@ export function SettingsPage({ user, section, index = false }: { user: SessionUs
       body = <PersonalizationCard />;
       break;
     case "shared-computer":
-      body = <ComputerCard status={status} admin={admin} onCheck={() => load(true)} />;
+      body = <ComputerCard status={status} admin={admin} onCheck={async () => void (await load(true))} />;
       break;
     case "ai":
       body = (
-        ai ? <AiSteps ai={ai} status={status} onChange={setAi} onRefresh={() => load(true)} /> : aiFailed ? <LoadFailed what="your AI settings" onRetry={() => void load()} /> : <Skeleton className="h-96 rounded-xl" />
+        ai ? <AiSteps ai={ai} status={status} onChange={setAi} onRefresh={refreshAi} /> : aiFailed ? <LoadFailed what="your AI settings" onRetry={() => void load()} /> : <Skeleton className="h-96 rounded-xl" />
       );
       break;
     case "usage":

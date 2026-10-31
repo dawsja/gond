@@ -4,6 +4,7 @@ import { userId } from "../access.ts";
 import type { Env } from "../app.ts";
 import { gmailConnected } from "../check-ins.ts";
 import { checkInsOf, setCheckIns } from "../data/check-ins.ts";
+import { readBody } from "./body.ts";
 
 const isHour = (value: unknown): value is number => Number.isInteger(value) && (value as number) >= 0 && (value as number) <= 23;
 
@@ -19,8 +20,7 @@ export function checkInsRoutes() {
   app.get("/check-ins", (c) => c.json({ checkIns: settingsOf(userId(c)), gmail: gmailConnected(userId(c)) }));
 
   app.put("/check-ins", async (c) => {
-    const body = (await c.req.json().catch(() => null)) as Partial<Record<keyof CheckIns, unknown>> | null;
-    if (!body) return c.json({ error: "Say how check-ins should work" }, 400);
+    const body = await readBody(c);
     const change: Partial<CheckIns> = {};
     if (body.enabled !== undefined) {
       if (typeof body.enabled !== "boolean") return c.json({ error: "Turn check-ins on or off" }, 400);

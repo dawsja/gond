@@ -4,6 +4,7 @@ import { ownsThread, userId } from "../access.ts";
 import type { Env } from "../app.ts";
 import { exportChats, exportFileName, exportLabel, exportSince, runExport } from "../chat-export.ts";
 import { createExport, deleteExport, exportFile, getExport, listExports, preparingExport } from "../data/exports.ts";
+import { readBody } from "./body.ts";
 
 export function exportsRoutes() {
   const app = new Hono<Env>();
@@ -11,7 +12,7 @@ export function exportsRoutes() {
   app.get("/exports", (c) => c.json({ exports: listExports(userId(c)) }));
 
   app.post("/exports", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { threadId?: unknown; range?: unknown };
+    const body = await readBody(c);
     const range = body.range === undefined ? "all" : body.range;
     if (!isExportRange(range)) return c.json({ error: "Pick how far back to go from the list" }, 400);
     const threadId = body.threadId === undefined || body.threadId === null ? null : body.threadId;

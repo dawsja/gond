@@ -10,6 +10,7 @@ import { setUserTimezone } from "../data/prefs.ts";
 import { getSettings, listConnections, updateSettings } from "../data/settings.ts";
 import { boxStatus, forgetClaudeCheck } from "../status.ts";
 import { addFromTemplate, templateById } from "../templates.ts";
+import { readBody } from "./body.ts";
 
 export function settingsRoutes() {
   const app = new Hono<Env>();
@@ -23,7 +24,7 @@ export function settingsRoutes() {
   app.get("/ai", (c) => c.json({ ai: getAi(userId(c)) }));
 
   app.patch("/ai", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { engine?: string; enabled?: unknown; engines?: Record<string, unknown> };
+    const body = await readBody(c);
     const patch: Parameters<typeof updateAi>[1] = {};
     if (body.engine !== undefined) {
       if (!(ENGINES as readonly string[]).includes(String(body.engine))) return c.json({ error: "Pick Claude Code, ChatGPT, Grok or an API key" }, 400);
@@ -86,7 +87,7 @@ export function settingsRoutes() {
 
   app.post("/onboarding/complete", async (c) => {
     if (getSettings().onboarding.done) return c.json({ error: "Setup is already done" }, 409);
-    const body = (await c.req.json().catch(() => ({}))) as { templates?: string[]; timezone?: string };
+    const body = await readBody(c);
 
     const picked = Array.isArray(body.templates) ? body.templates.map(String) : [];
     const templates = BOT_TEMPLATES.filter((t) => picked.includes(t.id)).map((t) => t.id);

@@ -12,6 +12,7 @@ import { getThread } from "../data/threads.ts";
 import { answerSigned } from "../phone-push.ts";
 import { markViewing } from "../presence.ts";
 import { vapidKeys } from "../push.ts";
+import { readBody } from "./body.ts";
 
 export function pushRoutes() {
   const app = new Hono<Env>();
@@ -19,22 +20,25 @@ export function pushRoutes() {
   app.get("/push", (c) => c.json({ publicKey: vapidKeys().publicKey, subscriptions: countSubscriptions(personId(c)) }));
 
   app.post("/push/subscriptions", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { endpoint?: string; keys?: { p256dh?: string; auth?: string } };
-    if (!body.endpoint || !body.keys?.p256dh || !body.keys.auth) return c.json({ error: "This browser sent an incomplete push subscription. Turn notifications off and on again." }, 400);
-    saveSubscription({ endpoint: body.endpoint, keys: { p256dh: body.keys.p256dh, auth: body.keys.auth } }, personId(c), c.req.header("user-agent") ?? "");
+    const body = await readBody(c);
+    const keys = (body.keys ?? {}) as { p256dh?: unknown; auth?: unknown };
+    const { endpoint } = body;
+    const { p256dh, auth } = keys;
+    if (typeof endpoint !== "string" || !endpoint || typeof p256dh !== "string" || !p256dh || typeof auth !== "string" || !auth) return c.json({ error: "This browser sent an incomplete push subscription. Turn notifications off and on again." }, 400);
+    saveSubscription({ endpoint, keys: { p256dh, auth } }, personId(c), c.req.header("user-agent") ?? "");
     return c.json({ ok: true, subscriptions: countSubscriptions(personId(c)) }, 201);
   });
 
   app.delete("/push/subscriptions", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { endpoint?: string };
-    if (!body.endpoint) return c.json({ error: "Say which subscription to remove" }, 400);
+    const body = await readBody(c);
+    if (typeof body.endpoint !== "string" || !body.endpoint) return c.json({ error: "Say which subscription to remove" }, 400);
     removeSubscription(body.endpoint, personId(c));
     return c.json({ ok: true, subscriptions: countSubscriptions(personId(c)) });
   });
 
   // What this browser is told about. The endpoint names the subscription, so it is sent in the body rather than the URL.
   app.post("/push/notices", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { endpoint?: unknown };
+    const body = await readBody(c);
     if (typeof body.endpoint !== "string" || !body.endpoint) return c.json({ error: "Say which browser this is" }, 400);
     const notices = subscriptionNotices(body.endpoint, personId(c));
     if (!notices) return c.json({ error: "Notifications aren't on for this browser" }, 404);
@@ -42,7 +46,7 @@ export function pushRoutes() {
   });
 
   app.put("/push/notices", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { endpoint?: unknown; notices?: unknown };
+    const body = await readBody(c);
     const notices = readDeviceNotices(body.notices);
     if (typeof body.endpoint !== "string" || !body.endpoint || !notices) return c.json({ error: "Couldn't read which notices this browser wants" }, 400);
     if (!setSubscriptionNotices(body.endpoint, personId(c), notices)) return c.json({ error: "Notifications aren't on for this browser" }, 404);
@@ -51,7 +55,7 @@ export function pushRoutes() {
 
   // A phone signing up for push, or checking in as it opens. New keys come back only when it needs them.
   app.put("/push/devices", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { platform?: unknown; token?: unknown; id?: unknown; notices?: unknown };
+    const body = await readBody(c);
     if (body.platform !== "android" && body.platform !== "ios") return c.json({ error: "Push works in the Android and iPhone apps" }, 400);
     if (typeof body.token !== "string" || !/^[\w:.-]{20,512}$/.test(body.token)) return c.json({ error: "This phone sent a push token that doesn't look right. Open the app again." }, 400);
     if (body.id !== undefined && body.id !== null && (typeof body.id !== "string" || !/^[\w-]{1,64}$/.test(body.id))) return c.json({ error: "Say which phone this is" }, 400);
@@ -62,7 +66,7 @@ export function pushRoutes() {
   });
 
   app.put("/push/devices/:id/notices", async (c) => {
-    const notices = readDeviceNotices(((await c.req.json().catch(() => ({}))) as { notices?: unknown }).notices);
+    const notices = readDeviceNotices((await readBody(c)).notices);
     if (!notices) return c.json({ error: "Couldn't read which notices this phone wants" }, 400);
     if (!setPushDeviceNotices(c.req.param("id"), personId(c), notices)) return c.json({ error: "Push isn't on for this phone" }, 404);
     return c.json({ notices });
@@ -71,7 +75,7 @@ export function pushRoutes() {
   app.delete("/push/devices/:id", (c) => (removePushDevice(c.req.param("id"), personId(c)) ? c.body(null, 204) : c.json({ error: "Push isn't on for this phone" }, 404)));
 
   app.post("/push/viewing", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { client?: unknown; threadId?: unknown; timezone?: unknown };
+    const body = await readBody(c);
     if (typeof body.client !== "string" || !/^[\w-]{1,64}$/.test(body.client)) return c.json({ error: "Say which window this is" }, 400);
     if (body.threadId !== null && (typeof body.threadId !== "string" || !/^[\w-]{1,64}$/.test(body.threadId))) return c.json({ error: "Say which conversation is open" }, 400);
     markViewing(userId(c), body.client, body.threadId);
@@ -93,7 +97,7 @@ export function pushAnswerRoutes() {
   const app = new Hono();
 
   app.post("/push/answer", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { approvalId?: unknown; decision?: unknown };
+    const body = await readBody(c);
     const deviceId = c.req.header("x-gond-device") ?? "";
     const at = c.req.header("x-gond-time") ?? "";
     const signature = c.req.header("x-gond-signature") ?? "";

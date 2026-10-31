@@ -73,6 +73,10 @@ export type Bot = BotInput & {
   hidden: boolean;
   pinned: boolean;
   position: number;
+  /** The model this bot runs on instead of the one in Settings → AI; empty for that one. */
+  model: string;
+  /** Where `model` was picked (`modelSource`); it holds only while the AI still runs there. */
+  modelFor: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -863,7 +867,25 @@ export type ModelGroup = {
   detail: string | null;
 };
 
-export type ModelList = { groups: ModelGroup[] };
+/** The engine the bots run on now, where its models come from (`modelSource`) and the model picked in Settings → AI. */
+export type ModelCurrent = { engine: Engine; source: string; model: string };
+
+export type ModelList = { groups: ModelGroup[]; current?: ModelCurrent };
+
+/**
+ * Where a model id means something: the engine and the plan or API behind it. A bot's own model is
+ * kept with the source it was picked on, so moving the AI elsewhere never sends an id the new one
+ * doesn't know.
+ */
+export function modelSource(engine: Engine, access: EngineAccess, provider: EngineProviderKind | null): string {
+  if (isCliEngine(engine)) return `${engine}:${access}`;
+  return engine === "api" ? `api:${provider ?? ""}` : engine;
+}
+
+/** The model a bot runs on: its own while it was picked where the AI runs now, else the AI's. */
+export function botModelFor(bot: Pick<Bot, "model" | "modelFor"> | null | undefined, source: string): string {
+  return bot?.model && bot.modelFor === source ? bot.model : "";
+}
 
 export type EngineSettings = { access: EngineAccess; model: string; provider?: EngineProviderKind | null };
 

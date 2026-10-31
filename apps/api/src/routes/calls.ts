@@ -5,6 +5,7 @@ import { ownThread, userId } from "../access.ts";
 import { activeProfile } from "../data/profiles.ts";
 import { getSession, trustedOriginsFor } from "../auth.ts";
 import { callOf, endCall, listen, muteCall, ownCall, sendAudio, startCall } from "../calls.ts";
+import { readBody } from "./body.ts";
 
 // A tenth of a second of audio is 4.8 KB; anything near this is not a microphone.
 const AUDIO_MAX_BYTES = 256 * 1024;
@@ -76,8 +77,8 @@ export function callsRoutes() {
   app.post("/calls/:id/mute", async (c) => {
     const call = ownCall(userId(c), c.req.param("id"));
     if (!call) return c.json({ error: "That call has ended." }, 404);
-    const body = (await c.req.json().catch(() => null)) as { muted?: unknown } | null;
-    if (typeof body?.muted !== "boolean") return c.json({ error: "Say whether to mute or unmute." }, 400);
+    const body = await readBody(c);
+    if (typeof body.muted !== "boolean") return c.json({ error: "Say whether to mute or unmute." }, 400);
     muteCall(call.id, body.muted);
     return c.json({ muted: body.muted });
   });

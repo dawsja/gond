@@ -4,6 +4,7 @@ import type { Env } from "../app.ts";
 import { userId } from "../access.ts";
 import { usageReport } from "../usage.ts";
 import { changeSharing, sharingState } from "../usage-sharing.ts";
+import { readBody } from "./body.ts";
 
 export function usageRoutes() {
   const app = new Hono<Env>();
@@ -18,8 +19,8 @@ export function usageRoutes() {
   app.get("/usage/sharing", (c) => c.json(sharingState()));
 
   app.put("/usage/sharing", async (c) => {
-    const body = (await c.req.json().catch(() => null)) as { on?: unknown } | null;
-    if (typeof body?.on !== "boolean") return c.json({ error: "Say on or off" }, 400);
+    const body = await readBody(c);
+    if (typeof body.on !== "boolean") return c.json({ error: "Say on or off" }, 400);
     return c.json(changeSharing(body.on));
   });
 

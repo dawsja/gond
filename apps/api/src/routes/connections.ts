@@ -6,6 +6,7 @@ import { appUrl } from "../config.ts";
 import { applyComposioKey, catalogEntry, composioKey, composioKeySource, disconnect, forgetComposioCache, refreshConnection, startConnection } from "../composio.ts";
 import { clearComposioKey } from "../data/composio-keys.ts";
 import { listConnections, removeConnections } from "../data/settings.ts";
+import { readBody } from "./body.ts";
 
 function keyChanged(me: string, before: string | null) {
   if (composioKey(me) === before) return;
@@ -21,7 +22,7 @@ export function connectionsRoutes() {
   app.get("/composio", (c) => c.json({ source: composioKeySource(userId(c)) } satisfies ComposioKeyStatus));
 
   app.put("/composio", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { apiKey?: unknown };
+    const body = await readBody(c);
     if (typeof body.apiKey !== "string" || !body.apiKey.trim()) return c.json({ error: "Paste your Composio API key" }, 400);
     const me = userId(c);
     try {
@@ -43,7 +44,7 @@ export function connectionsRoutes() {
   app.post("/connections/:toolkit/connect", async (c) => {
     const toolkit = c.req.param("toolkit").toLowerCase();
     if (!(await catalogEntry(userId(c), toolkit))) return c.json({ error: "That app isn't in the catalog" }, 404);
-    const body = (await c.req.json().catch(() => ({}))) as { threadId?: unknown };
+    const body = await readBody(c);
     const thread = typeof body.threadId === "string" && ownsThread(c, body.threadId) ? body.threadId : null;
     try {
       return c.json(await startConnection(userId(c), toolkit, thread));

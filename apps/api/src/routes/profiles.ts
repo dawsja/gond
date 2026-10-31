@@ -4,6 +4,7 @@ import type { Env } from "../app.ts";
 import { personOf, profileOf, setActiveProfile, setProfileMuted } from "../data/profiles.ts";
 import { emit } from "../events.ts";
 import { createProfile, deleteProfile, editProfile, listProfiles } from "../profiles.ts";
+import { readBody } from "./body.ts";
 
 // Another person's profile is as unknown as a missing one.
 function own(c: Context<Env>, id: string) {
@@ -17,7 +18,7 @@ export function profilesRoutes() {
   app.get("/profiles", (c) => c.json({ profiles: listProfiles(personId(c)), active: userId(c) }));
 
   app.post("/profiles", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { label?: unknown; icon?: unknown };
+    const body = await readBody(c);
     if (body.icon !== undefined && body.icon !== null && typeof body.icon !== "string") return c.json({ error: "Pick one of the icons on offer" }, 400);
     const made = createProfile(personId(c), typeof body.label === "string" ? body.label : "", typeof body.icon === "string" ? body.icon : null);
     if ("error" in made) return c.json(made, 400);
@@ -36,7 +37,7 @@ export function profilesRoutes() {
   app.patch("/profiles/:id", async (c) => {
     const profile = own(c, c.req.param("id"));
     if (!profile) return c.json({ error: "Couldn't find that profile" }, 404);
-    const body = (await c.req.json().catch(() => ({}))) as { label?: unknown; icon?: unknown; muted?: unknown };
+    const body = await readBody(c);
     if (body.label !== undefined && typeof body.label !== "string") return c.json({ error: "Give the profile a name" }, 400);
     if (body.icon !== undefined && body.icon !== null && typeof body.icon !== "string") return c.json({ error: "Pick one of the icons on offer" }, 400);
     if (body.label !== undefined || body.icon !== undefined) {

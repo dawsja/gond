@@ -1,4 +1,4 @@
-import { DEFAULT_MODEL, ENGINE_LABELS, PROVIDER_LABELS, isCliEngine, isPlanProvider, type AiSettings, type Engine, type EngineProviderKind } from "@gond/shared";
+import { DEFAULT_MODEL, ENGINE_LABELS, PROVIDER_LABELS, botModelFor, isCliEngine, isPlanProvider, modelSource, type AiSettings, type Bot, type Engine, type EngineProviderKind, type ModelCurrent } from "@gond/shared";
 import type { BoxAccess } from "./box.ts";
 import { getProvider, planSession, providerBaseUrl, providerProxyToken } from "./data/providers.ts";
 import { apiInternalUrl } from "./mcp.ts";
@@ -18,15 +18,33 @@ export class EngineSetupError extends Error {
   }
 }
 
-export function engineRun(ai: AiSettings, userId: string): EngineRun {
+function apiKindOf(ai: AiSettings, userId: string): EngineProviderKind {
+  const config = ai.engines[ai.engine];
+  const info = ENGINE_LABELS[ai.engine];
+  return config.provider && info.providers.includes(config.provider) ? config.provider : providerFor(ai.engine, userId);
+}
+
+/** Where the person's AI runs now, which a bot's own model must have been picked on to count. */
+export function currentModel(ai: AiSettings, userId: string): ModelCurrent {
   const engine = ai.engine;
   const config = ai.engines[engine];
-  const info = ENGINE_LABELS[engine];
+  return {
+    engine,
+    source: modelSource(engine, config.access, isCliEngine(engine) ? null : apiKindOf(ai, userId)),
+    model: config.model || ENGINE_LABELS[engine].defaultModel || (engine === "claude" ? DEFAULT_MODEL : ""),
+  };
+}
 
-  const model = config.model || info.defaultModel || (engine === "claude" ? DEFAULT_MODEL : "");
+/** How a turn runs: on the person's AI, and on `bot`'s own model when it picked one there. */
+export function engineRun(ai: AiSettings, userId: string, bot?: Pick<Bot, "model" | "modelFor"> | null): EngineRun {
+  const engine = ai.engine;
+  const config = ai.engines[engine];
+  const current = currentModel(ai, userId);
+  const own = botModelFor(bot, current.source);
+  const model = own || current.model;
 
   if (!isCliEngine(engine)) {
-    const kind = config.provider && info.providers.includes(config.provider) ? config.provider : providerFor(engine, userId);
+    const kind = apiKindOf(ai, userId);
     const token = providerProxyToken(userId, kind);
     if (!getProvider(userId, kind) || !token) {
       if (kind === "chatgpt") throw new EngineSetupError("Your bots are set to run on your ChatGPT plan, but you haven't signed in. Use Continue with ChatGPT under Settings → AI.");
@@ -42,9 +60,10 @@ export function engineRun(ai: AiSettings, userId: string): EngineRun {
   if (engine === "claude" && config.access === "api") {
     const token = providerProxyToken(userId, "anthropic");
     if (!getProvider(userId, "anthropic") || !token) throw new EngineSetupError("Your bots are set to run Claude Code on a key, but none is saved. Add an Anthropic-compatible key under Settings → AI, or put Claude Code back on your Claude plan.");
-    if (!config.model) throw new EngineSetupError("Pick a model for Claude Code on your key under Settings → AI. A key has no default.");
+    const keyed = own || config.model;
+    if (!keyed) throw new EngineSetupError("Pick a model for Claude Code on your key under Settings → AI. A key has no default.");
     // Claude Code's background calls go to the same model: a coding plan's key often serves only one.
-    return { engine, model: config.model, access: { kind: "api", baseUrl: `${apiInternalUrl()}/api/llm/anthropic`, token, smallModel: config.model } };
+    return { engine, model: keyed, access: { kind: "api", baseUrl: `${apiInternalUrl()}/api/llm/anthropic`, token, smallModel: keyed } };
   }
 
   return { engine, model, access: { kind: "plan" } };

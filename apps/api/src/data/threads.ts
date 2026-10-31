@@ -176,53 +176,72 @@ export function setReaction(message: Message, author: MessageAuthor, emoji: Reac
   return reactions;
 }
 
-function members(threadId: string): string[] {
-  const rows = ensureDatabase().query("SELECT bot_id FROM gond_thread_members WHERE thread_id = ? ORDER BY rowid").all(threadId) as { bot_id: string }[];
-  return rows.map((r) => r.bot_id);
+type LineRow = { thread_id: string; author: string; body: string; created_at: string };
+
+// A line with `from_thread_id` is bots talking to each other (a teammate's message, a handoff, its
+// result, an incident): it shows in the conversation as an exchange, so it is never the line the list
+// previews, dates or sorts by, and only marks the conversation as quietly new.
+const SHOWN_KINDS = "kind IN ('message', 'approval', 'signin', 'teach') AND spoken = 0";
+
+/** What the list shows of each conversation, a few statements for the whole page whatever its size. */
+function toThreads(rows: ThreadRow[]): Thread[] {
+  if (rows.length === 0) return [];
+  const db = ensureDatabase();
+  const ids = JSON.stringify(rows.map((row) => row.id));
+  const memberRows = db.query("SELECT thread_id, bot_id FROM gond_thread_members WHERE thread_id IN (SELECT value FROM json_each(?)) ORDER BY rowid").all(ids) as { thread_id: string; bot_id: string }[];
+  const members = new Map<string, string[]>();
+  for (const { thread_id, bot_id } of memberRows) members.set(thread_id, [...(members.get(thread_id) ?? []), bot_id]);
+  const latest = (where: string) =>
+    new Map(
+      (
+        db
+          .query(`SELECT m.thread_id, m.author, m.body, m.created_at FROM json_each(?) j JOIN gond_messages m ON m.rowid = (SELECT rowid FROM gond_messages WHERE thread_id = j.value AND ${where} ORDER BY created_at DESC LIMIT 1)`)
+          .all(ids) as LineRow[]
+      ).map((row) => [row.thread_id, row]),
+    );
+  const last = latest(`${SHOWN_KINDS} AND from_thread_id IS NULL`);
+  const runs = latest("author = 'routine'");
+  const unreadRows = db
+    .query(
+      "SELECT m.thread_id, COUNT(*) AS n, COUNT(m.from_thread_id) AS team FROM gond_threads t JOIN gond_messages m ON m.thread_id = t.id WHERE t.id IN (SELECT value FROM json_each(?)) AND m.author NOT IN ('you') AND m.kind IN ('message', 'approval', 'signin', 'teach') AND m.spoken = 0 AND m.created_at > COALESCE(t.last_read_at, '') GROUP BY m.thread_id",
+    )
+    .all(ids) as { thread_id: string; n: number; team: number }[];
+  const unread = new Map(unreadRows.map((row) => [row.thread_id, row]));
+  let ownKey: string | null | undefined;
+  return rows.map((row) => {
+    const line = last.get(row.id);
+    const counts = unread.get(row.id) ?? { n: 0, team: 0 };
+    return {
+      id: row.id,
+      userId: row.user_id ?? "",
+      kind: row.kind,
+      botId: row.bot_id,
+      name: row.name,
+      members: members.get(row.id) ?? [],
+      pinned: row.kind === "room" && Boolean(row.pinned),
+      lastMessage: line ? { author: line.author, body: line.body, at: line.created_at } : null,
+      unread: Number(counts.n) - Number(counts.team),
+      unreadTeam: Number(counts.team) > 0 && Number(counts.n) === Number(counts.team),
+      noticed: noticedIn(row, runs.get(row.id)),
+      space: row.kind === "room" ? threadSpace(row.id, (ownKey ??= federationRow().key)) : null,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  });
 }
 
-function noticedIn(row: ThreadRow): Thread["noticed"] {
-  const db = ensureDatabase();
-  const run = db.query("SELECT body, created_at FROM gond_messages WHERE thread_id = ? AND author = 'routine' ORDER BY created_at DESC LIMIT 1").get(row.id) as { body: string; created_at: string } | null;
+/** What a bot said after the conversation's last routine run, when that run was a watch's. */
+function noticedIn(row: ThreadRow, run: LineRow | undefined): Thread["noticed"] {
   if (!run || !isWatchRun(run.body)) return null;
-  const said = db
+  const said = ensureDatabase()
     .query("SELECT body, created_at FROM gond_messages WHERE thread_id = ? AND kind = 'message' AND spoken = 0 AND author NOT IN ('you', 'system', 'routine') AND created_at > ? AND created_at > ? ORDER BY created_at LIMIT 1")
     .get(row.id, run.created_at, row.last_read_at ?? "") as { body: string; created_at: string } | null;
   return said ? { watch: routineName(run.body) ?? "", body: said.body, at: said.created_at } : null;
 }
 
-function toThread(row: ThreadRow): Thread {
-  const db = ensureDatabase();
-  // A line with `from_thread_id` is bots talking to each other (a teammate's message, a handoff, its
-  // result, an incident): it shows in the conversation as an exchange, so it is never the line the list
-  // previews, dates or sorts by, and only marks the conversation as quietly new.
-  const last = db
-    .query("SELECT author, body, created_at FROM gond_messages WHERE thread_id = ? AND kind IN ('message', 'approval', 'signin', 'teach') AND from_thread_id IS NULL AND spoken = 0 ORDER BY created_at DESC LIMIT 1")
-    .get(row.id) as { author: string; body: string; created_at: string } | null;
-  const unread = db
-    .query("SELECT COUNT(*) AS n, COUNT(from_thread_id) AS team FROM gond_messages WHERE thread_id = ? AND author NOT IN ('you') AND kind IN ('message', 'approval', 'signin', 'teach') AND spoken = 0 AND created_at > ?")
-    .get(row.id, row.last_read_at ?? "") as { n: number; team: number };
-  return {
-    id: row.id,
-    userId: row.user_id ?? "",
-    kind: row.kind,
-    botId: row.bot_id,
-    name: row.name,
-    members: members(row.id),
-    pinned: row.kind === "room" && Boolean(row.pinned),
-    lastMessage: last ? { author: last.author, body: last.body, at: last.created_at } : null,
-    unread: Number(unread.n) - Number(unread.team),
-    unreadTeam: Number(unread.team) > 0 && Number(unread.n) === Number(unread.team),
-    noticed: noticedIn(row),
-    space: row.kind === "room" ? threadSpace(row.id, federationRow().key) : null,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  };
-}
-
 export function getThread(id: string): Thread | null {
   const row = ensureDatabase().query("SELECT * FROM gond_threads WHERE id = ?").get(id) as ThreadRow | null;
-  return row ? toThread(row) : null;
+  return row ? toThreads([row])[0]! : null;
 }
 
 export function listThreads(options: { kind?: "bot" | "room"; userId?: string } = {}): Thread[] {
@@ -239,7 +258,7 @@ export function listThreads(options: { kind?: "bot" | "room"; userId?: string } 
   const rows = ensureDatabase()
     .query(`SELECT * FROM gond_threads ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY updated_at DESC`)
     .all(...params) as ThreadRow[];
-  return rows.map(toThread);
+  return toThreads(rows);
 }
 
 export type ThreadRef = Pick<Thread, "id" | "kind" | "name">;
