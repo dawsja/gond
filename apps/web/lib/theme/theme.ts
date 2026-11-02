@@ -1,6 +1,6 @@
 import { mobileShell } from "@/lib/shell";
 
-export const THEMES = ["system", "light", "dark"] as const;
+export const THEMES = ["system", "light", "dark", "gond"] as const;
 export type Theme = (typeof THEMES)[number];
 export type ResolvedTheme = "light" | "dark";
 
@@ -15,7 +15,7 @@ export function isTheme(value: unknown): value is Theme {
   return typeof value === "string" && (THEMES as readonly string[]).includes(value);
 }
 
-/** System is light or dark as the device is; Light and Dark are the person's own pick. */
+/** System follows the device; Gond is an explicit dark palette. */
 export function followsDevice(theme: Theme): boolean {
   return theme === "system";
 }
@@ -30,12 +30,19 @@ export function readStoredTheme(): Theme {
 }
 
 export function resolveTheme(theme: Theme): ResolvedTheme {
-  if (!followsDevice(theme)) return theme as ResolvedTheme;
+  if (theme === "gond") return "dark";
+  if (theme === "light" || theme === "dark") return theme;
   return window.matchMedia(DARK_QUERY).matches ? "dark" : "light";
 }
 
-export function applyTheme(resolved: ResolvedTheme) {
+export const THEME_BACKGROUNDS = { light: "#f5f3ee", dark: "#121212", gond: "#000000" } as const;
+
+export function applyTheme(resolved: ResolvedTheme, theme: Theme = resolved) {
   document.documentElement.classList.toggle("dark", resolved === "dark");
+  document.documentElement.setAttribute("data-theme", theme);
+  const background = THEME_BACKGROUNDS[theme === "gond" ? "gond" : resolved];
+  // Both media variants must reflect an explicit choice, even when the device uses another scheme.
+  document.querySelectorAll('meta[name="theme-color"]').forEach((meta) => meta.setAttribute("content", background));
 }
 
 export function applyAccent(accent: string) {
@@ -93,8 +100,8 @@ export function applySize(size: Size) {
  */
 const SIZE_SCRIPT = `var s=localStorage.getItem(${JSON.stringify(SIZE_STORAGE_KEY)}),m=window.gondMobile,o=!m||m.platform()!=="ios"||(typeof m.features==="function"&&m.features().indexOf("scale")>=0),k=o&&s===${JSON.stringify("large")}?${SIZE_SCALES.large}:1;if(k!==1)r.style.fontSize="${Math.round(SIZE_SCALES.large * 100)}%";if(o&&m&&typeof m.setScale==="function")m.setScale(k)`;
 
-export const THEME_INIT_SCRIPT = `(function(){try{var r=document.documentElement,t=localStorage.getItem(${JSON.stringify(
+export const THEME_INIT_SCRIPT = `(function(){try{var r=document.documentElement,t="system";try{t=localStorage.getItem(${JSON.stringify(
   THEME_STORAGE_KEY,
-)});var d=t==="dark"||(t!=="light"&&matchMedia(${JSON.stringify(
+)});}catch(e){}if(${JSON.stringify(THEMES)}.indexOf(t)<0)t="system";var d=t==="gond"||t==="dark"||(t==="system"&&matchMedia(${JSON.stringify(
   DARK_QUERY,
-)}).matches);r.classList.toggle("dark",d);var a=localStorage.getItem(${JSON.stringify(ACCENT_STORAGE_KEY)});if(a&&/^[a-z]+$/.test(a))r.setAttribute("data-accent",a);if(window.gondMobile)r.setAttribute("data-shell","phone");${SIZE_SCRIPT}}catch(e){}})()`;
+)}).matches);r.classList.toggle("dark",d);r.setAttribute("data-theme",t);var b=${JSON.stringify(THEME_BACKGROUNDS)}[t==="gond"?"gond":d?"dark":"light"];document.querySelectorAll('meta[name="theme-color"]').forEach(function(m){m.setAttribute("content",b)});var a=localStorage.getItem(${JSON.stringify(ACCENT_STORAGE_KEY)});if(a&&/^[a-z]+$/.test(a))r.setAttribute("data-accent",a);if(window.gondMobile)r.setAttribute("data-shell","phone");${SIZE_SCRIPT}}catch(e){}})()`;

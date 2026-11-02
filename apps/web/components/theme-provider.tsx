@@ -24,7 +24,9 @@ import {
 } from "@/lib/theme/theme";
 
 function syncShell(resolved: ResolvedTheme, system: boolean) {
-  const background = getComputedStyle(document.documentElement).getPropertyValue("--background").trim();
+  // The CSS optimizer may shorten #000000 to #000; native color parsers need six digits.
+  const background = getComputedStyle(document.documentElement).getPropertyValue("--background").trim()
+    .replace(/^#([\da-f])([\da-f])([\da-f])$/i, "#$1$1$2$2$3$3");
   const desktop = desktopShell();
   if (typeof desktop?.setTheme === "function") {
     void desktop.setTheme(background, resolved === "dark", system);
@@ -39,7 +41,7 @@ function syncShell(resolved: ResolvedTheme, system: boolean) {
 
 function apply(theme: Theme) {
   const resolved = resolveTheme(theme);
-  applyTheme(resolved);
+  applyTheme(resolved, theme);
   syncShell(resolved, followsDevice(theme));
 }
 

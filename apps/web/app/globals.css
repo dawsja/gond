@@ -436,6 +436,49 @@
   --bubble-you: #143e23;
 }
 
+/*
+ * Gond: Gond Code's true-black surfaces, with the same seven dark accents above.
+ * Keep this after the accent blocks: outgoing bubbles use the chosen tint's wash.
+ * Gond's --primary is a neutral field/button surface; tinted actions use --tint-solid.
+ * Text never uses Code's faint #5a5a5a or ash #6e6e6e: #8a8a8a clears AA on #1e1e1e.
+ */
+:root.dark[data-theme="gond"] {
+  --carbon: #ededed;
+  --paper-white: #0e0e0e;
+  --linen: #000000;
+  --mist: #1a1a1a;
+  --fog: #1c1c1c;
+  --ash: #8a8a8a;
+  --graphite: #8a8a8a;
+
+  --popover: #0e0e0e;
+  --primary: #141414;
+  --primary-edge: #262626;
+  --primary-edge-focus: var(--tint-edge);
+  --primary-shadow: none;
+  --bubble-you: var(--tint-wash);
+  --bubble-bot: #0e0e0e;
+  --control: var(--tint-solid);
+  --control-foreground: #ffffff;
+  --accent: #1e1e1e;
+  --destructive: #e5484d;
+  --input: #262626;
+  --ring: #5c5c5c;
+
+  --sidebar: #030303;
+  --sidebar-primary: var(--tint-solid);
+  --sidebar-primary-foreground: #ffffff;
+  --shadow-subtle: none;
+  --shadow-subtle-2: none;
+  --shadow-subtle-3: none;
+  --grid-line: #151515;
+}
+
+/* The existing sidebar explicitly uses the page's background in the other themes. */
+:root[data-theme="gond"] [data-sidebar="sidebar"] {
+  background-color: var(--sidebar);
+}
+
 /* A profile's mark wears that profile's colour, whatever the page's accent: each accent's solid, which carries white. */
 [data-mark="blue"] { --mark: #2c62ba; }
 [data-mark="purple"] { --mark: #6848bb; }

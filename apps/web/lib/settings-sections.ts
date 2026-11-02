@@ -14,7 +14,7 @@ export const SETTINGS_SECTIONS = [
   { id: "account", group: "you", label: "Account", blurb: "Your picture, your password, and exporting your chats.", icon: UserRound, admin: false },
   { id: "profiles", group: "you", label: "Profiles", blurb: "Separate worlds, like Work and home: each with its own bots, chats, keys and computer.", icon: Layers, admin: false },
   { id: "notifications", group: "you", label: "Notifications", blurb: "Where Gond tells you a bot finished or needs you: this browser or app.", icon: Bell, admin: false },
-  { id: "appearance", group: "you", label: "Appearance", blurb: "Light or dark, and the color of your chats.", icon: Palette, admin: false },
+  { id: "appearance", group: "you", label: "Appearance", blurb: "Your theme, size, and chat color.", icon: Palette, admin: false },
   { id: "personalization", group: "you", label: "Personalization", blurb: "How your bots talk to you: their style, and how many emoji.", icon: MessageCircleHeart, admin: false },
   { id: "computer", group: "you", label: "Your computer", blurb: "Where your bots work, and starting it fresh.", icon: Monitor, admin: false },
   { id: "ai", group: "bots", label: "AI", blurb: "What your bots run on: Claude Code on your plan or a key, your ChatGPT or Grok plan, or an API key.", icon: BrainCircuit, admin: false },
