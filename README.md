@@ -61,6 +61,13 @@ affiliated with xAI, Meta or Anthropic.
   scrubbed of stored values.
 - **Memory.** Each bot has its own, plus a team memory shared by all your
   bots. Handoffs that stall get chased.
+- **Shopping.** Bots show sourced product cards with photos, prices, stores,
+  stock and variants. Buy now prepares a checkout whose final total you
+  approve; confirmed orders keep their receipt and shipment updates in chat.
+  Browser checkout currently requires the same merchant origin and a readable
+  final summary; other checkouts need you on the screen. Security codes are
+  temporary and never saved. Shipment checks use connected email or retailer
+  pages, and pause when access needs you.
 - **Notifications.** Push when a bot finishes or needs you, but not for the
   chat you're already looking at. The Android and iPhone apps get them even
   when they're closed, through `api.gond.io` and Firebase, sealed so that

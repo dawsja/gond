@@ -147,6 +147,7 @@ export type ChatAttachment = {
 };
 
 export type Message = {
+  commerceId?: string | null;
   id: string;
   threadId: string;
   author: MessageAuthor;
@@ -2888,3 +2889,4 @@ export type ChatExport = {
   finishedAt: string | null;
   expiresAt: string | null;
 };
+export * from "./shopping.ts";

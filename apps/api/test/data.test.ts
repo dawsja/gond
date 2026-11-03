@@ -29,7 +29,13 @@ async function seedUsers(...people: [id: string, role: "admin" | "user"][]) {
     db.query('INSERT OR REPLACE INTO "user" (id, name, email, role, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)').run(id, id, `${id}@example.com`, role, "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z");
   }
 }
-afterAll(() => {
+afterAll(async () => {
+  // Windows cannot remove an open SQLite file; release this suite's cached connection first.
+  const { closeDb } = await import("../src/db/sqlite.ts");
+  const { resetDbReady } = await import("../src/db/init.ts");
+  closeDb();
+  resetDbReady();
+  Bun.gc(true);
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -4003,7 +4009,8 @@ describe("the computer", () => {
       const shown = (await (await send("GET", `/api/secret-requests/${card.approvalId}`)).json()) as { request: { target: string; total: string } };
       expect(shown.request).toMatchObject({ target: "card", total: "$12.48" });
       expect((await send("POST", `/api/secret-requests/${card.approvalId}`, { saved: "SAVED_CARD_NOPE" })).status).toBe(404);
-      const paid = (await (await send("POST", `/api/secret-requests/${card.approvalId}`, { saved: added.name })).json()) as { request: { status: string; card: string } };
+      // Saved cards no longer retain CVC; the payment form supplies it for this checkout only.
+      const paid = (await (await send("POST", `/api/secret-requests/${card.approvalId}`, { saved: added.name, cvc: "123" })).json()) as { request: { status: string; card: string } };
       expect(paid.request).toMatchObject({ status: "given", card: "Personal Visa" });
       const told = String(await paying);
       expect(told).toContain("CARD_NUMBER");

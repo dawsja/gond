@@ -8,6 +8,7 @@ import { decryptSecret, encryptSecret } from "../secrets.ts";
 import { allComposioKeys } from "./composio-keys.ts";
 import { allMcpProxyTokens } from "./mcp.ts";
 import { allProviderKeys, allProviderProxyTokens } from "./providers.ts";
+import { shoppingCardValues } from "./shopping.ts";
 
 function cardMetaOf(raw: string | null): CardMeta | null {
   if (!raw) return null;
@@ -42,7 +43,7 @@ export function saveCard(userId: string, card: CardDetails, nickname: string, na
   const at = now();
   ensureDatabase()
     .query("INSERT INTO gond_secrets (user_id, name, value, requested_by, site, card, created_at, updated_at) VALUES (?, ?, ?, NULL, NULL, ?, ?, ?) ON CONFLICT(user_id, name) DO UPDATE SET value = excluded.value, card = excluded.card, updated_at = excluded.updated_at")
-    .run(userId, target, encryptSecret(JSON.stringify(card)), JSON.stringify(meta), at, at);
+    .run(userId, target, encryptSecret(JSON.stringify({ ...card, cvc: "" })), JSON.stringify(meta), at, at);
   settingsChanged();
   return target;
 }
@@ -138,7 +139,7 @@ export function allSecretValues(): string[] {
     }
   }
   const serverComposio = (process.env.COMPOSIO_API_KEY ?? "").trim();
-  return [...out, ...heldLoginValues().flatMap((value) => [value, ...cardNumberForms(value).slice(1)]), ...allProviderKeys(), ...allProviderProxyTokens(), ...allMcpProxyTokens(), ...allComposioKeys(), ...(serverComposio ? [serverComposio] : [])];
+  return [...out, ...[...heldLoginValues(), ...shoppingCardValues()].flatMap((value) => [value, ...cardNumberForms(value).slice(1)]), ...allProviderKeys(), ...allProviderProxyTokens(), ...allMcpProxyTokens(), ...allComposioKeys(), ...(serverComposio ? [serverComposio] : [])];
 }
 
 export function injectSecrets(text: string, userId: string, missing?: (name: string) => void): string {

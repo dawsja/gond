@@ -62,6 +62,16 @@ export function ensureDatabase(): Database {
   runMigrations(db);
   db.query("INSERT OR IGNORE INTO gond_settings (id, updated_at) VALUES (1, ?)").run(now());
   rotateLegacySecrets(db);
+  // Security codes are temporary input, including for cards saved before shopping records existed.
+  for (const row of db.query("SELECT rowid AS rid, value FROM gond_secrets WHERE card IS NOT NULL").all() as { rid: number; value: string }[]) {
+    try {
+      const card = JSON.parse(decryptSecret(row.value));
+      if (card.cvc) db.query("UPDATE gond_secrets SET value = ? WHERE rowid = ?").run(encryptSecret(JSON.stringify({ ...card, cvc: "" })), row.rid);
+    } catch (error) { if (!(error instanceof SecretKeyError)) throw error; }
+  }
+  db.query("UPDATE gond_commerce SET state = 'unknown' WHERE kind = 'checkout' AND state = 'submitting'").run();
+  db.query("UPDATE gond_commerce SET state = 'expired' WHERE kind = 'checkout' AND state IN ('approved','review')").run();
+  db.query("UPDATE gond_commerce SET lease_until = NULL WHERE kind = 'order'").run();
   releaseClaims(db);
   holder.__gondDbReady = key;
   return db;

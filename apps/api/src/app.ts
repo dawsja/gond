@@ -32,6 +32,7 @@ import { voiceRoutes } from "./routes/voice.ts";
 import { callsRoutes } from "./routes/calls.ts";
 import { usageRoutes } from "./routes/usage.ts";
 import { readBody } from "./routes/body.ts";
+import { shoppingRoutes } from "./routes/shopping.ts";
 
 export type Env = { Variables: { session: Session; profile?: string } };
 
@@ -151,6 +152,7 @@ export function createApp() {
   app.route("/api", skillsRoutes());
   app.route("/api", mcpRoutes());
   app.route("/api", secretsRoutes());
+  app.route("/api", shoppingRoutes());
   app.route("/api", providerRoutes());
   app.route("/api", voiceRoutes());
   app.route("/api", callsRoutes());

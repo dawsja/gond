@@ -1054,6 +1054,25 @@ const MIGRATIONS: Array<string | ((db: Database) => void)> = [
   UPDATE gond_bots SET model = '';
   ALTER TABLE gond_bots ADD COLUMN model_for TEXT NOT NULL DEFAULT '';
   `,
+  `
+  ALTER TABLE gond_messages ADD COLUMN commerce_id TEXT;
+  CREATE TABLE gond_commerce (
+    id TEXT PRIMARY KEY, user_id TEXT NOT NULL, thread_id TEXT NOT NULL REFERENCES gond_threads(id) ON DELETE CASCADE,
+    bot_id TEXT NOT NULL REFERENCES gond_bots(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL CHECK(kind IN ('products','checkout','order')), state TEXT NOT NULL,
+    revision INTEGER NOT NULL DEFAULT 1, payload TEXT NOT NULL, private TEXT,
+    parent_id TEXT REFERENCES gond_commerce(id), action_key TEXT UNIQUE,
+    next_check_at TEXT, lease_until TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+  );
+  CREATE INDEX gond_commerce_owner ON gond_commerce(user_id, thread_id);
+  CREATE INDEX gond_commerce_due ON gond_commerce(next_check_at) WHERE kind = 'order';
+  CREATE UNIQUE INDEX gond_commerce_browser ON gond_commerce(bot_id) WHERE kind = 'checkout' AND state IN ('preparing','review','approved','submitting','unknown');
+  CREATE TABLE gond_commerce_events (
+    id TEXT PRIMARY KEY, record_id TEXT NOT NULL REFERENCES gond_commerce(id) ON DELETE CASCADE,
+    event_key TEXT NOT NULL, body TEXT NOT NULL, created_at TEXT NOT NULL,
+    UNIQUE(record_id, event_key)
+  );
+  `,
 ];
 
 /**

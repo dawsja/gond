@@ -10,6 +10,7 @@ import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLab
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
 import { apiShared, post } from "@/lib/api";
 
 const ANOTHER = "another";
@@ -36,6 +37,7 @@ export function PayCard({ request, bot, onAnswered }: { request: SecretRequest; 
   const [picked, setPicked] = useState<string | null>(null);
   const [values, setValues] = useState<CardValues>(EMPTY_CARD);
   const [remember, setRemember] = useState(true);
+  const [cvc, setCvc] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -43,7 +45,7 @@ export function PayCard({ request, bot, onAnswered }: { request: SecretRequest; 
   const site = request.site ?? "the checkout";
   const icon = <CreditCard aria-hidden="true" />;
   if (request.status !== "pending") {
-    const done = request.status === "given" ? { status: request.card ? `Paid with ${request.card}` : "Paid", tone: "ok" as const } : request.status === "declined" ? { status: "Not now", tone: "neutral" as const } : { status: "Expired", tone: "neutral" as const };
+    const done = request.status === "given" ? { status: request.card ? `Approved with ${request.card}` : "Payment approved", tone: "ok" as const } : request.status === "declined" ? { status: "Not now", tone: "neutral" as const } : { status: "Expired", tone: "neutral" as const };
     return <ActionCardDone id={request.id} bot={bot} icon={icon} title={`Pay on ${site}`} by={request.status === "expired" ? NOBODY_ANSWERED : `${name}${request.total ? ` · ${request.total}` : ""}`} status={done.status} tone={done.tone} />;
   }
 
@@ -57,9 +59,10 @@ export function PayCard({ request, bot, onAnswered }: { request: SecretRequest; 
     setBusy(true);
     setError(null);
     try {
-      const body = decline ? { decline: true } : typing ? { ...cardBody(values), remember } : { saved: choice };
+      const body = decline ? { decline: true } : typing ? { ...cardBody(values), remember } : { saved: choice, cvc };
       const data = await post<{ request: SecretRequest }>(`/api/secret-requests/${request.id}`, body);
       setValues(EMPTY_CARD);
+      setCvc("");
       if (!decline) cheerOnFold(request.id);
       onAnswered(data.request);
     } catch (failure) {
@@ -121,6 +124,7 @@ export function PayCard({ request, bot, onAnswered }: { request: SecretRequest; 
               </RadioGroup>
             </FieldSet>
           ) : null}
+          {cards && !typing ? <Field><FieldLabel htmlFor={`pay-${request.id}-cvc`}>Security code (if required)</FieldLabel><Input id={`pay-${request.id}-cvc`} type="password" inputMode="numeric" autoComplete="cc-csc" value={cvc} onChange={e => setCvc(e.target.value.replace(/\D/g, "").slice(0, 4))} /><FieldDescription>Used for this checkout only. Never saved.</FieldDescription></Field> : null}
           {cards && typing ? (
             <>
               <CardFields id={`pay-${request.id}`} values={values} onChange={setValues} nickname={false} />
