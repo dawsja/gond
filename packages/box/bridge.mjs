@@ -15,6 +15,38 @@ export function systemReminder(text) {
   return `<system-reminder>\nThis part of your instructions changed since this session started. It replaces the earlier copy:\n\n${text}\n</system-reminder>\n\n`;
 }
 
+/** A system prompt's `## ` sections by heading, or null when a heading repeats and sections can't be told apart. */
+function sectionsOf(text) {
+  const map = new Map();
+  for (const part of text.split(/\n(?=## )/)) {
+    const heading = part.split("\n", 1)[0];
+    if (map.has(heading)) return null;
+    map.set(heading, part);
+  }
+  return map;
+}
+
+// Past this share of the prompt, the whole of it is sent again: a handful of sections reads better than many.
+const WHOLE_PROMPT_SHARE = 0.6;
+
+/**
+ * What a running session is told when its system prompt changed: only the sections that changed or went,
+ * since every word sent stays in the session's history and is read again on every later turn; the whole
+ * prompt when the sections can't be matched or most of it changed.
+ */
+export function promptChangeReminder(before, after) {
+  const was = before === null ? null : sectionsOf(before);
+  const now = sectionsOf(after);
+  if (!was || !now) return systemReminder(after);
+  const changed = [...now].filter(([heading, part]) => was.get(heading) !== part).map(([, part]) => part);
+  const gone = [...was.keys()].filter((heading) => !now.has(heading));
+  const size = changed.reduce((sum, part) => sum + part.length, 0);
+  if (!changed.length && !gone.length) return "";
+  if (size > after.length * WHOLE_PROMPT_SHARE) return systemReminder(after);
+  const dropped = gone.length ? `\n\nThese sections no longer apply: ${gone.map((heading) => heading.replace(/^#+\s*/, "")).join(", ")}.` : "";
+  return `<system-reminder>\nThese sections of your instructions changed since this session started. Each replaces the section with the same heading; every other section stands as it was.\n\n${changed.join("\n\n")}${dropped}\n</system-reminder>\n\n`;
+}
+
 export function killTree(child, signal) {
   try {
     process.kill(-child.pid, signal);
@@ -131,6 +163,7 @@ export class BridgedSession {
     this.sessionId = null;
     this.argsKey = null;
     this.systemPromptHash = null;
+    this.systemPromptText = null;
     this.turn = null;
     this.idleTimer = null;
     this.bridge = null;

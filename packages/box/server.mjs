@@ -98,7 +98,9 @@ function screenTimer(target, bot) {
       last = at;
     },
     log(steps) {
-      if (SCREEN_TIMING) console.log(`[box] ${target} batch for ${bot} took ${Date.now() - started} ms (${steps} step${steps === 1 ? "" : "s"}): ${parts.join(", ") || "nothing timed"}`);
+      if (!SCREEN_TIMING) return;
+      const kinds = Array.isArray(steps) ? steps.map((step) => (step?.type === "wait" ? `wait ${step.ms ?? step.seconds ?? ""}`.trim() : String(step?.type ?? "?"))).join(" ") : "";
+      console.log(`[box] ${target} batch for ${bot} took ${Date.now() - started} ms (${kinds || "no steps"}): ${parts.join(", ") || "nothing timed"}`);
     },
   };
 }
@@ -1434,7 +1436,7 @@ async function computerRoute(request, response, account) {
   try {
     return await runBatch(body, response, account, timer);
   } finally {
-    timer.log(Array.isArray(body.steps) ? body.steps.length : 0);
+    timer.log(body.steps);
   }
 }
 
@@ -1857,6 +1859,26 @@ async function agentFor(account, id, bot, engine = "claude", guest = null) {
   return agent;
 }
 
+const memoryFolded = new Set();
+
+/**
+ * Claude Code's own memory is off in bot sessions (SESSION_ENV), so notes a bot kept there before are
+ * moved into its MEMORY.md once, where every engine reads them. Checked once per bot while the box runs;
+ * a stat as root, and a job as the person only when there is something to move.
+ */
+async function foldClaudeMemory(account, bot) {
+  const key = `${account.id}\n${bot}`;
+  if (memoryFolded.has(key)) return;
+  const home = botDir(account, bot);
+  const from = path.join(account.home, ".claude", "projects", home.replace(/[^A-Za-z0-9]/g, "-"), "memory");
+  try {
+    if (fs.existsSync(from)) await fileJob(account, { op: "fold-memory", from, to: home });
+    memoryFolded.add(key);
+  } catch (error) {
+    console.warn(`[box] couldn't move ${bot}'s Claude Code notes into its memory: ${error instanceof Error ? error.message : error}`);
+  }
+}
+
 function ownAgent(account, id) {
   const agent = agents.get(id);
   return agent && agent.user === account.id ? agent : undefined;
@@ -1886,6 +1908,7 @@ async function agentTurnRoute(request, response, id, account) {
   if (guest && engine !== "claude") throw new HttpError(400, "Only Claude Code runs as a guest");
   if (ownAgent(account, id)?.turn) throw new HttpError(409, "This bot is already answering");
   const agent = await agentFor(account, id, body.bot, engine, guest);
+  if (!guest) await foldClaudeMemory(account, body.bot);
 
   response.writeHead(200, {
     "Content-Type": "text/event-stream",

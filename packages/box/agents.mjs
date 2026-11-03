@@ -3,7 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { BridgedSession, EXIT_GRACE_MS, IDLE_MS, MAX_STDERR, ReplyText, killTree, systemReminder } from "./bridge.mjs";
+import { BridgedSession, EXIT_GRACE_MS, IDLE_MS, MAX_STDERR, ReplyText, killTree, promptChangeReminder } from "./bridge.mjs";
 import { CLAUDE_BIN, NOT_SIGNED_IN, writeSystemPrompt } from "./claude.mjs";
 
 
@@ -85,6 +85,13 @@ export function parseAccess(value) {
   const smallModel = typeof value.smallModel === "string" && /^[A-Za-z0-9._:/-]{1,120}(?:\[1m\])?$/.test(value.smallModel) ? value.smallModel : null;
   return { kind: "api", baseUrl, token, smallModel };
 }
+
+/**
+ * Every bot session's Claude Code. Its own auto memory writes to ~/.claude/projects/<folder>/memory, which
+ * Gond never loads, shows or moves to another engine: a bot told to remember something would say it
+ * saved it and keep it only while it stays on Claude Code. Off, memory goes through memory_update.
+ */
+export const SESSION_ENV = { CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1" };
 
 export function claudeAccessEnv(access) {
   if (access?.kind !== "api") return {};
@@ -396,7 +403,7 @@ export class AgentSession extends BridgedSession {
     this.backend = backend;
     if (this.running && this.argsKey === argsKey) return { launched: false };
     if (this.running) await this.close({ keepSession: true });
-    this.launchEnv = { ...this.env, ...claudeAccessEnv(access) };
+    this.launchEnv = { ...this.env, ...SESSION_ENV, ...claudeAccessEnv(access) };
     this.access = access;
 
     const version = claudeVersion({ bin: this.bin, env: this.env, uid: this.uid, gid: this.gid });
@@ -410,6 +417,7 @@ export class AgentSession extends BridgedSession {
     const mcp = this.writeMcpConfig(socketPath, mcpServers);
     this.cleanups = [persona.cleanup, mcp.cleanup];
     this.systemPromptHash = createHash("sha256").update(systemPrompt).digest("hex");
+    this.systemPromptText = systemPrompt;
 
     const resume = Boolean(this.sessionId);
     const sessionId = this.sessionId ?? randomUUID();
@@ -580,8 +588,9 @@ export class AgentSession extends BridgedSession {
     let text = prompt;
     const hash = createHash("sha256").update(systemPrompt).digest("hex");
     if (hash !== this.systemPromptHash) {
-      text = systemReminder(systemPrompt) + prompt;
+      text = promptChangeReminder(this.systemPromptText ?? null, systemPrompt) + prompt;
       this.systemPromptHash = hash;
+      this.systemPromptText = systemPrompt;
     }
     return new Promise((resolve) => {
       const turn = {

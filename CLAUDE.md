@@ -1197,7 +1197,12 @@ One line each: where to start, and what must not change.
   server needing sign-in stays off the session until signed in, and the
   proxy never answers a session with 401 (403 wrong token, 424 sign-in
   needed): Claude Code reads a 401 as an OAuth to run itself and digs in
-  `~/.claude`. OAuth follows the MCP authorization spec with dynamic
+  `~/.claude`. A server that doesn't answer an opening `initialize` in
+  `OPENING_WAIT_MS` is told "not now" for a minute (`forwardMcp`), and
+  only a sign-in landing or ending changes a session's launch config
+  (the `X-Gond-Mcp-Auth` header), so a dead server can't hold every
+  session start for Claude Code's 30 s. The `api` engine serves a stale
+  listing while it refreshes one beside the turn. OAuth follows the MCP authorization spec with dynamic
   registration and PKCE, tokens encrypted in the row, refreshed one at a
   time per server (refresh tokens are often single-use; a refusal while
   the token works signs nobody out). The web only sees `authStatus`.
@@ -1387,7 +1392,13 @@ a restart resumes (`resumeTeachings`), pictures expire a week after
   after a failed resume. Usage per result
   (`model_usage_since_last_result`, or the change in `modelUsage` on an
   older CLI) is a `usage` event; `rate_limit_event` is a `limits` event
-  (`usageSince`, `planLimits`, `countUsage`).
+  (`usageSince`, `planLimits`, `countUsage`). A changed system prompt
+  reaches a running session as only the `## ` sections that changed or
+  went (`promptChangeReminder`), since every word stays in its history.
+  Claude Code's own auto memory is off (`SESSION_ENV`): it kept notes in
+  `~/.claude/projects` that Gond never loads, so a bot said it saved
+  what only one engine would see. Notes kept there before are moved into
+  the bot's MEMORY.md once (`foldClaudeMemory`, `fold-memory`).
 - **Models** (`models.mjs`): Claude Code has no list, so it offers its
   aliases (`fable`, `opus`, `sonnet`, `haiku`, `opus` the default), which
   never go stale; only their labels carry versions, edited by hand. A CLI

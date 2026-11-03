@@ -1,7 +1,24 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { backendOf, claudeAccessEnv, keyRefusal, parseAccess, retryLine, statusLine } from "../agents.mjs";
-import { permissionDecision } from "../bridge.mjs";
+import { permissionDecision, promptChangeReminder } from "../bridge.mjs";
+
+test("a running session hears only the sections of its instructions that changed", () => {
+  const rules = `## House rules\n${"Be kind and brief. ".repeat(40)}`;
+  const before = `## What you are\nAn assistant.\n\n${rules}\n\n## Memory\n- likes tea\n\n## Where you are\nToday is 2026-11-02.`;
+  const after = `## What you are\nAn assistant.\n\n${rules}\n\n## Memory\n- likes tea\n- dentist is Dr. Okafor\n\n## Where you are\nToday is 2026-11-03.`;
+  const said = promptChangeReminder(before, after);
+  assert.match(said, /dentist is Dr\. Okafor/);
+  assert.match(said, /Today is 2026-11-03/);
+  assert.doesNotMatch(said, /House rules/);
+  assert.doesNotMatch(said, /What you are/);
+  assert.match(promptChangeReminder(after, after.replace(/\n\n## Memory[\s\S]*?(?=\n\n## Where)/, "")), /no longer apply: Memory/);
+  assert.equal(promptChangeReminder(after, after), "");
+  // Most of it changed, a heading repeats, or nothing came before: the whole prompt again.
+  assert.match(promptChangeReminder(before, "## What you are\nSomething else entirely."), /It replaces the earlier copy/);
+  assert.match(promptChangeReminder(`## A\nx\n## A\ny`, after), /It replaces the earlier copy/);
+  assert.match(promptChangeReminder(null, after), /House rules/);
+});
 
 const API = { kind: "api", baseUrl: "http://api:8790/api/llm/openai", token: "tok_abcdefghijklmnop" };
 
