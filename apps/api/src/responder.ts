@@ -34,7 +34,7 @@ import { sendPush } from "./push.ts";
 import { createRedactor } from "./redact.ts";
 import { skillsFor, skillsIndex, skillsReady } from "./skills.ts";
 import { renderSoul, skillsInUse, systemPromptFor, talkReminder } from "./souls.ts";
-import { clearWork, clipOutput, createTurnClock, labelStep, recordStep, timingLine, type StepUpdate } from "./work.ts";
+import { clearWork, clipOutput, createTurnClock, keepTurn, labelStep, noteRouteTime, recordStep, routeTimeOf, timingLine, type StepUpdate } from "./work.ts";
 import { boxPermission, endTurnOnExpiry, setAside } from "./approvals.ts";
 import { noteInterrupted, takeInterrupted, wasInterrupted } from "./resume.ts";
 import { turnTiming } from "./config.ts";
@@ -418,7 +418,9 @@ function postForRouter(thread: Thread, input: PersonLine): Message {
 
 async function routeAndDeliver(thread: Thread, message: Message, input: PersonLine) {
   const bots = listBots({ includeHidden: true, userId: thread.userId });
+  const routing = Date.now();
   const { targets, routed } = await routeLine(thread, message, visibleMembers(thread, bots), bots, roomBefore(thread, message));
+  if (turnTiming()) noteRouteTime(message.id, Date.now() - routing);
   if (!stillRouting(message.id)) return;
   if (routed) setSentTo(message.id, targets.map((b) => b.id));
   const { turns, all } = !input.after && !input.attachments?.length ? steerableTurns(thread, message, targets) : { turns: [], all: false };
@@ -689,6 +691,7 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
   const labels: ToolLabelContext = { home: ownerHome ? `${ownerHome}/${botHome(bot.id)}` : null, servers: mcpServersFor(bot).map((server) => ({ name: server.name })) };
 
   const clock = createTurnClock(Date.now, Date.parse(message.createdAt));
+  clock.routed(routeTimeOf(message.id));
   // Only an answer bound for the person is shown as it is written; one for a teammate or up a chain isn't theirs to read.
   const writing = active.route === "person" && !handedOnCall(message.id) ? createWriting((text) => emit({ topic: "writing", threadId: thread.id, botId: bot.id, text }), scrub) : null;
   const onText = (text: string | null) => {
@@ -714,17 +717,21 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
     const skills = listSkills(bot.userId);
     const run = engineRun(getAi(thread.userId), thread.userId, bot);
     engineName = ENGINE_LABELS[run.engine].name;
-    const onUsage = usageRecorder(thread.userId, bot.id, thread.id, run);
+    const record = usageRecorder(thread.userId, bot.id, thread.id, run);
+    const onUsage: typeof record = (usage) => {
+      clock.used(usage.tokens);
+      record(usage);
+    };
 
     active.steer = run.native ? async (text) => steers.push(text) : async (text) => (await steerAgent(box, agentId, text).catch(() => ({ steered: false }))).steered;
 
     // None of these wait on another, and each is a round trip to the computer or a service.
     const [memory, teamMemory, nativeMcp, apps] = await Promise.all([
-      syncSoul(bot).then(() => loadMemory(box, bot.id)),
-      loadTeamMemory(box, bot.userId),
-      run.native ? nativeMcpTools({ bot: bot, thread, signal: controller.signal }) : null,
-      appTools(context),
-      skillsReady(bot.userId),
+      clock.part("memory", syncSoul(bot).then(() => loadMemory(box, bot.id))),
+      clock.part("team memory", loadTeamMemory(box, bot.userId)),
+      run.native ? clock.part("mcp", nativeMcpTools({ bot: bot, thread, signal: controller.signal })) : null,
+      clock.part("apps", appTools(context)),
+      clock.part("skills", skillsReady(bot.userId)),
     ]);
     const tools = {
       ...(nativeMcp?.tools ?? {}),
@@ -751,7 +758,7 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
       mcpServers: nativeMcp?.servers ?? mcpServersFor(bot).map((m) => ({ name: m.name, note: m.authStatus === "needed" ? `not attached yet: it waits for the person to sign in, from its card or Settings → Apps → MCP servers → ${m.name} → Sign in, and its tools arrive on your next reply after that` : m.authStatus === "error" ? `sign-in problem (${m.authError ?? "unknown"}); its tools may fail` : undefined })),
     });
 
-    const delivered = message.attachments.length ? await deliverAttachments(box, bot, message, controller.signal, { pdf: !run.native || readsPdf(run.native) }) : { files: [], inline: [] };
+    const delivered = message.attachments.length ? await clock.part("files", deliverAttachments(box, bot, message, controller.signal, { pdf: !run.native || readsPdf(run.native) })) : { files: [], inline: [] };
     controller.signal.throwIfAborted();
     const inUse = skillsInUse(skillsFor(message.body, skills));
     const turnNotes = `${inUse ? `\n\n${inUse}` : ""}${resumed ? `\n\n${resumed}` : ""}`;
@@ -779,7 +786,7 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
           cacheKey: agentId,
           onText,
           onUsage,
-        }).then((native) => ({ ...native, recovered: false }))
+        }).then((native) => ({ ...native, recovered: false, launch: undefined }))
       : await cliTurn({
       box,
       agentId,
@@ -803,6 +810,7 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
       onUsage,
       onLimits: (limits) => saveClaudeLimits(thread.userId, limits),
     });
+    if (result.launch) clock.launched(result.launch);
     seenBy().set(agentId, { run: ranOn, at: result.ok && !run.native ? message.createdAt : null });
     const said = result.ok ? withoutQuietReply(result.text) : "";
     const silent = result.ok && !said && Boolean(result.text.trim());
@@ -850,7 +858,12 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
       markAnswered(message.id);
       if (message.kind === "prompt") lookTurnEnded(message.id, unanswered);
     }
-    if (summaryRun && turnTiming()) console.log(timingLine(bot.name, `${summaryRun.engine}${summaryRun.model ? ` ${summaryRun.model}` : ""}`, clock.timing()));
+    if (summaryRun && turnTiming()) {
+      const timing = clock.timing();
+      const details = clock.details();
+      console.log(timingLine(bot.name, `${summaryRun.engine}${summaryRun.model ? ` ${summaryRun.model}` : ""}`, timing, details));
+      keepTurn({ userId: thread.userId, threadId: thread.id, botId: bot.id, messageId: message.id, at: new Date().toISOString(), engine: summaryRun.engine, model: summaryRun.model, timing, ...details });
+    }
   }
   if (again) return "";
   if (!reply) closeCallTurn(message.id, stopped ? "stopped" : unanswered ? "failed" : "quiet");

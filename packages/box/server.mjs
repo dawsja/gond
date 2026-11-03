@@ -84,6 +84,25 @@ const SCREENSHOT_MS = 10_000;
 
 const SCREENSHOT_GAP_MS = 300;
 
+const SCREEN_TIMING = ["1", "true", "yes", "on"].includes((process.env.GOND_SCREEN_TIMING ?? "").trim().toLowerCase());
+
+/** Where one screen batch's time went, logged as one line under GOND_SCREEN_TIMING. */
+function screenTimer(target, bot) {
+  const started = Date.now();
+  let last = started;
+  const parts = [];
+  return {
+    mark(name) {
+      const at = Date.now();
+      parts.push(`${name} ${at - last} ms`);
+      last = at;
+    },
+    log(steps) {
+      if (SCREEN_TIMING) console.log(`[box] ${target} batch for ${bot} took ${Date.now() - started} ms (${steps} step${steps === 1 ? "" : "s"}): ${parts.join(", ") || "nothing timed"}`);
+    },
+  };
+}
+
 const UPDATE_SCRIPT = process.env.UPDATE_SCRIPT || path.join(path.dirname(fileURLToPath(import.meta.url)), "update.sh");
 
 const UPDATE_TIMEOUT_MS = 30 * 60 * 1000;
@@ -1411,6 +1430,15 @@ async function takeScreenshot(account, desktop, signal) {
 async function computerRoute(request, response, account) {
   const body = await readJson(request);
   if (typeof body.bot !== "string" || !ID.test(body.bot)) throw new HttpError(400, "Bad bot id");
+  const timer = screenTimer(body.target ?? "desktop", body.bot);
+  try {
+    return await runBatch(body, response, account, timer);
+  } finally {
+    timer.log(Array.isArray(body.steps) ? body.steps.length : 0);
+  }
+}
+
+async function runBatch(body, response, account, timer) {
   if (body.saveTo !== undefined && typeof body.saveTo !== "string") throw new HttpError(400, "saveTo must be a path");
   const target = body.target ?? "desktop";
   const saveTo = body.saveTo ? writableInsideHome(body.saveTo, account.home, forbiddenIn(account)) : null;
@@ -1418,6 +1446,7 @@ async function computerRoute(request, response, account) {
   const desktop = screenOf(account, body.bot);
   if (!desktop) throw new HttpError(502, "The screen isn't running");
   if (target !== "browser") await browserShown(account, desktop);
+  timer.mark("screen ready");
   touchDesktop(account, body.bot);
   let steps;
   try {
@@ -1461,6 +1490,7 @@ async function computerRoute(request, response, account) {
     let result;
     try {
       result = await browsers.run(account, steps, abort.signal, { view, format: saveTo || zoom ? "png" : "jpeg", bot: body.bot, zoom });
+      timer.mark("browser");
     } catch (error) {
       if (error instanceof BrowserError) throw new HttpError(error.status, error.message);
       throw error;
@@ -1510,9 +1540,12 @@ async function computerRoute(request, response, account) {
     done.push(describeStep(step));
   }
   if (failed) await releaseButton(account, desktop);
+  timer.mark("steps");
   const delay = settleMs(steps);
   if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
+  timer.mark("settle");
   const shot = await takeScreenshot(account, desktop, abort.signal);
+  timer.mark("screenshot");
   if (saveTo) return saved(shot.full, { done, error: failed, outputs });
   return answer({ image: shot.image.toString("base64"), mime: "image/png", width: shot.width, height: shot.height, done, error: failed, outputs });
 }

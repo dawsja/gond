@@ -97,6 +97,8 @@ type CliTurnResult = {
   error: string | null;
   recovered: boolean;
   signedOut?: boolean;
+  /** How the box found the session: running, resumed from its history, or new. */
+  launch?: "warm" | "resumed" | "launched";
 };
 
 type StreamEvent = { type?: string; message?: { content?: unknown }; parent_tool_use_id?: string | null };
@@ -237,6 +239,7 @@ export async function cliTurn(turn: CliTurn): Promise<CliTurnResult> {
     stopReason: result.stopReason,
     error: result.error ?? null,
     recovered: result.recovered,
+    launch: result.resumed ? "resumed" : result.launched ? "launched" : "warm",
     ...(result.signedOut ? { signedOut: true } : {}),
   };
 }

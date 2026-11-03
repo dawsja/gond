@@ -1284,6 +1284,24 @@ describe("turn timing", () => {
     t = 4000;
     expect(clock.timing()).toMatchObject({ totalMs: 3000, queuedMs: 600, setupMs: 800, firstMs: 1500, modelMs: 2200, toolsMs: 0 });
   });
+
+  test("the setup's parts, the router, the session's start and the tokens are kept beside the line", async () => {
+    const { createTurnClock, timingLine } = await import("../src/work.ts");
+    let t = 0;
+    const clock = createTurnClock(() => t);
+    clock.routed(1200);
+    let finish = () => {};
+    const memory = clock.part("memory", new Promise<void>((resolve) => (finish = resolve)));
+    t = 300;
+    finish();
+    await memory;
+    clock.launched("resumed");
+    clock.used({ input: 10, output: 5, cacheRead: 900, cacheWrite: 0 });
+    clock.used({ input: 2, output: 7, cacheRead: 950, cacheWrite: 40 });
+    const details = clock.details();
+    expect(details).toEqual({ parts: { memory: 300 }, routeMs: 1200, launch: "resumed", tokens: { input: 12, output: 12, cacheRead: 1850, cacheWrite: 40 } });
+    expect(timingLine("Patch", "claude opus", clock.timing(), details)).toEndWith("; routed in 1.2 s; session resumed; setup parts memory 0.3 s; tokens 12 in, 1850 cached, 40 cache written, 12 out");
+  });
 });
 
 describe("the computer tool", () => {

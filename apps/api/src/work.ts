@@ -1,4 +1,5 @@
 import { bareToolName, describeTool, isQuietTool, toolLine, WORK_OUTPUT_MAX, WORK_STEPS_MAX, type ToolLabelContext, type WorkStep } from "@gond/shared";
+import type { Tokens } from "./data/usage.ts";
 import { emit } from "./events.ts";
 
 export type StepUpdate = { id: string; tool?: string; input?: Record<string, unknown> } & Partial<Omit<WorkStep, "id" | "at">>;
@@ -71,6 +72,12 @@ export function clearWork(threadId: string, botId: string) {
 
 type TurnTiming = { totalMs: number; toolsMs: number; modelMs: number; rounds: number; calls: number; screen: number; queuedMs: number; setupMs: number; firstMs: number | null };
 
+/** How a CLI turn found its session: still running, started again from its saved history, or new. */
+export type TurnLaunch = "warm" | "resumed" | "launched";
+
+/** What the turn log adds under GOND_TURN_TIMING: each setup part's time, the router's, the session's start and the tokens. */
+export type TurnDetails = { parts: Record<string, number>; routeMs: number | null; launch: TurnLaunch | null; tokens: Tokens };
+
 /**
  * A turn's time from the message to its end: how long it waited to start (`queuedSince`), its setup
  * until `ready()` (the model is asked), when `firstText()` came, then the model's rounds and the tools.
@@ -85,7 +92,33 @@ export function createTurnClock(now: () => number = Date.now, queuedSince?: numb
   let rounds = 0;
   let calls = 0;
   let screen = 0;
+  const parts: Record<string, number> = {};
+  let routeMs: number | null = null;
+  let launch: TurnLaunch | null = null;
+  const tokens: Tokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
   return {
+    /** Times one part of the setup, which runs beside the others. */
+    part<T>(name: string, work: Promise<T>): Promise<T> {
+      const from = now();
+      return work.finally(() => {
+        parts[name] = now() - from;
+      });
+    },
+    routed(ms: number | null) {
+      routeMs = ms;
+    },
+    launched(how: TurnLaunch) {
+      launch = how;
+    },
+    used(more: Tokens) {
+      tokens.input += more.input;
+      tokens.output += more.output;
+      tokens.cacheRead += more.cacheRead;
+      tokens.cacheWrite += more.cacheWrite;
+    },
+    details(): TurnDetails {
+      return { parts: { ...parts }, routeMs, launch, tokens: { ...tokens } };
+    },
     ready() {
       if (setupMs || rounds || open.size) return;
       setupMs = now() - started;
@@ -121,7 +154,44 @@ export function createTurnClock(now: () => number = Date.now, queuedSince?: numb
 
 const seconds = (ms: number) => `${(ms / 1000).toFixed(1)} s`;
 
-export function timingLine(name: string, run: string, timing: TurnTiming): string {
+export function timingLine(name: string, run: string, timing: TurnTiming, details?: TurnDetails): string {
   const start = `waited ${seconds(timing.queuedMs)}, setup ${seconds(timing.setupMs)}, first words ${timing.firstMs === null ? "never" : `at ${seconds(timing.firstMs)}`}`;
-  return `[gond] ${name} took ${seconds(timing.totalMs)} on ${run} (${start}): ${timing.rounds} model round${timing.rounds === 1 ? "" : "s"} (${seconds(timing.modelMs)}), ${timing.calls} tool call${timing.calls === 1 ? "" : "s"} (${timing.screen} on the screen, ${seconds(timing.toolsMs)})`;
+  const line = `[gond] ${name} took ${seconds(timing.totalMs)} on ${run} (${start}): ${timing.rounds} model round${timing.rounds === 1 ? "" : "s"} (${seconds(timing.modelMs)}), ${timing.calls} tool call${timing.calls === 1 ? "" : "s"} (${timing.screen} on the screen, ${seconds(timing.toolsMs)})`;
+  if (!details) return line;
+  const extra = [
+    details.routeMs === null ? "" : `routed in ${seconds(details.routeMs)}`,
+    details.launch ? `session ${details.launch}` : "",
+    Object.keys(details.parts).length ? `setup parts ${Object.entries(details.parts).map(([part, ms]) => `${part} ${seconds(ms)}`).join(", ")}` : "",
+    `tokens ${details.tokens.input} in, ${details.tokens.cacheRead} cached, ${details.tokens.cacheWrite} cache written, ${details.tokens.output} out`,
+  ].filter(Boolean);
+  return `${line}; ${extra.join("; ")}`;
+}
+
+/** One finished turn as the timing log keeps it, for the person whose bot it was. */
+export type TurnRecord = { userId: string; threadId: string; botId: string; messageId: string; at: string; engine: string; model: string; timing: TurnTiming } & TurnDetails;
+
+const TURN_RECORDS = 500;
+const ROUTES_KEPT = 200;
+const records = holder as typeof holder & { __gondTurns?: TurnRecord[]; __gondRoutes?: Map<string, number> };
+
+/** Keeps a finished turn's timing (only under GOND_TURN_TIMING), newest last, the oldest dropped past 500. */
+export function keepTurn(record: TurnRecord) {
+  const list = (records.__gondTurns ??= []);
+  list.push(record);
+  if (list.length > TURN_RECORDS) list.splice(0, list.length - TURN_RECORDS);
+}
+
+export function turnsOf(userId: string, since?: string): TurnRecord[] {
+  return (records.__gondTurns ?? []).filter((turn) => turn.userId === userId && (!since || turn.at > since));
+}
+
+/** How long the router took over a line, read once by the turn that answers it. */
+export function noteRouteTime(messageId: string, ms: number) {
+  const routes = (records.__gondRoutes ??= new Map());
+  routes.set(messageId, ms);
+  if (routes.size > ROUTES_KEPT) routes.delete(routes.keys().next().value!);
+}
+
+export function routeTimeOf(messageId: string): number | null {
+  return records.__gondRoutes?.get(messageId) ?? null;
 }

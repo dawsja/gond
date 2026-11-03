@@ -60,6 +60,7 @@ services:
     restart: unless-stopped
     environment:
       - BOT_IDLE_MS
+      - GOND_SCREEN_TIMING
     volumes:
       # The register of accounts, so a recreated box makes the same users
       # again with the same ids.
