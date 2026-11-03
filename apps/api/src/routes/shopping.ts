@@ -38,9 +38,7 @@ export function shoppingRoutes() {
     if (typeof body.saved === "string") {
       const saved = readCard(me, body.saved);
       if (!saved) return c.json({ error: "Couldn't find that card" }, 404);
-      const cvc = typeof body.cvc === "string" ? body.cvc.trim() : "";
-      if (cvc && !/^\d{3,4}$/.test(cvc)) return c.json({ error: "Check the security code" }, 400);
-      card = { ...saved.card, cvc };
+      card = saved.card;
       label = cardLabel(saved.meta);
     } else {
       const checked = checkCard(body.card ?? {});

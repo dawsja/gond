@@ -1472,7 +1472,7 @@ a restart resumes (`resumeTeachings`), pictures expire a week after
 
 ## Tests
 
-Shopping lives in `data/shopping.ts`, `shopping.ts`, `routes/shopping.ts`, and `shopping-card.tsx`. Quote approval is revision-bound; only `submit_checkout` may submit an approved browser checkout, and an unknown outcome must be reconciled before another purchase. Card security codes are temporary and never saved.
+Shopping lives in `data/shopping.ts`, `shopping.ts`, `routes/shopping.ts`, and `shopping-card.tsx`. Quote approval is revision-bound; only `submit_checkout` may submit an approved browser checkout, and an unknown outcome must be reconciled before another purchase. Saved cards include their security code inside the encrypted card value; only the API injects it, and checkout never asks for it again.
 
 Prioritize development velocity without sacrificing meaningful
 correctness.

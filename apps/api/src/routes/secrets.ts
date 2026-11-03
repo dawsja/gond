@@ -29,9 +29,7 @@ export function secretsRoutes() {
       if (typeof body.saved === "string") {
         const saved = readCard(userId(c), body.saved);
         if (!saved) return c.json({ error: "Couldn't find that card" }, 404);
-        const cvc = typeof body.cvc === "string" ? body.cvc.trim() : "";
-        if (cvc && !/^\d{3,4}$/.test(cvc)) return c.json({ error: "Check the security code" }, 400);
-        picked = { card: { ...saved.card, cvc }, label: cardLabel(saved.meta) };
+        picked = { card: saved.card, label: cardLabel(saved.meta) };
       } else {
         const checked = checkCard(body.card ?? {});
         if ("error" in checked) return c.json({ error: checked.error }, 400);

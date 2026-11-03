@@ -129,11 +129,16 @@ describe("shopping purchase lifecycle", () => {
     expect(activeCheckout(bot.id, "shopping-owner")?.state).toBe("unknown");
     expect(() => claimSubmission(checkout.id, "shopping-owner", checkout.revision)).toThrow();
   });
-  test("never saves a security code, including when updating a saved card", () => {
+  test("keeps saved security codes encrypted and preserves them across restarts and card edits", () => {
     const name = saveCard("shopping-owner", card, "Personal");
-    expect(readCard("shopping-owner", name)?.card.cvc).toBe("");
+    expect(readCard("shopping-owner", name)?.card.cvc).toBe("123");
+    const stored = ensureDatabase().query("SELECT value, card FROM gond_secrets WHERE user_id = ? AND name = ?").get("shopping-owner", name) as { value: string; card: string };
+    expect(stored.value.startsWith("v2.")).toBe(true);
+    expect(stored.card).not.toContain("cvc");
+    resetDbReady(); ensureDatabase();
+    expect(readCard("shopping-owner", name)?.card.cvc).toBe("123");
     saveCard("shopping-owner", { ...card, cvc: "999" }, "Personal", name);
-    expect(readCard("shopping-owner", name)?.card.cvc).toBe("");
+    expect(readCard("shopping-owner", name)?.card.cvc).toBe("999");
   });
   test("a confirmed merchant failure releases the checkout without retrying its payment", () => {
     let { checkout, collection, input } = review();
@@ -157,5 +162,10 @@ describe("shopping purchase lifecycle", () => {
     const response = await app("shopping-owner").request(`/api/shopping/${checkout.id}/approve`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ revision: 0, card }) });
     expect(response.status).toBe(400);
     expect(checkoutRecord(checkout.id, "shopping-owner").state).toBe("review");
+    const saved = saveCard("shopping-owner", card, "Checkout Visa");
+    const approved = await app("shopping-owner").request(`/api/shopping/${checkout.id}/approve`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ revision: checkout.revision, saved }) });
+    expect(approved.status).toBe(200);
+    expect(approvedCard(checkoutRecord(checkout.id, "shopping-owner"))?.cvc).toBe("123");
+    expect(await approved.text()).not.toContain(card.number);
   });
 });
