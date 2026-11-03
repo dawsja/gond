@@ -5,6 +5,7 @@ import { encryptSecret, decryptSecret } from "../secrets.ts";
 import { threadChanged } from "../events.ts";
 import { getThread, postMessage } from "./threads.ts";
 import { spaceOfThread } from "./spaces.ts";
+import { shoppingPreviewOnly } from "../config.ts";
 
 type Row = { id: string; user_id: string; thread_id: string; bot_id: string; kind: ShoppingRecord["kind"]; state: string; revision: number; payload: string; private: string | null; next_check_at: string | null; lease_until: string | null; created_at: string; updated_at: string };
 const cards = new Map<string, { card: CardDetails; until: number }>();
@@ -119,6 +120,7 @@ export function prepareCheckout(id: string, userId: string, input: unknown): Sho
   });
 }
 export function approveCheckout(id: string, userId: string, revision: number, card: CardDetails, label: string): ShoppingCheckout {
+  if (shoppingPreviewOnly()) throw new Error("Purchases are disabled in this preview instance");
   return transaction(() => {
     const row = shoppingRow(id, userId), checkout = checkoutRecord(id, userId);
     if (checkout.revision !== revision || checkout.state !== "review" || !checkout.quote || !checkout.expiresAt || checkout.expiresAt <= now()) throw new Error("This quote changed or expired. Review it again before paying");
@@ -145,6 +147,7 @@ export function shoppingCardValues(): string[] {
   return [...cards.values()].flatMap(c => Object.values(c.card));
 }
 export function claimSubmission(id: string, userId: string, revision: number): ShoppingCheckout {
+  if (shoppingPreviewOnly()) throw new Error("Purchases are disabled in this preview instance");
   return transaction(db => {
     const checkout = checkoutRecord(id, userId);
     if (checkout.revision !== revision || !approvedCard(checkout) || !checkout.expiresAt || checkout.expiresAt <= now()) throw new Error("Payment approval changed or expired");

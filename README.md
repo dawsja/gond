@@ -179,6 +179,7 @@ need. These also work in `.env`, and nothing needs them:
 | `GOND_APPROVAL_TIMEOUT_MINUTES` | How long a card that needs you (an approval, a sign-in, a key) waits before it expires | `15` |
 | `GOND_NUDGE_MINUTES` | How long a handed-off task waits before a nudge | `120` |
 | `GOND_TURN_TIMING` | Set to `1` to log how long each bot turn took and where the time went (also read by `bun run bench`) | off |
+| `GOND_SHOPPING_PREVIEW` | Set to `1` for read-only shopping demos: block payment approval and submission, card injection, and browser form actions | off |
 | `GOND_SCREEN_TIMING` | Set to `1` on the computer to log where each screen batch's time went | off |
 | `BOT_IDLE_MS` | How long an idle bot session stays open | `600000` |
 | `GOND_BOX_MEMORY`, `GOND_BOX_CPUS`, `GOND_BOX_SHM` | The computer's limits | `4g`, `2`, `256m` |

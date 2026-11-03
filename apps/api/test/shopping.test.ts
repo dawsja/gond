@@ -31,6 +31,20 @@ function setup() {
 function review() { const ctx = setup(); setCheckoutAddress(ctx.checkout.id, "shopping-owner", 1, address); const checkout = prepareCheckout(ctx.checkout.id, "shopping-owner", quote); return { ...ctx, checkout }; }
 
 describe("shopping purchase lifecycle", () => {
+  test("preview mode blocks payment approval, submission and browser form actions", async () => {
+    const first = review();
+    const second = review();
+    const approved = approveCheckout(second.checkout.id, "shopping-owner", second.checkout.revision, card, "Visa");
+    const previous = process.env.GOND_SHOPPING_PREVIEW;
+    process.env.GOND_SHOPPING_PREVIEW = "1";
+    try {
+      expect(() => approveCheckout(first.checkout.id, "shopping-owner", first.checkout.revision, card, "Visa")).toThrow("disabled");
+      expect(() => claimSubmission(approved.id, "shopping-owner", approved.revision)).toThrow("disabled");
+      const tools = computerTool({ bot: first.bot, thread: getThread(first.bot.threadId)!, box: { url: "http://127.0.0.1:1", token: "unused", user: first.bot.userId } });
+      expect(String(await tools.browser.execute({ actions: [{ type: "click", label: "Add to cart" }] }, "preview"))).toContain("read-only");
+      expect(String(await tools.browser.execute({ actions: [{ type: "fill", label: "Card number", text: card.number }] }, "preview"))).toContain("read-only");
+    } finally { if (previous === undefined) delete process.env.GOND_SHOPPING_PREVIEW; else process.env.GOND_SHOPPING_PREVIEW = previous; }
+  });
   test("preparation cannot click a purchase button or submit through the desktop", async () => {
     const { bot } = setup();
     const tools = computerTool({ bot, thread: getThread(bot.threadId)!, box: { url: "http://127.0.0.1:1", token: "unused", user: bot.userId } });

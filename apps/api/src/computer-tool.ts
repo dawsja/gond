@@ -12,6 +12,7 @@ import { botHome } from "./memory.ts";
 import { sendPush } from "./push.ts";
 import { cardFieldValue, quoteSchema, shoppingPrice } from "@gond/shared";
 import { activeCheckout, approvedCard, checkoutRecord, claimSubmission, liveItemsMatch, liveTotalMatches, prepareCheckout, shoppingCardValues, unknownSubmission } from "./data/shopping.ts";
+import { shoppingPreviewOnly } from "./config.ts";
 
 const DISPLAY = { width: 1024, height: 640 };
 const MAX_ACTIONS = 300;
@@ -468,6 +469,11 @@ export function computerTool(context: Context): { computer: DriverTool; browser:
     ...(target === "desktop" ? { native: { anthropic: COMPUTER_NATIVE } } : {}),
     execute: async (raw) => {
       const checkout = activeCheckout(bot.id, bot.userId!);
+      if (shoppingPreviewOnly()) {
+        const actions = Array.isArray(raw.actions) ? raw.actions as Record<string, unknown>[] : [];
+        const readOnly = ["navigate", "read", "screenshot", "scroll", "wait_for", "tab", "new_tab", "close_tab", "back", "forward", "reload", "hover"];
+        if (target !== "browser" || !actions.length || actions.some(action => !readOnly.includes(String(action.type)))) return "This preview permits read-only browsing. Form entry, checkout actions and purchases are disabled.";
+      }
       if (checkout && checkout.threadId !== thread.id) return "This bot's browser is reserved by another conversation's checkout.";
       if (checkout && checkout.state === "preparing") {
         if (target !== "browser") return "Use the structured browser for shopping preparation; checkout submission requires its purchase card.";
