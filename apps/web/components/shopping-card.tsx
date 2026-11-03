@@ -20,14 +20,15 @@ import { Spinner } from "@/components/ui/spinner";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { apiShared, post } from "@/lib/api";
 import { pollWhileShown } from "@/lib/poll";
+import { cn } from "@/lib/utils";
 
-function ProductPhoto({ src, title, small = false }: { src?: string; title: string; small?: boolean }) {
+function ProductPhoto({ src, title, small = false, gallery = false }: { src?: string; title: string; small?: boolean; gallery?: boolean }) {
   const [failedSrc, setFailedSrc] = useState<string | undefined>(undefined);
-  return <div className={small ? "grid size-16 shrink-0 place-items-center overflow-hidden rounded-xl bg-muted" : "grid aspect-square w-full place-items-center overflow-hidden rounded-2xl bg-muted"}>
+  return <div className={small ? "grid size-16 shrink-0 place-items-center overflow-hidden rounded-xl bg-muted" : cn("grid w-full place-items-center overflow-hidden rounded-2xl bg-muted", gallery ? "h-[clamp(128px,22dvh,224px)] sm:aspect-square sm:h-auto" : "aspect-square")}>
     {src && failedSrc !== src ? (
       // Merchant images are validated public URLs; never send them through the server image optimizer.
       // eslint-disable-next-line @next/next/no-img-element
-      <img src={src} alt={title} loading="lazy" referrerPolicy="no-referrer" className="size-full object-contain" onError={() => setFailedSrc(src)} />
+      <img src={src} alt={title} loading="lazy" referrerPolicy="no-referrer" className="size-full min-h-0 object-contain" onError={() => setFailedSrc(src)} />
     ) : <ShoppingBag aria-label="No product photo available" />}
   </div>;
 }
@@ -96,13 +97,16 @@ function ProductDetails({ product, collectionId, close }: { product: ShoppingPro
   const [offerId, setOffer] = useState("");
   const offers = [...variant.offers].sort((a, b) => Number(b.availability === "in_stock") - Number(a.availability === "in_stock"));
   const offer = offers.find(o => o.id === offerId) ?? offers[0]!;
-  const [photo, setPhoto] = useState(0), [quantity, setQuantity] = useState(1), [busy, setBusy] = useState(false), [error, setError] = useState<string | null>(null);
+  const [photo, setPhoto] = useState(0), [quantity, setQuantity] = useState("1"), [busy, setBusy] = useState(false), [error, setError] = useState<string | null>(null);
+  const quantityValue = Number(quantity);
+  const quantityValid = quantity.trim() !== "" && Number.isInteger(quantityValue) && quantityValue >= 1 && quantityValue <= 20;
   const actionKey = useRef(crypto.randomUUID());
   const options = variants.map(v => ({ value: v.id, label: Object.values(v.options).join(" · ") || "Standard", disabled: v.offers.every(o => o.availability === "out_of_stock") }));
   const selectVariant = (id: string) => { setVariant(id); setOffer(""); };
   async function buy() {
+    if (!quantityValid || busy) return;
     setBusy(true); setError(null);
-    try { await post(`/api/shopping/${collectionId}/checkout`, { productId: product.id, variantId, offerId: offer.id, quantity, actionKey: actionKey.current }); close(); }
+    try { await post(`/api/shopping/${collectionId}/checkout`, { productId: product.id, variantId, offerId: offer.id, quantity: quantityValue, actionKey: actionKey.current }); close(); }
     catch (e) { setError(e instanceof Error ? e.message : "Couldn't start checkout"); }
     finally { setBusy(false); }
   }
@@ -113,7 +117,7 @@ function ProductDetails({ product, collectionId, close }: { product: ShoppingPro
         if (event.key === "ArrowLeft") { event.preventDefault(); setPhoto(index => Math.max(0, index - 1)); }
         if (event.key === "ArrowRight") { event.preventDefault(); setPhoto(index => Math.min(product.images.length - 1, index + 1)); }
       }}>
-        <ProductPhoto src={product.images[photo]} title={product.title} />
+        <ProductPhoto src={product.images[photo]} title={product.title} gallery />
         {photo > 0 ? <Button size="icon-lg" className="absolute top-1/2 left-3 -translate-y-1/2" aria-label="Previous image" onClick={() => setPhoto(index => index - 1)}><ChevronLeft /></Button> : null}
         {photo < product.images.length - 1 ? <Button size="icon-lg" className="absolute top-1/2 right-3 -translate-y-1/2" aria-label="Next image" onClick={() => setPhoto(index => index + 1)}><ChevronRight /></Button> : null}
         <span className="sr-only" aria-live="polite">{product.images.length ? `Image ${photo + 1} of ${product.images.length}` : "No product images"}</span>
@@ -124,7 +128,11 @@ function ProductDetails({ product, collectionId, close }: { product: ShoppingPro
           <SelectContent><SelectGroup>{options.map(option => <SelectItem key={option.value} value={option.value} disabled={option.disabled}>{option.label}</SelectItem>)}</SelectGroup></SelectContent>
         </Select> : options.length === 1 ? <p className="text-sm">{options[0].label}</p> : <ToggleGroup aria-labelledby={`option-label-${product.id}`} variant="outline" value={[variantId]} onValueChange={value => { if (value[0]) selectVariant(String(value[0])); }} className="flex-wrap">{options.map(option => <ToggleGroupItem key={option.value} value={option.value} disabled={option.disabled}>{option.label}</ToggleGroupItem>)}</ToggleGroup>}</Field>
         <Field><FieldLabel>Store</FieldLabel><RadioGroup value={offer.id} onValueChange={v => setOffer(String(v))}>{offers.map(o => <Field key={o.id} orientation="horizontal"><RadioGroupItem id={`offer-${o.id}`} value={o.id} disabled={o.availability === "out_of_stock"} /><FieldLabel htmlFor={`offer-${o.id}`}>{o.store} · {shoppingPrice(o.price)} · {stockLabel(o.availability)}</FieldLabel></Field>)}</RadioGroup></Field>
-        <Field><FieldLabel htmlFor="shopping-quantity">Quantity</FieldLabel><Input id="shopping-quantity" type="number" min={1} max={20} value={quantity} onChange={e => setQuantity(Number(e.target.value))} /></Field>
+        <Field data-invalid={!quantityValid || undefined}>
+          <FieldLabel htmlFor="shopping-quantity">Quantity</FieldLabel>
+          <Input id="shopping-quantity" className="scroll-mb-40" type="number" inputMode="numeric" min={1} max={20} step={1} required value={quantity} onChange={e => setQuantity(e.target.value)} aria-invalid={!quantityValid} aria-describedby={!quantityValid ? "shopping-quantity-error" : undefined} />
+          {!quantityValid ? <FieldError id="shopping-quantity-error">Enter a whole number from 1 to 20.</FieldError> : null}
+        </Field>
         <p className="text-sm text-muted-foreground">{offer.delivery || "Delivery confirmed at checkout"}</p>
         <p className="text-xs text-muted-foreground">Checked {new Date(offer.observedAt).toLocaleString()}. Price and stock will be rechecked.</p>
         {error ? <FieldError>{error}</FieldError> : null}
@@ -133,7 +141,7 @@ function ProductDetails({ product, collectionId, close }: { product: ShoppingPro
     </div>
     <DialogFooter>
       <Button variant="outline" nativeButton={false} render={<a href={offer.url} target="_blank" rel="noopener noreferrer" />}>View at {offer.store}<ExternalLink data-icon="inline-end" /></Button>
-      <Button size="lg" disabled={busy || offer.availability === "out_of_stock" || quantity < 1 || quantity > 20} onClick={() => void buy()}>{busy ? <Spinner /> : null}Buy now</Button>
+      <Button size="lg" disabled={busy || offer.availability === "out_of_stock" || !quantityValid} onClick={() => void buy()}>{busy ? <Spinner /> : null}Buy now</Button>
     </DialogFooter>
   </>;
 }
