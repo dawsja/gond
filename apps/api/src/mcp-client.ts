@@ -15,6 +15,14 @@ const CALL_TIMEOUT_MS = 120_000;
 const MAX_RESULT = 24_000;
 const TOOL_NAME = /^[A-Za-z0-9_-]{1,64}$/;
 
+// A session opening with a server that doesn't answer waits on it before its first word (Claude Code gives
+// each server 30 s at start), so an opening `initialize` gets a short wait, and a server that missed it is
+// answered "not now" at once for a minute rather than waited on by every session and turn in that time.
+const OPENING = /"method"\s*:\s*"initialize"/;
+const OPENING_WAIT_MS = 8_000;
+const UNANSWERED_FOR_MS = 60_000;
+const unanswered = new Map<string, number>();
+
 type Forward = { method: string; suffix: string; search: string; headers: Headers; body?: BodyInit | null; signal?: AbortSignal };
 
 /**
@@ -41,12 +49,26 @@ export async function forwardMcp(server: McpServer, request: Forward): Promise<R
     return Response.json({ error: `${server.name} needs the person to sign in first: Settings → Apps → MCP servers → ${server.name} → Sign in.` }, { status: 424 });
   }
 
+  const hasBody = request.method !== "GET" && request.method !== "HEAD" && request.body != null;
+  // JSON-RPC bodies are small; read whole so an opening `initialize` can be told apart.
+  const body = hasBody ? await new Response(request.body).text() : undefined;
+  const opening = body !== undefined && OPENING.test(body);
+  if (opening && (unanswered.get(server.id) ?? 0) > Date.now()) {
+    return Response.json({ error: `${server.name} isn't answering right now; Gond tries it again in a minute.` }, { status: 503 });
+  }
+  const gaveUp = new AbortController();
+  const timer = opening ? setTimeout(() => gaveUp.abort(), OPENING_WAIT_MS) : null;
   let upstream: Response;
   try {
-    upstream = await fetch(target, { method: request.method, headers, body: request.method === "GET" || request.method === "HEAD" ? undefined : request.body, redirect: "manual", signal: request.signal, ...({ duplex: "half" } as object) });
+    upstream = await fetch(target, { method: request.method, headers, body, redirect: "manual", signal: request.signal ? AbortSignal.any([request.signal, gaveUp.signal]) : gaveUp.signal });
   } catch (error) {
+    if (opening) unanswered.set(server.id, Date.now() + UNANSWERED_FOR_MS);
+    if (gaveUp.signal.aborted) return Response.json({ error: `${server.name} didn't answer within ${OPENING_WAIT_MS / 1000} seconds.` }, { status: 504 });
     return Response.json({ error: `The MCP server didn't answer: ${error instanceof Error ? error.message : "unknown error"}` }, { status: 502 });
+  } finally {
+    if (timer) clearTimeout(timer);
   }
+  if (opening) unanswered.delete(server.id);
   if (upstream.status === 401) {
     await upstream.body?.cancel().catch(() => undefined);
     void probeMcpServer(server.id).catch(() => undefined);
@@ -157,7 +179,11 @@ export type McpServerNote = { name: string; note?: string };
 // Each server's tool list, so a turn doesn't open every server just to learn its tools; a refresh,
 // a sign-in or new headers make a new key.
 const listings = new Map<string, { at: number; tools: McpToolInfo[] }>();
-const listingKey = (server: McpServer) => JSON.stringify([server.id, server.url, server.refreshedAt, server.authStatus, server.headers]);
+const refreshing = new Set<string>();
+// After a failed refresh, the next is tried this much later rather than on every turn.
+const RETRY_LISTING_MS = 60_000;
+// Signed in or not is what changes a server's tools; a probe flipping it between fine and failing isn't.
+const listingKey = (server: McpServer) => JSON.stringify([server.id, server.url, server.refreshedAt, server.authStatus === "signed_in", server.headers]);
 
 /**
  * The `api` engine's MCP servers: it runs in the API, not in a CLI on the
@@ -180,8 +206,21 @@ export async function nativeMcpTools(context: { bot: Bot; thread: Thread; signal
       const key = listingKey(server);
       const cached = listings.get(key);
       let listed: McpToolInfo[];
-      if (cached && Date.now() - cached.at < LIST_CACHE_MS) {
+      if (cached) {
+        // A listing past its time still serves this turn while a fresh one is fetched beside it, so a slow
+        // or failing server never holds up the turn; a failed fetch keeps the last good list.
         listed = cached.tools;
+        if (Date.now() - cached.at >= LIST_CACHE_MS && !refreshing.has(key)) {
+          refreshing.add(key);
+          const fresh = new McpSession(server);
+          const signal = AbortSignal.timeout(OPEN_TIMEOUT_MS);
+          void fresh
+            .open(signal)
+            .then(() => fresh.listTools(signal))
+            .then((tools) => listings.set(key, { at: Date.now(), tools }))
+            .catch(() => listings.set(key, { at: Date.now() - LIST_CACHE_MS + RETRY_LISTING_MS, tools: cached.tools }))
+            .finally(() => refreshing.delete(key));
+        }
       } else {
         try {
           const signal = AbortSignal.any([AbortSignal.timeout(OPEN_TIMEOUT_MS), ...(context.signal ? [context.signal] : [])]);

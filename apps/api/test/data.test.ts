@@ -1666,6 +1666,32 @@ describe("data", () => {
     }
   });
 
+  test("a server that doesn't answer is waited on once, then told not now, and never relaunches a session by failing", async () => {
+    const { createMcpServer, deleteMcpServer, setMcpAuthStatus } = await import("../src/data/mcp.ts");
+    const { boxMcpServers } = await import("../src/mcp.ts");
+    const { mcpProxyRoutes } = await import("../src/routes/mcp.ts");
+    const { Hono } = await import("hono");
+    const gone = Bun.serve({ port: 0, fetch: () => new Response() });
+    const port = gone.port;
+    gone.stop(true);
+    const server = createMcpServer({ name: "gone", transport: "http", url: `http://127.0.0.1:${port}/mcp`, headers: {}, args: [], env: {}, enabled: true }, "u-gone");
+    try {
+      const [given] = boxMcpServers({ userId: "u-gone" });
+      if (given?.type !== "http") throw new Error("expected an http server");
+      const app = new Hono().route("/api", mcpProxyRoutes());
+      const open = () => app.request(new URL(given.url).pathname, { method: "POST", headers: { "content-type": "application/json", ...given.headers }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize" }) });
+      expect((await open()).status).toBe(502);
+      const again = await open();
+      expect(again.status).toBe(503);
+      expect(((await again.json()) as { error: string }).error).toContain("isn't answering");
+      // The probe marking it failed changes nothing the session is launched with.
+      setMcpAuthStatus(server.id, "error", "no answer");
+      expect(boxMcpServers({ userId: "u-gone" })[0]).toEqual(given);
+    } finally {
+      deleteMcpServer(server.id);
+    }
+  });
+
   test("a server's picture comes from its host's site icon, an app it's named after, or nothing", async () => {
     const { createMcpServer, deleteMcpServer } = await import("../src/data/mcp.ts");
     const { iconHosts, resolveMcpIcon } = await import("../src/mcp-icon.ts");

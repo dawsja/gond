@@ -19,7 +19,9 @@ export function boxMcpServers(bot: Pick<Bot, "userId">): BoxMcpServer[] {
 
 function toBoxServer(server: McpServer): BoxMcpServer {
   if (server.transport === "http") {
-    return { name: server.name, type: "http", url: `${apiInternalUrl()}/api/mcp/${server.id}/mcp`, headers: { "X-Gond-Mcp-Token": mcpProxyToken(server.id) ?? "", "X-Gond-Mcp-Auth": server.authStatus }, ...rev(server) };
+    // The auth header only relaunches a session when a sign-in lands or ends: a probe flipping a server between
+    // fine and failing would otherwise relaunch it, and a dead server makes Claude Code wait on it at every start.
+    return { name: server.name, type: "http", url: `${apiInternalUrl()}/api/mcp/${server.id}/mcp`, headers: { "X-Gond-Mcp-Token": mcpProxyToken(server.id) ?? "", "X-Gond-Mcp-Auth": server.authStatus === "signed_in" ? "signed_in" : "none" }, ...rev(server) };
   }
   return { name: server.name, type: "stdio", command: server.command ?? "", args: server.args, env: server.env, ...rev(server) };
 }
