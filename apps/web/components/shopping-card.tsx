@@ -105,7 +105,7 @@ function Products({ record }: { record: ProductCollection }) {
             return (
               <Card key={p.id} className="row-span-5 grid snap-start grid-rows-subgrid gap-y-2 overflow-hidden p-3">
                 <CardHeader className="relative p-0">
-                  <Button variant="ghost" className="h-auto w-full p-0" onClick={() => setProduct(p)} aria-label={`View ${p.title}`}>
+                  <Button variant="link" size="text" className="w-full" onClick={() => setProduct(p)} aria-label={`View ${p.title}`}>
                     <ProductPhoto src={p.images[0]} title={p.title} />
                   </Button>
                   <div className="pointer-events-none absolute top-2 left-2 flex flex-wrap gap-1">
@@ -116,7 +116,7 @@ function Products({ record }: { record: ProductCollection }) {
                 </CardHeader>
                 <CardContent className="row-span-3 grid grid-rows-subgrid gap-y-1 p-0">
                   <CardTitle>
-                    <Button variant="ghost" className="h-auto w-full justify-start p-0 text-left whitespace-normal" onClick={() => setProduct(p)}>
+                    <Button variant="link" size="text" className="w-full" onClick={() => setProduct(p)}>
                       {p.title}
                     </Button>
                   </CardTitle>
