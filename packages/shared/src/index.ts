@@ -2127,7 +2127,11 @@ export function plainMarkdown(text: string): string {
 }
 
 export type ToolLabel = { verb: string; detail: string | null };
-export type ToolLabelContext = { home?: string | null; servers?: { name: string }[] };
+/**
+ * `plain`: for a line the person reads (the work line), in their words, with no command or full path.
+ * Without it the label is exact, for the work log and what a retried turn hears it already did.
+ */
+export type ToolLabelContext = { home?: string | null; servers?: { name: string }[]; plain?: boolean };
 
 const BRIDGE_PREFIX = /^mcp__gond__/;
 const COMPOSIO_ACTION = /^[A-Z][A-Z0-9]+_[A-Z0-9_]+$/;
@@ -2178,6 +2182,45 @@ function shownPath(value: unknown, home?: string | null): string | null {
 
 function baseName(path: string): string {
   return path.replace(/\/+$/, "").split("/").pop() ?? path;
+}
+
+/**
+ * A path as a person would say it in a work line: the bot's memory, the team's memory, a skill, a file
+ * they sent, else the file's own name. Never a full path: those mean nothing to the person reading.
+ * `home` is the bot's own folder (`<person's home>/.bots/<id>`).
+ */
+export function placeOf(value: unknown, home?: string | null): string | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  let path = value.trim().replace(/\/+$/, "");
+  const person = home ? home.replace(/\/\.bots\/[^/]+$/, "") : null;
+  if (person && path.startsWith("~/")) path = `${person}${path.slice(1)}`;
+  const own = home && (path === home || path.startsWith(`${home}/`)) ? path.slice(home.length + 1) : home && !path.startsWith("/") && !path.startsWith("~") ? path : null;
+  if (own !== null) {
+    if (own === "" || own === ".") return "its folder";
+    if (own === "MEMORY.md" || own === "memory" || own.startsWith("memory/")) return "its memory";
+    if (own === "SOUL.md") return "its profile";
+    if (own === "inbox" || own.startsWith("inbox/")) return "a file you sent";
+  }
+  if (/(^|\/)\.team(\/|$)/.test(path)) return "the team memory";
+  const skill = /(^|\/)\.skills\/([^/]+)/.exec(path);
+  if (skill) return `the ${skill[2]} skill`;
+  if (/(^|\/)\.skills$/.test(path)) return "the skills";
+  if (/(^|\/)\.claude(\.json)?(\/|$)/.test(path)) return "Claude Code's settings";
+  return short(baseName(path)) ?? short(path);
+}
+
+// A path in a bot's own words: absolute or from home, with at least one folder in it.
+const PATH_IN_TEXT = /(?<![\w.:/])(?:~|\/[\w.@-]+)(?:\/[\w.@-]+)+\/?/g;
+
+/** A bot's narration with every path in it said as `placeOf` would, for the work line. */
+export function withoutPaths(text: string, home?: string | null): string {
+  return text.replace(PATH_IN_TEXT, (path) => placeOf(path, home) ?? path);
+}
+
+/** What a shell command is for, from the few words Claude Code gives with each, never the command itself. */
+function commandLine(input: Record<string, unknown>, home?: string | null): ToolLabel {
+  const said = short(typeof input.description === "string" ? withoutPaths(input.description, home) : null, 80);
+  return said ? { verb: said.charAt(0).toUpperCase() + said.slice(1), detail: null } : { verb: "Running a command", detail: null };
 }
 
 const GERUNDS: Record<string, string> = {
@@ -2361,24 +2404,31 @@ export function describeTool(name: string, input: Record<string, unknown> = {}, 
   const home = context.home ?? null;
   switch (tool) {
     case "Bash": {
+      if (context.plain) return commandLine(input, home);
       const command = short(input.command);
       return { verb: "Running", detail: command ? `\`${command}\`` : null };
     }
     case "Read":
     case "NotebookRead":
-      return { verb: "Reading", detail: shownPath(fileOf(input), home) };
+      return { verb: "Reading", detail: context.plain ? placeOf(fileOf(input), home) : shownPath(fileOf(input), home) };
     case "Edit":
     case "Write":
     case "MultiEdit":
-    case "NotebookEdit":
-      return { verb: "Editing", detail: shownPath(fileOf(input), home) };
+    case "NotebookEdit": {
+      if (!context.plain) return { verb: "Editing", detail: shownPath(fileOf(input), home) };
+      const place = placeOf(fileOf(input), home);
+      return place === "its memory" || place === "the team memory" ? { verb: `Updating ${place}`, detail: null } : { verb: "Editing", detail: place };
+    }
     case "Glob":
+      if (context.plain) return { verb: "Looking for files", detail: null };
+    // falls through: exact, both say their pattern
     case "Grep": {
-      const pattern = short(input.pattern);
+      // In plain words a word reads well in quotes; a regular expression or a glob doesn't.
+      const pattern = context.plain ? (typeof input.pattern === "string" && /^[\w '.-]{1,40}$/.test(input.pattern.trim()) ? quoted(input.pattern) : null) : short(input.pattern);
       return { verb: "Searching files", detail: pattern ? `for ${pattern}` : null };
     }
     case "LS":
-      return { verb: "Listing", detail: shownPath(input.path, home) };
+      return context.plain ? { verb: "Looking in", detail: placeOf(input.path, home) ?? "its folder" } : { verb: "Listing", detail: shownPath(input.path, home) };
     case "WebFetch":
       return { verb: "Opening", detail: hostOf(input.url) };
     case "WebSearch": {
@@ -2402,7 +2452,7 @@ export function describeTool(name: string, input: Record<string, unknown> = {}, 
     case "post_message":
       return { verb: "Posting a message", detail: null };
     case "run_with_secrets":
-      return { verb: "Running", detail: typeof input.command === "string" ? short(input.command) : null };
+      return context.plain ? commandLine(input, home) : { verb: "Running", detail: typeof input.command === "string" ? short(input.command) : null };
     case "react":
       return { verb: "Reacting", detail: typeof input.emoji === "string" ? input.emoji : null };
     case "create_image":

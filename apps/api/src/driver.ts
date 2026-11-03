@@ -1,4 +1,4 @@
-import { isQuietTool, toolLabel, toolLine, type Engine, type ToolLabelContext } from "@gond/shared";
+import { isQuietTool, toolLabel, toolLine, withoutPaths, type Engine, type ToolLabelContext } from "@gond/shared";
 import { answerAgentTool, runAgentTurn, type AgentTool, type BoxAccess, type BoxConfig } from "./box.ts";
 import type { ModelUsage } from "./data/usage.ts";
 import { labelStep, type StepUpdate } from "./work.ts";
@@ -123,9 +123,9 @@ export function activityLine(line: string, context: ToolLabelContext = {}): stri
   const out: string[] = [];
   for (const block of blocks) {
     if (block.type === "text" && typeof block.text === "string" && block.text.trim()) {
-      out.push(block.text.trim().replace(/\s+/g, " ").slice(0, 200));
+      out.push(withoutPaths(block.text.trim().replace(/\s+/g, " "), context.home).slice(0, 200));
     } else if (block.type === "tool_use") {
-      const title = toolLine(toolLabel(block.name ?? "tool", block.input ?? {}, context));
+      const title = toolLine(toolLabel(block.name ?? "tool", block.input ?? {}, { ...context, plain: true }));
       if (title) out.push(title);
     }
   }
@@ -226,7 +226,7 @@ export async function cliTurn(turn: CliTurn): Promise<CliTurnResult> {
           turn.onLog(event.line);
         } else if (event.type === "step") {
           const step = labelStep(event.step, context);
-          if (turn.onLog && event.step.tool && event.step.title === undefined && step.title && !step.quiet) turn.onLog(step.title);
+          if (turn.onLog && event.step.tool && event.step.title === undefined && step.title && !step.quiet) turn.onLog(toolLine(toolLabel(event.step.tool, event.step.input ?? {}, { ...context, plain: true })) ?? step.title);
           turn.onStep?.(step);
         }
       },

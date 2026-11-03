@@ -622,7 +622,7 @@ export async function nativeTurn(turn: NativeTurn): Promise<NativeResult> {
     }
     if (answer.usage) turn.onUsage?.({ model: turn.model, ...answer.usage });
     for (const search of answer.searches) {
-      const line = toolLine(toolLabel(search.name, search.input));
+      const line = toolLine(toolLabel(search.name, search.input, { plain: true }));
       if (line) turn.onLog?.(line);
       turn.onStep?.(labelStep({ id: search.id, tool: search.name, input: search.input, status: "done" }));
     }
@@ -651,7 +651,7 @@ export async function nativeTurn(turn: NativeTurn): Promise<NativeResult> {
     messages.push(...answer.raw);
     const answers = await Promise.all(
       answer.calls.map(async (call) => {
-        const line = toolLine(toolLabel(call.name, call.input));
+        const line = toolLine(toolLabel(call.name, call.input, { plain: true }));
         if (line) turn.onLog?.(line);
         turn.onStep?.(labelStep({ id: call.id, tool: call.name, input: call.input, status: "running" }));
         const tool = turn.tools[call.name];

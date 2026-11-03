@@ -1,4 +1,4 @@
-import { AI_SETUP_CARD, ENGINE_LABELS, QUIET_REPLY, addressedIn, handleOf, isClosing, isStopRequest, mentionsIn, plainMarkdown, replyLine, roomTargets, withoutQuietReply, type Bot, type ChatAttachment, type DesktopDriver, type Message, type Thread, type ToolLabelContext } from "@gond/shared";
+import { AI_SETUP_CARD, withoutPaths, ENGINE_LABELS, QUIET_REPLY, addressedIn, handleOf, isClosing, isStopRequest, mentionsIn, plainMarkdown, replyLine, roomTargets, withoutQuietReply, type Bot, type ChatAttachment, type DesktopDriver, type Message, type Thread, type ToolLabelContext } from "@gond/shared";
 import { createHash } from "node:crypto";
 import { BoxError, boxConfig, boxHome, closeAgent, ensureBotHome, health, interruptAgent, steerAgent, writeBoxFile, type BoxConfig } from "./box.ts";
 import { isUpdating } from "./updater.ts";
@@ -782,7 +782,7 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
           attachments: delivered.inline,
           tools,
           signal: controller.signal,
-          onLog: (line) => activity(thread.id, bot.id, hide(line)),
+          onLog: (line) => activity(thread.id, bot.id, hide(withoutPaths(line, labels.home))),
           onStep: step,
           steers,
           cacheKey: agentId,
@@ -806,7 +806,7 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
       home: labels.home,
       timeoutMs: TURN_TIMEOUT_MS,
       signal: controller.signal,
-      onLog: (line) => activity(thread.id, bot.id, hide(line)),
+      onLog: (line) => activity(thread.id, bot.id, hide(withoutPaths(line, labels.home))),
       onStep: step,
       onText,
       onUsage,

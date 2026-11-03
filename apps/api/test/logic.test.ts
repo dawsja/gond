@@ -197,7 +197,9 @@ describe("stopping", () => {
 describe("driver", () => {
   test("activityLine turns a tool use into a line in plain words", () => {
     const line = JSON.stringify({ type: "assistant", message: { content: [{ type: "tool_use", name: "Bash", input: { command: "bun test" } }, { type: "text", text: "Looking around" }] } });
-    expect(activityLine(line)).toEqual(["Running `bun test`", "Looking around"]);
+    expect(activityLine(line)).toEqual(["Running a command", "Looking around"]);
+    const described = JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "Checking /home/agent/.team/u1/people.md first" }, { type: "tool_use", name: "Bash", input: { command: "bun test", description: "Run the tests" } }] } });
+    expect(activityLine(described, { home: "/home/agent/.bots/b1" })).toEqual(["Checking the team memory first", "Run the tests"]);
     const read = JSON.stringify({ type: "assistant", message: { content: [{ type: "tool_use", name: "Read", input: { file_path: "/home/agent/.bots/b1/notes.md" } }] } });
     expect(activityLine(read, { home: "/home/agent/.bots/b1" })).toEqual(["Reading notes.md"]);
     const bridge = JSON.stringify({ type: "assistant", message: { content: [{ type: "tool_use", name: "mcp__gond__message_bot", input: { bot: "Pip", text: "hi" } }] } });

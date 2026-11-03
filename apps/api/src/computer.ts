@@ -61,7 +61,7 @@ export function computerTools(context: Context): Record<string, DriverTool> {
   return {
     Bash: {
       description: `Runs a shell command on your computer, in your own folder (${home}) unless you give another directory. Use it for everything a terminal does: install things, run code, fetch a URL with curl, move files. Long output comes back trimmed.`,
-      inputSchema: schema({ command: { type: "string", description: "The command line to run." }, cwd: { type: "string", description: "Where to run it, relative to your home. Defaults to your own folder." } }, ["command"]),
+      inputSchema: schema({ command: { type: "string", description: "The command line to run." }, description: { type: "string", description: "What it does in a few plain words for the person watching, with no paths or code, like \"Checking the disk space\"." }, cwd: { type: "string", description: "Where to run it, relative to your home. Defaults to your own folder." } }, ["command"]),
       execute: async (input) => {
         const command = String(input.command ?? "").trim();
         if (!command) return "No command given.";

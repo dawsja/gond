@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { cardBrand, cardFieldValue, checkCard, looseCards, luhnValid, parseExpiry, MODEL_ID_PATTERN, addressedIn, newerVersion, BOT_TEMPLATES, draftIdOf, editedEmailInput, emailDraftOf, emailEditable, emailName, emailText, sendDraftAction, wordDiff, MOBILE_SIGN_IN_CALLBACK, SIGN_IN_APPS, approvalLine, botInputSchema, composioCard, composioCardToolkit, fromNativeAction, gerund, handleOf, isClosing, isQuietReply, isQuietTool, withoutQuietReply, isStopRequest, routineName, joinCommandLine, mentionsIn, isXaiUrl, pickBotName, plainMarkdown, roomAnswerer, roomNameFor, roomTargets, ruleLabel, splitCommandLine, toolLabel, toolLine } from "../src/index.ts";
+import { cardBrand, cardFieldValue, checkCard, looseCards, luhnValid, parseExpiry, MODEL_ID_PATTERN, addressedIn, newerVersion, BOT_TEMPLATES, draftIdOf, editedEmailInput, emailDraftOf, emailEditable, emailName, emailText, sendDraftAction, wordDiff, MOBILE_SIGN_IN_CALLBACK, SIGN_IN_APPS, approvalLine, botInputSchema, composioCard, composioCardToolkit, fromNativeAction, gerund, handleOf, isClosing, isQuietReply, isQuietTool, withoutQuietReply, isStopRequest, routineName, joinCommandLine, mentionsIn, isXaiUrl, pickBotName, plainMarkdown, roomAnswerer, roomNameFor, roomTargets, ruleLabel, splitCommandLine, toolLabel, toolLine, withoutPaths } from "../src/index.ts";
 
 describe("shared", () => {
   test("a model id may end in Claude Code's [1m] mark, and nothing else in brackets", () => {
@@ -84,6 +84,28 @@ describe("plain markdown", () => {
     expect(plainMarkdown("see <https://a.b/c>, a<br>b and <b>this</b>")).toBe("see https://a.b/c, a b and this");
     expect(plainMarkdown("snake_case_name, 2 * 3 * 4, *it* and __so__")).toBe("snake_case_name, 2 * 3 * 4, it and so");
     expect(plainMarkdown("```ts\nconst x = 1;\n```\n- [ ] todo\n---\nend")).toBe("const x = 1; todo end");
+  });
+
+  test("a work line the person reads says what a bot is doing, never a command or a full path", () => {
+    const home = "/home/agent/.bots/b1";
+    const plain = { home, plain: true };
+    expect(toolLabel("Bash", { command: "df -h /home/agent", description: "check the disk space in /home/agent/.cache" }, plain)).toEqual({ verb: "Check the disk space in .cache", detail: null });
+    expect(toolLabel("Bash", { command: "bun test\necho done" }, plain)).toEqual({ verb: "Running a command", detail: null });
+    expect(toolLabel("run_with_secrets", { command: "deploy --token $T" }, plain)).toEqual({ verb: "Running a command", detail: null });
+    expect(toolLabel("Read", { file_path: `${home}/notes.md` }, plain)).toEqual({ verb: "Reading", detail: "notes.md" });
+    expect(toolLabel("Read", { file_path: "/srv/data/reports/q3/summary.csv" }, plain)).toEqual({ verb: "Reading", detail: "summary.csv" });
+    expect(toolLabel("Read", { file_path: "/home/agent/.team/u1/people.md" }, plain)).toEqual({ verb: "Reading", detail: "the team memory" });
+    expect(toolLabel("Read", { file_path: "~/.skills/weekly-report/SKILL.md" }, plain)).toEqual({ verb: "Reading", detail: "the weekly-report skill" });
+    expect(toolLabel("Read", { file_path: `${home}/inbox/a1b2-invoice.pdf` }, plain)).toEqual({ verb: "Reading", detail: "a file you sent" });
+    expect(toolLabel("Write", { file_path: "site/index.html" }, plain)).toEqual({ verb: "Editing", detail: "index.html" });
+    expect(toolLabel("Edit", { file_path: "/home/agent/.team/u1/people.md" }, plain)).toEqual({ verb: "Updating the team memory", detail: null });
+    expect(toolLabel("Grep", { pattern: "TODO" }, plain)).toEqual({ verb: "Searching files", detail: "for “TODO”" });
+    expect(toolLabel("Grep", { pattern: "fn\\s+\\w+\\(" }, plain)).toEqual({ verb: "Searching files", detail: null });
+    expect(toolLabel("Glob", { pattern: "**/*.ts" }, plain)).toEqual({ verb: "Looking for files", detail: null });
+    expect(toolLabel("LS", { path: home }, plain)).toEqual({ verb: "Looking in", detail: "its folder" });
+    expect(withoutPaths("Let me check /home/agent/.team/u1/MEMORY.md and ~/.bots/b1/notes/todo.md, then https://example.com/a/b.", home)).toBe("Let me check the team memory and todo.md, then https://example.com/a/b.");
+    // Without `plain` the label stays exact: the work log, and what a retried turn hears it did.
+    expect(toolLabel("Bash", { command: "bun test" }, { home })).toEqual({ verb: "Running", detail: "`bun test`" });
   });
 
   test("toolLabel puts a tool call in plain words, verb first", () => {

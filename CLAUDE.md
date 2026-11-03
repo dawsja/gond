@@ -904,7 +904,13 @@ One line each: where to start, and what must not change.
   and input into words (activity, work log, `approvalLine`,
   `ruleLabel`). The box sends raw `{ tool, input }`; nothing that matches
   on a name changes. Quiet tools (`isQuietTool`) are logged `quiet: true`
-  and never become activity.
+  and never become activity. The work line a person reads is `plain`:
+  a command is its description or "Running a command", a file is "its
+  memory", "the team memory", a skill, "a file you sent" or a bare name
+  (`placeOf`), and a bot's narration loses its paths the same way
+  (`withoutPaths`); never a full path. The work log stays exact, since a
+  retried turn hears it; approval cards stay exact, since that is what
+  the person approves.
 - **Routines are the bots'**: only bot tools make, change, run or remove
   them (`create_routine`, `update_routine`, `run_routine`,
   `delete_routine`; `routine-dialog.tsx` shows them). `PATCH /api/routines/:id` takes `enabled` and
