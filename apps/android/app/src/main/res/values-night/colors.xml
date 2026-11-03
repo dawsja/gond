@@ -10,4 +10,5 @@
     <color name="on_primary">#121212</color>
     <color name="destructive">#CF6679</color>
     <color name="input">#474747</color>
+    <color name="ic_launcher_background">#1b1a18</color>
 </resources>

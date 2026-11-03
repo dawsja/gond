@@ -1,6 +1,6 @@
 # Gond: how we build it
 
-Brand source: `packages/shared/brand/gond-mark.svg`; build with `bun run brand:build`, check with `bun run brand:build -- --check`; mascots are not the brand mark; native icons will use the same source in the follow-up native icon PR.
+Brand source: `packages/shared/brand/gond-mark.svg`; build with `bun run brand:build`, check with `bun run brand:build -- --check`; mascots are not the brand mark; web and native icons derive from it, including desktop via Tauri; do not edit the source or derived assets by hand.
 
 Read this before changing anything. The README says what Gond is; this
 says how it is made and which rules must hold. It names the files and
@@ -162,8 +162,8 @@ The address rules are mirrored in each app with the same tests.
     `scripts/check.mjs` (the package's lint) fails when the bridge misses
     a `GondMobile` method, the loopback port drifts from shared or an
     Android address test has no Swift twin.
-  - The icon is `AppIcon.icon` (Icon Composer: the cog as one glass
-    layer), a resource of its own in `project.yml`, never inside `Gond/`.
+  - The icon is `AppIcon.icon` (Icon Composer: the source glyph as one white glass
+    layer on ink, derived by `brand:build`), a resource of its own in `project.yml`, never inside `Gond/`.
     The Xcode project is generated from `project.yml` with XcodeGen and
     never checked in.
   - CI tests on `macos-26`; a push to main or a release tag archives with

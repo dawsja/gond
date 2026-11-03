@@ -9,7 +9,7 @@ struct ConnectView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 10) {
-                    CogShape().fill(Theme.foreground).frame(width: 28, height: 28)
+                    Image("BrandMark").resizable().frame(width: 28, height: 28)
                     Text("Gond").font(.system(size: 18, weight: .bold))
                 }
                 .accessibilityElement(children: .combine)
