@@ -25,6 +25,7 @@ import {
   xdotoolStdin,
   buttonLeftDown,
 } from "../computer.mjs";
+import { photoLines } from "../browser-host.mjs";
 
 const screen = { width: 1280, height: 800 };
 const desktop = (...steps) => parseSteps(steps, "desktop", screen);
@@ -55,6 +56,21 @@ test("browser steps are the browser's alone", () => {
   ]);
   rejects([{ type: "tab", index: -1 }], /tab needs index/, "browser");
   rejects([{ type: "tab" }], /tab needs index/, "browser");
+  // A page's photos, for product cards: the browser's to list, and only a look.
+  assert.deepEqual(browser({ type: "images" }), [{ type: "images" }]);
+  rejects([{ type: "images" }], /is for the browser tool/);
+  assert.equal(describeStep({ type: "images" }), "listed the page's photos");
+});
+
+test("a page's photos read as one line each, address first", () => {
+  assert.equal(
+    photoLines([
+      { src: "https://m.media-amazon.com/images/I/81abc.jpg", alt: "", width: 0, height: 0 },
+      { src: "https://m.media-amazon.com/images/I/71xyz._AC_SL1500_.jpg", alt: "ASRock Radeon RX 9070", width: 1500, height: 1200 },
+    ]),
+    '1. https://m.media-amazon.com/images/I/81abc.jpg\n2. https://m.media-amazon.com/images/I/71xyz._AC_SL1500_.jpg (1500×1200) "ASRock Radeon RX 9070"',
+  );
+  assert.equal(photoLines([]), "No photos on this page.");
 });
 
 test("navigate opens http and https only, and a bare host gets https", () => {

@@ -2323,6 +2323,8 @@ function stepLabel(step: Record<string, unknown>): ToolLabel | null {
       return { verb: "Pasting", detail: null };
     case "clipboard":
       return { verb: "Reading the clipboard", detail: null };
+    case "images":
+      return { verb: "Looking at the photos", detail: null };
     case "wait_for":
       return { verb: "Waiting for", detail: typeof step.text === "string" ? quoted(step.text, 40) : short(step.url) };
     case "upload":
@@ -2667,13 +2669,13 @@ export function isQuietTool(name: string, input: Record<string, unknown> = {}): 
  */
 export const SCREEN_STEP_TYPES = [
   "screenshot", "click", "hold", "mouse_down", "mouse_up", "move", "hover", "drag", "type", "type_login", "key", "scroll", "wait", "copy", "paste", "clipboard",
-  "navigate", "back", "forward", "reload", "tab", "new_tab", "close_tab", "fill", "select", "check", "read", "wait_for", "upload", "dialog",
+  "navigate", "back", "forward", "reload", "tab", "new_tab", "close_tab", "fill", "select", "check", "read", "wait_for", "upload", "dialog", "images",
 ] as const;
 export type ScreenStepType = (typeof SCREEN_STEP_TYPES)[number];
 export type ScreenTarget = "desktop" | "browser";
-export const BROWSER_ONLY_STEPS: readonly ScreenStepType[] = ["navigate", "back", "forward", "reload", "tab", "new_tab", "close_tab", "fill", "select", "check", "read", "wait_for", "upload", "dialog"];
+export const BROWSER_ONLY_STEPS: readonly ScreenStepType[] = ["navigate", "back", "forward", "reload", "tab", "new_tab", "close_tab", "fill", "select", "check", "read", "wait_for", "upload", "dialog", "images"];
 /** Steps that only look: no approval, and the person holding the mouse doesn't stop them. */
-export const LOOK_STEPS: readonly ScreenStepType[] = ["screenshot", "wait", "read", "wait_for", "clipboard"];
+export const LOOK_STEPS: readonly ScreenStepType[] = ["screenshot", "wait", "read", "wait_for", "clipboard", "images"];
 export const MAX_SCREEN_STEPS = 20;
 
 export type DesktopControl = "free" | "bots" | "person";

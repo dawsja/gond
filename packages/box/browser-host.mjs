@@ -135,6 +135,39 @@ function clippedOf(boxes) {
     .map(({ ref }) => ref);
 }
 
+/**
+ * Runs in the page: its photos, for a bot that has to cite real ones (a product card's). The page's
+ * own og:image first, as a store picks it to stand for the product, then every image big enough to be
+ * a photo, largest on screen first. Only https addresses, never a data: or blob: one.
+ */
+export function photosOf() {
+  const seen = new Set();
+  const out = [];
+  const add = (src, alt, width, height) => {
+    try {
+      const url = new URL(src, location.href);
+      if (url.protocol !== "https:" || seen.has(url.href)) return;
+      seen.add(url.href);
+      out.push({ src: url.href, alt: String(alt ?? "").trim().slice(0, 80), width, height });
+    } catch {
+      /* not an address */
+    }
+  };
+  for (const meta of document.querySelectorAll('meta[property="og:image"], meta[property="og:image:secure_url"], meta[name="twitter:image"]')) add(meta.content, "", 0, 0);
+  const shown = [...document.images]
+    .map((img) => ({ img, rect: img.getBoundingClientRect() }))
+    .filter(({ img, rect }) => img.naturalWidth >= 150 && img.naturalHeight >= 150 && rect.width >= 80 && rect.height >= 80)
+    .sort((a, b) => b.rect.width * b.rect.height - a.rect.width * a.rect.height);
+  for (const { img } of shown) add(img.currentSrc || img.src, img.alt, img.naturalWidth, img.naturalHeight);
+  return out.slice(0, 12);
+}
+
+/** The page's photos as lines a bot reads: address, size and what the page calls it. */
+export function photoLines(photos) {
+  if (!photos.length) return "No photos on this page.";
+  return photos.map((p, i) => `${i + 1}. ${p.src}${p.width ? ` (${p.width}×${p.height})` : ""}${p.alt ? ` ${JSON.stringify(p.alt)}` : ""}`).join("\n");
+}
+
 /** Waits for the DOM to stop changing for a moment, or SETTLE_MAX_MS, whichever comes first. */
 function quiet({ quietMs, maxMs }) {
   return new Promise((resolve) => {
@@ -541,6 +574,8 @@ export function createBrowser({ launch, fill = null, onTeach = () => undefined, 
         return null;
       case "clipboard":
         return clipText(await clipboard.read());
+      case "images":
+        return clipText(photoLines(await current.evaluate(photosOf)));
       case "wait_for":
         if (step.url) {
           await current.waitForURL((url) => url.href.includes(step.url), { timeout: step.ms, waitUntil: "commit" });

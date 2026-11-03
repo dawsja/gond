@@ -27,7 +27,8 @@ export function shoppingTools(bot: Bot, thread: Thread): Record<string, DriverTo
   };
   return {
     present_products: tool(
-      "Show sourced shopping results as product cards. Browse real merchant pages first; include only observed photos, prices, availability, variants and ratings. Amounts are currency minor units (6499 = USD 64.99). Unknown stock stays unknown. Badges compare only the supplied comparable offers. No invented listings.",
+      "Show products as shopping cards. Use it whenever the person is looking for something to buy (find, compare or pick a product, or anything under a price, like \"find me GPUs between $600 and $800\"), never a table or a list of links instead. Open each product's page at a store in the browser first: articles and price trackers can help you choose, but every card comes from a store page you opened. From that page take its price, stock, options and rating, and its photos with the browser's images step (the product's own photos, largest first; leave images empty only when the page has none). Amounts are currency minor units (6499 = USD 64.99). Unknown stock stays unknown. Badges compare only the supplied comparable offers. No invented listings. The cards carry the details, so after them say only what sets the options apart, in a line or two.",
+
       productsSchema.toJSONSchema(),
       (input) => presentProducts(bot.userId!, bot.id, thread.id, input),
     ),

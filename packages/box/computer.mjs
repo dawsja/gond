@@ -6,10 +6,10 @@
 
 export const STEP_TYPES = [
   "screenshot", "click", "hold", "mouse_down", "mouse_up", "move", "hover", "drag", "type", "key", "scroll", "wait", "copy", "paste", "clipboard",
-  "navigate", "back", "forward", "reload", "tab", "new_tab", "close_tab", "fill", "select", "check", "read", "wait_for", "upload", "dialog",
+  "navigate", "back", "forward", "reload", "tab", "new_tab", "close_tab", "fill", "select", "check", "read", "wait_for", "upload", "dialog", "images",
 ];
-export const BROWSER_ONLY = new Set(["navigate", "back", "forward", "reload", "tab", "new_tab", "close_tab", "fill", "select", "check", "read", "wait_for", "upload", "dialog"]);
-export const LOOK_STEPS = new Set(["screenshot", "wait", "read", "wait_for", "clipboard"]);
+export const BROWSER_ONLY = new Set(["navigate", "back", "forward", "reload", "tab", "new_tab", "close_tab", "fill", "select", "check", "read", "wait_for", "upload", "dialog", "images"]);
+export const LOOK_STEPS = new Set(["screenshot", "wait", "read", "wait_for", "clipboard", "images"]);
 // Steps that can name an element by its ref from the last answer's element list instead of a point.
 const REF_STEPS = new Set(["click", "hold", "mouse_down", "mouse_up", "move", "hover", "drag", "type", "scroll", "fill", "select", "check", "read", "copy", "upload"]);
 const NEEDS_REF = new Set(["fill", "select", "check", "upload"]);
@@ -376,6 +376,7 @@ function parseStep(step, target, area) {
     case "forward":
     case "reload":
     case "clipboard":
+    case "images":
       return { type };
     case "click": {
       const button = step.button ?? "left";
@@ -517,6 +518,8 @@ export function describeStep(step) {
       return step.text === null ? "pasted" : `pasted ${step.text.length} characters`;
     case "clipboard":
       return "read the clipboard";
+    case "images":
+      return "listed the page's photos";
     case "wait_for":
       return step.url ? `waited for the address to have ${step.url}` : `waited for ${JSON.stringify(step.text)} to ${step.gone ? "go" : "appear"}`;
     case "upload":
