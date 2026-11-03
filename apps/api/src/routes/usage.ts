@@ -17,7 +17,7 @@ export function usageRoutes() {
     return c.json(await usageReport(userId(c), range));
   });
 
-  // Each of the person's recent turns with where its time went, for the benchmark; there only while turns are timed.
+  // Each of the person's recent turns with where its time went,; there only while turns are timed.
   app.get("/usage/turns", (c) => (turnTiming() ? c.json({ turns: turnsOf(userId(c), c.req.query("since")) }) : c.json({ error: "Turn timing is off on this server" }, 404)));
 
   // The admin's alone (app.ts): whether this server's token count goes to the public total.

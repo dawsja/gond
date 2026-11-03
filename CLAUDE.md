@@ -719,10 +719,6 @@ One line each: where to start, and what must not change.
   router's time, how the CLI session started, tokens) and keeps the last
   500 for `GET /api/usage/turns`, 404 while off; `GOND_SCREEN_TIMING=1`
   on the box logs each screen batch (`screenTimer`).
-- **The benchmark** (`bench/`, `bun run bench`, `bun run
-  bench:compare`) drives a running Gond over HTTP with real AI and grades
-  speed and quality together. A speed change is kept only if no suite's
-  pass rate or judge score drops past the baseline's spread.
 - **A session hears only what's new.** `botTurn` sends a full prompt
   (house rules, the last `CONTEXT_LINES`) and a `followUp` with only
   what arrived since that agent's last turn (`seenBy`, `runKey`).

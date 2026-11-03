@@ -90,6 +90,3 @@ packages/relay/data/
 
 # What the box tests write while they run.
 packages/box/test/artifacts/
-
-# Benchmark runs: real timings and answers from a dev Gond.
-packages/bench/results/

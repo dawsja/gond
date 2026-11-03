@@ -16,9 +16,7 @@
     "build": "bun run --filter @gond/shared build && bun run --filter @gond/api build && bun run --filter @gond/web build",
     "typecheck": "bun run --filter '*' typecheck",
     "lint": "bun run --filter '*' lint",
-    "test": "bun run --filter '*' test",
-    "bench": "bun packages/bench/src/run.ts",
-    "bench:compare": "bun packages/bench/src/compare.ts"
+    "test": "bun run --filter '*' test"
   },
   "packageManager": "bun@1.4.4",
   "devDependencies": {
