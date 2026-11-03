@@ -122,16 +122,16 @@ function CardDialog({ card, onClose, onSaved }: { card: SecretMeta | null; onClo
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{card?.card ? `Change ${cardLabel(card.card)}` : "Add a card"}</DialogTitle>
-          <DialogDescription>{card ? "What's saved now is never shown. Type only what changed; anything left empty stays as it is." : "Saved once, for any site. Encrypted, and a bot types it into a checkout only after you say yes."}</DialogDescription>
+          <DialogDescription>{card ? "What's saved now is never shown. Type only what changed; anything left empty stays as it is." : "Saved once, for any site. Encrypted, and a bot types it into a checkout only after you say yes. The security code is never saved: you type it each time you pay."}</DialogDescription>
         </DialogHeader>
         <form onSubmit={save} className="contents">
-          <CardFields id="card-dialog" values={values} onChange={setValues} keep={Boolean(card)} />
+          <CardFields id="card-dialog" values={values} onChange={setValues} keep={Boolean(card)} code={false} />
           {error ? <FieldError>{error}</FieldError> : null}
           <DialogFooter>
             <Button type="button" size="lg" variant="outline" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit" size="lg" variant="tint" disabled={busy || (!card && (!values.number || !values.expiry || !values.cvc))}>
+            <Button type="submit" size="lg" variant="tint" disabled={busy || (!card && (!values.number || !values.expiry))}>
               {busy ? <Spinner data-icon="inline-start" /> : null}
               {card ? "Save" : "Save card"}
             </Button>

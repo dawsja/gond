@@ -4,7 +4,7 @@ import { cardLabel, type Bot, type SecretMeta, type SecretRequest } from "@gond/
 import { CreditCard, Plus } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import { ActionCard, ActionCardDone, ActionRows, cheerOnFold, NOBODY_ANSWERED } from "@/components/action-card";
-import { cardBody, CardFields, cardLine, CardMark, EMPTY_CARD, type CardValues } from "@/components/card-form";
+import { cardBody, CardCodeField, CardFields, cardLine, CardMark, codeReady, EMPTY_CARD, type CardValues } from "@/components/card-form";
 import { Button } from "@/components/ui/button";
 import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldSet, FieldLegend, FieldTitle } from "@/components/ui/field";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -36,6 +36,7 @@ export function PayCard({ request, bot, onAnswered }: { request: SecretRequest; 
   const [picked, setPicked] = useState<string | null>(null);
   const [values, setValues] = useState<CardValues>(EMPTY_CARD);
   const [remember, setRemember] = useState(true);
+  const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -49,7 +50,7 @@ export function PayCard({ request, bot, onAnswered }: { request: SecretRequest; 
 
   const choice = picked ?? cards?.[0]?.name ?? ANOTHER;
   const typing = choice === ANOTHER;
-  const ready = !typing || Boolean(values.number && values.expiry && values.cvc);
+  const ready = typing ? Boolean(values.number && values.expiry && values.cvc) : codeReady(code);
 
   async function answer(event?: FormEvent, decline = false) {
     event?.preventDefault();
@@ -57,9 +58,10 @@ export function PayCard({ request, bot, onAnswered }: { request: SecretRequest; 
     setBusy(true);
     setError(null);
     try {
-      const body = decline ? { decline: true } : typing ? { ...cardBody(values), remember } : { saved: choice };
+      const body = decline ? { decline: true } : typing ? { ...cardBody(values), remember } : { saved: choice, cvc: code };
       const data = await post<{ request: SecretRequest }>(`/api/secret-requests/${request.id}`, body);
       setValues(EMPTY_CARD);
+      setCode("");
       if (!decline) cheerOnFold(request.id);
       onAnswered(data.request);
     } catch (failure) {
@@ -121,6 +123,7 @@ export function PayCard({ request, bot, onAnswered }: { request: SecretRequest; 
               </RadioGroup>
             </FieldSet>
           ) : null}
+          {cards && !typing ? <CardCodeField id={`pay-${request.id}`} value={code} onChange={setCode} /> : null}
           {cards && typing ? (
             <>
               <CardFields id={`pay-${request.id}`} values={values} onChange={setValues} nickname={false} />
@@ -128,7 +131,7 @@ export function PayCard({ request, bot, onAnswered }: { request: SecretRequest; 
                 <Field orientation="horizontal">
                   <FieldContent>
                     <FieldTitle>Save it for next time</FieldTitle>
-                    <FieldDescription>For any site, in Settings → Secrets → Cards.</FieldDescription>
+                    <FieldDescription>For any site, in Settings → Secrets → Cards. The security code isn&apos;t saved.</FieldDescription>
                   </FieldContent>
                   <Switch id={`pay-${request.id}-remember`} checked={remember} onCheckedChange={setRemember} aria-label="Save it for next time" />
                 </Field>

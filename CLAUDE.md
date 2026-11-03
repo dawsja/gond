@@ -1152,7 +1152,10 @@ One line each: where to start, and what must not change.
   could ask for.
 - **Payment cards** (`saveCard`, `CardMeta`, `CardsCard`, `card-form.tsx`,
   `pay-card.tsx`, `looseCards`): readable only as name, brand, last four,
-  expiry. `use_card` with the site and total posts the card request; that
+  expiry. A saved card never keeps its security code (`saveCard`,
+  `forgetCardCodes`): paying with one asks for it each time
+  (`checkCardCode`, `CardCodeField`), held only with that payment.
+  `use_card` with the site and total posts the card request; that
   yes is the payment's approval (no extra `ask_approval`, no Always). The
   card is held for the conversation `CARD_HELD_MS` (10 min, `holdCard`)
   under `CARD_FIELDS` and typed with `type_login` (`select: true`,

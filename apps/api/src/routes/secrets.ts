@@ -1,4 +1,4 @@
-import { cardBrand, cardLabel, checkCard, coverLogin, looseCards, type CardDetails } from "@gond/shared";
+import { cardBrand, cardLabel, checkCard, checkCardCode, coverLogin, looseCards, type CardDetails } from "@gond/shared";
 import { Hono } from "hono";
 import { ownsThread, userId } from "../access.ts";
 import { applyComposioKey } from "../composio.ts";
@@ -31,7 +31,9 @@ export function secretsRoutes() {
       if (typeof body.saved === "string") {
         const saved = readCard(userId(c), body.saved);
         if (!saved) return c.json({ error: "Couldn't find that card" }, 404);
-        picked = { card: saved.card, label: cardLabel(saved.meta) };
+        const code = checkCardCode(body.cvc);
+        if ("error" in code) return c.json({ error: code.error }, 400);
+        picked = { card: { ...saved.card, cvc: code.cvc }, label: cardLabel(saved.meta) };
       } else {
         const checked = checkCard(body.card ?? {});
         if ("error" in checked) return c.json({ error: checked.error }, 400);
@@ -94,7 +96,7 @@ export function secretsRoutes() {
 
   app.post("/cards", async (c) => {
     const body = await readBody(c);
-    const checked = checkCard(body.card ?? {});
+    const checked = checkCard(body.card ?? {}, false, { code: false });
     if ("error" in checked) return c.json({ error: checked.error }, 400);
     const name = saveCard(userId(c), checked.card as CardDetails, typeof body.nickname === "string" ? body.nickname : "");
     return c.json({ name });
@@ -106,7 +108,7 @@ export function secretsRoutes() {
     const saved = readCard(userId(c), name);
     if (!saved) return c.json({ error: "Couldn't find that card" }, 404);
     const body = await readBody(c);
-    const checked = checkCard(body.card ?? {}, true);
+    const checked = checkCard(body.card ?? {}, true, { code: false });
     if ("error" in checked) return c.json({ error: checked.error }, 400);
     saveCard(userId(c), { ...saved.card, ...checked.card }, typeof body.nickname === "string" ? body.nickname : saved.meta.nickname, name);
     return c.json({ ok: true });
@@ -119,7 +121,7 @@ export function secretsRoutes() {
     const group = looseCards(listSecrets(me).filter((s) => !s.card && !s.site).map((s) => s.name)).find((g) => g.prefix === body.prefix);
     if (!group) return c.json({ error: "Couldn't find those keys" }, 404);
     const values = Object.fromEntries(Object.entries(group.parts).map(([part, name]) => [part, readSecret(me, name!) ?? ""]));
-    const checked = checkCard(values);
+    const checked = checkCard(values, false, { code: false });
     if ("error" in checked) return c.json({ error: `Those keys don't make a card: ${checked.error}` }, 400);
     const words = group.prefix.replace(/_?CARD$/, "").replace(/_/g, " ").trim().toLowerCase();
     const name = saveCard(me, checked.card as CardDetails, words ? `${words[0]!.toUpperCase()}${words.slice(1)} card` : "");

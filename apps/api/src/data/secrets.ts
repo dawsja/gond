@@ -34,7 +34,8 @@ function cardName(userId: string, meta: CardMeta): string {
 
 /**
  * Saves a payment card as one secret, its details encrypted together; only its name, brand, last four
- * digits and expiry are kept readable. With `name` it replaces that card's details and nickname.
+ * digits and expiry are kept readable. Never its security code, which is typed at each payment
+ * (`checkCardCode`). With `name` it replaces that card's details and nickname.
  */
 export function saveCard(userId: string, card: CardDetails, nickname: string, name?: string): string {
   if (!luhnValid(card.number)) throw new Error("That card number doesn't look right");
@@ -43,7 +44,7 @@ export function saveCard(userId: string, card: CardDetails, nickname: string, na
   const at = now();
   ensureDatabase()
     .query("INSERT INTO gond_secrets (user_id, name, value, requested_by, site, card, created_at, updated_at) VALUES (?, ?, ?, NULL, NULL, ?, ?, ?) ON CONFLICT(user_id, name) DO UPDATE SET value = excluded.value, card = excluded.card, updated_at = excluded.updated_at")
-    .run(userId, target, encryptSecret(JSON.stringify(card)), JSON.stringify(meta), at, at);
+    .run(userId, target, encryptSecret(JSON.stringify({ ...card, cvc: "" })), JSON.stringify(meta), at, at);
   settingsChanged();
   return target;
 }

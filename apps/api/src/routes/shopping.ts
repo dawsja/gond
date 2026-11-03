@@ -1,4 +1,4 @@
-import { addressSchema, cardBrand, cardLabel, checkCard, type CardDetails, type ShippingAddress } from "@gond/shared";
+import { addressSchema, cardBrand, cardLabel, checkCard, checkCardCode, type CardDetails, type ShippingAddress } from "@gond/shared";
 import { Hono, type Context } from "hono";
 import { ownsThread, userId } from "../access.ts";
 import type { Env } from "../app.ts";
@@ -73,7 +73,10 @@ export function shoppingRoutes() {
     if (typeof body.saved === "string") {
       const saved = readCard(me, body.saved);
       if (!saved) return c.json({ error: "Couldn't find that card" }, 404);
-      card = saved.card;
+      // A saved card never keeps its security code; it is typed for each payment and held only with this approval.
+      const code = checkCardCode(body.cvc);
+      if ("error" in code) return c.json({ error: code.error }, 400);
+      card = { ...saved.card, cvc: code.cvc };
       label = cardLabel(saved.meta);
     } else {
       const checked = checkCard(body.card ?? {});

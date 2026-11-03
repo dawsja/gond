@@ -38,9 +38,10 @@ function slashed(value: string) {
 
 /**
  * A card's fields, with the browser's own card autofill. `keep` is a card being changed: every field
- * may stay empty, which keeps what it had.
+ * may stay empty, which keeps what it had. `code: false` is a card being saved, which never keeps its
+ * security code, so there is no field for it.
  */
-export function CardFields({ id, values, onChange, keep = false, nickname = true }: { id: string; values: CardValues; onChange: (values: CardValues) => void; keep?: boolean; nickname?: boolean }) {
+export function CardFields({ id, values, onChange, keep = false, nickname = true, code = true }: { id: string; values: CardValues; onChange: (values: CardValues) => void; keep?: boolean; nickname?: boolean; code?: boolean }) {
   const set = (key: keyof CardValues) => (event: React.ChangeEvent<HTMLInputElement>) => {
     const raw = event.target.value;
     onChange({ ...values, [key]: key === "number" ? spaced(raw) : key === "expiry" ? slashed(raw) : key === "cvc" ? raw.replace(/\D/g, "").slice(0, 4) : raw });
@@ -63,15 +64,17 @@ export function CardFields({ id, values, onChange, keep = false, nickname = true
           ) : null}
         </InputGroup>
       </Field>
-      <div className="grid grid-cols-3 gap-3">
+      <div className={cn("grid gap-3", code ? "grid-cols-3" : "grid-cols-2")}>
         <Field>
           <FieldLabel htmlFor={`${id}-expiry`}>Expires</FieldLabel>
           <Input id={`${id}-expiry`} value={values.expiry} onChange={set("expiry")} autoComplete="cc-exp" inputMode="numeric" placeholder={unchanged ?? "MM/YY"} />
         </Field>
-        <Field>
-          <FieldLabel htmlFor={`${id}-cvc`}>CVC</FieldLabel>
-          <Input id={`${id}-cvc`} type="password" value={values.cvc} onChange={set("cvc")} autoComplete="cc-csc" inputMode="numeric" placeholder={unchanged ?? "123"} />
-        </Field>
+        {code ? (
+          <Field>
+            <FieldLabel htmlFor={`${id}-cvc`}>CVC</FieldLabel>
+            <Input id={`${id}-cvc`} type="password" value={values.cvc} onChange={set("cvc")} autoComplete="cc-csc" inputMode="numeric" placeholder={unchanged ?? "123"} />
+          </Field>
+        ) : null}
         <Field>
           <FieldLabel htmlFor={`${id}-zip`}>ZIP</FieldLabel>
           <Input id={`${id}-zip`} value={values.zip} onChange={set("zip")} autoComplete="postal-code" maxLength={12} placeholder={unchanged} />
@@ -91,6 +94,20 @@ export function CardFields({ id, values, onChange, keep = false, nickname = true
     </FieldGroup>
   );
 }
+
+/** A saved card's security code, typed for this one payment; Gond never saves it. */
+export function CardCodeField({ id, value, onChange }: { id: string; value: string; onChange: (value: string) => void }) {
+  return (
+    <Field>
+      <FieldLabel htmlFor={`${id}-code`}>Security code</FieldLabel>
+      <Input id={`${id}-code`} type="password" value={value} onChange={(event) => onChange(event.target.value.replace(/\D/g, "").slice(0, 4))} autoComplete="cc-csc" inputMode="numeric" placeholder="123" required />
+      <FieldDescription>Asked each time you pay. It&apos;s never saved.</FieldDescription>
+    </Field>
+  );
+}
+
+/** Three or four digits, as `checkCardCode` takes. */
+export const codeReady = (value: string) => /^\d{3,4}$/.test(value);
 
 /** What the API takes for a card: the fields the person filled in. */
 export function cardBody(values: CardValues) {

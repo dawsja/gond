@@ -4,7 +4,7 @@ import { shoppingPrice, type Bot, type CheckoutState, type Message, type Product
 import { Check, ChevronLeft, ChevronRight, ExternalLink, Package, ShoppingBag, Truck } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ActionCard, ActionCardDone, ActionRows, NOBODY_ANSWERED } from "@/components/action-card";
-import { CardFields, cardBody, EMPTY_CARD, type CardValues } from "@/components/card-form";
+import { CardCodeField, CardFields, cardBody, codeReady, EMPTY_CARD, type CardValues } from "@/components/card-form";
 import { useLiveEvents } from "@/components/hq/live-events";
 import { LoadFailed } from "@/components/load-failed";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -360,6 +360,7 @@ function Checkout({ id, record, bot, onChange }: { id: string; record: ShoppingC
   const [cards, setCards] = useState<SecretMeta[] | null>(null);
   const [saved, setSaved] = useState("");
   const [values, setValues] = useState<CardValues>(EMPTY_CARD);
+  const [code, setCode] = useState("");
   const choice = saved === "another" || cards?.some((c) => c.name === saved) ? saved : (cards?.[0]?.name ?? "another");
   const paymentOptions = [...(cards ?? []).map((c) => ({ value: c.name, label: `${c.card!.brand} •••• ${c.card!.last4}${c.card!.nickname ? ` · ${c.card!.nickname}` : ""}` })), { value: "another", label: "Use another card" }];
   useEffect(() => {
@@ -388,6 +389,7 @@ function Checkout({ id, record, bot, onChange }: { id: string; record: ShoppingC
       onChange(data.record);
       setEditing(false);
       setValues(EMPTY_CARD);
+      setCode("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't update checkout");
     } finally {
@@ -412,7 +414,7 @@ function Checkout({ id, record, bot, onChange }: { id: string; record: ShoppingC
               Cancel
             </Button>
             {record.state === "review" && !editing ? (
-              <Button variant="tint" disabled={busy || expired || cards === null} onClick={() => void mutate("approve", choice === "another" ? cardBody(values) : { saved: choice })}>
+              <Button variant="tint" disabled={busy || expired || cards === null || (choice !== "another" && !codeReady(code))} onClick={() => void mutate("approve", choice === "another" ? cardBody(values) : { saved: choice, cvc: code })}>
                 {busy ? <Spinner /> : null}Pay {shoppingPrice(record.quote!.total)}
               </Button>
             ) : null}
@@ -522,7 +524,7 @@ function Checkout({ id, record, bot, onChange }: { id: string; record: ShoppingC
                   </Select>
                 </Field>
               ) : null}
-              {choice === "another" ? <CardFields id={record.id} values={values} onChange={setValues} nickname={false} /> : null}
+              {choice === "another" ? <CardFields id={record.id} values={values} onChange={setValues} nickname={false} /> : <CardCodeField id={record.id} value={code} onChange={setCode} />}
             </>
           )}
         </FieldGroup>

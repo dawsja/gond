@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { decryptSecret, encryptSecret, SecretKeyError } from "../secrets.ts";
 
 const CALLS_OUT = `DELETE FROM gond_messages WHERE spoken = 1 OR (kind = 'event' AND author = 'system' AND (body = 'Call started' OR body LIKE 'Call ended · %'));`;
 
@@ -1073,7 +1074,27 @@ const MIGRATIONS: Array<string | ((db: Database) => void)> = [
     UNIQUE(record_id, event_key)
   );
   `,
+  forgetCardCodes,
 ];
+
+/**
+ * A saved card never keeps its security code: it is typed at each payment. Cards saved while codes
+ * were kept lose theirs here, once.
+ */
+export function forgetCardCodes(db: Database) {
+  const rows = db.query("SELECT rowid AS rid, value FROM gond_secrets WHERE card IS NOT NULL").all() as { rid: number; value: string }[];
+  for (const row of rows) {
+    let card: Record<string, unknown>;
+    try {
+      card = JSON.parse(decryptSecret(row.value)) as Record<string, unknown>;
+    } catch (error) {
+      // Without the key nothing here can be read or changed; the card is useless either way.
+      if (error instanceof SecretKeyError) return;
+      continue;
+    }
+    if (card.cvc) db.query("UPDATE gond_secrets SET value = ? WHERE rowid = ?").run(encryptSecret(JSON.stringify({ ...card, cvc: "" })), row.rid);
+  }
+}
 
 /**
  * A message may now be a "Show me how" card. The CHECK on its kind can only change by rebuilding the

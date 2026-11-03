@@ -1650,8 +1650,19 @@ export function parseExpiry(value: string): { month: string; year: string } | nu
   return { month: String(month).padStart(2, "0"), year: match[2]!.slice(-2) };
 }
 
-/** A card the person typed, checked and tidied, or what is wrong with it in words; `partial` lets an empty field stand. */
-export function checkCard(input: Partial<Record<keyof CardDetails, unknown>>, partial = false): { card: Partial<CardDetails> } | { error: string } {
+const CODE_PROBLEM = "The security code is the 3 or 4 digits on the card.";
+
+/** A security code typed for one payment, or what is wrong with it; a saved card never keeps one. */
+export function checkCardCode(value: unknown): { cvc: string } | { error: string } {
+  const cvc = typeof value === "string" ? value.trim() : "";
+  return /^\d{3,4}$/.test(cvc) ? { cvc } : { error: CODE_PROBLEM };
+}
+
+/**
+ * A card the person typed, checked and tidied, or what is wrong with it in words; `partial` lets an
+ * empty field stand, and `code: false` is a card to save, which leaves the security code out.
+ */
+export function checkCard(input: Partial<Record<keyof CardDetails, unknown>>, partial = false, { code = true }: { code?: boolean } = {}): { card: Partial<CardDetails> } | { error: string } {
   const text = (value: unknown) => (typeof value === "string" ? value.trim() : "");
   const card: Partial<CardDetails> = {};
   const number = digitsOf(text(input.number));
@@ -1666,8 +1677,8 @@ export function checkCard(input: Partial<Record<keyof CardDetails, unknown>>, pa
     card.expiry = `${parsed.month}/${parsed.year}`;
   }
   const cvc = text(input.cvc);
-  if (cvc || !partial) {
-    if (!/^\d{3,4}$/.test(cvc)) return { error: "The security code is the 3 or 4 digits on the card." };
+  if (code && (cvc || !partial)) {
+    if (!/^\d{3,4}$/.test(cvc)) return { error: CODE_PROBLEM };
     card.cvc = cvc;
   }
   const name = text(input.name);
