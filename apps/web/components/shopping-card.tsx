@@ -112,7 +112,7 @@ function ProductDetails({ product, collectionId, close }: { product: ShoppingPro
   }
   return <>
     <DialogHeader><DialogTitle>{product.title}</DialogTitle><DialogDescription>{offer.store} · {shoppingPrice(offer.price)}{product.rating ? ` · ★ ${product.rating.value} (${product.rating.count.toLocaleString()})` : ""}</DialogDescription></DialogHeader>
-    <div className="grid gap-5 sm:grid-cols-2">
+    <div className="grid gap-4 sm:grid-cols-2 sm:gap-5">
       <div className="relative self-start" role="region" aria-label="Product images" tabIndex={product.images.length > 1 ? 0 : undefined} onKeyDown={event => {
         if (event.key === "ArrowLeft") { event.preventDefault(); setPhoto(index => Math.max(0, index - 1)); }
         if (event.key === "ArrowRight") { event.preventDefault(); setPhoto(index => Math.min(product.images.length - 1, index + 1)); }
@@ -122,7 +122,7 @@ function ProductDetails({ product, collectionId, close }: { product: ShoppingPro
         {photo < product.images.length - 1 ? <Button size="icon-lg" className="absolute top-1/2 right-3 -translate-y-1/2" aria-label="Next image" onClick={() => setPhoto(index => index + 1)}><ChevronRight /></Button> : null}
         <span className="sr-only" aria-live="polite">{product.images.length ? `Image ${photo + 1} of ${product.images.length}` : "No product images"}</span>
       </div>
-      <FieldGroup>
+      <FieldGroup className="gap-4 sm:gap-5">
         <Field><FieldLabel id={`option-label-${product.id}`}>Options</FieldLabel>{options.length > 4 ? <Select items={options} value={variantId} onValueChange={value => { if (typeof value === "string") selectVariant(value); }}>
           <SelectTrigger aria-labelledby={`option-label-${product.id}`} className="w-full"><SelectValue /></SelectTrigger>
           <SelectContent><SelectGroup>{options.map(option => <SelectItem key={option.value} value={option.value} disabled={option.disabled}>{option.label}</SelectItem>)}</SelectGroup></SelectContent>
