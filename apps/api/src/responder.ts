@@ -562,7 +562,7 @@ export function promptFor(bot: Bot, thread: Thread, message: Message, bots: Bot[
     : "";
   const alongside = answeringAlongside(bot, thread, message, bots).map((b) => b.name);
   const together = alongside.length
-    ? ` ${alongside.join(" and ")} ${alongside.length > 1 ? "are" : "is"} answering this same message at the same time; their answer may reach you while you work, but can't be counted on. Cover your own part only, and don't @mention them for theirs: they're already on it.`
+    ? ` ${alongside.join(" and ")} ${alongside.length > 1 ? "are" : "is"} answering this same message at the same time; their answer may reach you while you work, but can't be counted on. Cover your own part only, and don't @mention them or suggest what they do with theirs: they're already on it.`
     : "";
   const members = bots.filter((b) => thread.members.includes(b.id));
   const alone = thread.kind === "room" && message.author === "you" && !alongside.length && !addressedIn(message.body, members).length && !isClosing(message.body);
@@ -964,7 +964,7 @@ function spokeSince(threadId: string, message: Pick<Message, "createdAt">): Set<
 }
 
 function roomLineText(name: string, line: string, same = true): string {
-  return `${name} just said in the room, ${same ? "answering the same message as you" : "while you were working"}:\n\n${line}\n\nRead it as you would in a group chat: don't repeat what ${name} covered or ask ${name} for it, and if it names you, that's about the part you're already answering, so cover it in your one answer. ${name}'s part stands as ${name} gave it: don't revise, reorder, correct or restate it; if yours has to fit it, fit yours around it, and keep yours as short as it would be on its own. Don't answer this line on its own: if you already gave your answer, you're done, and never add ${QUIET_REPLY} to an answer.`;
+  return `${name} just said in the room, ${same ? "answering the same message as you" : "while you were working"}:\n\n${line}\n\nRead it as you would in a group chat: don't repeat what ${name} covered or ask ${name} for it, and if it names you, that's about the part you're already answering, so cover it in your one answer. ${name}'s part stands as ${name} gave it: don't revise, reorder, correct or restate it; if yours has to fit it, fit yours around it, and keep yours as short as it would be on its own. Don't answer this line on its own: if you already wrote your answer, you're done, so end your turn with no more text and never a second version of it; and never add ${QUIET_REPLY} to an answer.`;
 }
 
 function postReply(bot: Bot, thread: Thread, message: Message, reply: string) {
