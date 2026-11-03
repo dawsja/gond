@@ -1178,6 +1178,10 @@ One line each: where to start, and what must not change.
   expires approvals, since the approved card is held in memory. Orders are
   checked on a lease by hidden prompts (`runDueShoppingChecks`).
   `GOND_SHOPPING_PREVIEW` blocks every purchase step.
+  `present_products` keeps only photos that load and fills a product
+  left without one from its store page (`src/product-photos.ts`,
+  `withPhotos`); every fetch stays on public HTTPS that resolves off the
+  private network, redirects included (`getPublic`).
 - **Website sign-ins** (`src/logins.ts`, `login-card.tsx`):
   `request_login` posts one card (`<SITE>_<KIND>`); values are held in
   memory for the conversation for 30 minutes and typed by `type_login`;
