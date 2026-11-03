@@ -61,6 +61,13 @@ affiliated with xAI, Meta or Anthropic.
   scrubbed of stored values.
 - **Memory.** Each bot has its own, plus a team memory shared by all your
   bots. Handoffs that stall get chased.
+- **Shopping.** Bots show sourced product cards with photos, prices, stores,
+  stock and variants. Buy now prepares a checkout whose final total you
+  approve; confirmed orders keep their receipt and shipment updates in chat.
+  Browser checkout currently requires the same merchant origin and a readable
+  final summary; other checkouts need you on the screen. Saved cards keep their
+  security code encrypted and fill it without asking again. Shipment checks
+  use connected email or retailer pages, and pause when access needs you.
 - **Notifications.** Push when a bot finishes or needs you, but not for the
   chat you're already looking at. The Android and iPhone apps get them even
   when they're closed, through `api.gond.io` and Firebase, sealed so that
@@ -172,6 +179,7 @@ need. These also work in `.env`, and nothing needs them:
 | `GOND_APPROVAL_TIMEOUT_MINUTES` | How long a card that needs you (an approval, a sign-in, a key) waits before it expires | `15` |
 | `GOND_NUDGE_MINUTES` | How long a handed-off task waits before a nudge | `120` |
 | `GOND_TURN_TIMING` | Set to `1` to log how long each bot turn took and where the time went (also read by `bun run bench`) | off |
+| `GOND_SHOPPING_PREVIEW` | Set to `1` for read-only shopping demos: block payment approval and submission, card injection, and browser form actions | off |
 | `GOND_SCREEN_TIMING` | Set to `1` on the computer to log where each screen batch's time went | off |
 | `BOT_IDLE_MS` | How long an idle bot session stays open | `600000` |
 | `GOND_BOX_MEMORY`, `GOND_BOX_CPUS`, `GOND_BOX_SHM` | The computer's limits | `4g`, `2`, `256m` |

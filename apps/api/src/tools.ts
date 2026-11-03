@@ -36,6 +36,8 @@ import { teachingsIn } from "./data/teachings.ts";
 import { recordUsage } from "./data/usage.ts";
 import { authorName } from "./transcript.ts";
 import { MAX_CHAIN, MAX_ROOM_LINES } from "./limits.ts";
+import { shoppingTools } from "./shopping.ts";
+import { activeCheckout } from "./data/shopping.ts";
 
 
 // Pieces of a card a bot used to ask for one by one: SONIC_CARD_NUMBER, CARD_CVV and the like.
@@ -114,6 +116,7 @@ export const TOOL_NOTES = [
   "connect_app connects one of the person's own apps (in their Composio project): it checks whether Gond can connect it through Composio, asks for their Composio key with a masked card when there isn't one yet (set_composio_key does that on its own), and posts a Connect card they tap to sign in. When the app isn't there but has an MCP server, use add_mcp_server with its URL (from the person, or its official docs; never guess one): it asks the person to approve, adds the server for every one of their bots, and posts a Sign in card when the server needs one. A server that wants a key or bearer token instead takes it in headers as {{secret:NAME}}, once request_secret has it; never build a local server or wrapper to carry a key. A server that runs as a command on the computer (like `uv run -m some_mcp`) goes in with add_mcp_server too: install it first, check it starts, then give the command and its args with absolute paths or names on PATH (~/.local/bin is on it) and any environment it needs, never a secret. Every bot gets its tools from its next reply.",
   "request_secret asks the person for a secret by name (like STRIPE_API_KEY or ROOT_PASSWORD) with a reason; the value is stored and you never see it. When a stored one is wrong or rotated, ask again with replace: true rather than storing it under a new name, and delete one that is no longer used with forget_secret. Use a stored one with run_with_secrets (a command that gets it as $NAME, with the output scrubbed), with a type_login action (typed into a field on the screen, once the person allows it), or as {{secret:NAME}} in an MCP server's headers. list_secrets shows the names that exist. set_composio_key asks for their Composio API key the same way and turns connected apps on; never ask for either as plain text in the conversation.",
   "use_card pays at a website's checkout: the person picks a saved card (one card works on every site) or types one in and says yes to that total, and you type it with type_login by CARD_NUMBER, CARD_EXPIRY, CARD_CVC and the rest. Never ask for a card's number, expiry or code with request_secret or in a sentence.",
+  "For product searches, browse merchant listings and use present_products to show sourced shopping cards with real photos, prices, stock and available variants. Do not invent listings, ratings, availability or delivery dates. Choosing Buy now creates a checkout: read get_shopping_context, prepare the selected variant and quantity at the retailer, then prepare_checkout with its observed final quote. Every purchase waits for its own payment card, regardless of your approval level; submit only once with submit_checkout after approval. Unknown outcomes must be reconciled from merchant history or email, never retried. Record confirmed orders with record_order and shipment updates with record_shipment. Shopping cards and addresses stay in private conversations.",
   "request_login posts a sign-in card for the site open on your screen when it asks for an email, username, phone, password or code; a type_login action then types each detail into the field you clicked, without you seeing it.",
   "browser and computer are your hands on the screen: a list of JSON actions run in order by Gond, answered with the screen as it is after them. browser is a Chrome window that stays open between replies, for every website; its answer lists what is on screen with refs to act on (click, fill, select, check, read, wait_for and the rest, in its description). computer is the whole desktop, for everything else on it. Connected apps, MCP servers, APIs and the shell come first; never script the screen yourself.",
 ].join("\n");
@@ -476,6 +479,7 @@ export function baseTools(context: Context): Record<string, DriverTool> {
   };
 
   return {
+    ...shoppingTools(bot, thread),
     set_profile: {
       description: "Update your own profile: name, job title, how you work (your SOUL), your mascot's colour, expression and shape, or your profile picture.",
       inputSchema: schema({
@@ -948,6 +952,7 @@ export function baseTools(context: Context): Record<string, DriverTool> {
       execute: async (input) => {
         const site = plainText(String(input.site ?? "")).trim().slice(0, 80);
         const total = plainText(String(input.total ?? "")).trim().slice(0, 24);
+        if (activeCheckout(bot.id, bot.userId!)) return "Use the shopping checkout's purchase card; use_card cannot bypass its quote approval.";
         if (!site || !total) return "NOT asked: say the site and the total, as the checkout shows them.";
         const status = await requestSecret({ bot, threadId: thread.id, name: "CARD", reason: plainText(String(input.reason ?? "")).trim().slice(0, 200) || `to pay on ${site}`, target: "card", site, total, signal: context.signal });
         if (status === "given") return `The person said yes to paying ${total} on ${site}, and their card is ready for the next 10 minutes. Click into each field and send a type_login action with its name (${Object.keys(CARD_FIELDS).join(", ")}), select: true for a dropdown. Never read the card back off the screen, and don't ask again with ask_approval: this was it.`;

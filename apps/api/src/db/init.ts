@@ -62,6 +62,9 @@ export function ensureDatabase(): Database {
   runMigrations(db);
   db.query("INSERT OR IGNORE INTO gond_settings (id, updated_at) VALUES (1, ?)").run(now());
   rotateLegacySecrets(db);
+  db.query("UPDATE gond_commerce SET state = 'unknown' WHERE kind = 'checkout' AND state = 'submitting'").run();
+  db.query("UPDATE gond_commerce SET state = 'expired' WHERE kind = 'checkout' AND state IN ('approved','review')").run();
+  db.query("UPDATE gond_commerce SET lease_until = NULL WHERE kind = 'order'").run();
   releaseClaims(db);
   holder.__gondDbReady = key;
   return db;

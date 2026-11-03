@@ -10,6 +10,9 @@ import { heldIn, heldLogin, holdLogin } from "./logins.ts";
 import { createRedactor } from "./redact.ts";
 import { botHome } from "./memory.ts";
 import { sendPush } from "./push.ts";
+import { cardFieldValue, quoteSchema, shoppingPrice } from "@gond/shared";
+import { activeCheckout, approvedCard, checkoutRecord, claimSubmission, liveItemsMatch, liveTotalMatches, prepareCheckout, shoppingCardValues, unknownSubmission } from "./data/shopping.ts";
+import { shoppingPreviewOnly } from "./config.ts";
 
 const DISPLAY = { width: 1024, height: 640 };
 const MAX_ACTIONS = 300;
@@ -281,7 +284,7 @@ type Context = {
  * whole desktop and the persistent browser. Both send structured steps to the
  * box's drivers; one approval and one action budget cover both for the reply.
  */
-export function computerTool(context: Context): { computer: DriverTool; browser: DriverTool; send_screenshot: DriverTool; hand_over: DriverTool } {
+export function computerTool(context: Context): { computer: DriverTool; browser: DriverTool; send_screenshot: DriverTool; hand_over: DriverTool; submit_checkout: DriverTool; prepare_checkout: DriverTool } {
   const { box, bot, thread } = context;
   const pictures = context.imageResults !== false;
   const screenFile = `${botHome(bot.id)}/screen.png`;
@@ -323,7 +326,9 @@ export function computerTool(context: Context): { computer: DriverTool; browser:
 
   const answer = (result: ScreenResult, steps: number, view?: ScreenView): ToolPart[] | string => {
     // What this conversation holds (a card, a sign-in) never comes back as text, whatever the page shows in its fields.
-    const text = createRedactor(heldIn(thread.id).flatMap((value) => [value, ...cardNumberForms(value).slice(1)]), Infinity)(screenSummary(result, steps));
+    const text = createRedactor([...heldIn(thread.id), ...shoppingCardValues()].flatMap((value) => [value, ...cardNumberForms(value).slice(1)]), Infinity, { short: 3 })(screenSummary(result, steps));
+    const checkout = activeCheckout(bot.id, bot.userId!);
+    if (checkout && ["approved", "submitting", "unknown"].includes(checkout.state)) return text;
     if (result.image) return [{ type: "text", text }, { type: "image", data: result.image, mimeType: result.mime ?? "image/png" }];
     return pictures || !result.width || view === "text" ? text : `${text}\nThe screenshot is saved to ~/${screenFile}.`;
   };
@@ -354,6 +359,7 @@ export function computerTool(context: Context): { computer: DriverTool; browser:
 
   /** Posts a batch's last screenshot in the conversation, when the bot asked for it with share. */
   const share = async (result: ScreenResult, caption: string): Promise<string> => {
+    if (activeCheckout(bot.id, bot.userId!)?.paymentLabel) return "NOT shared: a payment checkout may contain private card details.";
     if (result.error) return "NOT shared: a step failed, so the screenshot isn't the screen you meant. Fix it and share again.";
     let data: Uint8Array;
     try {
@@ -450,6 +456,7 @@ export function computerTool(context: Context): { computer: DriverTool; browser:
       step && typeof step === "object" && (step as Record<string, unknown>).type === "type_login" ? [String((step as Record<string, unknown>).name ?? "").trim().toUpperCase()] : [],
     );
     for (const name of new Set(names)) {
+      if (isCardField(name) && activeCheckout(bot.id, bot.userId!)) continue;
       if (isCardField(name) && heldLogin(thread.id, name) === null) return `NOT typed: no card is ready in this conversation for ${name}. Call use_card at the checkout first; the person picks the card. Nothing in this batch ran.`;
       // A website's saved sign-in goes through request_login, which asks for it by site.
       if (!name || heldLogin(thread.id, name) !== null || readLogin(bot.userId, name) !== null) continue;
@@ -468,6 +475,34 @@ export function computerTool(context: Context): { computer: DriverTool; browser:
     inputSchema: target === "browser" ? BROWSER_SCHEMA : COMPUTER_SCHEMA,
     ...(target === "desktop" ? { native: { anthropic: COMPUTER_NATIVE } } : {}),
     execute: async (raw) => {
+      const checkout = activeCheckout(bot.id, bot.userId!);
+      if (shoppingPreviewOnly()) {
+        const actions = Array.isArray(raw.actions) ? raw.actions as Record<string, unknown>[] : [];
+        const readOnly = ["navigate", "read", "screenshot", "scroll", "wait_for", "tab", "new_tab", "close_tab", "back", "forward", "reload", "hover"];
+        if (target !== "browser" || !actions.length || actions.some(action => !readOnly.includes(String(action.type)))) return "This preview permits read-only browsing. Form entry, checkout actions and purchases are disabled.";
+      }
+      if (checkout && checkout.threadId !== thread.id) return "This bot's browser is reserved by another conversation's checkout.";
+      if (checkout && checkout.state === "preparing") {
+        if (target !== "browser") return "Use the structured browser for shopping preparation; checkout submission requires its purchase card.";
+        const actions = Array.isArray(raw.actions) ? raw.actions as Record<string, unknown>[] : [];
+        if (actions.some(a => ["key", "press", "type"].includes(String(a.type)))) return "Use named fill/select controls while preparing checkout. Keyboard submission is not allowed.";
+        for (const action of actions.filter(a => a.type === "click")) {
+          let name = typeof action.label === "string" ? action.label : "";
+          if (!name && typeof action.ref === "string") {
+            const page = await send("browser", [{ type: "read" }], "text");
+            name = page.elements?.text.split("\n").find(line => line.trim().startsWith(`${action.ref} `)) ?? "";
+          }
+          if (!name || /\b(pay(?:ment)?|place\s+(?:your\s+)?order|complete\s+(?:purchase|order)|confirm\s+(?:purchase|order)|buy\s+now|submit\s+order)\b/i.test(name)) return "Do not submit while preparing. Obtain the final quote with prepare_checkout, wait for its purchase approval, then use submit_checkout.";
+        }
+      }
+      if (checkout && checkout.state !== "preparing") {
+        const actions = Array.isArray(raw.actions) ? raw.actions as Record<string, unknown>[] : [];
+        if (target !== "browser" || !actions.length || actions.some(a => !["read", "screenshot", "wait_for", ...(checkout.state === "approved" ? ["type_login"] : [])].includes(String(a.type)) || a.type === "type_login" && !isCardField(String(a.name)))) return "This checkout is locked. Review its purchase card, fill payment fields with type_login after approval, and submit only with submit_checkout. An unknown submission must be reconciled, never retried.";
+        if (checkout.state === "approved") {
+          const observed = await send("browser", [{ type: "read" }], "text");
+          if (!observed.url || new URL(observed.url).href !== new URL(checkout.quote!.url).href) return "The checkout page changed. Obtain a fresh quote and approval before entering payment details.";
+        }
+      }
       const pointed = target === "desktop" && hasCoordinates(raw);
       if (pointed && !scale) {
         try {
@@ -478,7 +513,13 @@ export function computerTool(context: Context): { computer: DriverTool; browser:
       }
       const typed = await typeSecrets(raw);
       if (typed) return typed;
-      const parsed = screenSteps(raw, target, scale, (name) => heldLogin(thread.id, name));
+      const parsed = screenSteps(raw, target, scale, (name) => {
+        if (checkout && isCardField(name)) {
+          const card = approvedCard(checkout);
+          return card ? cardFieldValue(card, name) || null : null;
+        }
+        return heldLogin(thread.id, name);
+      });
       if ("error" in parsed) return parsed.error;
       const { steps } = parsed;
       actions += steps.length;
@@ -490,7 +531,7 @@ export function computerTool(context: Context): { computer: DriverTool; browser:
       const caption = typeof raw.share === "string" ? raw.share.trim() : "";
       const asked = target === "browser" && (raw.view === "text" || raw.view === "image" || raw.view === "both") ? raw.view : undefined;
       const zoom = target === "browser" && raw.zoom && typeof raw.zoom === "object" ? (raw.zoom as { x: number; y: number; width: number; height: number }) : undefined;
-      const view = (caption && asked === "text") || (zoom && asked === "text") ? "both" : asked;
+      const view = checkout?.paymentLabel ? "text" : (caption && asked === "text") || (zoom && asked === "text") ? "both" : asked;
       try {
         const result = await send(target, steps, view, zoom);
         const shown = answer(usesInput(steps) ? sent(result) : result, steps.length, view);
@@ -505,7 +546,48 @@ export function computerTool(context: Context): { computer: DriverTool; browser:
     },
   });
 
-  return { computer: tool("desktop"), browser: tool("browser"), send_screenshot: sendScreenshot, hand_over: handOver };
+  const prepare: DriverTool = {
+    description: "Read the live final checkout and present its final itemized quote for explicit purchase approval. First verify selected variant, quantity and shipping address. This checks the live URL and page text. It never submits an order. Amounts are currency minor units. Cross-origin hosted checkouts require human handoff in this release.",
+    inputSchema: { type: "object", properties: { checkoutId: { type: "string" }, quote: quoteSchema.toJSONSchema() }, required: ["checkoutId", "quote"], additionalProperties: false },
+    execute: async raw => {
+      try {
+        const checkout = checkoutRecord(String(raw.checkoutId), bot.userId!);
+        if (checkout.botId !== bot.id || checkout.threadId !== thread.id) return "Use the checkout in this conversation.";
+        const quote = quoteSchema.parse(raw.quote);
+        const observed = await send("browser", [{ type: "read" }], "text");
+        const text = screenSummary(observed, 1);
+        if (observed.error || observed.url !== quote.url || !liveTotalMatches(text, quote.total) || !liveItemsMatch(text, checkout)) return "The quote does not match the live checkout. Its item, variant, quantity, shipping address, postal code, final total and URL must be visible and match. Use human handoff when the store cannot expose those details.";
+        const prepared = prepareCheckout(checkout.id, bot.userId!, { ...quote, evidence: hideSecrets(text).slice(0, 12000) });
+        if (bot.notify) await sendPush({ title: `${bot.name} needs purchase approval`, body: `${checkout.offer.store} · ${shoppingPrice(quote.total)}`, url: `/app/t/${thread.id}`, tag: thread.id, threadId: thread.id, botId: bot.id }, bot.userId);
+        return JSON.stringify(prepared);
+      } catch (error) { return `NOT prepared: ${error instanceof Error ? error.message : "Checkout failed"}`; }
+    },
+  };
+  const submitCheckout: DriverTool = {
+    description: "Submit the selected shopping checkout exactly once after its purchase card is approved. Give the current checkout revision from get_shopping_context. Reads the live page first; changed totals or URLs require a new quote. A timeout has unknown outcome: reconcile it with record_order, never submit again.",
+    inputSchema: { type: "object", properties: { checkoutId: { type: "string" }, revision: { type: "integer" } }, required: ["checkoutId", "revision"], additionalProperties: false },
+    execute: async raw => {
+      let claimed = false;
+      const id = String(raw.checkoutId);
+      try {
+        const checkout = checkoutRecord(id, bot.userId!);
+        if (checkout.botId !== bot.id || checkout.threadId !== thread.id || !checkout.quote) return "Use the checkout in this conversation.";
+        const observed = await send("browser", [{ type: "read" }], "text");
+        const text = screenSummary(observed, 1).replaceAll(",", "");
+        if (observed.error || observed.url !== checkout.quote.url || !liveTotalMatches(text, checkout.quote.total) || !liveItemsMatch(text, checkout)) return "The live checkout no longer matches the approved quote. Recheck every line item and call prepare_checkout for fresh approval.";
+        const refused = await mayUseInput("browser");
+        if (refused) return refused;
+        claimSubmission(id, bot.userId!, Number(raw.revision)); claimed = true;
+        const result = await send("browser", [{ type: "click", label: checkout.quote.submitLabel, role: "button" }], "text");
+        unknownSubmission(id, bot.userId!);
+        return `${answer(result, 1, "text")}\nSubmission was attempted once. Confirm the real merchant order number with record_order. Do not submit again, including if this page timed out.`;
+      } catch (error) {
+        if (claimed) unknownSubmission(id, bot.userId!);
+        return `${claimed ? "Submission outcome unknown. Reconcile the merchant order; never retry payment. " : "NOT submitted. "}${error instanceof Error ? error.message : "Checkout failed"}`;
+      }
+    },
+  };
+  return { computer: tool("desktop"), browser: tool("browser"), send_screenshot: sendScreenshot, hand_over: handOver, submit_checkout: submitCheckout, prepare_checkout: prepare };
 }
 
 /** A web page's host, for saying where; the bots' own homepage and blank tabs have none. */

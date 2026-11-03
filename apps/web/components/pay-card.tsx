@@ -43,7 +43,7 @@ export function PayCard({ request, bot, onAnswered }: { request: SecretRequest; 
   const site = request.site ?? "the checkout";
   const icon = <CreditCard aria-hidden="true" />;
   if (request.status !== "pending") {
-    const done = request.status === "given" ? { status: request.card ? `Paid with ${request.card}` : "Paid", tone: "ok" as const } : request.status === "declined" ? { status: "Not now", tone: "neutral" as const } : { status: "Expired", tone: "neutral" as const };
+    const done = request.status === "given" ? { status: request.card ? `Approved with ${request.card}` : "Payment approved", tone: "ok" as const } : request.status === "declined" ? { status: "Not now", tone: "neutral" as const } : { status: "Expired", tone: "neutral" as const };
     return <ActionCardDone id={request.id} bot={bot} icon={icon} title={`Pay on ${site}`} by={request.status === "expired" ? NOBODY_ANSWERED : `${name}${request.total ? ` · ${request.total}` : ""}`} status={done.status} tone={done.tone} />;
   }
 

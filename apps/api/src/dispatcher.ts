@@ -10,6 +10,7 @@ import { chaseStalledDelegations } from "./nudges.ts";
 import { expireTeachingFrames } from "./data/teachings.ts";
 import { isUpdating } from "./updater.ts";
 import { subscribe } from "./events.ts";
+import { runDueShoppingChecks } from "./shopping.ts";
 
 type State = { timer: ReturnType<typeof setInterval> | null; owner: string; ticking: boolean; lastChase: number; woken: boolean };
 const holder = globalThis as typeof globalThis & { __gondDispatcher?: State };
@@ -70,6 +71,7 @@ async function tick() {
   try {
     runDueRoutines();
     runDueFollowUps();
+    if (!isUpdating() && !computerAway()) runDueShoppingChecks();
     if (Date.now() - current.lastChase > 60_000) {
       current.lastChase = Date.now();
       chaseStalledDelegations();

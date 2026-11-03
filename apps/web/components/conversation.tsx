@@ -1,4 +1,5 @@
 "use client";
+import { ShoppingCard } from "@/components/shopping-card";
 
 import { handleOf, plainMarkdown, REACTIONS, roomTargets, type Approval, type ApprovalAnswer, type Bot, type ChatAttachment, type ImageAspect, type LiveEvent, type Message, type ReactionEmoji, type Thread, type ThreadSpace } from "@gond/shared";
 import { inertChoices, remoteMember, spaceMentionables, spaceSubtitle } from "@/lib/spaces";
@@ -321,6 +322,7 @@ const Line = memo(function Line({ message, threadId, bots, threads, bot, approva
   const author = mine ? null : bots.find((b) => b.id === message.author) ?? null;
   const remote = remoteMember(space, message.author);
   if (message.kind === "prompt") return null;
+  if (message.commerceId) return <MessageRow align="start"><MessageContent><ShoppingCard message={message} bot={author ?? bot ?? undefined} /></MessageContent></MessageRow>;
   if (message.kind === "message" && message.fromThreadId && author) return <Handoff message={message} threadId={threadId} bots={bots} threads={threads} onOpen={onOpenExchange} />;
   if (message.author === "routine") return <RunMarker message={message} bot={bot} />;
   if (message.kind === "event") {

@@ -38,6 +38,7 @@ type ThreadRow = {
 };
 
 type MessageRow = {
+  commerce_id: string | null;
   id: string;
   thread_id: string;
   author: string;
@@ -82,6 +83,7 @@ type QuotedRow = Pick<MessageRow, "id" | "author" | "body" | "attachments">;
 
 function messageFrom(row: MessageRow, reactions: Reaction[], quote: Quote | null): Message {
   return {
+    commerceId: row.commerce_id ?? null,
     id: row.id,
     threadId: row.thread_id,
     author: row.author,
@@ -314,6 +316,7 @@ export function markThreadRead(id: string) {
 }
 
 type NewMessage = {
+  commerceId?: string;
   threadId: string;
   author: MessageAuthor;
   body: string;
@@ -353,6 +356,7 @@ export function postMessage(input: NewMessage): Message {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(id, input.threadId, input.author, kind, input.body, JSON.stringify(input.attachments ?? []), input.depth ?? 0, input.approvalId ?? null, input.fromThreadId ?? null, needsAnswer ? null : at, input.steered ? 1 : 0, input.spoken ? 1 : 0, input.note ?? null, input.replyTo ?? null, input.answering ?? null, needsAnswer && input.routing ? ROUTING : null, input.checkIn ? 1 : 0, at);
     db.query("UPDATE gond_threads SET updated_at = ? WHERE id = ?").run(at, input.threadId);
+    if (input.commerceId) db.query("UPDATE gond_messages SET commerce_id = ? WHERE id = ?").run(input.commerceId, id);
     if (input.author === "you") db.query("UPDATE gond_threads SET last_read_at = ? WHERE id = ?").run(at, input.threadId);
     for (const file of input.attachments ?? []) db.query("UPDATE gond_attachments SET message_id = ? WHERE id = ?").run(id, file.id);
   });

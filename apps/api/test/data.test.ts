@@ -29,7 +29,13 @@ async function seedUsers(...people: [id: string, role: "admin" | "user"][]) {
     db.query('INSERT OR REPLACE INTO "user" (id, name, email, role, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)').run(id, id, `${id}@example.com`, role, "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z");
   }
 }
-afterAll(() => {
+afterAll(async () => {
+  // Windows cannot remove an open SQLite file; release this suite's cached connection first.
+  const { closeDb } = await import("../src/db/sqlite.ts");
+  const { resetDbReady } = await import("../src/db/init.ts");
+  closeDb();
+  resetDbReady();
+  Bun.gc(true);
   rmSync(dir, { recursive: true, force: true });
 });
 

@@ -12,6 +12,12 @@ export function dbPath() {
 type DbCache = { path: string; db: Database };
 const holder = globalThis as typeof globalThis & { __gondSqlite?: DbCache };
 
+/** Release the cached connection before removing a test database or switching its directory. */
+export function closeDb() {
+  holder.__gondSqlite?.db.close();
+  holder.__gondSqlite = undefined;
+}
+
 export function getDb(): Database {
   const file = dbPath();
   const cached = holder.__gondSqlite;

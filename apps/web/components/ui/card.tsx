@@ -79,12 +79,13 @@ function CardContent({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
-function CardFooter({ className, ...props }: React.ComponentProps<"div">) {
+function CardFooter({ className, variant = "default", ...props }: React.ComponentProps<"div"> & { variant?: "default" | "plain" }) {
   return (
     <div
       data-slot="card-footer"
       className={cn(
-        "flex items-center rounded-b-xl border-t bg-muted/50 p-(--card-spacing)",
+        "flex items-center rounded-b-xl p-(--card-spacing)",
+        variant === "plain" ? "bg-transparent" : "border-t bg-muted/50",
         className
       )}
       {...props}

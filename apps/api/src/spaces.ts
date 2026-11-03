@@ -327,6 +327,7 @@ function sendLine(space: SpaceRow, body: SpaceEvent, except?: string) {
 // --- Out: lines said here go to the space -------------------------------------------------------
 
 function wireLine(space: SpaceRow, message: Message): WireLine | null {
+  if (message.commerceId) return null;
   const own = ownKey();
   if (!own) return null;
   const files = message.attachments.length ? `\n\n(${message.attachments.length === 1 ? "A file" : `${message.attachments.length} files`} stayed on ${ownName()}.)` : "";

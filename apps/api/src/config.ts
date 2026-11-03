@@ -24,6 +24,11 @@ export function apiPort() {
   return Number(process.env.PORT || 8790);
 }
 
+/** An isolated shopping preview can browse and show cards, but cannot approve or submit purchases. */
+export function shoppingPreviewOnly() {
+  return env("SHOPPING_PREVIEW") === "1";
+}
+
 export const TURNS_PER_PERSON = 5;
 
 export function turnTiming() {
