@@ -71,7 +71,8 @@ export async function askOnce(input: { userId: string; speaker: Bot; threadId: s
     const result = await cliTurn({ box, agentId, botId: speaker.id, engine: run.engine, access: run.access, modelId: routerModel(run), maxTurns: 1, permission: "ask", instructions: input.instructions, prompt: input.prompt, tools: {}, timeoutMs: input.timeoutMs, signal: input.signal, onUsage });
     return result.ok ? result.text : "";
   } finally {
-    await closeAgent(box, agentId).catch(() => undefined);
+    // Not awaited: the box drops the agent at once, and waiting on Claude Code to exit held the pick back.
+    void closeAgent(box, agentId).catch(() => undefined);
   }
 }
 

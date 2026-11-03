@@ -152,6 +152,10 @@ export const COMPUTER_NATIVE = { type: "computer_20250124", name: "computer", di
 
 type Scale = { x: number; y: number };
 
+// Each bot's screen keeps its size, so its scale is learned once rather than with a screenshot at the
+// start of every reply that points somewhere first.
+const knownScales = new Map<string, Scale>();
+
 export function scaleOf(result: Pick<ScreenResult, "screen" | "width" | "height">): Scale | null {
   if (!result.width || !result.height || !result.screen?.width || !result.screen?.height) return null;
   return { x: result.screen.width / result.width, y: result.screen.height / result.height };
@@ -281,7 +285,7 @@ export function computerTool(context: Context): { computer: DriverTool; browser:
   const { box, bot, thread } = context;
   const pictures = context.imageResults !== false;
   const screenFile = `${botHome(bot.id)}/screen.png`;
-  let scale: Scale | null = null;
+  let scale: Scale | null = knownScales.get(bot.id) ?? null;
   let asked: Decision | null = null;
   let actions = 0;
   // The page the browser last showed, so a hand-off can say where.
@@ -309,7 +313,10 @@ export function computerTool(context: Context): { computer: DriverTool; browser:
         if (context.signal?.aborted) throw new ScreensFull();
       }
     }
-    if (target === "desktop") scale = scaleOf(result) ?? scale;
+    if (target === "desktop") {
+      scale = scaleOf(result) ?? scale;
+      if (scale) knownScales.set(bot.id, scale);
+    }
     if (result.url) lastUrl = result.url;
     return result;
   };

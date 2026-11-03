@@ -254,7 +254,13 @@ export async function toolsFor(userId: string): Promise<ComposioTool[]> {
   const key = `${userId}:${wanted.join(",")}`;
   const hit = toolCache.get(key);
   if (hit && Date.now() - hit.at < TOOL_CACHE_MS) return hit.tools;
-  const client = await sdk(userId);
+  let client: Awaited<ReturnType<typeof sdk>>;
+  try {
+    client = await sdk(userId);
+  } catch (error) {
+    if (hit) return hit.tools;
+    throw error;
+  }
   const lists = await Promise.allSettled(wanted.map((toolkit) => toolsOfApp(client, toolkit)));
   const tools: ComposioTool[] = [];
   lists.forEach((list, i) => {
@@ -262,6 +268,9 @@ export async function toolsFor(userId: string): Promise<ComposioTool[]> {
     else console.warn(`[gond] could not load ${wanted[i]} tools: ${list.reason instanceof Error ? list.reason.message : list.reason}`);
   });
   if (lists.every((list) => list.status === "fulfilled")) toolCache.set(key, { at: Date.now(), tools });
+  // A miss keeps the last full list: a Claude Code session relaunches whenever its tools change, so a
+  // moment's failure would cost a launch now and another once Composio answers again.
+  else if (hit) return hit.tools;
   return tools;
 }
 

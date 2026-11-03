@@ -139,7 +139,10 @@ function clippedOf(boxes) {
 function quiet({ quietMs, maxMs }) {
   return new Promise((resolve) => {
     let timer = null;
-    const observer = new MutationObserver(() => {
+    // A change to an element's inline style alone is an animation (a carousel, a ticker, a spinner), never
+    // the page settling into what was asked; counting it held every batch on such a page for maxMs.
+    const observer = new MutationObserver((records) => {
+      if (records.every((record) => record.type === "attributes" && record.attributeName === "style")) return;
       clearTimeout(timer);
       timer = setTimeout(done, quietMs);
     });
@@ -676,15 +679,19 @@ export function createBrowser({ launch, fill = null, onTeach = () => undefined, 
     if (saving.length) await Promise.race([Promise.all(saving.splice(0)), new Promise((resolve) => setTimeout(resolve, DOWNLOAD_WAIT_MS))]);
     const shown = await page();
     const size = (blocked() ? null : await viewOf(shown)) ?? VIEWPORT;
-    const elements = view === "image" || blocked() ? null : await elementsOf(shown, size);
-    let shot = null;
-    if (view !== "text" && !blocked()) {
-      const shotOptions = format === "png" ? { type: "png", timeout: SHOT_TIMEOUT_MS } : { type: "jpeg", quality: JPEG_QUALITY, timeout: SHOT_TIMEOUT_MS };
-      if (zoom) shotOptions.clip = zoom;
-      const image = await shown.screenshot(shotOptions);
-      const measured = pngSize(image) ?? (zoom ? { width: zoom.width, height: zoom.height } : size);
-      shot = { image: image.toString("base64"), mime: format === "png" ? "image/png" : "image/jpeg", width: measured.width, height: measured.height };
-    }
+    // The element list and the picture read the same settled page and don't wait on each other.
+    const listing = view === "image" || blocked() ? null : elementsOf(shown, size);
+    const picturing =
+      view !== "text" && !blocked()
+        ? (async () => {
+            const shotOptions = format === "png" ? { type: "png", timeout: SHOT_TIMEOUT_MS } : { type: "jpeg", quality: JPEG_QUALITY, timeout: SHOT_TIMEOUT_MS };
+            if (zoom) shotOptions.clip = zoom;
+            const image = await shown.screenshot(shotOptions);
+            const measured = pngSize(image) ?? (zoom ? { width: zoom.width, height: zoom.height } : size);
+            return { image: image.toString("base64"), mime: format === "png" ? "image/png" : "image/jpeg", width: measured.width, height: measured.height };
+          })()
+        : null;
+    const [elements, shot] = await Promise.all([listing, picturing]);
     const tabs = await Promise.all(ownPages().map(async (p, index) => ({ index, title: await p.title().catch(() => ""), url: p.url(), active: p === shown })));
     mice.set(bot, mouse);
     const dialog = dialogHere();
