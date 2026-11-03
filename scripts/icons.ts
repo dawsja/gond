@@ -31,35 +31,7 @@ function write(path: string, data: Buffer) {
   console.log(`${path.replace(root + "/", "")} ${data.length} bytes`);
 }
 
-function ico(images: Buffer[]): Buffer {
-  const header = Buffer.alloc(6);
-  header.writeUInt16LE(0, 0);
-  header.writeUInt16LE(1, 2);
-  header.writeUInt16LE(images.length, 4);
-  const entries: Buffer[] = [];
-  let offset = 6 + 16 * images.length;
-  for (const image of images) {
-    const size = image.readUInt32BE(16);
-    const entry = Buffer.alloc(16);
-    entry.writeUInt8(size >= 256 ? 0 : size, 0);
-    entry.writeUInt8(size >= 256 ? 0 : size, 1);
-    entry.writeUInt8(0, 2);
-    entry.writeUInt8(0, 3);
-    entry.writeUInt16LE(1, 4);
-    entry.writeUInt16LE(32, 6);
-    entry.writeUInt32LE(image.length, 8);
-    entry.writeUInt32LE(offset, 12);
-    entries.push(entry);
-    offset += image.length;
-  }
-  return Buffer.concat([header, ...entries, ...images]);
-}
-
 const disc512 = await png("disc", 512);
-write(join(root, "apps/web/public/logo.png"), disc512);
-write(join(root, "apps/web/app/icon.png"), disc512);
-write(join(root, "apps/web/public/logo-maskable.png"), await png("disc", 512, 0.12));
-write(join(root, "apps/web/app/favicon.ico"), ico(await Promise.all([16, 32, 48, 256].map((s) => png("disc", s)))));
 write(join(root, "assets/gond-1024.png"), await png("disc", 1024));
 
 write(join(android, "mipmap-xxxhdpi/ic_launcher.png"), await png("disc", 192));

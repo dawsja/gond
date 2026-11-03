@@ -10,11 +10,12 @@ const inter = Inter({ variable: "--font-inter", subsets: ["latin"], weight: ["40
 const jetbrains = JetBrains_Mono({ variable: "--font-jetbrains", subsets: ["latin"], weight: ["400", "500", "600"] });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.APP_URL ?? "http://localhost:3000"),
   title: { default: "Gond", template: "%s · Gond" },
   description: "Your team of always-on AI bots, each with its own computer. Self-hosted and open source.",
   applicationName: "Gond",
   robots: { index: false, follow: false },
-  icons: { icon: "/favicon.ico", apple: "/logo.png" },
+  icons: { icon: "/favicon.ico", apple: "/apple-touch-icon.png" },
   manifest: "/manifest.webmanifest",
   appleWebApp: { capable: true, title: "Gond", statusBarStyle: "default" },
 };

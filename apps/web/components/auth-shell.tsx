@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { rem } from "@/lib/utils";
 
 function BrandMark({ size = 28 }: { size?: number }) {
-  return <Image src="/logo.png" alt="" width={size} height={size} className="rounded-full" style={{ width: rem(size), height: rem(size) }} priority />;
+  return <Image src="/logo.png" alt="" width={size} height={size} className="rounded-[33.5%]" style={{ width: rem(size), height: rem(size) }} priority />;
 }
 
 export function AuthShell({ eyebrow, title, description, children }: { eyebrow: string; title: string; description: string; children: ReactNode }) {

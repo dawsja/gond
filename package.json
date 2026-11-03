@@ -9,6 +9,7 @@
     "node": ">=22.13"
   },
   "scripts": {
+    "brand:build": "bun scripts/brand.ts",
     "dev": "bun run --filter '*' dev",
     "dev:api": "bun run --filter @gond/api dev",
     "dev:web": "bun run --filter @gond/web dev",
