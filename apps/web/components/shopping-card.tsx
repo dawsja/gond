@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
@@ -51,27 +52,38 @@ export function ShoppingCard({ message, bot }: { message: Message; bot?: Bot }) 
 function Products({ record }: { record: ProductCollection }) {
   const [product, setProduct] = useState<ShoppingProduct | null>(null);
   const carousel = useRef<HTMLDivElement>(null);
+  const [canScroll, setCanScroll] = useState({ back: false, next: false });
+  useEffect(() => {
+    const element = carousel.current;
+    if (!element) return;
+    const update = () => setCanScroll({ back: element.scrollLeft > 1, next: element.scrollLeft + element.clientWidth < element.scrollWidth - 1 });
+    const frame = requestAnimationFrame(update);
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    element.addEventListener("scroll", update, { passive: true });
+    return () => { cancelAnimationFrame(frame); observer.disconnect(); element.removeEventListener("scroll", update); };
+  }, []);
   return <>
     <div role="region" aria-label="Shopping results" className="flex min-w-0 flex-col gap-2">
-      <div ref={carousel} className="flex max-w-full snap-x snap-mandatory gap-3 overflow-x-auto pb-2" tabIndex={0}>
+      <div ref={carousel} className="grid max-w-full auto-cols-[240px] grid-flow-col grid-rows-[auto_auto_auto_auto_auto] snap-x snap-mandatory gap-x-3 overflow-x-auto pb-2" tabIndex={0}>
         {record.products.map(p => {
           const offers = p.variants.flatMap(v => v.offers).sort((a, b) => Number(b.availability === "in_stock") - Number(a.availability === "in_stock"));
           const offer = offers[0]!;
-          return <Card key={p.id} className="w-60 shrink-0 snap-start gap-3 overflow-hidden p-3">
+          return <Card key={p.id} className="row-span-5 grid snap-start grid-rows-subgrid gap-y-2 overflow-hidden p-3">
             <CardHeader className="relative p-0">
               <Button variant="ghost" className="h-auto w-full p-0" onClick={() => setProduct(p)} aria-label={`View ${p.title}`}><ProductPhoto src={p.images[0]} title={p.title} /></Button>
               <div className="pointer-events-none absolute top-2 left-2 flex flex-wrap gap-1">{p.badges.map(b => <Badge key={b}>{b}</Badge>)}</div>
             </CardHeader>
-            <CardContent className="flex flex-col gap-1 p-0">
-              <CardTitle><Button variant="ghost" className="h-auto justify-start p-0 text-left whitespace-normal" onClick={() => setProduct(p)}>{p.title}</Button></CardTitle>
-              {p.rating ? <p className="text-sm text-muted-foreground">★ {p.rating.value} ({p.rating.count.toLocaleString()})</p> : null}
+            <CardContent className="row-span-3 grid grid-rows-subgrid gap-y-1 p-0">
+              <CardTitle><Button variant="ghost" className="h-auto w-full justify-start p-0 text-left whitespace-normal" onClick={() => setProduct(p)}>{p.title}</Button></CardTitle>
+              <p className="text-sm text-muted-foreground">{p.rating ? `★ ${p.rating.value} (${p.rating.count.toLocaleString()})` : null}</p>
               <p className="text-lg font-semibold">{shoppingPrice(offer.price)}</p>
             </CardContent>
-            <CardFooter className="flex flex-wrap justify-between gap-2 p-0"><span className="text-sm text-muted-foreground">{offer.store}</span><Badge tone={offer.availability === "in_stock" ? "ok" : "neutral"}>{stockLabel(offer.availability)}</Badge></CardFooter>
+            <CardFooter variant="plain" className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2 px-0 pt-0 pb-3"><span className="text-sm text-muted-foreground">{offer.store}</span><Badge tone={offer.availability === "in_stock" ? "ok" : "neutral"}>{stockLabel(offer.availability)}</Badge></CardFooter>
           </Card>;
         })}
       </div>
-      <div className="flex items-center justify-between gap-3"><p className="text-xs text-muted-foreground">Prices and stock checked {new Date(record.createdAt).toLocaleString()}</p><div className="flex gap-1"><Button size="icon" variant="outline" aria-label="Previous products" onClick={() => carousel.current?.scrollBy({ left: -252, behavior: "smooth" })}><ChevronLeft /></Button><Button size="icon" variant="outline" aria-label="Next products" onClick={() => carousel.current?.scrollBy({ left: 252, behavior: "smooth" })}><ChevronRight /></Button></div></div>
+      <div className="flex min-h-8 items-center justify-between gap-3"><p className="text-xs text-muted-foreground">Prices and stock checked {new Date(record.createdAt).toLocaleString()}</p><div className="flex gap-1">{canScroll.back ? <Button size="icon" variant="outline" aria-label="Previous products" onClick={() => carousel.current?.scrollBy({ left: -252, behavior: "smooth" })}><ChevronLeft /></Button> : null}{canScroll.next ? <Button size="icon" variant="outline" aria-label="Next products" onClick={() => carousel.current?.scrollBy({ left: 252, behavior: "smooth" })}><ChevronRight /></Button> : null}</div></div>
     </div>
     <Dialog open={Boolean(product)} onOpenChange={open => !open && setProduct(null)}><DialogContent className="sm:max-w-3xl">{product ? <ProductDetails key={product.id} product={product} collectionId={record.id} close={() => setProduct(null)} /> : null}</DialogContent></Dialog>
   </>;
@@ -86,6 +98,8 @@ function ProductDetails({ product, collectionId, close }: { product: ShoppingPro
   const offer = offers.find(o => o.id === offerId) ?? offers[0]!;
   const [photo, setPhoto] = useState(0), [quantity, setQuantity] = useState(1), [busy, setBusy] = useState(false), [error, setError] = useState<string | null>(null);
   const actionKey = useRef(crypto.randomUUID());
+  const options = variants.map(v => ({ value: v.id, label: Object.values(v.options).join(" · ") || "Standard", disabled: v.offers.every(o => o.availability === "out_of_stock") }));
+  const selectVariant = (id: string) => { setVariant(id); setOffer(""); };
   async function buy() {
     setBusy(true); setError(null);
     try { await post(`/api/shopping/${collectionId}/checkout`, { productId: product.id, variantId, offerId: offer.id, quantity, actionKey: actionKey.current }); close(); }
@@ -95,9 +109,20 @@ function ProductDetails({ product, collectionId, close }: { product: ShoppingPro
   return <>
     <DialogHeader><DialogTitle>{product.title}</DialogTitle><DialogDescription>{offer.store} · {shoppingPrice(offer.price)}{product.rating ? ` · ★ ${product.rating.value} (${product.rating.count.toLocaleString()})` : ""}</DialogDescription></DialogHeader>
     <div className="grid gap-5 sm:grid-cols-2">
-      <div className="flex flex-col gap-2"><ProductPhoto src={product.images[photo]} title={product.title} />{product.images.length > 1 ? <div className="flex gap-2">{product.images.map((src, i) => <Button key={src} variant={photo === i ? "control" : "outline"} size="icon-lg" aria-label={`Photo ${i + 1}`} aria-pressed={photo === i} onClick={() => setPhoto(i)}>{i + 1}</Button>)}</div> : null}</div>
+      <div className="relative self-start" role="region" aria-label="Product images" tabIndex={product.images.length > 1 ? 0 : undefined} onKeyDown={event => {
+        if (event.key === "ArrowLeft") { event.preventDefault(); setPhoto(index => Math.max(0, index - 1)); }
+        if (event.key === "ArrowRight") { event.preventDefault(); setPhoto(index => Math.min(product.images.length - 1, index + 1)); }
+      }}>
+        <ProductPhoto src={product.images[photo]} title={product.title} />
+        {photo > 0 ? <Button size="icon-lg" className="absolute top-1/2 left-3 -translate-y-1/2" aria-label="Previous image" onClick={() => setPhoto(index => index - 1)}><ChevronLeft /></Button> : null}
+        {photo < product.images.length - 1 ? <Button size="icon-lg" className="absolute top-1/2 right-3 -translate-y-1/2" aria-label="Next image" onClick={() => setPhoto(index => index + 1)}><ChevronRight /></Button> : null}
+        <span className="sr-only" aria-live="polite">{product.images.length ? `Image ${photo + 1} of ${product.images.length}` : "No product images"}</span>
+      </div>
       <FieldGroup>
-        <Field><FieldLabel>Options</FieldLabel><ToggleGroup variant="outline" value={[variantId]} onValueChange={value => { if (value[0]) { setVariant(String(value[0])); setOffer(""); } }} className="flex-wrap">{variants.map(v => <ToggleGroupItem key={v.id} value={v.id} disabled={v.offers.every(o => o.availability === "out_of_stock")}>{Object.values(v.options).join(" · ") || "Standard"}</ToggleGroupItem>)}</ToggleGroup></Field>
+        <Field><FieldLabel id={`option-label-${product.id}`}>Options</FieldLabel>{options.length > 4 ? <Select items={options} value={variantId} onValueChange={value => { if (typeof value === "string") selectVariant(value); }}>
+          <SelectTrigger aria-labelledby={`option-label-${product.id}`} className="w-full"><SelectValue /></SelectTrigger>
+          <SelectContent><SelectGroup>{options.map(option => <SelectItem key={option.value} value={option.value} disabled={option.disabled}>{option.label}</SelectItem>)}</SelectGroup></SelectContent>
+        </Select> : options.length === 1 ? <p className="text-sm">{options[0].label}</p> : <ToggleGroup aria-labelledby={`option-label-${product.id}`} variant="outline" value={[variantId]} onValueChange={value => { if (value[0]) selectVariant(String(value[0])); }} className="flex-wrap">{options.map(option => <ToggleGroupItem key={option.value} value={option.value} disabled={option.disabled}>{option.label}</ToggleGroupItem>)}</ToggleGroup>}</Field>
         <Field><FieldLabel>Store</FieldLabel><RadioGroup value={offer.id} onValueChange={v => setOffer(String(v))}>{offers.map(o => <Field key={o.id} orientation="horizontal"><RadioGroupItem id={`offer-${o.id}`} value={o.id} disabled={o.availability === "out_of_stock"} /><FieldLabel htmlFor={`offer-${o.id}`}>{o.store} · {shoppingPrice(o.price)} · {stockLabel(o.availability)}</FieldLabel></Field>)}</RadioGroup></Field>
         <Field><FieldLabel htmlFor="shopping-quantity">Quantity</FieldLabel><Input id="shopping-quantity" type="number" min={1} max={20} value={quantity} onChange={e => setQuantity(Number(e.target.value))} /></Field>
         <p className="text-sm text-muted-foreground">{offer.delivery || "Delivery confirmed at checkout"}</p>
