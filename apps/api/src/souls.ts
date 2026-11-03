@@ -61,9 +61,18 @@ export function howToTalk(talk: { style: ReplyStyle; emoji: EmojiLevel }): strin
 }
 
 /** One line for each turn the person will read, so a long session doesn't drift from their choice. */
+// Each style's core rule, said again in every turn the person reads: the name alone drifted, as long
+// answers with lists under Efficient showed.
+const STYLE_RULES: Record<Exclude<ReplyStyle, "default">, string> = {
+  professional: "polished and precise: complete sentences, the answer first, then only the detail that supports it",
+  friendly: "warm and chatty, while still getting to the point",
+  candid: "direct and encouraging: say plainly what you think, including where they're wrong, with no hedging or flattery",
+  efficient: "concise and plain: as few words as the job allows, the answer first, often one to three sentences, a list only for what is a list, and nothing they didn't ask for",
+};
+
 export function talkReminder(talk: { style: ReplyStyle; emoji: EmojiLevel }): string {
   const parts = [
-    talk.style === "default" ? "" : `the ${REPLY_STYLE_LABELS[talk.style].title} style (${REPLY_STYLE_LABELS[talk.style].blurb.toLowerCase()})`,
+    talk.style === "default" ? "" : `the ${REPLY_STYLE_LABELS[talk.style].title} style (${STYLE_RULES[talk.style]})`,
     talk.emoji === "more" ? "plenty of emoji" : talk.emoji === "less" ? "no emoji" : "",
   ].filter(Boolean);
   return parts.length ? `Write your answer in the way the person chose for their bots: ${parts.join(", with ")}.` : "";

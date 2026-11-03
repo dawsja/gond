@@ -1244,7 +1244,7 @@ describe("a reply as it is written", () => {
     expect(system).toContain("Style: Efficient. Concise and plain.");
     expect(system).toContain("Use no emoji");
     expect(howToTalk({ style: "default", emoji: "more" })).not.toContain("Style:");
-    expect(talkReminder({ style: "efficient", emoji: "less" })).toBe("Write your answer in the way the person chose for their bots: the Efficient style (concise and plain), with no emoji.");
+    expect(talkReminder({ style: "efficient", emoji: "less" })).toBe("Write your answer in the way the person chose for their bots: the Efficient style (concise and plain: as few words as the job allows, the answer first, often one to three sentences, a list only for what is a list, and nothing they didn't ask for), with no emoji.");
   });
 });
 
