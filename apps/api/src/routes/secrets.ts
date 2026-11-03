@@ -25,7 +25,7 @@ export function secretsRoutes() {
     const body = await readBody(c);
     if (body.decline) return c.json({ request: answerSecretRequest(request.id, "declined") });
     if (request.target === "card") {
-      if (shoppingPreviewOnly()) return c.json({ error: "Purchases are disabled in this preview instance" }, 403);
+      if (shoppingPreviewOnly()) return c.json({ error: "Purchases are disabled on this Gond" }, 403);
       // A saved card the person picked, or one typed in now; either way only this conversation holds it, for a few minutes.
       let picked: { card: CardDetails; label: string } | null = null;
       if (typeof body.saved === "string") {

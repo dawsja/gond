@@ -8,7 +8,8 @@ import { createBot } from "../src/data/bots.ts";
 import { getThread, listMessages } from "../src/data/threads.ts";
 import { ensureDatabase, resetDbReady } from "../src/db/init.ts";
 import { closeDb } from "../src/db/sqlite.ts";
-import { activeCheckout, approveCheckout, approvedCard, cancelCheckout, checkoutRecord, claimSubmission, claimTracking, liveTotalMatches, prepareCheckout, presentProducts, recordOrder, recordShipment, resolveFailedCheckout, setCheckoutAddress, shoppingRecord, startCheckout, trackingChecked, unknownSubmission } from "../src/data/shopping.ts";
+import { activeCheckout, approveCheckout, approvedCard, cancelCheckout, checkoutRecord, claimSubmission, claimTracking, expireDueCheckouts, liveTotalMatches, prepareCheckout, presentProducts, recordOrder, recordShipment, resolveFailedCheckout, setCheckoutAddress, shoppingRecord, startCheckout, stopCheckoutsIn, trackingChecked, unknownSubmission } from "../src/data/shopping.ts";
+import { CARD_EXPIRED_LINE } from "../src/approvals.ts";
 import { computerTool } from "../src/computer-tool.ts";
 import { readCard, saveCard } from "../src/data/secrets.ts";
 import { shoppingRoutes } from "../src/routes/shopping.ts";
@@ -164,6 +165,24 @@ describe("shopping purchase lifecycle", () => {
     const fresh = startCheckout("shopping-owner", collection.id, { ...input, actionKey: crypto.randomUUID() });
     expect(fresh.state).toBe("preparing"); expect(fresh.quote).toBeNull();
   });
+  test("Stop calls off a checkout not yet sent, and a purchase card nobody answers expires with Gond's line", () => {
+    const waiting = review();
+    expireDueCheckouts(new Date(Date.now() + 2 * 3600_000).toISOString());
+    expect(checkoutRecord(waiting.checkout.id, "shopping-owner").state).toBe("expired");
+    expect(listMessages(waiting.bot.threadId).at(-1)).toMatchObject({ author: waiting.bot.id, body: CARD_EXPIRED_LINE });
+
+    const preparing = setup();
+    expect(stopCheckoutsIn(preparing.bot.threadId)).toBe(1);
+    expect(checkoutRecord(preparing.checkout.id, "shopping-owner").state).toBe("cancelled");
+
+    // A submission already sent to the store can't be taken back by Stop.
+    const sent = review();
+    const approved = approveCheckout(sent.checkout.id, "shopping-owner", sent.checkout.revision, card, "Visa");
+    claimSubmission(approved.id, "shopping-owner", approved.revision);
+    expect(stopCheckoutsIn(sent.bot.threadId)).toBe(0);
+    expect(checkoutRecord(sent.checkout.id, "shopping-owner").state).toBe("submitting");
+  });
+
   test("validates public URLs and currency-specific minor units", () => {
     for (const url of ["http://shop.example", "https://127.0.0.1", "https://localhost", "https://10.0.0.1", "https://[::1]", "https://u:p@shop.example", "https://shop.internal"]) expect(shoppingUrl(url)).toBe(false);
     expect(shoppingPrice({ amount: 100, currency: "JPY" })).toBe("¥100");

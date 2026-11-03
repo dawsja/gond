@@ -104,6 +104,8 @@ describe("plain markdown", () => {
     expect(toolLabel("Glob", { pattern: "**/*.ts" }, plain)).toEqual({ verb: "Looking for files", detail: null });
     expect(toolLabel("LS", { path: home }, plain)).toEqual({ verb: "Looking in", detail: "its folder" });
     expect(withoutPaths("Let me check /home/agent/.team/u1/MEMORY.md and ~/.bots/b1/notes/todo.md, then https://example.com/a/b.", home)).toBe("Let me check the team memory and todo.md, then https://example.com/a/b.");
+    expect(toolLabel("mcp__gond__submit_checkout", { checkoutId: "c1", revision: 3 }, plain)).toEqual({ verb: "Placing the order", detail: null });
+    expect(toolLabel("present_products", { products: [] }, plain)).toEqual({ verb: "Showing products", detail: null });
     // Without `plain` the label stays exact: the work log, and what a retried turn hears it did.
     expect(toolLabel("Bash", { command: "bun test" }, { home })).toEqual({ verb: "Running", detail: "`bun test`" });
   });

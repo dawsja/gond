@@ -612,6 +612,12 @@ One line each: where to start, and what must not change.
   `openProfile`, a full load, so nothing of the old profile stays in
   memory; the store starts over when the session's profile changed under
   it. A mark's colour is `data-mark` in `globals.css`.
+- **Shopping** (`shopping-card.tsx`, a message's `commerceId`): products
+  in a carousel with a detail dialog (variant, store, quantity, Buy now),
+  the checkout as an `ActionCard` that asks for the address and then the
+  payment (Pay is `tint`) and folds to one line once it ends, and the
+  order with its shipments. A card reloads on its conversation's
+  `thread` event, never on a poll of its own.
 
 ## API
 
@@ -1154,6 +1160,21 @@ One line each: where to start, and what must not change.
   card pieces; the redactor knows every grouping (`cardNumberForms`); and
   screen answers drop held values (`heldIn`). A screenshot still can show
   one.
+- **Shopping** (`src/data/shopping.ts`, `src/shopping.ts`,
+  `routes/shopping.ts`, `prepare_checkout` and `submit_checkout` in
+  `computer-tool.ts`): products, checkouts and orders are encrypted rows of
+  `gond_commerce`, the address apart (`private`), in private conversations
+  only (never a space). A quote is bound to its revision and its live
+  page's items and total; the purchase card is the payment's yes whatever
+  the bot's level, and expires at `GOND_APPROVAL_TIMEOUT_MINUTES` with
+  Gond's `CARD_EXPIRED_LINE` (`expireDueCheckouts`). One open checkout per
+  bot locks its browser to that checkout. Only `submit_checkout` submits,
+  once (`claimSubmission`); an unknown outcome is reconciled from the
+  merchant, never retried. Stop calls off a checkout not yet submitted
+  (`stopCheckoutsIn`); a restart turns `submitting` into `unknown` and
+  expires approvals, since the approved card is held in memory. Orders are
+  checked on a lease by hidden prompts (`runDueShoppingChecks`).
+  `GOND_SHOPPING_PREVIEW` blocks every purchase step.
 - **Website sign-ins** (`src/logins.ts`, `login-card.tsx`):
   `request_login` posts one card (`<SITE>_<KIND>`); values are held in
   memory for the conversation for 30 minutes and typed by `type_login`;
@@ -1484,8 +1505,6 @@ a restart resumes (`resumeTeachings`), pictures expire a week after
   root's alone; leftovers go after a week (`sweep`).
 
 ## Tests
-
-Shopping lives in `data/shopping.ts`, `shopping.ts`, `routes/shopping.ts`, and `shopping-card.tsx`. Quote approval is revision-bound; only `submit_checkout` may submit an approved browser checkout, and an unknown outcome must be reconciled before another purchase. Saved cards include their security code inside the encrypted card value; only the API injects it, and checkout never asks for it again.
 
 Prioritize development velocity without sacrificing meaningful
 correctness.

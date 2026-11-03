@@ -1,40 +1,75 @@
-import { cardBrand, cardLabel, checkCard, type CardDetails } from "@gond/shared";
-import { Hono } from "hono";
+import { addressSchema, cardBrand, cardLabel, checkCard, type CardDetails, type ShippingAddress } from "@gond/shared";
+import { Hono, type Context } from "hono";
 import { ownsThread, userId } from "../access.ts";
 import type { Env } from "../app.ts";
-import { approveCheckout, cancelCheckout, checkoutRecord, setCheckoutAddress, shoppingRecord, startCheckout, trackingChecked } from "../data/shopping.ts";
+import { approveCheckout, cancelCheckout, checkOrderNow, checkoutRecord, setCheckoutAddress, shoppingRecord, startCheckout } from "../data/shopping.ts";
 import { readCard, saveCard } from "../data/secrets.ts";
 import { wakeCheckout } from "../shopping.ts";
 import { readBody } from "./body.ts";
 
+const ADDRESS_FIELDS: Record<keyof ShippingAddress, string> = {
+  name: "the full name",
+  line1: "the street address",
+  line2: "the apartment or suite",
+  city: "the city",
+  region: "the state or region",
+  postalCode: "the ZIP or postal code",
+  country: "the country, as two letters like US",
+  email: "the email address",
+  phone: "the phone number",
+};
+
+/** The shipping address, or what to fix in it, in words the person can act on. */
+function addressOf(input: unknown): ShippingAddress | string {
+  const parsed = addressSchema.safeParse(input);
+  if (parsed.success) return parsed.data;
+  const field = parsed.error.issues[0]?.path[0];
+  return `Check ${typeof field === "string" && field in ADDRESS_FIELDS ? ADDRESS_FIELDS[field as keyof ShippingAddress] : "the address"}`;
+}
+
+// The data layer's refusals are written for the person ("This checkout changed. Refresh it first"); a
+// missing record is a 404, as everywhere else.
+function failed(c: Context<Env>, error: unknown) {
+  const message = error instanceof Error ? error.message : "";
+  if (/^Couldn't find/.test(message)) return c.json({ error: message }, 404);
+  return c.json({ error: message || "That didn't work. Try again" }, 400);
+}
+
 export function shoppingRoutes() {
   const app = new Hono<Env>();
-  app.onError((error, c) => c.json({ error: error instanceof Error ? error.message : "Shopping failed" }, 400));
-  app.get("/shopping/:id", c => {
-    try { return c.json({ record: shoppingRecord(c.req.param("id"), userId(c)) }); }
-    catch { return c.json({ error: "Couldn't find that shopping card" }, 404); }
-  });
-  app.post("/shopping/:id/checkout", async c => {
+  app.onError((error, c) => failed(c, error));
+
+  app.get("/shopping/:id", (c) => c.json({ record: shoppingRecord(c.req.param("id"), userId(c)) }));
+
+  app.post("/shopping/:id/checkout", async (c) => {
     const body = await readBody(c);
-    if (typeof body.actionKey !== "string" || body.actionKey.length > 100) return c.json({ error: "Missing action key" }, 400);
-    const record = startCheckout(userId(c), c.req.param("id"), { productId: String(body.productId), variantId: String(body.variantId), offerId: String(body.offerId), quantity: Number(body.quantity), actionKey: body.actionKey });
+    if (typeof body.actionKey !== "string" || !body.actionKey || body.actionKey.length > 100) return c.json({ error: "Open the product again, then tap Buy now" }, 400);
+    if (typeof body.productId !== "string" || typeof body.variantId !== "string" || typeof body.offerId !== "string") return c.json({ error: "Pick an option and a store first" }, 400);
+    const record = startCheckout(userId(c), c.req.param("id"), { productId: body.productId, variantId: body.variantId, offerId: body.offerId, quantity: Number(body.quantity), actionKey: body.actionKey });
     return c.json({ record });
   });
-  app.post("/shopping/:id/address", async c => {
+
+  app.post("/shopping/:id/address", async (c) => {
     const body = await readBody(c);
-    const record = setCheckoutAddress(c.req.param("id"), userId(c), Number(body.revision), body.address);
+    const address = addressOf(body.address);
+    if (typeof address === "string") return c.json({ error: address }, 400);
+    const record = setCheckoutAddress(c.req.param("id"), userId(c), Number(body.revision), address);
     wakeCheckout(record.botId, record.threadId, record.id);
     return c.json({ record });
   });
-  app.post("/shopping/:id/cancel", async c => {
+
+  app.post("/shopping/:id/cancel", async (c) => {
     const body = await readBody(c);
     return c.json({ record: cancelCheckout(c.req.param("id"), userId(c), Number(body.revision)) });
   });
-  app.post("/shopping/:id/approve", async c => {
-    const body = await readBody(c), me = userId(c);
+
+  app.post("/shopping/:id/approve", async (c) => {
+    const body = await readBody(c);
+    const me = userId(c);
     const checkout = checkoutRecord(c.req.param("id"), me);
     if (!ownsThread(c, checkout.threadId)) return c.json({ error: "Couldn't find that checkout" }, 404);
-    let card: CardDetails, label: string;
+    let card: CardDetails;
+    let label: string;
     if (typeof body.saved === "string") {
       const saved = readCard(me, body.saved);
       if (!saved) return c.json({ error: "Couldn't find that card" }, 404);
@@ -51,15 +86,15 @@ export function shoppingRoutes() {
     wakeCheckout(record.botId, record.threadId, record.id, true);
     return c.json({ record });
   });
-  app.post("/shopping/:id/refresh", async c => {
-    const record = shoppingRecord(c.req.param("id"), userId(c));
-    if (record.kind !== "order") return c.json({ error: "Choose an order" }, 400);
-    if (record.lastCheckedAt && Date.now() - Date.parse(record.lastCheckedAt) < 60_000) return c.json({ error: "Try again in a minute" }, 429);
-    trackingChecked(record.id, userId(c), "active");
-    // A user refresh follows the same durable queue as an automatic check.
-    const { ensureDatabase } = await import("../db/init.ts");
-    ensureDatabase().query("UPDATE gond_commerce SET next_check_at = ? WHERE id = ?").run(new Date().toISOString(), record.id);
-    return c.json({ record: shoppingRecord(record.id, userId(c)) });
+
+  app.post("/shopping/:id/refresh", (c) => {
+    try {
+      return c.json({ record: checkOrderNow(c.req.param("id"), userId(c)) });
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith("It was checked")) return c.json({ error: error.message }, 429);
+      throw error;
+    }
   });
+
   return app;
 }

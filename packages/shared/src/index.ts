@@ -2527,6 +2527,22 @@ export function describeTool(name: string, input: Record<string, unknown> = {}, 
     case "computer":
     case "browser":
       return screenLabel(name, input);
+    case "present_products":
+      return { verb: "Showing products", detail: null };
+    case "get_shopping_context":
+      return { verb: "Looking at the order", detail: null };
+    case "prepare_checkout":
+      return { verb: "Checking the final total", detail: null };
+    case "submit_checkout":
+      return { verb: "Placing the order", detail: null };
+    case "record_order":
+      return { verb: "Saving the order", detail: null };
+    case "record_shipment":
+      return { verb: "Updating the delivery", detail: null };
+    case "finish_order_check":
+      return { verb: "Finishing a delivery check", detail: null };
+    case "resolve_checkout_failure":
+      return { verb: "Noting the checkout didn't go through", detail: null };
     default:
       break;
   }

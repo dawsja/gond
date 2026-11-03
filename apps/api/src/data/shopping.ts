@@ -5,7 +5,8 @@ import { encryptSecret, decryptSecret } from "../secrets.ts";
 import { threadChanged } from "../events.ts";
 import { getThread, postMessage } from "./threads.ts";
 import { spaceOfThread } from "./spaces.ts";
-import { shoppingPreviewOnly } from "../config.ts";
+import { approvalTimeoutMs, shoppingPreviewOnly } from "../config.ts";
+import { CARD_EXPIRED_LINE } from "../approvals.ts";
 
 type Row = { id: string; user_id: string; thread_id: string; bot_id: string; kind: ShoppingRecord["kind"]; state: string; revision: number; payload: string; private: string | null; next_check_at: string | null; lease_until: string | null; created_at: string; updated_at: string };
 const cards = new Map<string, { card: CardDetails; until: number }>();
@@ -64,7 +65,7 @@ export function presentProducts(userId: string, botId: string, threadId: string,
 export function startCheckout(userId: string, collectionId: string, input: { productId: string; variantId: string; offerId: string; quantity: number; actionKey: string }): ShoppingCheckout {
   return transaction(db => {
     const collection = shoppingRecord(collectionId, userId);
-    if (collection.kind !== "products") throw new Error("Choose a product collection");
+    if (collection.kind !== "products") throw new Error("Couldn't find those products");
     privateThread(collection.threadId, userId);
     const previous = db.query("SELECT id FROM gond_commerce WHERE action_key = ? AND user_id = ?").get(`${userId}:${input.actionKey}`, userId) as { id: string } | null;
     if (previous) return shoppingRecord(previous.id, userId) as ShoppingCheckout;
@@ -73,7 +74,7 @@ export function startCheckout(userId: string, collectionId: string, input: { pro
     const offer = variant?.offers.find(o => o.id === input.offerId);
     if (!product || !offer || offer.availability === "out_of_stock") throw new Error("That option is unavailable");
     if (!Number.isInteger(input.quantity) || input.quantity < 1 || input.quantity > 20) throw new Error("Choose a quantity from 1 to 20");
-    if (activeCheckout(collection.botId, userId)) throw new Error("Finish or cancel the existing checkout first");
+    if (activeCheckout(collection.botId, userId)) throw new Error("This bot already has a checkout open. Finish or cancel it first");
     const record: ShoppingCheckout = { kind: "checkout", id: newId("checkout"), threadId: collection.threadId, botId: collection.botId, collectionId, product, variantId: input.variantId, offer, quantity: input.quantity, state: "preparing", revision: 1, quote: null, address: null, paymentLabel: null, expiresAt: null, createdAt: now(), updatedAt: now() };
     insert(userId, record, record.state, collectionId, `${userId}:${input.actionKey}`);
     postMessage({ threadId: record.threadId, author: record.botId, commerceId: record.id, body: `Checkout: ${product.title} (${record.quantity})`, answered: true });
@@ -85,14 +86,48 @@ export function activeCheckout(botId: string, userId: string): ShoppingCheckout 
   if (!row) return null;
   const checkout = shoppingRecord(row.id, userId) as ShoppingCheckout;
   if (["review", "approved"].includes(checkout.state) && checkout.expiresAt && checkout.expiresAt <= now()) {
-    cancelCheckout(row.id, userId, checkout.revision, "expired");
+    expireCheckout(row.id, userId);
     return null;
   }
   return checkout;
 }
+
+/** A purchase card nobody answered in time: closed like any other card, with Gond's own line, never the model's. */
+function expireCheckout(id: string, userId: string) {
+  const checkout = checkoutRecord(id, userId);
+  if (!["review", "approved"].includes(checkout.state)) return;
+  cancelCheckout(id, userId, checkout.revision, "expired");
+  postMessage({ threadId: checkout.threadId, author: checkout.botId, body: CARD_EXPIRED_LINE, answered: true });
+}
+
+/** Every purchase card past its time, from the dispatcher's tick. */
+export function expireDueCheckouts(at = now()) {
+  const rows = ensureDatabase().query("SELECT id, user_id FROM gond_commerce WHERE kind = 'checkout' AND state IN ('review','approved')").all() as { id: string; user_id: string }[];
+  for (const row of rows) {
+    const checkout = checkoutRecord(row.id, row.user_id);
+    if (checkout.expiresAt && checkout.expiresAt <= at) expireCheckout(row.id, row.user_id);
+  }
+}
+
+/** Stop calls off a conversation's checkouts that haven't been sent to the store; a submitted one can't be taken back. */
+export function stopCheckoutsIn(threadId: string): number {
+  const rows = ensureDatabase().query("SELECT id, user_id FROM gond_commerce WHERE thread_id = ? AND kind = 'checkout' AND state IN ('preparing','review','approved')").all(threadId) as { id: string; user_id: string }[];
+  for (const row of rows) cancelCheckout(row.id, row.user_id, checkoutRecord(row.id, row.user_id).revision);
+  return rows.length;
+}
+
+/** The person's Check for updates: the order joins the same queue as an automatic check, due now. */
+export function checkOrderNow(id: string, userId: string): ShoppingOrder {
+  const order = shoppingRecord(id, userId);
+  if (order.kind !== "order") throw new Error("Couldn't find that order");
+  if (order.lastCheckedAt && Date.now() - Date.parse(order.lastCheckedAt) < 60_000) throw new Error("It was checked a moment ago. Try again in a minute");
+  trackingChecked(id, userId, "active");
+  ensureDatabase().query("UPDATE gond_commerce SET next_check_at = ? WHERE id = ?").run(now(), id);
+  return shoppingRecord(id, userId) as ShoppingOrder;
+}
 export function checkoutRecord(id: string, userId: string): ShoppingCheckout {
   const record = shoppingRecord(id, userId);
-  if (record.kind !== "checkout") throw new Error("Choose a checkout");
+  if (record.kind !== "checkout") throw new Error("Couldn't find that checkout");
   return record;
 }
 export function setCheckoutAddress(id: string, userId: string, revision: number, input: unknown) {
@@ -115,12 +150,12 @@ export function prepareCheckout(id: string, userId: string, input: unknown): Sho
     if (!lines.every(m => m.currency === checkout.offer.price.currency) || quote.total.amount !== quote.subtotal.amount + quote.shipping.amount + quote.tax.amount - quote.discount.amount) throw new Error("The quote's currency or total does not match its line items");
     if (new URL(quote.url).origin !== new URL(checkout.offer.url).origin) throw new Error("A different checkout origin requires a separate verified merchant integration; use handoff for this store");
     cards.delete(id);
-    save(row, { ...checkout, address: null, quote, expiresAt: new Date(Date.now() + 15 * 60_000).toISOString() }, "review");
+    save(row, { ...checkout, address: null, quote, expiresAt: new Date(Date.now() + approvalTimeoutMs()).toISOString() }, "review");
     return checkoutRecord(id, userId);
   });
 }
 export function approveCheckout(id: string, userId: string, revision: number, card: CardDetails, label: string): ShoppingCheckout {
-  if (shoppingPreviewOnly()) throw new Error("Purchases are disabled in this preview instance");
+  if (shoppingPreviewOnly()) throw new Error("Purchases are disabled on this Gond");
   return transaction(() => {
     const row = shoppingRow(id, userId), checkout = checkoutRecord(id, userId);
     if (checkout.revision !== revision || checkout.state !== "review" || !checkout.quote || !checkout.expiresAt || checkout.expiresAt <= now()) throw new Error("This quote changed or expired. Review it again before paying");
@@ -147,7 +182,7 @@ export function shoppingCardValues(): string[] {
   return [...cards.values()].flatMap(c => Object.values(c.card));
 }
 export function claimSubmission(id: string, userId: string, revision: number): ShoppingCheckout {
-  if (shoppingPreviewOnly()) throw new Error("Purchases are disabled in this preview instance");
+  if (shoppingPreviewOnly()) throw new Error("Purchases are disabled on this Gond");
   return transaction(db => {
     const checkout = checkoutRecord(id, userId);
     if (checkout.revision !== revision || !approvedCard(checkout) || !checkout.expiresAt || checkout.expiresAt <= now()) throw new Error("Payment approval changed or expired");
@@ -190,7 +225,7 @@ export function recordShipment(id: string, userId: string, input: unknown): { or
   const shipment = shipmentSchema.parse(input);
   return transaction(db => {
     const row = shoppingRow(id, userId), order = shoppingRecord(id, userId);
-    if (order.kind !== "order") throw new Error("Choose an order");
+    if (order.kind !== "order") throw new Error("Couldn't find that order");
     const old = order.shipments.find(s => s.id === shipment.id);
     if (old && old.eventAt >= shipment.eventAt) return { order, changed: false };
     const key = `${shipment.id}:${shipment.stage}:${shipment.eventAt}`;
@@ -204,7 +239,7 @@ export function recordShipment(id: string, userId: string, input: unknown): { or
 }
 export function trackingChecked(id: string, userId: string, state: "active" | "paused" | "complete") {
   const row = shoppingRow(id, userId), order = shoppingRecord(id, userId);
-  if (order.kind !== "order") throw new Error("Choose an order");
+  if (order.kind !== "order") throw new Error("Couldn't find that order");
   const next = state === "active" ? new Date(Date.now() + (order.shipments.length ? 2 : 6) * 3600_000).toISOString() : null;
   ensureDatabase().query("UPDATE gond_commerce SET next_check_at = ?, lease_until = NULL WHERE id = ?").run(next, id);
   save(row, { ...order, lastCheckedAt: now(), nextCheckAt: next, tracking: state }, state);

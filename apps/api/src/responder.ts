@@ -9,6 +9,7 @@ import { type Delegation, finishDelegation, handoffWorkedOn, isDelegationResult,
 import { cancelFollowUpsIn } from "./data/follow-ups.ts";
 import { finishRoutineRun } from "./data/routines.ts";
 import { allSecretValues, listSecrets } from "./data/secrets.ts";
+import { stopCheckoutsIn } from "./data/shopping.ts";
 import { userTalk, userTimezone } from "./data/prefs.ts";
 import { listConnections } from "./data/settings.ts";
 import { listSkills } from "./data/skills.ts";
@@ -230,6 +231,7 @@ export async function stopThread(threadId: string, options: { quiet?: boolean } 
   report.tasks.push(...guests.tasks);
   report.dropped = closePending(threadId) + guests.dropped;
   report.recordings = await stopTeachingsIn(threadId);
+  report.dropped += stopCheckoutsIn(threadId);
   await stopWorkFrom(threadId, null, new Set([threadId]), report);
 
   if (owner && getPrimary(owner)?.threadId === threadId && stopCheckIn(owner)) report.stopped += 1;

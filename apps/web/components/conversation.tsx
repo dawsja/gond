@@ -1,5 +1,4 @@
 "use client";
-import { ShoppingCard } from "@/components/shopping-card";
 
 import { handleOf, plainMarkdown, REACTIONS, roomTargets, type Approval, type ApprovalAnswer, type Bot, type ChatAttachment, type ImageAspect, type LiveEvent, type Message, type ReactionEmoji, type Thread, type ThreadSpace } from "@gond/shared";
 import { inertChoices, remoteMember, spaceMentionables, spaceSubtitle } from "@/lib/spaces";
@@ -29,6 +28,7 @@ import { NoticedLinks, noticedRuns, RunMarker, useWatches, WatchesContext, type 
 import { DetailsSheet, RightPanel } from "@/components/right-panel";
 import { ScreenPanel, useScreenDrivers } from "@/components/screen-panel";
 import { SecretCard } from "@/components/secret-card";
+import { ShoppingCard } from "@/components/shopping-card";
 import { failed } from "@/components/failed";
 import { openShellDialog } from "@/components/shell";
 import { SignInCard } from "@/components/signin-card";
