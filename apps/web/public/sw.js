@@ -19,7 +19,7 @@ self.addEventListener("push", (event) => {
         tag: data.tag || undefined,
         renotify: Boolean(data.tag),
         icon: "/logo.png",
-        badge: "/logo.png",
+        badge: "/notification-badge.png",
         data: { url: url.href },
       });
     })(),

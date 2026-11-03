@@ -1,5 +1,7 @@
 # Gond
 
+Brand source: `packages/shared/brand/gond-mark.svg`; build with `bun run brand:build`, check with `bun run brand:build -- --check`; mascots are not the brand mark; native icons will use the same source in the follow-up native icon PR.
+
 A team of always-on AI bots, each with its own computer. Self-hosted, open
 source, and it runs on the AI plans you already pay for.
 

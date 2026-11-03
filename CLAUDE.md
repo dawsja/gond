@@ -1,5 +1,7 @@
 # Gond: how we build it
 
+Brand source: `packages/shared/brand/gond-mark.svg`; build with `bun run brand:build`, check with `bun run brand:build -- --check`; mascots are not the brand mark; native icons will use the same source in the follow-up native icon PR.
+
 Read this before changing anything. The README says what Gond is; this
 says how it is made and which rules must hold. It names the files and
 functions to start from; the code holds the details.
