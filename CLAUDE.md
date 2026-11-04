@@ -470,7 +470,8 @@ One line each: where to start, and what must not change.
   goes as `@handle option` to the bot that offered it.
 - **The composer**: a message past one line moves its buttons (Later,
   the mic, Send) to a row beneath (`stacked`), held until it's empty so
-  the wider text can't flip it back.
+  the wider text can't flip it back. `lib/composer-layout.ts` gates it on
+  the draft: empty is always inline, even without a resize notification.
 - **Drafts and history** (`lib/drafts.ts`, `lib/sent-history.ts`): a
   draft is per conversation in `localStorage`, shown as "Draft: …". Up in
   an empty composer recalls sent lines (`historyStep`), only on the first
