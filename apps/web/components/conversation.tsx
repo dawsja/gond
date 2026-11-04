@@ -59,6 +59,7 @@ import { useSwipeBack } from "@/hooks/use-swipe-back";
 import { REPLY_DISTANCE, useSwipeToReply } from "@/hooks/use-swipe-to-reply";
 import { useStableCallback } from "@/hooks/use-stable-callback";
 import { api, ApiError, post } from "@/lib/api";
+import { composerLayout } from "@/lib/composer-layout";
 import { readDraft, saveDraft } from "@/lib/drafts";
 import { fileKind, type FileKind } from "@/lib/file-kind";
 import { editUnread, retryTurn, unsend } from "@/lib/message-actions";
@@ -742,7 +743,13 @@ export function Conversation({ threadId }: { threadId: string }) {
   const textarea = useRef<HTMLTextAreaElement>(null);
   // A message past one line takes the pill's full width, its buttons on a row of their own beneath;
   // it stays that way until it's empty, or the wider text could fit one line again and flip back.
-  const [stacked, setStacked] = useState(false);
+  const [stackedLatch, setStacked] = useState(false);
+  const stacked = composerLayout(draft, false, stackedLatch);
+  useEffect(() => {
+    if (draft) return;
+    // Clearing a one-line field need not resize it. Reset for the next draft without waiting for that.
+    void Promise.resolve().then(() => setStacked(false));
+  }, [draft]);
   const heightWatch = useRef<ResizeObserver | null>(null);
   const composerField = useCallback((node: HTMLTextAreaElement | null) => {
     textarea.current = node;
@@ -750,8 +757,8 @@ export function Conversation({ threadId }: { threadId: string }) {
     heightWatch.current = null;
     if (!node || typeof ResizeObserver === "undefined") return;
     heightWatch.current = new ResizeObserver(() => {
-      if (!node.value) setStacked(false);
-      else if (node.offsetHeight > parseFloat(getComputedStyle(node).minHeight) + 4) setStacked(true);
+      const needsRows = node.offsetHeight > parseFloat(getComputedStyle(node).minHeight) + 4;
+      setStacked((previous) => composerLayout(node.value, needsRows, previous));
     });
     heightWatch.current.observe(node);
   }, []);
