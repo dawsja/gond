@@ -1,6 +1,7 @@
 import { isQuietTool, toolLabel, toolLine, withoutPaths, type Engine, type ToolLabelContext } from "@gond/shared";
 import { answerAgentTool, runAgentTurn, type AgentTool, type BoxAccess, type BoxConfig } from "./box.ts";
 import type { ModelUsage } from "./data/usage.ts";
+import { ALWAYS_LOAD_TOOLS } from "./coordination.ts";
 import { labelStep, type StepUpdate } from "./work.ts";
 
 export type ToolPart = { type: "text"; text: string } | { type: "image"; data: string; mimeType: "image/png" | "image/jpeg" };
@@ -41,8 +42,11 @@ export function resultAsText(value: unknown): string {
   return JSON.stringify(value ?? "");
 }
 
-function agentToolsFor(tools: Record<string, DriverTool>): AgentTool[] {
-  return Object.entries(tools).map(([name, tool]) => ({ name, description: tool.description, inputSchema: tool.inputSchema ?? { type: "object", properties: {} } }));
+export function agentToolsFor(tools: Record<string, DriverTool>, engine: Engine, guest?: "talk" | "look"): AgentTool[] {
+  return Object.entries(tools).map(([name, tool]) => ({
+    name, description: tool.description, inputSchema: tool.inputSchema ?? { type: "object", properties: {} },
+    ...(engine === "claude" && !guest && ALWAYS_LOAD_TOOLS.has(name) ? { _meta: { "anthropic/alwaysLoad": true as const } } : {}),
+  }));
 }
 
 const MAX_TOOL_RESULT = 24_000;
@@ -197,7 +201,7 @@ export async function cliTurn(turn: CliTurn): Promise<CliTurnResult> {
       prompt: turn.prompt,
       ...(turn.followUp ? { followUp: turn.followUp } : {}),
       ...(turn.attachments?.length ? { attachments: turn.attachments } : {}),
-      tools: agentToolsFor(turn.tools),
+      tools: agentToolsFor(turn.tools, turn.engine, turn.guest),
       ...(turn.mcpServers?.length ? { mcpServers: turn.mcpServers } : {}),
       timeoutMs: turn.timeoutMs,
       ...(turn.guest ? { guest: turn.guest } : {}),

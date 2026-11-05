@@ -19,7 +19,11 @@ functions to start from; the code holds the details.
 - `packages/box`: the bots' computer. Plain Node ESM (`.mjs`), no build
   step, runs as root only to drop to each person's user. Claude Code
   sessions in `agents.mjs` on the shared base in `bridge.mjs`; the `gond`
-  MCP bridge in `gond-mcp.mjs`.
+  MCP bridge in `packages/box/gond-mcp.mjs` preserves tool `_meta`, including
+  `anthropic/alwaysLoad` for `ALWAYS_LOAD_TOOLS` in `apps/api/src/coordination.ts`.
+  Guests and the self-driven engine get no hint; `message_bot`'s `kind` stays
+  optional. Calls without arguments reach the API as an empty object; preserve
+  schema-loading guidance in every bot's prompt.
 - `packages/shared`: types, zod schemas, constants, templates, the app
   catalog. If web and api both need it, it goes here.
 - `packages/relay` (`gond-relay`): carries sealed envelopes between Gond
@@ -844,7 +848,9 @@ One line each: where to start, and what must not change.
   broken runs (`getPrimary`). It is never a tool's to set: `POST
   /api/bots/:id/primary` transfers it, and `ensurePrimary` keeps exactly
   one visible primary per person. Who does what lives in SOUL and the
-  house rules, never gated in the responder.
+  house rules, never gated in the responder. `validateCoordination` in
+  `tools.ts` checks schemas before coordination tools run; `ALWAYS_LOAD_TOOLS`
+  in `coordination.ts` keeps their schemas in Claude's non-guest tool list.
 - **Profiles through tools, not SQL**: `set_profile` and `update_bot` go
   through `profilePatch()` in `src/tools.ts`, then `syncSoul` rewrites
   SOUL.md. Add a field there, not in the route. `picture` is a path in

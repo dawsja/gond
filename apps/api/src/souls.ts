@@ -174,7 +174,7 @@ export function systemPromptFor(bot: Bot, context: PromptContext): string {
     talk ? `## How the person wants you to talk\n${talk}` : "",
     `## House rules\n${houseRules(bot.userId)}`,
     `## Formatting\n${formatting()}`,
-    context.toolNotes ? `## Tools\n${context.toolNotes}` : "",
+    context.toolNotes ? `## Tools\nIf a tool's parameters are not visible, load its schema first, then call it.\n${context.toolNotes}` : "",
     renderSoul(bot).trim(),
     `## Team\n${roster(context.bots, bot)}`,
     `## Connected apps\n${apps.length ? `${apps.map((a) => `- ${a.name}: tools named ${a.toolkit.toUpperCase()}_…`).join("\n")}\nCall an app's tools directly for anything in it (on Claude Code they are mcp__gond__<NAME>; search your tools for the app's name if they aren't listed). Never look through files or the shell for an app's data.` : "- None connected to you yet. Ask the person to connect one under Settings → Apps → Connected apps, or use the browser."}`,

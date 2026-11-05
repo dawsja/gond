@@ -299,7 +299,7 @@ async function* readEvents<T>(body: ReadableStream<Uint8Array>): AsyncGenerator<
   }
 }
 
-export type AgentTool = { name: string; description: string; inputSchema: unknown };
+export type AgentTool = { name: string; description: string; inputSchema: unknown; _meta?: { "anthropic/alwaysLoad": true } };
 
 export type BoxAccess = { kind: "plan" } | { kind: "api"; baseUrl: string; token: string; smallModel?: string | null };
 

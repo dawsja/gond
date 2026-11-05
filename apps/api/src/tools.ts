@@ -211,6 +211,31 @@ function overLimit(what: string, text: string, limit: number): string | null {
 
 const schema = (properties: Record<string, unknown>, required: string[] = []) => ({ type: "object", properties, required, additionalProperties: false });
 
+function validateCoordination(tools: Record<string, DriverTool>): Record<string, DriverTool> {
+  for (const [name, tool] of Object.entries(tools)) {
+    const spec = tool.inputSchema as { required?: string[]; properties?: Record<string, { type?: string; enum?: unknown[] }> };
+    const required = spec.required ?? [];
+    if (name !== "create_bot" && !required.some((key) => ["bot", "bots", "handoff"].includes(key))) continue;
+    const execute = tool.execute;
+    tool.execute = async (input, callId) => {
+      const args = input ?? {};
+      const invalid = required.filter((key) => {
+        const value = args[key];
+        const type = spec.properties?.[key]?.type;
+        if (type === "string") return typeof value !== "string" || !value.trim() || Boolean(spec.properties?.[key]?.enum && !spec.properties[key]!.enum!.includes(value));
+        if (type === "array") return !Array.isArray(value) || !value.length || value.some((item) => typeof item !== "string" || !item.trim());
+        return value === undefined || value === null;
+      });
+      const optionalEnums = Object.entries(spec.properties ?? {}).filter(([key, field]) => !required.includes(key) && field.enum && Object.hasOwn(args, key) && !field.enum.includes(args[key]));
+      invalid.push(...optionalEnums.map(([key]) => key));
+      const choices = optionalEnums.map(([key, field]) => `${key} must be one of: ${field.enum!.join(", ")}.`).join(" ");
+      if (invalid.length) return `${name === "create_bot" ? "NOT created" : "NOT done"}: ${name} needs { ${required.join(", ")} }. Missing or invalid: ${invalid.join(", ")}.${choices ? ` ${choices}` : ""} Required text must be non-empty; bot lists must contain non-empty strings. If the tool's parameters are not visible, load its schema first (on Claude Code run ToolSearch with select:mcp__gond__${name}) and call again.`;
+      return execute(args, callId);
+    };
+  }
+  return tools;
+}
+
 function profilePatch(input: Record<string, unknown>): { name?: string; title?: string; description?: string; color?: string; expression?: BotExpression; shape?: BotShape } | { error: string } {
   const patch: { name?: string; title?: string; description?: string; color?: string; expression?: BotExpression; shape?: BotShape } = {};
   if (typeof input.name === "string" && input.name.trim()) patch.name = plainText(input.name).trim().slice(0, 40);
@@ -478,7 +503,7 @@ export function baseTools(context: Context): Record<string, DriverTool> {
     return `${verb} ${server.name}; it answered ${hasKeyHeader(fresh.headers) ? "with its key" : "without a sign-in"}. Every bot gets its tools from its next reply.`;
   };
 
-  return {
+  return validateCoordination({
     ...shoppingTools(bot, thread),
     set_profile: {
       description: "Update your own profile: name, job title, how you work (your SOUL), your mascot's colour, expression and shape, or your profile picture.",
@@ -742,10 +767,10 @@ export function baseTools(context: Context): Record<string, DriverTool> {
       inputSchema: schema(
         {
           bot: { type: "string", description: "The teammate's id, name or @handle." },
-          kind: { type: "string", enum: [...NOTE_KINDS], description: "action: it must act on this. info: only for it to know, no answer needed." },
+          kind: { type: "string", enum: [...NOTE_KINDS], description: "Optional, defaults to action. action: it must act on this. info: only for it to know, no answer needed." },
           text: { type: "string" },
         },
-        ["bot", "kind", "text"],
+        ["bot", "text"],
       ),
       execute: async (input) => {
         if (depth > MAX_CHAIN) return "NOT sent: too many bot-to-bot hops. Bring the person in.";
@@ -756,7 +781,6 @@ export function baseTools(context: Context): Record<string, DriverTool> {
         if (!text) return "NOT sent: empty message.";
         const long = overLimit("that message", text, NOTE_MAX);
         if (long) return `NOT sent: ${long}. Make it shorter, or put the detail in a file and say where it is.`;
-        // A note that names no kind is read as an action, as every note was before there were two.
         const kind: NoteKind = isNoteKind(input.kind) ? input.kind : "action";
         if (thread.kind === "room" && thread.members.includes(target.id)) {
           // A group chat, like the person's: what one member tells another there is said where everyone sees it.
@@ -1297,7 +1321,7 @@ export function baseTools(context: Context): Record<string, DriverTool> {
         );
       },
     },
-  };
+  });
 
   function ownRoutine(ref: string) {
     const mine = listRoutines(bot.id);
@@ -1343,7 +1367,7 @@ export function teamTools(context: Context): Record<string, DriverTool> {
     return to;
   };
 
-  return {
+  return validateCoordination({
     delegate_bot: {
       description: "Hand a teammate a self-contained brief in its own conversation. Returns at once; the result comes back to you here.",
       inputSchema: schema({ bot: { type: "string", description: "The teammate's id, name or @handle." }, brief: { type: "string" } }, ["bot", "brief"]),
@@ -1537,7 +1561,7 @@ export function teamTools(context: Context): Record<string, DriverTool> {
       execute: async (input) => {
         if (depth > MAX_CHAIN) return "NOT asked: too many bot-to-bot hops.";
         const target = findBot(String(input.bot ?? ""), listBots({ includeHidden: true, userId: bot.userId }));
-        if (!target) return `NOT asked: no bot called "${String(input.bot ?? "")}".`;
+        if (!target) return `NOT asked: no bot called "${String(input.bot ?? "")}". Use list_bots.`;
         if (target.id === bot.id) return "NOT asked: that's you.";
         const question = String(input.question ?? "").trim();
         if (!question) return "NOT asked: empty question.";
@@ -1545,7 +1569,7 @@ export function teamTools(context: Context): Record<string, DriverTool> {
         return clip(answer || "(no answer)");
       },
     },
-  };
+  });
 }
 
 export function permissionTool(context: Context): DriverTool {

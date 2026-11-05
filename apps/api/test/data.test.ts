@@ -462,6 +462,55 @@ describe("data", () => {
     expect(listExchange(newbie.threadId, alex.threadId).map((m) => m.id)).toEqual([hello.id, back.id]);
   });
 
+  test("coordination tools explain missing and invalid required arguments", async () => {
+    const { createBot, findBot } = await import("../src/data/bots.ts");
+    const { getThread } = await import("../src/data/threads.ts");
+    const { baseTools, teamTools } = await import("../src/tools.ts");
+    const { ALWAYS_LOAD_TOOLS } = await import("../src/coordination.ts");
+    const { botInputSchema } = await import("@gond/shared");
+    const bot = createBot(botInputSchema.parse({ name: "Validation bot" }), "u-admin");
+    const context = { box: { url: "http://box.invalid", token: "t", user: "u-admin" }, bot, thread: getThread(bot.threadId)!, message: { depth: 0 } as never, askBot: async () => "", syncSoul: async () => undefined, stopWork: async () => false, isWorking: () => false };
+    const { computerTool } = await import("../src/computer-tool.ts");
+    const tools: Record<string, import("../src/driver.ts").DriverTool> = { ...baseTools(context), ...teamTools(context), ...computerTool(context) };
+    const coordination = ["message_bot", "ask_bot", "delegate_bot", "list_bots", "post_message", "amend_handoff", "cancel_handoff", "list_handoffs", "hand_over", "update_bot", "create_bot", "create_room", "memory_update", "react", "follow_up"];
+    for (const name of ALWAYS_LOAD_TOOLS) {
+      expect(tools[name]).toBeDefined();
+      expect(coordination).toContain(name);
+    }
+    for (const name of ["message_bot", "ask_bot", "delegate_bot"]) expect(ALWAYS_LOAD_TOOLS.has(name)).toBe(true);
+    expect((tools.message_bot!.inputSchema as { required: string[] }).required).toEqual(["bot", "text"]);
+    expect(String(await tools.message_bot!.execute({ bot: "nobody-known", kind: "info", text: "hello" }, "test"))).toContain('no bot called "nobody-known". Use list_bots.');
+    for (const kind of ["information", "", null, 42]) {
+      const result = String(await tools.message_bot!.execute({ bot: "anyone", kind, text: "hello" }, "test"));
+      expect(result).toContain("Missing or invalid: kind");
+      expect(result).toContain("kind must be one of: action, info");
+    }
+    expect(findBot("", [bot])).toBeNull();
+    expect(findBot("   ", [bot])).toBeNull();
+    for (const [name, tool] of Object.entries(tools)) {
+      const schema = tool.inputSchema as { required?: string[]; properties?: Record<string, { type?: string }> };
+      const required = schema.required ?? [];
+      if (!required.some((key) => ["bot", "bots", "handoff"].includes(key)) && name !== "create_bot") continue;
+      for (const input of [null, undefined]) {
+        const result = String(await tool.execute(input as never, "test"));
+        expect(result).toContain(`${name} needs { ${required.join(", ")} }`);
+      }
+      for (const key of required) {
+        const values = schema.properties?.[key]?.type === "array" ? [undefined, [], [""], [42], "teammate"] : [undefined, "", "   ", 42];
+        for (const value of values) {
+          const input: Record<string, unknown> = Object.fromEntries(required.map((field) => [field, schema.properties?.[field]?.type === "array" ? ["teammate"] : field === "kind" ? "info" : "valid"]));
+          input[key] = value;
+          const result = String(await tool.execute(input, "test"));
+          expect(result).toContain(`${name} needs { ${required.join(", ")} }`);
+          expect(result).toContain(key);
+          expect(result).toContain(`select:mcp__gond__${name}`);
+        }
+      }
+      const result = String(await tool.execute({}, "test"));
+      expect(result).toContain(`${name} needs { ${required.join(", ")} }`);
+    }
+  });
+
   test("a note is an action that wakes its teammate to act, or information that wakes nobody", async () => {
     const { createBot } = await import("../src/data/bots.ts");
     const { getThread, listMessages } = await import("../src/data/threads.ts");
