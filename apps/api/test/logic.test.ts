@@ -1185,6 +1185,11 @@ describe("a reply as it is written", () => {
     const system = systemPromptFor(bot, context);
     expect(system.indexOf("## House rules")).toBeLessThan(system.indexOf("## Memory"));
     expect(system.indexOf("## Tools")).toBeLessThan(system.indexOf("## Where you are"));
+    // This prompt is shared by every engine and guest, so it must not name Claude-only tools.
+    const toolsSection = system.split("## Tools\n")[1]!.split("\n\n")[0]!;
+    expect(toolsSection).toContain("If a tool's parameters are not visible, load its schema first, then call it");
+    expect(toolsSection).not.toContain("ToolSearch");
+    expect(toolsSection).not.toContain("message_bot");
     expect(system).not.toContain("Skill in use");
     expect(system).not.toContain("## Saved sign-ins");
     expect(systemPromptFor(bot, { ...context, logins: ["AdGuard Home"] })).toContain("## Saved sign-ins\n- AdGuard Home\n");

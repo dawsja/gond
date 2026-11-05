@@ -5,7 +5,7 @@ import { ALWAYS_LOAD_TOOLS } from "../src/coordination.ts";
 const tool = { description: "test", inputSchema: { type: "object", properties: {} }, execute: async () => "" };
 
 test("only coordination tools are always loaded in non-guest Claude sessions", () => {
-  const expected = ["message_bot", "ask_bot", "delegate_bot", "list_bots", "update_bot", "create_bot", "create_room", "post_message", "amend_handoff", "cancel_handoff", "list_handoffs", "hand_over", "follow_up", "memory_update", "react"];
+  const expected = ["message_bot", "ask_bot", "delegate_bot", "list_bots", "post_message", "amend_handoff", "cancel_handoff", "list_handoffs", "hand_over"];
   expect([...ALWAYS_LOAD_TOOLS].sort()).toEqual(expected.sort());
   const tools = Object.fromEntries([...expected, "other"].map((name) => [name, tool]));
   const listed = agentToolsFor(tools, "claude");

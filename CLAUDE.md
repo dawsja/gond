@@ -19,8 +19,11 @@ functions to start from; the code holds the details.
 - `packages/box`: the bots' computer. Plain Node ESM (`.mjs`), no build
   step, runs as root only to drop to each person's user. Claude Code
   sessions in `agents.mjs` on the shared base in `bridge.mjs`; the `gond`
-  MCP bridge in `gond-mcp.mjs`. Calls without arguments reach the API as an
-  empty object; preserve tool metadata and schema-loading guidance in every bot's prompt.
+  MCP bridge in `packages/box/gond-mcp.mjs` preserves tool `_meta`, including
+  `anthropic/alwaysLoad` for `ALWAYS_LOAD_TOOLS` in `apps/api/src/coordination.ts`.
+  Guests and the self-driven engine get no hint; `message_bot`'s `kind` stays
+  optional. Calls without arguments reach the API as an empty object; preserve
+  schema-loading guidance in every bot's prompt.
 - `packages/shared`: types, zod schemas, constants, templates, the app
   catalog. If web and api both need it, it goes here.
 - `packages/relay` (`gond-relay`): carries sealed envelopes between Gond

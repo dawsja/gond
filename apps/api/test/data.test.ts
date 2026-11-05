@@ -470,7 +470,14 @@ describe("data", () => {
     const { botInputSchema } = await import("@gond/shared");
     const bot = createBot(botInputSchema.parse({ name: "Validation bot" }), "u-admin");
     const context = { box: { url: "http://box.invalid", token: "t", user: "u-admin" }, bot, thread: getThread(bot.threadId)!, message: { depth: 0 } as never, askBot: async () => "", syncSoul: async () => undefined, stopWork: async () => false, isWorking: () => false };
-    const tools = { ...baseTools(context), ...teamTools(context) };
+    const { computerTool } = await import("../src/computer-tool.ts");
+    const tools: Record<string, import("../src/driver.ts").DriverTool> = { ...baseTools(context), ...teamTools(context), ...computerTool(context) };
+    const coordination = ["message_bot", "ask_bot", "delegate_bot", "list_bots", "post_message", "amend_handoff", "cancel_handoff", "list_handoffs", "hand_over", "update_bot", "create_bot", "create_room", "memory_update", "react", "follow_up"];
+    for (const name of ALWAYS_LOAD_TOOLS) {
+      expect(tools[name]).toBeDefined();
+      expect(coordination).toContain(name);
+    }
+    for (const name of ["message_bot", "ask_bot", "delegate_bot"]) expect(ALWAYS_LOAD_TOOLS.has(name)).toBe(true);
     expect((tools.message_bot!.inputSchema as { required: string[] }).required).toEqual(["bot", "text"]);
     expect(String(await tools.message_bot!.execute({ bot: "nobody-known", kind: "info", text: "hello" }, "test"))).toContain('no bot called "nobody-known". Use list_bots.');
     for (const kind of ["information", "", null, 42]) {
@@ -484,7 +491,10 @@ describe("data", () => {
       const schema = tool.inputSchema as { required?: string[]; properties?: Record<string, { type?: string }> };
       const required = schema.required ?? [];
       if (!required.some((key) => ["bot", "bots", "handoff"].includes(key)) && name !== "create_bot") continue;
-      expect(ALWAYS_LOAD_TOOLS.has(name)).toBe(true);
+      for (const input of [null, undefined]) {
+        const result = String(await tool.execute(input as never, "test"));
+        expect(result).toContain(`${name} needs { ${required.join(", ")} }`);
+      }
       for (const key of required) {
         const values = schema.properties?.[key]?.type === "array" ? [undefined, [], [""], [42], "teammate"] : [undefined, "", "   ", 42];
         for (const value of values) {
@@ -497,7 +507,6 @@ describe("data", () => {
         }
       }
       const result = String(await tool.execute({}, "test"));
-      console.log(`${name}: ${result}`);
       expect(result).toContain(`${name} needs { ${required.join(", ")} }`);
     }
   });

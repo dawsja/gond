@@ -218,18 +218,19 @@ function validateCoordination(tools: Record<string, DriverTool>): Record<string,
     if (name !== "create_bot" && !required.some((key) => ["bot", "bots", "handoff"].includes(key))) continue;
     const execute = tool.execute;
     tool.execute = async (input, callId) => {
+      const args = input ?? {};
       const invalid = required.filter((key) => {
-        const value = input?.[key];
+        const value = args[key];
         const type = spec.properties?.[key]?.type;
         if (type === "string") return typeof value !== "string" || !value.trim() || Boolean(spec.properties?.[key]?.enum && !spec.properties[key]!.enum!.includes(value));
         if (type === "array") return !Array.isArray(value) || !value.length || value.some((item) => typeof item !== "string" || !item.trim());
         return value === undefined || value === null;
       });
-      const optionalEnums = Object.entries(spec.properties ?? {}).filter(([key, field]) => !required.includes(key) && field.enum && Object.hasOwn(input, key) && !field.enum.includes(input[key]));
+      const optionalEnums = Object.entries(spec.properties ?? {}).filter(([key, field]) => !required.includes(key) && field.enum && Object.hasOwn(args, key) && !field.enum.includes(args[key]));
       invalid.push(...optionalEnums.map(([key]) => key));
       const choices = optionalEnums.map(([key, field]) => `${key} must be one of: ${field.enum!.join(", ")}.`).join(" ");
       if (invalid.length) return `${name === "create_bot" ? "NOT created" : "NOT done"}: ${name} needs { ${required.join(", ")} }. Missing or invalid: ${invalid.join(", ")}.${choices ? ` ${choices}` : ""} Required text must be non-empty; bot lists must contain non-empty strings. If the tool's parameters are not visible, load its schema first (on Claude Code run ToolSearch with select:mcp__gond__${name}) and call again.`;
-      return execute(input, callId);
+      return execute(args, callId);
     };
   }
   return tools;
