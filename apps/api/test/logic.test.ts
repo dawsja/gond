@@ -1190,6 +1190,7 @@ describe("a reply as it is written", () => {
     expect(toolsSection).toContain("If a tool's parameters are not visible, load its schema first, then call it");
     expect(toolsSection).not.toContain("ToolSearch");
     expect(toolsSection).not.toContain("message_bot");
+    expect(systemPromptFor(bot, { ...context, toolNotes: "" })).not.toContain("## Tools\n");
     expect(system).not.toContain("Skill in use");
     expect(system).not.toContain("## Saved sign-ins");
     expect(systemPromptFor(bot, { ...context, logins: ["AdGuard Home"] })).toContain("## Saved sign-ins\n- AdGuard Home\n");
