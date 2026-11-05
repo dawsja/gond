@@ -225,7 +225,10 @@ function validateCoordination(tools: Record<string, DriverTool>): Record<string,
         if (type === "array") return !Array.isArray(value) || !value.length || value.some((item) => typeof item !== "string" || !item.trim());
         return value === undefined || value === null;
       });
-      if (invalid.length) return `${name === "create_bot" ? "NOT created" : "NOT done"}: ${name} needs { ${required.join(", ")} }. Missing or invalid: ${invalid.join(", ")}. Required text must be non-empty; bot lists must contain non-empty strings. If the tool's parameters are not visible, load its schema first (on Claude Code run ToolSearch with select:mcp__gond__${name}) and call again.`;
+      const optionalEnums = Object.entries(spec.properties ?? {}).filter(([key, field]) => !required.includes(key) && field.enum && Object.hasOwn(input, key) && !field.enum.includes(input[key]));
+      invalid.push(...optionalEnums.map(([key]) => key));
+      const choices = optionalEnums.map(([key, field]) => `${key} must be one of: ${field.enum!.join(", ")}.`).join(" ");
+      if (invalid.length) return `${name === "create_bot" ? "NOT created" : "NOT done"}: ${name} needs { ${required.join(", ")} }. Missing or invalid: ${invalid.join(", ")}.${choices ? ` ${choices}` : ""} Required text must be non-empty; bot lists must contain non-empty strings. If the tool's parameters are not visible, load its schema first (on Claude Code run ToolSearch with select:mcp__gond__${name}) and call again.`;
       return execute(input, callId);
     };
   }
@@ -763,10 +766,10 @@ export function baseTools(context: Context): Record<string, DriverTool> {
       inputSchema: schema(
         {
           bot: { type: "string", description: "The teammate's id, name or @handle." },
-          kind: { type: "string", enum: [...NOTE_KINDS], description: "action: it must act on this. info: only for it to know, no answer needed." },
+          kind: { type: "string", enum: [...NOTE_KINDS], description: "Optional, defaults to action. action: it must act on this. info: only for it to know, no answer needed." },
           text: { type: "string" },
         },
-        ["bot", "kind", "text"],
+        ["bot", "text"],
       ),
       execute: async (input) => {
         if (depth > MAX_CHAIN) return "NOT sent: too many bot-to-bot hops. Bring the person in.";

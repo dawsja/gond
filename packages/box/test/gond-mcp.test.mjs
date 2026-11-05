@@ -15,6 +15,14 @@ function stubBridge(answer) {
   return { bridge, calls };
 }
 
+test("tools/list preserves per-tool metadata", async () => {
+  const tools = [{ name: "message_bot", inputSchema: { type: "object" }, _meta: { "anthropic/alwaysLoad": true, "example/other": "kept" } }, { name: "other", inputSchema: { type: "object" } }];
+  const { bridge, calls } = stubBridge({ tools });
+  const reply = await handleRpc({ jsonrpc: "2.0", id: 6, method: "tools/list" }, bridge);
+  assert.deepEqual(reply.result.tools, tools);
+  assert.deepEqual(calls, [{ method: "tools/list", params: {} }]);
+});
+
 test("a text answer is one text part, as always", async () => {
   const { bridge, calls } = stubBridge({ content: "done" });
   const reply = await handleRpc({ jsonrpc: "2.0", id: 7, method: "tools/call", params: { name: "send_message", arguments: { text: "hi" } } }, bridge);

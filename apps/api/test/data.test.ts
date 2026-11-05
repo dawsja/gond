@@ -466,18 +466,25 @@ describe("data", () => {
     const { createBot, findBot } = await import("../src/data/bots.ts");
     const { getThread } = await import("../src/data/threads.ts");
     const { baseTools, teamTools } = await import("../src/tools.ts");
+    const { ALWAYS_LOAD_TOOLS } = await import("../src/coordination.ts");
     const { botInputSchema } = await import("@gond/shared");
     const bot = createBot(botInputSchema.parse({ name: "Validation bot" }), "u-admin");
     const context = { box: { url: "http://box.invalid", token: "t", user: "u-admin" }, bot, thread: getThread(bot.threadId)!, message: { depth: 0 } as never, askBot: async () => "", syncSoul: async () => undefined, stopWork: async () => false, isWorking: () => false };
     const tools = { ...baseTools(context), ...teamTools(context) };
+    expect((tools.message_bot!.inputSchema as { required: string[] }).required).toEqual(["bot", "text"]);
     expect(String(await tools.message_bot!.execute({ bot: "nobody-known", kind: "info", text: "hello" }, "test"))).toContain('no bot called "nobody-known". Use list_bots.');
-    expect(String(await tools.message_bot!.execute({ bot: "anyone", kind: "information", text: "hello" }, "test"))).toContain("Missing or invalid: kind");
+    for (const kind of ["information", "", null, 42]) {
+      const result = String(await tools.message_bot!.execute({ bot: "anyone", kind, text: "hello" }, "test"));
+      expect(result).toContain("Missing or invalid: kind");
+      expect(result).toContain("kind must be one of: action, info");
+    }
     expect(findBot("", [bot])).toBeNull();
     expect(findBot("   ", [bot])).toBeNull();
     for (const [name, tool] of Object.entries(tools)) {
       const schema = tool.inputSchema as { required?: string[]; properties?: Record<string, { type?: string }> };
       const required = schema.required ?? [];
       if (!required.some((key) => ["bot", "bots", "handoff"].includes(key)) && name !== "create_bot") continue;
+      expect(ALWAYS_LOAD_TOOLS.has(name)).toBe(true);
       for (const key of required) {
         const values = schema.properties?.[key]?.type === "array" ? [undefined, [], [""], [42], "teammate"] : [undefined, "", "   ", 42];
         for (const value of values) {
