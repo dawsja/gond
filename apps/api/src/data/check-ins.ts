@@ -58,10 +58,11 @@ export function claimOffer(userId: string): boolean {
   return ensureDatabase().query("UPDATE gond_check_ins SET offered_at = ? WHERE user_id = ? AND offered_at IS NULL").run(now(), userId).changes === 1;
 }
 
-export function markRun(userId: string, looked: { seen: string } | null) {
+/** `looked.at` is when that look read, not when it finished: the next one reads from there. */
+export function markRun(userId: string, looked: { at: string; seen: string } | null) {
   ensureRow(userId);
   const at = now();
-  if (looked) ensureDatabase().query("UPDATE gond_check_ins SET last_run_at = ?, last_looked_at = ?, last_seen = ? WHERE user_id = ?").run(at, at, looked.seen, userId);
+  if (looked) ensureDatabase().query("UPDATE gond_check_ins SET last_run_at = ?, last_looked_at = ?, last_seen = ? WHERE user_id = ?").run(at, looked.at, looked.seen, userId);
   else ensureDatabase().query("UPDATE gond_check_ins SET last_run_at = ? WHERE user_id = ?").run(at, userId);
 }
 
