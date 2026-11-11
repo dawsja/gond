@@ -54,11 +54,13 @@ import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useVoiceInput, VoiceButton } from "@/components/voice-button";
 import { WorkLine, WorkLines } from "@/components/work-log";
+import { useComposerDraft } from "@/hooks/use-composer-draft";
 import { useCoarsePointer } from "@/hooks/use-mobile";
 import { useSwipeBack } from "@/hooks/use-swipe-back";
 import { REPLY_DISTANCE, useSwipeToReply } from "@/hooks/use-swipe-to-reply";
 import { useStableCallback } from "@/hooks/use-stable-callback";
 import { api, ApiError, post } from "@/lib/api";
+import { unsentBack } from "@/lib/composer-draft";
 import { composerLayout } from "@/lib/composer-layout";
 import { readDraft, saveDraft } from "@/lib/drafts";
 import { fileKind, type FileKind } from "@/lib/file-kind";
@@ -687,7 +689,7 @@ export function Conversation({ threadId }: { threadId: string }) {
 
   const [earlier, setEarlier] = useState<boolean | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
-  const [draft, setDraft] = useState("");
+  const { text: draft, rev: draftRev, latest: latestDraft, typed: appTyped, set: setDraft } = useComposerDraft();
   // Which of the person's sent lines Up and Down put in the field (`sentHistory`), while it still shows that line.
   const [recall, setRecall] = useState<number | null>(null);
   const restored = useRef(false);
@@ -698,7 +700,7 @@ export function Conversation({ threadId }: { threadId: string }) {
       setRecall(null);
       restored.current = true;
     });
-  }, [threadId]);
+  }, [threadId, setDraft]);
   useEffect(() => {
     if (restored.current) saveDraft(threadId, draft);
   }, [threadId, draft]);
@@ -1018,10 +1020,14 @@ export function Conversation({ threadId }: { threadId: string }) {
 
   async function send(event?: FormEvent, after = false) {
     event?.preventDefault();
-    const text = draft.trim();
+    const unsent = latestDraft();
+    const text = unsent.trim();
     if ((!text && !files.length) || sending) return;
     setSending(true);
     setNotice(null);
+    // Cleared as Send is tapped, so the field empties at once and what's typed while it's on its way stays.
+    setDraft("");
+    setRecall(null);
     try {
       const replyTo = replying?.id;
       let body: BodyInit = JSON.stringify({ body: text, ...(after ? { after: true } : {}), ...(replyTo ? { replyTo } : {}) });
@@ -1036,11 +1042,10 @@ export function Conversation({ threadId }: { threadId: string }) {
       const data = await api<{ message: Message }>(`/api/threads/${threadId}/messages`, { method: "POST", body });
       append([data.message]);
       setSent(data.message.id);
-      setDraft("");
-      setRecall(null);
       setFiles([]);
       setReplying(null);
     } catch (failure) {
+      if (unsent) setDraft((d) => unsentBack(d, unsent));
       setNotice(failure instanceof Error ? failure.message : "Couldn't send.");
     } finally {
       setSending(false);
@@ -1232,7 +1237,7 @@ export function Conversation({ threadId }: { threadId: string }) {
       setDraft((d) => `${d}${d && !/\s$/.test(d) ? " " : ""}${text}`);
       if (!touch) textarea.current?.focus();
     },
-    [touch],
+    [touch, setDraft],
   );
   const voice = useVoiceInput(threadId, dictated);
 
@@ -1593,6 +1598,7 @@ export function Conversation({ threadId }: { threadId: string }) {
           menu={actions}
           composer={{
             text: draft,
+            textRev: draftRev,
             focusRev,
             placeholder: replying ? `Reply to ${nameOf(replying.author, bots, space)}` : busy && !isRoom ? "Add to it, or say stop" : bot ? `Message ${bot.name}` : space ? "Message the space" : answersNext.length ? `${names(answersNext)} ${answersNext.length > 1 ? "answer" : "answers"} next` : "Message the room",
             canSend: !sending && Boolean(draft.trim() || files.length),
@@ -1606,7 +1612,7 @@ export function Conversation({ threadId }: { threadId: string }) {
             else if (event.type === "details") openPill();
             else if (event.type === "menu") actions.flat().find((action) => action.id === event.id)?.run();
             else if (event.type === "text") {
-              setDraft(event.value);
+              appTyped(event.value);
               setRecall(null);
               if (notice) setNotice(null);
               trackSlash(event.value, event.value.length);
