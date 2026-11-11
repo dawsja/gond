@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { ThreadAction } from "@/components/thread-actions";
 import { useStableCallback } from "@/hooks/use-stable-callback";
 import { avatarPng, hexOf, useNativeChrome, type ChromeEvent, type ChromeState } from "@/lib/native-ui";
@@ -13,7 +13,7 @@ type Props = Omit<ChromeState, "faces" | "tint" | "menu" | "covered" | "composer
   avatarKey: string;
   mentions: { id: string; handle: string }[];
   menu: ThreadAction[][];
-  composer: Omit<ChromeState["composer"], "textRev">;
+  composer: ChromeState["composer"];
   onEvent: (event: ChromeEvent) => void;
 };
 
@@ -21,7 +21,8 @@ type Props = Omit<ChromeState, "faces" | "tint" | "menu" | "covered" | "composer
  * A conversation's header and composer in the iPhone app: the page keeps its own in place, unseen,
  * and hands the app what they show; the app draws them in Liquid Glass and sends back what the person
  * did. The text the person types lives in the app's field while they type: the page's copy only goes
- * back to it when the page changed it itself (sent, a mention, a dictation), counted by `textRev`.
+ * back to it when the page changed it itself (sent, a mention, a dictation), counted by `textRev`, which
+ * the page raises for its own changes alone (`changeDraft`).
  */
 export function ConversationChrome({ avatarKey, menu, composer, mentions, onEvent, ...header }: Props) {
   const faces = useFaces(avatarKey);
@@ -29,24 +30,7 @@ export function ConversationChrome({ avatarKey, menu, composer, mentions, onEven
   const covered = useCovered();
   const tint = useTint();
 
-  // What the app sent and the page hasn't drawn yet: keystrokes come faster than renders, so a render
-  // can show one the app has already typed past, and only text that isn't among them is the page's own.
-  const fromApp = useRef<string[]>([]);
-  const [textRev, setTextRev] = useState(0);
-  useEffect(() => {
-    const at = fromApp.current.indexOf(composer.text);
-    if (at >= 0) {
-      fromApp.current = fromApp.current.slice(at + 1);
-      return;
-    }
-    fromApp.current = [];
-    void Promise.resolve().then(() => setTextRev((n) => n + 1));
-  }, [composer.text]);
-
-  const handle = useStableCallback((event: ChromeEvent) => {
-    if (event.type === "text") fromApp.current = [...fromApp.current.slice(-50), event.value];
-    onEvent(event);
-  });
+  const handle = useStableCallback(onEvent);
 
   const state: ChromeState = {
     ...header,
@@ -55,7 +39,7 @@ export function ConversationChrome({ avatarKey, menu, composer, mentions, onEven
     covered,
     menu: menu.map((group) => group.map(({ id, label, symbol, destructive }) => ({ id, label, symbol, destructive }))),
     mentions: mentions.map((m) => ({ ...m, face: mentionFaces[m.id] ?? null })),
-    composer: { ...composer, textRev },
+    composer,
   };
   useNativeChrome(state, handle);
   return null;

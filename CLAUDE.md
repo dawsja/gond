@@ -159,8 +159,9 @@ The address rules are mirrored in each app with the same tests.
     `--native-composer-height`); taps and typing come back as
     `gond:native-chrome` events. The page decides everything; the app
     only draws and reports. The text lives in the app's field while typed
-    and goes back only when the page changed it (`textRev`), and the
-    chrome steps aside while anything of the page's covers the
+    and goes back only when the page changed it (`textRev`, raised by
+    every page change and never by the app's typing, `changeDraft`; never
+    told apart by comparing texts), and the chrome steps aside while anything of the page's covers the
     conversation.
   - `ServerURL.swift` mirrors `ServerUrl.kt` with the same tests, and
     `scripts/check.mjs` (the package's lint) fails when the bridge misses
@@ -476,6 +477,8 @@ One line each: where to start, and what must not change.
   the mic, Send) to a row beneath (`stacked`), held until it's empty so
   the wider text can't flip it back. `lib/composer-layout.ts` gates it on
   the draft: empty is always inline, even without a resize notification.
+  Send empties the field as it's tapped; a failed send puts its text back
+  ahead of anything typed since (`unsentBack`).
 - **Drafts and history** (`lib/drafts.ts`, `lib/sent-history.ts`): a
   draft is per conversation in `localStorage`, shown as "Draft: …". Up in
   an empty composer recalls sent lines (`historyStep`), only on the first
