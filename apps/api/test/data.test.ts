@@ -6404,6 +6404,71 @@ describe("check-ins", () => {
     }
   });
 
+  test("a look sees a line written in the stamp's millisecond or during the model call, and never one twice", async () => {
+    await seedUsers(["u-ci-tie", "user"]);
+    const { ensureDatabase } = await import("../src/db/init.ts");
+    const { saveProvider } = await import("../src/data/providers.ts");
+    const { updateAi } = await import("../src/data/ai.ts");
+    const { createBot } = await import("../src/data/bots.ts");
+    const { postMessage } = await import("../src/data/threads.ts");
+    const { checkIn } = await import("../src/check-ins.ts");
+    const { checkInsOf, claimOffer } = await import("../src/data/check-ins.ts");
+    const { botInputSchema } = await import("@gond/shared");
+    const asked: string[] = [];
+    let duringCall: (() => void) | null = null;
+    const fake = Bun.serve({
+      port: 0,
+      async fetch(request: Request) {
+        const body = (await request.json()) as { messages: { content: string }[] };
+        asked.push(body.messages.map((m) => m.content).join("\n"));
+        duringCall?.();
+        duringCall = null;
+        return Response.json({ choices: [{ message: { role: "assistant", content: "NOTHING_NEW" }, finish_reason: "stop" }] });
+      },
+    });
+    const internal = process.env.GOND_API_INTERNAL_URL;
+    process.env.GOND_API_INTERNAL_URL = `http://127.0.0.1:${fake.port}`;
+    // Clocks only tick in milliseconds: a line can carry exactly the stamp a look kept.
+    const stampAt = (id: string, at: string) => ensureDatabase().query("UPDATE gond_messages SET created_at = ? WHERE id = ?").run(at, id);
+    try {
+      saveProvider("u-ci-tie", "openai", { baseUrl: "https://api.openai.com/v1", apiKey: "sk-checkin-tie-1234567890" });
+      updateAi("u-ci-tie", { engine: "api", enabled: ["api"], engines: { api: { access: "api", model: "small-model", provider: "openai" } } });
+      createBot(botInputSchema.parse({ name: "Sentry" }), "u-ci-tie");
+      const scout = createBot(botInputSchema.parse({ name: "Scout" }), "u-ci-tie");
+      claimOffer("u-ci-tie");
+
+      const flights = postMessage({ threadId: scout.threadId, author: scout.id, body: "I found three flights to Denver.", answered: true });
+      expect(await checkIn("u-ci-tie")).toBe("quiet");
+      const first = checkInsOf("u-ci-tie").lastLookedAt!;
+
+      // A new line in the very millisecond the last look kept is new; the line that look already read is not.
+      const hotel = postMessage({ threadId: scout.threadId, author: scout.id, body: "Booked the hotel you picked.", answered: true });
+      stampAt(hotel.id, first);
+      stampAt(flights.id, first);
+      expect(await checkIn("u-ci-tie")).toBe("quiet");
+      expect(asked.at(-1)).toContain("Booked the hotel");
+      expect(asked.at(-1)).not.toContain("three flights");
+
+      // A line the last look read at its own stamp doesn't make the next one ask again.
+      stampAt(hotel.id, checkInsOf("u-ci-tie").lastLookedAt!);
+      const calls = asked.length;
+      expect(await checkIn("u-ci-tie")).toBe("skipped");
+      expect(asked.length).toBe(calls);
+
+      // A line written while the model thinks is for the next look.
+      postMessage({ threadId: scout.threadId, author: scout.id, body: "The car is sorted too.", answered: true });
+      duringCall = () => void postMessage({ threadId: scout.threadId, author: scout.id, body: "The train got cancelled.", answered: true });
+      expect(await checkIn("u-ci-tie")).toBe("quiet");
+      expect(asked.at(-1)).not.toContain("train got cancelled");
+      expect(await checkIn("u-ci-tie")).toBe("quiet");
+      expect(asked.at(-1)).toContain("The train got cancelled.");
+      expect(asked.at(-1)).not.toContain("The car is sorted");
+    } finally {
+      process.env.GOND_API_INTERNAL_URL = internal;
+      fake.stop(true);
+    }
+  });
+
   test("the route checks what it is given", async () => {
     await seedUsers(["u-ci-route", "user"]);
     const { Hono } = await import("hono");

@@ -440,14 +440,23 @@ export function getMessage(id: string): Message | null {
   return row ? toMessage(row) : null;
 }
 
-/** `shown` is what the person sees: what was said on a call stays the bot's. */
-export function listMessages(threadId: string, options: { after?: string | null; before?: string | null; limit?: number; includeSent?: boolean; shown?: boolean } = {}): Message[] {
+/**
+ * `shown` is what the person sees: what was said on a call stays the bot's. `after` is a message's own
+ * time and leaves it out; `from` is a moment taken off the clock and keeps the lines stamped in that
+ * millisecond, which may have been written after it was read: a cursor kept as a clock time reads
+ * `from` and drops what it already read by id, since `after` would lose them.
+ */
+export function listMessages(
+  threadId: string,
+  options: { after?: string | null; from?: string | null; before?: string | null; limit?: number; includeSent?: boolean; shown?: boolean } = {},
+): Message[] {
   const limit = Math.min(Math.max(options.limit ?? 200, 1), 500);
   const db = ensureDatabase();
   const where = `${options.includeSent ? "(thread_id = ? OR from_thread_id = ?)" : "thread_id = ?"}${options.shown ? " AND spoken = 0" : ""}`;
   const ids = options.includeSent ? [threadId, threadId] : [threadId];
-  if (options.after) {
-    const rows = db.query(`SELECT * FROM gond_messages WHERE ${where} AND created_at > ? ORDER BY created_at ASC, rowid ASC LIMIT ?`).all(...ids, options.after, limit) as MessageRow[];
+  const since = options.from ?? options.after;
+  if (since) {
+    const rows = db.query(`SELECT * FROM gond_messages WHERE ${where} AND created_at ${options.from ? ">=" : ">"} ? ORDER BY created_at ASC, rowid ASC LIMIT ?`).all(...ids, since, limit) as MessageRow[];
     return toMessages(rows);
   }
   const rows = db

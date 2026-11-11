@@ -75,6 +75,16 @@ export function seenOf(gathered: Pick<Gathered, "chats" | "waiting" | "stalled" 
   return ids.sort().join(",");
 }
 
+/**
+ * What a look reads from the last one's stamp on, less what that look already read: the clock ticks in
+ * milliseconds, so a line stamped in the stamp's own millisecond may have been written before the read or after.
+ */
+export function unseen<T extends { id: string }>(items: T[], lastSeen: string | null): T[] {
+  if (!lastSeen) return items;
+  const seen = new Set(lastSeen.split(","));
+  return items.filter((item) => !seen.has(item.id));
+}
+
 /** Whether a look is worth asking the model about. */
 export function worthALook(gathered: Gathered, state: Pick<CheckInState, "lastSeen" | "lastLookedAt">, now: number): boolean {
   const seen = seenOf(gathered);
@@ -168,20 +178,22 @@ async function newEmail(userId: string, since: string): Promise<Email[]> {
   }
 }
 
-async function gather(userId: string, bot: Bot, state: CheckInState, now: Date): Promise<Gathered> {
+async function gather(userId: string, bot: Bot, state: CheckInState, now: Date): Promise<{ gathered: Gathered; readAt: string }> {
+  // Off the clock before anything is read, so what is written from here on, the model's call included, is the next look's.
+  const readAt = new Date().toISOString();
   const since = state.lastLookedAt ?? new Date(now.getTime() - FIRST_LOOK_MS).toISOString();
   const bots = listBots({ userId });
   const threads = listThreads({ userId });
   const chats = threads
-    .map((thread) => ({ thread, lines: listMessages(thread.id, { after: since, limit: 200, shown: true }).filter((m) => SHOWN.has(m.kind) && !m.checkIn).slice(-LINES_PER_CHAT) }))
+    .map((thread) => ({ thread, lines: unseen(listMessages(thread.id, { from: since, limit: 200, shown: true }), state.lastSeen).filter((m) => SHOWN.has(m.kind) && !m.checkIn).slice(-LINES_PER_CHAT) }))
     .filter((chat) => chat.lines.length > 0);
   const ids = new Set(threads.map((t) => t.id));
   const botIds = new Set(bots.map((b) => b.id));
   const waiting = listApprovals({ status: "pending" }).filter((a) => ids.has(a.threadId));
   const stalled = listOpenDelegations().filter((d) => botIds.has(d.fromBotId) && now.getTime() - Date.parse(d.createdAt) > STALLED_MS);
   const promises = personLinesSince(userId, new Date(now.getTime() - PROMISES_MS).toISOString());
-  const emails = state.email ? await newEmail(userId, since) : [];
-  return { now, timezone: userTimezone(userId), bot, bots, chats, waiting, stalled, promises, emails, earlier: earlierCheckIns(bot.threadId) };
+  const emails = state.email ? unseen(await newEmail(userId, since), state.lastSeen) : [];
+  return { readAt, gathered: { now, timezone: userTimezone(userId), bot, bots, chats, waiting, stalled, promises, emails, earlier: earlierCheckIns(bot.threadId) } };
 }
 
 /**
@@ -196,7 +208,7 @@ export async function checkIn(userId: string, now = new Date()): Promise<"posted
   running.set(userId, controller);
   try {
     const state = checkInsOf(userId);
-    const gathered = await gather(userId, bot, state, now);
+    const { gathered, readAt } = await gather(userId, bot, state, now);
     if (!worthALook(gathered, state, now.getTime())) {
       markRun(userId, null);
       return "skipped";
@@ -212,7 +224,7 @@ export async function checkIn(userId: string, now = new Date()): Promise<"posted
       signal: AbortSignal.any([controller.signal, AbortSignal.timeout(CHECK_IN_TIMEOUT_MS)]),
     });
     if (controller.signal.aborted) return "skipped";
-    markRun(userId, { seen: seenOf(gathered) });
+    markRun(userId, { at: readAt, seen: seenOf(gathered) });
     const said = withoutQuietReply(answer).trim();
     if (!said) return "quiet";
     postMessage({ threadId: bot.threadId, author: bot.id, body: said, answered: true, checkIn: true });
