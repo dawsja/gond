@@ -73,3 +73,39 @@ test("native consumers keep their generated layers and ink backgrounds", async (
   expect(adaptive).toContain('<background android:drawable="@color/ic_launcher_background"');
   expect(await readFile(join(root, "apps/ios/Gond/ConnectView.swift"), "utf8")).toContain('Image("BrandMark")');
 });
+
+test("the desktop icon is the mascot, full-bleed, its eyes showing from 24 px", async () => {
+  const icons = join(root, "apps/desktop/src-tauri/icons");
+  const images = [...icoFrames(await readFile(join(icons, "icon.ico")), [16, 24, 32, 48, 64, 256]), ...await Promise.all(["32x32.png", "64x64.png", "128x128.png", "icon.png", "StoreLogo.png"].map((name) => readFile(join(icons, name))))];
+  for (const image of images) {
+    const { data, info } = await sharp(image).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    const size = info.width;
+    const light = (i: number) => data[i] + data[i + 1] + data[i + 2] >= 384;
+    const box = (keep: (i: number) => boolean) => {
+      let left = size, top = size, right = -1, bottom = -1;
+      for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+        const i = (y * size + x) * 4;
+        if (data[i + 3] < 128 || !keep(i)) continue;
+        left = Math.min(left, x); right = Math.max(right, x);
+        top = Math.min(top, y); bottom = Math.max(bottom, y);
+      }
+      return { left, top, span: Math.max(right - left, bottom - top) + 1 };
+    };
+    const tile = box(() => true);
+    const cog = box(light);
+    expect(tile.span / size, `${size} px tile`).toBeGreaterThanOrEqual(0.95);
+    expect(cog.span / size, `${size} px mascot`).toBeGreaterThanOrEqual(0.6);
+    if (size < 24) continue;
+    // The middle half of the cog is all body but the eyes, so dark pixels there are eyes.
+    const eyes = [0, 0];
+    const from = Math.round(cog.span / 4), to = Math.round(cog.span * 3 / 4);
+    for (let y = cog.top + from; y < cog.top + to; y++) for (let x = cog.left + from; x < cog.left + to; x++) {
+      const i = (y * size + x) * 4;
+      if (data[i] + data[i + 1] + data[i + 2] < 300) eyes[x < cog.left + cog.span / 2 ? 0 : 1]++;
+    }
+    expect(Math.min(...eyes), `${size} px eyes`).toBeGreaterThan(0);
+    // Between the eyes is body; the plain mark has its hole there.
+    const middle = ((cog.top + (cog.span >> 1)) * size + cog.left + (cog.span >> 1)) * 4;
+    expect(light(middle), `${size} px body between the eyes`).toBe(true);
+  }
+});

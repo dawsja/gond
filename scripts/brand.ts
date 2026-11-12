@@ -74,9 +74,51 @@ export async function renderBrand(): Promise<Map<string, Buffer>> {
   return outputs;
 }
 
+// Share of the canvas the desktop icon's mascot spans. Windows draws a taskbar
+// icon at 16 to 32 px with no tile of its own, so a margin and a small figure
+// read as a small icon beside full-bleed neighbours.
+export const DESKTOP_MASCOT = 0.74;
+const desktopSource = "apps/desktop/icon-source.png";
+const mascotPath = "apps/web/components/hq/gond-bot.tsx";
+
+// The mascot standing still with its eyes open, its geometry read from the
+// component so the desktop icon can't drift from it: a white cog, ink eyes.
+export async function mascot(ink: string): Promise<string> {
+  const source = await readFile(join(root, mascotPath), "utf8");
+  const cog = source.match(/const COG =\s*"([^"]+)"/)?.[1];
+  const stroke = source.match(/<path d=\{shape === "cog" \? COG[^>]*strokeWidth="([\d.]+)"/)?.[1];
+  const eye = source.match(/<rect x=\{cx - ([\d.]+)\} y=\{cy - ([\d.]+)\} width="([\d.]+)" height="([\d.]+)" rx="([\d.]+)" fill="#fff" transform=\{`rotate\((-?[\d.]+) \$\{cx\} \$\{cy\}\)`\}/);
+  const eyes = [...source.matchAll(/eye\(\{ cx: ([\d.]+), cy: ([\d.]+), lid:/g)];
+  if (!cog || !stroke || !eye || eyes.length !== 2) throw new Error(`Mascot geometry not found in ${mascotPath}`);
+  const [, dx, dy, width, height, rx, turn] = eye;
+  return `<path d="${cog}" fill="#ffffff" stroke="#ffffff" stroke-width="${stroke}" stroke-linejoin="round"/>`
+    + eyes.map(([, cx, cy]) => `<rect x="${Number(cx) - Number(dx)}" y="${Number(cy) - Number(dy)}" width="${width}" height="${height}" rx="${rx}" fill="${ink}" transform="rotate(${turn} ${cx} ${cy})"/>`).join("");
+}
+
+// The mascot centred on the brand's ink tile, the tile full-bleed.
+export async function desktopMark(svg: string, figure: string, share = DESKTOP_MASCOT): Promise<string> {
+  const tile = svg.match(/<rect[^>]*\/>/g);
+  const width = Number(tile?.[0].match(/width="([\d.]+)"/)?.[1]);
+  if (tile?.length !== 2 || !width) throw new Error("Missing brand tile");
+  const { data, info } = await sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1000" viewBox="0 0 100 100">${figure}</svg>`))
+    .ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  let left = info.width, top = info.height, right = -1, bottom = -1;
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i + 3] < 128) continue;
+    const x = (i / 4) % info.width, y = Math.floor(i / 4 / info.width);
+    left = Math.min(left, x); right = Math.max(right, x + 1);
+    top = Math.min(top, y); bottom = Math.max(bottom, y + 1);
+  }
+  const scale = share * 1024 / (Math.max(right - left, bottom - top) / 10);
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024"><g transform="translate(512 512) scale(${1024 / width}) translate(-512 -512)">${tile.join("")}</g>`
+    + `<g transform="translate(512 512) scale(${scale}) translate(${-(left + right) / 20} ${-(top + bottom) / 20})">${figure}</g></svg>`;
+}
+
 async function renderNative(outputs: Map<string, Buffer>, source: Buffer, svg: string, ink: string, glyph: string, cropped: Buffer, logo: Buffer, mark: (size: number) => Promise<Buffer>) {
   outputs.set("assets/gond-1024.png", await sharp(source).resize(1024, 1024).png().toBuffer());
-  outputs.set("apps/desktop/src/logo.svg", source);
+  const desktop = Buffer.from(await desktopMark(svg, await mascot(ink)));
+  outputs.set(desktopSource, await sharp(desktop).resize(1024, 1024).png().toBuffer());
+  outputs.set("apps/desktop/src/logo.svg", desktop);
   const wrap = (body: string) => Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">${body}</svg>`);
   // A luminance mask cuts the source's ink hole out of the white glass layer.
   const glyphSvg = wrap(`<defs><mask id="glyph"><g transform="${svg.match(/<g transform="([^"]+)"/)![1]}">${glyph.replaceAll(ink, "black")}</g></mask></defs><rect width="1024" height="1024" fill="white" mask="url(#glyph)"/>`);
@@ -193,7 +235,7 @@ export async function checkBrand() {
       throw new Error(`${path}: ${error instanceof Error ? error.message : error}`);
     }
   }
-  await desktopBrand(true, outputs.get("assets/gond-1024.png")!);
+  await desktopBrand(true, outputs.get(desktopSource)!);
 }
 
 if (import.meta.main) {
@@ -207,6 +249,6 @@ if (import.meta.main) {
       await writeFile(join(root, path), image);
       console.log(`${path}: ${image.length} bytes`);
     }
-    console.log(`Desktop: ${await desktopBrand(false, outputs.get("assets/gond-1024.png")!)} Tauri assets regenerated`);
+    console.log(`Desktop: ${await desktopBrand(false, outputs.get(desktopSource)!)} Tauri assets regenerated`);
   }
 }
