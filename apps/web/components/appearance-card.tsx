@@ -1,7 +1,7 @@
 "use client";
 
 import { ACCENT_LABELS, ACCENTS, isAccent, type Accent } from "@gond/shared";
-import { Eclipse, Eye, Mail, Moon, Sun, SunMoon } from "lucide-react";
+import { Eye, Mail, Moon, Sun, SunMoon } from "lucide-react";
 import { useSyncExternalStore } from "react";
 import { useStore } from "@/components/store";
 import { useTheme } from "@/components/theme-provider";
@@ -25,7 +25,6 @@ const THEME_OPTIONS: Record<Theme, { Icon: typeof Sun; label: string }> = {
   system: { Icon: SunMoon, label: "System" },
   light: { Icon: Sun, label: "Light" },
   dark: { Icon: Moon, label: "Dark" },
-  gond: { Icon: Eclipse, label: "Gond" },
 };
 
 const THEME_ITEMS = Object.entries(THEME_OPTIONS).map(([value, { label }]) => ({ value, label }));

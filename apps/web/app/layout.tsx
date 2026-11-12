@@ -3,7 +3,7 @@ import { Inter, JetBrains_Mono } from "next/font/google";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/toast";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { THEME_INIT_SCRIPT } from "@/lib/theme/theme";
+import { THEME_BACKGROUNDS, THEME_INIT_SCRIPT } from "@/lib/theme/theme";
 import "./globals.css";
 
 const inter = Inter({ variable: "--font-inter", subsets: ["latin"], weight: ["400", "500", "600", "700"] });
@@ -29,8 +29,8 @@ export const viewport: Viewport = {
   viewportFit: "cover",
   interactiveWidget: "resizes-content",
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f5f3ee" },
-    { media: "(prefers-color-scheme: dark)", color: "#121212" },
+    { media: "(prefers-color-scheme: light)", color: THEME_BACKGROUNDS.light },
+    { media: "(prefers-color-scheme: dark)", color: THEME_BACKGROUNDS.dark },
   ],
 };
 

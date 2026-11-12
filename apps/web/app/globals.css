@@ -132,24 +132,14 @@
 }
 
 /*
- * Dark is a plain Material dark theme: #121212 with each surface a step
- * lighter, text at 87% and 60%, 200-tone accents. WCAG ratios, measured:
- *
- *                     light                          dark
- *   carbon    on linen 15.7  paper 17.4  mist 14.2    14.2  12.6  11.3
- *   graphite  on linen  7.4  paper  8.2  mist  6.7     7.2   6.4   5.7
- *   ash       on linen  5.0  paper  5.5  mist  4.5     5.4   4.8   4.3
- *   carbon    on bubble-you 12.9  bubble-bot 14.2      9.5  11.9
- *   graphite  on bubble-you  6.1  bubble-bot  6.7      4.8   6.0
- *   tone-ok   on linen  4.7  paper 5.2  14% wash 4.3  11.4  10.1  7.3
- *   tone-warn on linen  5.3  paper 5.9  14% wash 4.9  14.5  12.9  8.9
- *   tone-bad  on linen  5.1  paper 5.6  14% wash 4.5   8.7   7.7  6.0
- *   tone-info on linen  5.0  paper 5.6  14% wash 4.6  10.7   9.5  7.0
- *   mint / amber / sky on linen  4.7 / 5.3 / 5.0       9.6 / 13.4 / 8.9
- *   magenta / grape / ember on linen 5.0 / 4.5 / 5.1   8.3 / 7.5 / 5.2
- *   white on ember                5.6                   3.6
- *   gold-foreground on gold       5.3 (5.0 at the coin's darkest)
- *   control-foreground on control 17.4                 14.2
+ * The neutrals are oah's: "cool paper" in the light (page #f6f7f9, cards white, ink #16181d) and
+ * "soft black" in the dark (page #0c0c0c, cards #151515, a darker sidebar #080808). oah draws its
+ * dark fills and edges in white at 4 to 12%; here each is solid, that white composited over the
+ * surface it sits on (a fill over the card, so it still shows on the page), since the accent
+ * shades, hovers and cut-out rings below mix with these tokens. No brand colour: the person's
+ * accent and the bots are the only colour. test/palette.test.ts reads this file and holds every
+ * contrast this palette promises (text, muted text, focus ring, destructive and its wash, each
+ * accent's shades), so a change that drops one fails there.
  */
 :root {
   /* The colour a cut-out ring is painted in, so it reads as a gap whatever the badge sits on: the
@@ -161,13 +151,13 @@
   --safe-bottom: max(env(safe-area-inset-bottom), var(--shell-inset-bottom, 0px));
   --safe-left: max(env(safe-area-inset-left), var(--shell-inset-left, 0px));
   --safe-right: max(env(safe-area-inset-right), var(--shell-inset-right, 0px));
-  --carbon: #1b1a18;
+  --carbon: #16181d;
   --paper-white: #ffffff;
-  --linen: #f5f3ee;
-  --mist: #ebe8e1;
-  --fog: #d6d2c9;
-  --ash: #6b6863;
-  --graphite: #524f4a;
+  --linen: #f6f7f9;
+  --mist: #eef0f3;
+  --fog: #e1e4e9;
+  --ash: #646a79;
+  --graphite: #5b6170;
   --mint: #1a7d38;
   --mint-wash: #dcf3e3;
   --amber: #8a5a00;
@@ -193,19 +183,20 @@
   --popover-foreground: var(--carbon);
   --primary: var(--paper-white);
   --primary-foreground: var(--carbon);
-  --primary-edge: #d9d4ca;
-  --primary-edge-focus: #c9c4b9;
+  --primary-edge: #d2d6dd;
+  --primary-edge-focus: #bfc4cd;
   --primary-shadow: none;
   /* The person's color (Settings → Appearance), blue until they pick another. Each color is a block
-     below, its shades worked out so white on --tint-solid and --tint-ink on --tint-wash clear 4.6:1. */
+     below, its shades worked out so white on --tint-solid and --tint-ink on --tint-wash clear 4.6:1
+     and --tint-edge, the edge of a card in the person's colour, clears 3:1 on the page. */
   --tint: #2F6FD6;
   --tint-solid: #2c62ba;
-  --tint-wash: #d6dbe0;
-  --tint-edge: #a9b8cd;
+  --tint-wash: #dadfe4;
+  --tint-edge: #808fa4;
   --tint-ink: #29559d;
-  --bubble-you: #cfe0f5;
+  --bubble-you: #d3e4f9;
   --bubble-you-foreground: var(--carbon);
-  --bubble-bot: #ebe8e1;
+  --bubble-bot: #e9ebef;
   --bubble-inset: color-mix(in oklch, var(--foreground) 7%, transparent);
   --control: var(--carbon);
   --control-foreground: var(--paper-white);
@@ -215,42 +206,42 @@
   --muted-foreground: var(--graphite);
   --accent: var(--mist);
   --accent-foreground: var(--carbon);
-  --destructive: var(--ember);
+  --destructive: #bd1f1f;
   --border: var(--fog);
-  --input: #c9c5bb;
-  --ring: var(--carbon);
+  --input: #d2d6dd;
+  --ring: #202328;
   --chart-1: var(--carbon);
   --chart-2: var(--sky);
   --chart-3: var(--mint);
   --chart-4: var(--amber);
   --chart-5: var(--magenta);
   --radius: 1rem;
-  --sidebar: var(--paper-white);
+  --sidebar: var(--mist);
   --sidebar-foreground: var(--carbon);
   --sidebar-primary: var(--carbon);
   --sidebar-primary-foreground: var(--paper-white);
-  --sidebar-accent: var(--mist);
+  --sidebar-accent: var(--paper-white);
   --sidebar-accent-foreground: var(--carbon);
   --sidebar-border: var(--fog);
   --sidebar-ring: var(--ring);
-  --shadow-subtle: 0 1px 1px rgba(20, 16, 8, 0.06),
-    0 0 0 1px rgba(20, 16, 8, 0.08);
-  --shadow-subtle-2: 0 1px 2px rgba(20, 16, 8, 0.08),
-    0 0 0 1px rgba(20, 16, 8, 0.08);
-  --shadow-subtle-3: 0 16px 40px rgba(20, 16, 8, 0.16),
-    0 0 0 1px rgba(20, 16, 8, 0.06);
-  --grid-line: rgba(20, 16, 8, 0.07);
+  --shadow-subtle: 0 1px 1px rgba(15, 23, 42, 0.06),
+    0 0 0 1px rgba(15, 23, 42, 0.08);
+  --shadow-subtle-2: 0 1px 2px rgba(15, 23, 42, 0.08),
+    0 0 0 1px rgba(15, 23, 42, 0.08);
+  --shadow-subtle-3: 0 16px 40px rgba(15, 23, 42, 0.16),
+    0 0 0 1px rgba(15, 23, 42, 0.06);
+  --grid-line: rgba(15, 23, 42, 0.07);
   color-scheme: light;
 }
 
 .dark {
-  --carbon: #e0e0e0;
-  --paper-white: #1e1e1e;
-  --linen: #121212;
-  --mist: #272727;
-  --fog: #2c2c2c;
+  --carbon: #ededed;
+  --paper-white: #151515;
+  --linen: #0c0c0c;
+  --mist: #1e1e1e;
+  --fog: #282828;
   --ash: #8a8a8a;
-  --graphite: #a0a0a0;
+  --graphite: #a1a1a1;
   --mint: #81c995;
   --mint-wash: #1f3326;
   --amber: #fdd663;
@@ -271,47 +262,47 @@
   --foreground: var(--carbon);
   --card: var(--paper-white);
   --card-foreground: var(--carbon);
-  --popover: #2e2e2e;
+  --popover: var(--paper-white);
   --popover-foreground: var(--carbon);
-  --primary: #2e2e2e;
+  --primary: #232323;
   --primary-foreground: var(--carbon);
-  --primary-edge: #474747;
-  --primary-edge-focus: #5c5c5c;
+  --primary-edge: #313131;
+  --primary-edge-focus: #494949;
   --primary-shadow: none;
   --tint: #2F6FD6;
   --tint-solid: #2b61b9;
-  --tint-wash: #252f40;
-  --tint-edge: #3d5780;
+  --tint-wash: #1e2839;
+  --tint-edge: #4b658e;
   --tint-ink: #8db0e8;
-  --bubble-you: #173554;
+  --bubble-you: #102e4c;
   --bubble-you-foreground: var(--carbon);
-  --bubble-bot: #232323;
+  --bubble-bot: #222222;
   --bubble-inset: color-mix(in oklch, var(--foreground) 8%, transparent);
   --control: var(--carbon);
-  --control-foreground: #121212;
+  --control-foreground: var(--linen);
   --secondary: var(--mist);
   --secondary-foreground: var(--carbon);
   --muted: var(--mist);
   --muted-foreground: var(--graphite);
-  --accent: var(--mist);
+  --accent: #232323;
   --accent-foreground: var(--carbon);
-  --destructive: var(--ember);
+  --destructive: #f97c7c;
   --border: var(--fog);
   /* Field edges: lighter than the card and the border, so an empty input reads as a box. */
-  --input: #333333;
-  --ring: var(--carbon);
+  --input: #313131;
+  --ring: #b6b6b6;
   --chart-1: var(--carbon);
   --chart-2: var(--sky);
   --chart-3: var(--mint);
   --chart-4: var(--amber);
   --chart-5: var(--magenta);
-  --sidebar: var(--paper-white);
+  --sidebar: #080808;
   --sidebar-foreground: var(--carbon);
   --sidebar-primary: var(--carbon);
   --sidebar-primary-foreground: var(--paper-white);
-  --sidebar-accent: var(--mist);
+  --sidebar-accent: #171717;
   --sidebar-accent-foreground: var(--carbon);
-  --sidebar-border: var(--fog);
+  --sidebar-border: #1c1c1c;
   --sidebar-ring: var(--ring);
   --shadow-subtle: 0 1px 1px rgba(0, 0, 0, 0.55),
     0 0 0 1px rgba(255, 255, 255, 0.08);
@@ -326,157 +317,114 @@
 :root:not(.dark)[data-accent="blue"] {
   --tint: #2F6FD6;
   --tint-solid: #2c62ba;
-  --tint-wash: #d6dbe0;
-  --tint-edge: #a9b8cd;
+  --tint-wash: #dadfe4;
+  --tint-edge: #808fa4;
   --tint-ink: #29559d;
-  --bubble-you: #cfe0f5;
+  --bubble-you: #d3e4f9;
 }
 :root.dark[data-accent="blue"] {
   --tint: #2F6FD6;
   --tint-solid: #2b61b9;
-  --tint-wash: #252f40;
-  --tint-edge: #3d5780;
+  --tint-wash: #1e2839;
+  --tint-edge: #4b658e;
   --tint-ink: #8db0e8;
-  --bubble-you: #173554;
+  --bubble-you: #102e4c;
 }
 :root:not(.dark)[data-accent="purple"] {
   --tint: #7650D8;
   --tint-solid: #6848bb;
-  --tint-wash: #ded7e0;
-  --tint-edge: #bdafce;
+  --tint-wash: #e2dbe4;
+  --tint-edge: #9688a7;
   --tint-ink: #5b409e;
-  --bubble-you: #ded5f6;
+  --bubble-you: #e2d9fa;
 }
 :root.dark[data-accent="purple"] {
   --tint: #7650D8;
   --tint-solid: #6747ba;
-  --tint-wash: #302a40;
-  --tint-edge: #5a4b81;
+  --tint-wash: #292339;
+  --tint-edge: #6a5b91;
   --tint-ink: #b49fea;
-  --bubble-you: #322651;
+  --bubble-you: #2b1f49;
 }
 :root:not(.dark)[data-accent="pink"] {
   --tint: #CF3D85;
   --tint-solid: #b43875;
-  --tint-wash: #e8d5d7;
-  --tint-edge: #d6aab7;
+  --tint-wash: #ecd9db;
+  --tint-edge: #ae828f;
   --tint-ink: #993364;
-  --bubble-you: #f3d0e2;
+  --bubble-you: #f7d4e6;
 }
 :root.dark[data-accent="pink"] {
   --tint: #CF3D85;
   --tint-solid: #b33774;
-  --tint-wash: #3f2733;
-  --tint-edge: #7d4360;
+  --tint-wash: #38202c;
+  --tint-edge: #8c526f;
   --tint-ink: #e594bc;
-  --bubble-you: #4e2037;
+  --bubble-you: #461930;
 }
 :root:not(.dark)[data-accent="red"] {
   --tint: #D03A3A;
   --tint-solid: #b53535;
-  --tint-wash: #e8d5cf;
-  --tint-edge: #d6a9a2;
+  --tint-wash: #ecd9d3;
+  --tint-edge: #b0837c;
   --tint-ink: #9a3030;
-  --bubble-you: #f4d0d0;
+  --bubble-you: #f8d4d4;
 }
 :root.dark[data-accent="red"] {
   --tint: #D03A3A;
   --tint-solid: #b33434;
-  --tint-wash: #3f2727;
-  --tint-edge: #7e4242;
+  --tint-wash: #382020;
+  --tint-edge: #8f5353;
   --tint-ink: #e59393;
-  --bubble-you: #4f1f1f;
+  --bubble-you: #471818;
 }
 :root:not(.dark)[data-accent="orange"] {
   --tint: #E04E0A;
   --tint-solid: #c2460c;
-  --tint-wash: #ead7c9;
-  --tint-edge: #dbae94;
+  --tint-wash: #eedbcd;
+  --tint-edge: #b1846a;
   --tint-ink: #9f3d0f;
-  --bubble-you: #f8d5c4;
+  --bubble-you: #fcd9c8;
 }
 :root.dark[data-accent="orange"] {
   --tint: #E04E0A;
   --tint-solid: #c1450b;
-  --tint-wash: #412a1f;
-  --tint-edge: #844a2f;
+  --tint-wash: #3a2318;
+  --tint-edge: #8f553a;
   --tint-ink: #ee9e78;
-  --bubble-you: #54250f;
+  --bubble-you: #4c1e07;
 }
 :root:not(.dark)[data-accent="amber"] {
   --tint: #D98A08;
   --tint-solid: #9e670d;
-  --tint-wash: #e9dec9;
-  --tint-edge: #d9bf94;
+  --tint-wash: #ede2cd;
+  --tint-edge: #a48a5f;
   --tint-ink: #83580f;
-  --bubble-you: #f6e3c4;
+  --bubble-you: #fae7c8;
 }
 :root.dark[data-accent="amber"] {
   --tint: #D98A08;
   --tint-solid: #9f670b;
-  --tint-wash: #40331f;
+  --tint-wash: #392c18;
   --tint-edge: #81622e;
   --tint-ink: #eabf77;
-  --bubble-you: #52380f;
+  --bubble-you: #4a3106;
 }
 :root:not(.dark)[data-accent="green"] {
   --tint: #189C47;
   --tint-solid: #19863f;
-  --tint-wash: #d4e0d0;
-  --tint-edge: #a3c4a5;
+  --tint-wash: #d8e4d4;
+  --tint-edge: #759677;
   --tint-ink: #196d36;
-  --bubble-you: #c8e7d3;
+  --bubble-you: #ccebd7;
 }
 :root.dark[data-accent="green"] {
   --tint: #189C47;
   --tint-solid: #17853e;
-  --tint-wash: #213629;
-  --tint-edge: #346947;
+  --tint-wash: #1a2f22;
+  --tint-edge: #396e4c;
   --tint-ink: #80c99a;
-  --bubble-you: #143e23;
-}
-
-/*
- * Gond: Gond Code's true-black surfaces, with the same seven dark accents above.
- * Keep this after the accent blocks: outgoing bubbles use the chosen tint's wash.
- * Gond's --primary is a neutral field/button surface; tinted actions use --tint-solid.
- * Text never uses Code's faint #5a5a5a or ash #6e6e6e: #8a8a8a clears AA on #1e1e1e.
- */
-:root.dark[data-theme="gond"] {
-  --carbon: #ededed;
-  --paper-white: #0e0e0e;
-  --linen: #000000;
-  --mist: #1a1a1a;
-  --fog: #1c1c1c;
-  --ash: #8a8a8a;
-  --graphite: #8a8a8a;
-
-  --popover: #0e0e0e;
-  --primary: #141414;
-  --primary-edge: #262626;
-  --primary-edge-focus: var(--tint-edge);
-  --primary-shadow: none;
-  --bubble-you: var(--tint-wash);
-  --bubble-bot: #0e0e0e;
-  --control: var(--tint-solid);
-  --control-foreground: #ffffff;
-  --accent: #1e1e1e;
-  --destructive: #e5484d;
-  --input: #262626;
-  --ring: #5c5c5c;
-
-  --sidebar: #030303;
-  --sidebar-primary: var(--tint-solid);
-  --sidebar-primary-foreground: #ffffff;
-  --shadow-subtle: none;
-  --shadow-subtle-2: none;
-  --shadow-subtle-3: none;
-  --grid-line: #151515;
-}
-
-/* The existing sidebar explicitly uses the page's background in the other themes. */
-:root[data-theme="gond"] [data-sidebar="sidebar"] {
-  background-color: var(--sidebar);
+  --bubble-you: #0b371c;
 }
 
 /* A profile's mark wears that profile's colour, whatever the page's accent: each accent's solid, which carries white. */

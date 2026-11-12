@@ -4,9 +4,9 @@ import UIKit
 /// The web app's tokens (apps/web/app/globals.css), so Connect and the pages after it look like one app.
 enum Theme {
     static let background = Color("Background")
-    static let foreground = dynamic(light: 0x1B1A18, dark: 0xE0E0E0)
-    static let muted = dynamic(light: 0x524F4A, dark: 0xA0A0A0)
-    static let destructive = dynamic(light: 0xC2301A, dark: 0xCF6679)
+    static let foreground = dynamic(light: 0x16181D, dark: 0xEDEDED)
+    static let muted = dynamic(light: 0x5B6170, dark: 0xA1A1A1)
+    static let destructive = dynamic(light: 0xBD1F1F, dark: 0xF97C7C)
     /// A phone's hang-up red, deep enough for a white icon in both themes (`--hangup`).
     static let hangup = dynamic(light: 0xC2301A, dark: 0xC4372B)
     /// The person's own blue, the default accent: what fills the Connect button.

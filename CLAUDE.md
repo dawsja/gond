@@ -218,9 +218,13 @@ The address rules are mirrored in each app with the same tests.
   overrides, never the old `bg-carbon` / `text-graphite` /
   `bg-paper-white` outside `globals.css`. Use `text-muted-foreground`,
   `bg-card`, `bg-muted`, `border` and friends.
-  - There is no brand colour: ink on paper in the light, Material's dark
-    theme (#121212, elevation by a lighter grey) in the dark; the bots
-    are the only colour on a page, besides the person's own accent.
+  - There is no brand colour: the neutrals are oah's, "cool paper" in
+    the light (page #f6f7f9, white cards, ink #16181d) and "soft black"
+    in the dark (page #0c0c0c, cards #151515, a darker sidebar #080808);
+    the bots are the only colour on a page, besides the person's own
+    accent. oah's dark fills and edges are white at 4 to 12%; here each
+    is a solid composite over the surface it sits on, since accent
+    shades, hovers and cut-out rings mix with the tokens.
   - One primary for actions: `bg-primary` / `text-primary-foreground`, a
     white pill in the light, grey in the dark (main buttons, the phone's
     circles, the bot's name pill). Secondary is `variant="outline"`,
@@ -242,7 +246,8 @@ The address rules are mirrored in each app with the same tests.
     by default, `accent` on `gond_user_prefs`, `PUT /api/me/accent`) is
     the `--tint` family, one block per colour in `globals.css` under
     `<html data-accent>`, shades chosen so white on `--tint-solid` and
-    `--tint-ink` on `--tint-wash` clear 4.6:1 in both themes. It paints
+    `--tint-ink` on `--tint-wash` clear 4.6:1 in both themes, and
+    `--tint-edge` 3:1 on the page. It paints
     their bubble, the main button on a card (`variant="tint"`), Send, and
     a card a bot posts on its own (`bg-tint-wash`). The theme init script
     sets it from `localStorage` before first paint, the store from
@@ -292,8 +297,13 @@ The address rules are mirrored in each app with the same tests.
 - **Two themes, both checked every time.** Settings → Appearance is a
   `Select` of System, Light and Dark (`THEMES` in `lib/theme/theme.ts`,
   kept on the device, `followsDevice`); the theme init script sets
-  `<html class="dark">` before first paint. Edges, rings and fills must
-  read in both.
+  `<html class="dark">` before first paint. There is no third theme: a
+  device that saved the old Gond theme opens Dark and is rewritten to it
+  (`themeOf`, and the init script). Edges, rings and fills must read in
+  both. `test/palette.test.ts` reads `globals.css` and fails when a
+  contrast drops (text 4.5:1, the focus ring 3:1, destructive on its
+  wash, every accent's shades in both themes, a bubble's rings
+  drawn solid) or when a shell's copy of the page colours drifts.
 - **Mascots come from the gond-bot skill** (`components/hq/gond-bot.tsx`),
   copied 1:1. Don't redraw the cog. `shape` (`BOT_SHAPES`) picks a body
   from `BODIES` under the same eyes and animations; only the cog spins. A

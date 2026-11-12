@@ -16,9 +16,9 @@ import {
   THEME_STORAGE_KEY,
   applyTheme,
   followsDevice,
-  isTheme,
   readStoredTheme,
   resolveTheme,
+  themeOf,
   type ResolvedTheme,
   type Theme,
 } from "@/lib/theme/theme";
@@ -68,8 +68,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     };
     const onStorage = (event: StorageEvent) => {
       if (event.key !== THEME_STORAGE_KEY) return;
-      const next = isTheme(event.newValue) ? event.newValue : "system";
-      setThemeState(next);
+      setThemeState(themeOf(event.newValue));
     };
     media.addEventListener("change", onMedia);
     window.addEventListener("storage", onStorage);

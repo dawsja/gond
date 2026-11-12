@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { runInNewContext } from "node:vm";
-import { applyTheme, isTheme, readStoredTheme, resolveTheme, THEME_INIT_SCRIPT, type Theme } from "../lib/theme/theme";
+import { applyTheme, isTheme, readStoredTheme, resolveTheme, THEME_BACKGROUNDS, THEME_INIT_SCRIPT, THEMES, type Theme } from "../lib/theme/theme";
 
 function browser(stored: string | null, deviceDark: boolean) {
   const attributes = new Map<string, string>();
@@ -11,10 +11,14 @@ function browser(stored: string | null, deviceDark: boolean) {
     setAttribute: (key: string, value: string) => attributes.set(key, value),
     style: { fontSize: "" },
   };
-  const localStorage = { getItem: (key: string) => key === "gond-theme" ? stored : null };
+  const saved = new Map<string, string>(stored === null ? [] : [["gond-theme", stored]]);
+  const localStorage = {
+    getItem: (key: string) => saved.get(key) ?? null,
+    setItem: (key: string, value: string) => void saved.set(key, value),
+  };
   const matchMedia = () => ({ matches: deviceDark });
   const document = { documentElement: root, querySelectorAll: () => [meta] };
-  return { attributes, classes, globals: { document, localStorage, matchMedia, window: { localStorage, matchMedia } } };
+  return { attributes, classes, saved, globals: { document, localStorage, matchMedia, window: { localStorage, matchMedia } } };
 }
 
 function withBrowser<T>(globals: ReturnType<typeof browser>["globals"], run: () => T): T {
@@ -32,21 +36,38 @@ function withBrowser<T>(globals: ReturnType<typeof browser>["globals"], run: () 
   }
 }
 
-test("Gond is a saved explicit dark palette, independent of the device", () => {
-  expect(isTheme("gond")).toBe(true);
+test("the retired Gond theme opens dark on any device and is saved as Dark", () => {
+  expect(THEMES).toEqual(["system", "light", "dark"]);
+  expect(isTheme("gond")).toBe(false);
   expect(isTheme("unknown")).toBe(false);
   for (const device of [false, true]) {
-    const mock = browser("gond", device);
-    withBrowser(mock.globals, () => {
-      expect(readStoredTheme()).toBe("gond");
-      expect(resolveTheme("gond")).toBe("dark");
+    const firstPaint = browser("gond", device);
+    runInNewContext(THEME_INIT_SCRIPT, firstPaint.globals);
+    expect(firstPaint.classes.has("dark")).toBe(true);
+    expect(firstPaint.attributes.get("data-theme")).toBe("dark");
+    expect(firstPaint.attributes.get("meta:content")).toBe(THEME_BACKGROUNDS.dark);
+    expect(firstPaint.saved.get("gond-theme")).toBe("dark");
+
+    const runtime = browser("gond", device);
+    withBrowser(runtime.globals, () => {
+      expect(readStoredTheme()).toBe("dark");
       expect(resolveTheme("system")).toBe(device ? "dark" : "light");
     });
+    expect(runtime.saved.get("gond-theme")).toBe("dark");
   }
 });
 
+test("a retired theme still opens dark when storage can't be written", () => {
+  const mock = browser("gond", false);
+  mock.globals.localStorage.setItem = () => { throw new Error("Storage full"); };
+  runInNewContext(THEME_INIT_SCRIPT, mock.globals);
+  expect(mock.classes.has("dark")).toBe(true);
+  expect(mock.attributes.get("data-theme")).toBe("dark");
+  withBrowser(mock.globals, () => expect(readStoredTheme()).toBe("dark"));
+});
+
 test("initial paint agrees with runtime across saved themes and device schemes", () => {
-  for (const theme of ["system", "light", "dark", "gond"] satisfies Theme[]) {
+  for (const theme of ["system", "light", "dark"] satisfies Theme[]) {
     for (const device of [false, true]) {
       const firstPaint = browser(theme, device);
       runInNewContext(THEME_INIT_SCRIPT, firstPaint.globals);
@@ -58,17 +79,15 @@ test("initial paint agrees with runtime across saved themes and device schemes",
   }
 });
 
-test("leaving Gond clears the palette and restores the correct browser bar color", () => {
-  const mock = browser("gond", false);
+test("switching themes restores the correct browser bar color", () => {
+  const mock = browser("dark", false);
   withBrowser(mock.globals, () => {
-    applyTheme(resolveTheme("gond"), "gond");
-    expect(mock.attributes.get("meta:content")).toBe("#000000");
     applyTheme(resolveTheme("dark"), "dark");
     expect(mock.attributes.get("data-theme")).toBe("dark");
-    expect(mock.attributes.get("meta:content")).toBe("#121212");
+    expect(mock.attributes.get("meta:content")).toBe("#0c0c0c");
     applyTheme(resolveTheme("light"), "light");
     expect(mock.classes.has("dark")).toBe(false);
-    expect(mock.attributes.get("meta:content")).toBe("#f5f3ee");
+    expect(mock.attributes.get("meta:content")).toBe("#f6f7f9");
   });
 });
 

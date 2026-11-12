@@ -107,7 +107,7 @@ function FileKindIcon({ kind }: { kind: FileKind }) {
 
 // A search hit or a tapped quote's message, ringed for a moment; the ring fades as it goes.
 const RING = "transition-shadow duration-500";
-const RINGED = "ring-2 ring-ring/40";
+const RINGED = "ring-2 ring-ring";
 
 /** A turn that failed on the person's message, with a way to go again. */
 function FailedTurn({ message, highlighted }: { message: Message & { answering: string }; highlighted: boolean }) {
