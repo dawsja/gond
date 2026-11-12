@@ -1443,15 +1443,19 @@ a restart resumes (`resumeTeachings`), pictures expire a week after
   the bot's MEMORY.md once (`foldClaudeMemory`, `fold-memory`).
 - **Models** (`models.mjs`): the list is the CLI's own, asked as the
   person (`claudeModelInfo`: the `models` of its answer to an `initialize`
-  control request, no model called, the process stopped once it answers
-  or at its timeout). `modelsFromInfo` keeps its order and leaves out only
-  broken or repeated rows, the `default` pointer and a row naming a model
-  already listed, never a model by name or version; `opus` is marked
-  default when listed. `createModelLists` keeps each account's list five
-  minutes, one look at a time; a failed look keeps the last good list,
-  else `FALLBACK_CLAUDE_MODELS`, version-free aliases (a test fails on a
-  digit), so the list is never empty and nothing in it is edited by hand.
-  A sign-in, an update or a reset forgets the lists.
+  control request, no model called, the person's hooks off with
+  `disableAllHooks` since the handshake starts a session, the process
+  stopped once it answers or at its timeout). `modelsFromInfo` keeps its
+  order and leaves out only broken or repeated rows, the `default` pointer
+  and a row naming a model already listed, never a model by name or
+  version; names and details are one line, capped; `opus` is marked
+  default when listed. `createModelLists` keeps a good list five minutes
+  (`MODELS_TTL_MS`), one look at a time. A failed look is retried every
+  minute and keeps the last good list at most `LAST_GOOD_MS` (24 hours)
+  after the CLI gave it, then `FALLBACK_CLAUDE_MODELS`, version-free
+  aliases (a test fails on a digit), so the list is never empty, a
+  retired model is gone within a day at worst, and nothing in it is
+  edited by hand. A sign-in, an update or a reset forgets the lists.
 - **Sign-in** (`sign-in.mjs`): the CLI's own login in a pty as the
   person (wide so links don't wrap, `CI` dropped), the link parsed out,
   the code written back, the result confirmed by the CLI. Only the link,

@@ -147,6 +147,8 @@ export async function checkClaude({ bin = CLAUDE_BIN, cwd, env, uid, gid }) {
 
 const MODELS_TIMEOUT_MS = 15_000;
 
+const NO_HOOKS = JSON.stringify({ disableAllHooks: true });
+
 /**
  * The models this CLI offers the account, as its own picker lists them: the `models` of its answer to an
  * `initialize` control request. No model is called and nothing else of the answer (the account among it)
@@ -159,7 +161,9 @@ export async function claudeModelInfo({ bin = CLAUDE_BIN, cwd, env, uid, gid, ti
   try {
     await spawnClaude({
       bin,
-      args: ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--strict-mcp-config"],
+      // The handshake starts a session, so without this the person's SessionStart and SessionEnd hooks would run on
+      // every look. Only hooks are turned off: the rest of their settings (`availableModels` among them) still apply.
+      args: ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--strict-mcp-config", "--settings", NO_HOOKS],
       cwd,
       env,
       uid,

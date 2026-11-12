@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { FALLBACK_CLAUDE_MODELS, createModelLists, engineModels, modelsFromInfo } from "../models.mjs";
 
 test("Claude Code runs on aliases, so the list never goes stale", async () => {
-  const models = await engineModels("claude");
+  const models = await engineModels("claude", { bins: { claude: "/nonexistent/claude" } });
   assert.equal(models.find((model) => model.id === "opus")?.default, true);
   assert.equal(models.filter((model) => model.default).length, 1);
 });
@@ -56,6 +56,15 @@ test("rows that are broken, repeated or name a model already listed are left out
   assert.deepEqual(modelsFromInfo({ models: [] }), []);
 });
 
+test("a name or detail from the CLI is one short line, however long or odd", () => {
+  const [model] = modelsFromInfo([{ value: "opus", displayName: `Opus\n\t5.5${"!".repeat(200)}`, description: `${"word ".repeat(100)}\u0007end` }]);
+  assert.equal(model.name.length, 80);
+  assert.ok(model.name.startsWith("Opus 5.5!") && model.name.endsWith("…"));
+  assert.equal(model.detail.length, 300);
+  assert.ok(!/[\n\t\u0007]/.test(model.name + model.detail));
+  assert.deepEqual(modelsFromInfo([{ value: "haiku", displayName: "  Haiku 5.5 ", description: "Fastest" }]), [{ id: "haiku", name: "Haiku 5.5", detail: "Fastest", default: true }]);
+});
+
 test("the bundled fallback has one default and no version a person would have to keep current", () => {
   assert.equal(FALLBACK_CLAUDE_MODELS.filter((model) => model.default).length, 1);
   for (const model of FALLBACK_CLAUDE_MODELS) assert.doesNotMatch(`${model.id} ${model.name} ${model.detail}`, /\d/);
@@ -67,13 +76,15 @@ function fakeCli(t, body) {
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const bin = path.join(dir, "claude");
   const log = path.join(dir, "launches");
+  const argv = path.join(dir, "argv");
   fs.writeFileSync(
     bin,
-    `#!/bin/sh\necho $$ >> "${log}"\nread line\nid=$(printf '%s' "$line" | sed 's/.*"request_id":"\\([^"]*\\)".*/\\1/')\n${body}\n`,
+    `#!/bin/sh\necho $$ >> "${log}"\necho "$*" >> "${argv}"\nread line\nid=$(printf '%s' "$line" | sed 's/.*"request_id":"\\([^"]*\\)".*/\\1/')\n${body}\n`,
     { mode: 0o755 },
   );
   const launches = () => (fs.existsSync(log) ? fs.readFileSync(log, "utf8").trim().split("\n").filter(Boolean) : []);
-  return { bin, launches };
+  const args = () => fs.readFileSync(argv, "utf8");
+  return { bin, launches, args };
 }
 
 const answer = (models, subtype = "success") =>
@@ -98,6 +109,7 @@ test("the CLI is asked for its list, and stopped as soon as it answers", async (
   assert.ok(Date.now() - started < 10_000, "the look waited for the CLI instead of stopping it");
   assert.deepEqual(models, [{ id: "opus", name: "Opus 9", default: true }, { id: "claude-new-1", name: "New 1" }]);
   assert.ok(await gone(cli.launches()[0]));
+  assert.match(cli.args(), /--settings \{"disableAllHooks":true\}/, "the look would run the person's hooks");
 });
 
 test("whatever the CLI does, the list is never empty", async (t) => {
@@ -151,6 +163,22 @@ test("a list is kept for its time, asked once by callers at the same moment, and
   lists.forget("u:");
   listed = [{ id: "haiku", default: true }];
   assert.deepEqual((await lists.get("u:claude", "claude")).map((model) => model.id), ["haiku"]);
+});
+
+test("looks that keep failing keep the last good list only for a bounded time, then the fallback", async () => {
+  let clock = 0;
+  let listed = [{ id: "claude-retired-1", name: "Retired 1", default: true }];
+  let asks = 0;
+  const lists = createModelLists({ ttlMs: 1000, retryMs: 100, lastGoodMs: 10_000, now: () => clock, ask: async () => (asks += 1, listed) });
+  await lists.get("u:claude", "claude");
+  listed = null;
+  for (clock = 1000; clock < 10_000; clock += 100) assert.equal((await lists.get("u:claude", "claude"))[0].id, "claude-retired-1");
+  clock = 10_000;
+  assert.deepEqual(await lists.get("u:claude", "claude"), FALLBACK_CLAUDE_MODELS.map((model) => ({ ...model })));
+  assert.equal(asks, 92, "a failing look is still tried again every retryMs");
+  clock = 10_100;
+  listed = [{ id: "opus", name: "Opus 6", default: true }];
+  assert.equal((await lists.get("u:claude", "claude"))[0].name, "Opus 6");
 });
 
 test("two calls inside the cache's time launch the CLI once", async (t) => {
