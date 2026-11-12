@@ -1,7 +1,7 @@
 # Gond: how we build it
 
-Brand source: `packages/shared/brand/gond-mark.svg`; build with `bun run brand:build`, check with `bun run brand:build -- --check`; mascots are not the brand mark; web and native icons derive from it, the desktop's (built by Tauri) only its tile; do not edit the source or derived assets by hand.
-The desktop icon and the desktop Connect mark are the mascot (`desktopMark`, `mascot` in `scripts/brand.ts`, geometry read from `gond-bot.tsx`, so a mascot change needs `brand:build`): a white cog with ink eyes on the brand's ink tile, the tile full-bleed and the mascot at `DESKTOP_MASCOT` (74%), since Windows draws it at 16 to 32 px beside full-bleed neighbours; `brand.test.ts` fails a frame under 95% tile or 60% mascot, or without both eyes from 24 px.
+Brand mark: the Gond mascot (a white cog with ink eyes) on the ink tile, made by `brandMark` and `mascot` in `scripts/brand.ts` from the geometry in `gond-bot.tsx` and written to `packages/shared/brand/gond-mark.svg` (pinned by sha in `brand.test.ts`, byte-equal to the desktop's `logo.svg` and the figure the landing pins); every web, Android, iPhone and desktop icon derives from it; build with `bun run brand:build`, check with `bun run brand:build -- --check`; never edit the mark or a derived asset by hand, and never redraw the mascot for it.
+The mascot spans `MARK_MASCOT` (74%) of what a surface shows (the launcher layers and splash `LAUNCHER_MASCOT`, the maskable icon `MASKABLE_MASCOT`); surfaces always 24 px or smaller (favicon frames to 48, status bar icons, the web badge) take `SMALL_MASCOT`, wider eyes in one place; one-colour layers are the cog with the eyes cut out. `brand.test.ts` fails a surface without both eyes, with the old cog-with-hole (a hole between the eyes, `r="12"`, a retired hash), outside its span or safe circle, or a silhouette that is not white.
 
 Read this before changing anything. The README says what Gond is; this
 says how it is made and which rules must hold. It names the files and
@@ -168,8 +168,8 @@ The address rules are mirrored in each app with the same tests.
     `scripts/check.mjs` (the package's lint) fails when the bridge misses
     a `GondMobile` method, the loopback port drifts from shared or an
     Android address test has no Swift twin.
-  - The icon is `AppIcon.icon` (Icon Composer: the source glyph as one white glass
-    layer on ink, derived by `brand:build`), a resource of its own in `project.yml`, never inside `Gond/`.
+  - The icon is `AppIcon.icon` (Icon Composer: the mascot as one white glass
+    layer with its eyes cut out over the ink fill, at `MARK_MASCOT`, derived by `brand:build`), a resource of its own in `project.yml`, never inside `Gond/`.
     The Xcode project is generated from `project.yml` with XcodeGen and
     never checked in.
   - CI tests on `macos-26`; a push to main or a release tag archives with

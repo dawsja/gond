@@ -44,62 +44,53 @@ export function icoFrames(data: Buffer, sizes = icoSizes): Buffer[] {
   return frames;
 }
 
-export async function renderBrand(): Promise<Map<string, Buffer>> {
-  const source = await readFile(join(root, sourcePath));
-  const svg = source.toString();
-  const ink = svg.match(/<rect[^>]*fill="([^"]+)"/)?.[1];
-  if (!ink) throw new Error("Missing brand background");
-  const cropped = await sharp(source).extract({ left: 64, top: 64, width: 896, height: 896 }).png().toBuffer();
-  const mark = (size: number) => sharp(cropped).resize(size, size).png().toBuffer();
-  const logo = await mark(512);
-  const glyph = svg.match(/<g transform="rotate[\s\S]*?<\/g>/)?.[0];
-  if (!glyph) throw new Error("Missing brand glyph");
-  // The glyph's luminance becomes alpha, including the transparent centre hole.
-  const mask = await sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">${glyph.replaceAll(ink, "black")}</svg>`))
-    .resize(96, 96).flatten({ background: "black" }).greyscale().raw().toBuffer();
-  const rgba = Buffer.alloc(96 * 96 * 4, 255);
-  for (let i = 0; i < mask.length; i++) rgba[i * 4 + 3] = mask[i];
-  const outputs = new Map<string, Buffer>([
-    ["apps/web/public/logo.png", logo],
-    ["apps/web/app/icon.png", logo],
-    ["apps/web/app/favicon.ico", ico(await Promise.all(icoSizes.map(mark)))],
-    ["apps/web/public/apple-touch-icon.png", await sharp(cropped).resize(180, 180).flatten({ background: ink }).png().toBuffer()],
-    ["apps/web/public/logo-maskable.png", await sharp({ create: { width: 512, height: 512, channels: 3, background: ink } })
-      .composite([{ input: await mark(410), gravity: "centre" }]).png().toBuffer()],
-    ["apps/web/public/notification-badge.png", await sharp(rgba, { raw: { width: 96, height: 96, channels: 4 } }).png().toBuffer()],
-    ["apps/web/app/opengraph-image.png", await sharp({ create: { width: 1200, height: 630, channels: 3, background: ink } })
-      .composite([{ input: await mark(400), gravity: "centre" }]).png().toBuffer()],
-  ]);
-  await renderNative(outputs, source, svg, ink, glyph, cropped, logo, mark);
-  return outputs;
-}
-
-// Share of the canvas the desktop icon's mascot spans. Windows draws a taskbar
-// icon at 16 to 32 px with no tile of its own, so a margin and a small figure
-// read as a small icon beside full-bleed neighbours.
-export const DESKTOP_MASCOT = 0.74;
+// The tile of the brand mark, drawn on a 768 square and scaled full-bleed.
+const INK = "#1b1a18";
+const TILE = `<rect x="128" y="128" width="768" height="768" rx="300" fill="${INK}"/><rect x="141" y="141" width="742" height="742" rx="287" fill="none" stroke="#ffffff" stroke-opacity="0.22" stroke-width="26"/>`;
+// Share of the tile the mascot spans in the brand mark, and so on every
+// surface that shows the tile. Windows draws the desktop icon at 16 to 32 px
+// beside full-bleed neighbours, so a margin and a small figure read as small.
+export const MARK_MASCOT = 0.74;
+// Surfaces always shown at 24 logical px or less (a browser tab at 1x to 3x,
+// status bar icons, the web notification badge) take the mascot with wider,
+// further-apart eyes and a larger figure; at the exact geometry the eyes are
+// 1 px smudges at 16 px and the mark reads as a blob.
+export const SMALL_MASCOT = { eyeWidth: 1.6, eyeHeight: 1.1, spread: 1.2, share: 0.82 };
+// The launcher layers' canvas is 108 dp, of which a launcher shows the
+// middle 72 dp; the splash icon's is 288 dp, shown in a 192 dp circle.
+// Both keep the mark's proportion of what is shown.
+export const LAUNCHER_MASCOT = MARK_MASCOT * 72 / 108;
+// The maskable icon's safe zone is the middle 80% circle.
+export const MASKABLE_MASCOT = MARK_MASCOT * 0.8;
+// A status bar icon is 24 dp; the figure keeps a hair of padding.
+export const GLYPH_MASCOT = 0.9;
 const desktopSource = "apps/desktop/icon-source.png";
 const mascotPath = "apps/web/components/hq/gond-bot.tsx";
 
 // The mascot standing still with its eyes open, its geometry read from the
-// component so the desktop icon can't drift from it: a white cog, ink eyes.
-export async function mascot(ink: string): Promise<string> {
+// component so no surface can drift from it: a white cog, ink eyes. `small`
+// widens and spreads the eyes about their own centres for tiny surfaces.
+export async function mascot(ink = INK, small = false): Promise<string> {
   const source = await readFile(join(root, mascotPath), "utf8");
   const cog = source.match(/const COG =\s*"([^"]+)"/)?.[1];
   const stroke = source.match(/<path d=\{shape === "cog" \? COG[^>]*strokeWidth="([\d.]+)"/)?.[1];
   const eye = source.match(/<rect x=\{cx - ([\d.]+)\} y=\{cy - ([\d.]+)\} width="([\d.]+)" height="([\d.]+)" rx="([\d.]+)" fill="#fff" transform=\{`rotate\((-?[\d.]+) \$\{cx\} \$\{cy\}\)`\}/);
-  const eyes = [...source.matchAll(/eye\(\{ cx: ([\d.]+), cy: ([\d.]+), lid:/g)];
+  const eyes = [...source.matchAll(/eye\(\{ cx: ([\d.]+), cy: ([\d.]+), lid:/g)].map(([, cx, cy]) => [Number(cx), Number(cy)]);
   if (!cog || !stroke || !eye || eyes.length !== 2) throw new Error(`Mascot geometry not found in ${mascotPath}`);
   const [, dx, dy, width, height, rx, turn] = eye;
-  return `<path d="${cog}" fill="#ffffff" stroke="#ffffff" stroke-width="${stroke}" stroke-linejoin="round"/>`
-    + eyes.map(([, cx, cy]) => `<rect x="${Number(cx) - Number(dx)}" y="${Number(cy) - Number(dy)}" width="${width}" height="${height}" rx="${rx}" fill="${ink}" transform="rotate(${turn} ${cx} ${cy})"/>`).join("");
+  const body = `<path d="${cog}" fill="#ffffff" stroke="#ffffff" stroke-width="${stroke}" stroke-linejoin="round"/>`;
+  if (!small) return body + eyes.map(([cx, cy]) => `<rect x="${cx - Number(dx)}" y="${cy - Number(dy)}" width="${width}" height="${height}" rx="${rx}" fill="${ink}" transform="rotate(${turn} ${cx} ${cy})"/>`).join("");
+  const mid = [(eyes[0][0] + eyes[1][0]) / 2, (eyes[0][1] + eyes[1][1]) / 2];
+  const w = Number(width) * SMALL_MASCOT.eyeWidth, h = Number(height) * SMALL_MASCOT.eyeHeight;
+  return body + eyes.map(([x, y]) => {
+    const cx = mid[0] + (x - mid[0]) * SMALL_MASCOT.spread, cy = mid[1] + (y - mid[1]) * SMALL_MASCOT.spread;
+    return `<rect x="${cx - w / 2}" y="${cy - h / 2}" width="${w}" height="${h}" rx="${w / 2}" fill="${ink}" transform="rotate(${turn} ${cx} ${cy})"/>`;
+  }).join("");
 }
 
-// The mascot centred on the brand's ink tile, the tile full-bleed.
-export async function desktopMark(svg: string, figure: string, share = DESKTOP_MASCOT): Promise<string> {
-  const tile = svg.match(/<rect[^>]*\/>/g);
-  const width = Number(tile?.[0].match(/width="([\d.]+)"/)?.[1]);
-  if (tile?.length !== 2 || !width) throw new Error("Missing brand tile");
+// The figure centred on a 1024 canvas, spanning `share` of it by its
+// measured bounding box.
+async function placed(figure: string, share: number): Promise<string> {
   const { data, info } = await sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1000" viewBox="0 0 100 100">${figure}</svg>`))
     .ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   let left = info.width, top = info.height, right = -1, bottom = -1;
@@ -110,35 +101,77 @@ export async function desktopMark(svg: string, figure: string, share = DESKTOP_M
     top = Math.min(top, y); bottom = Math.max(bottom, y + 1);
   }
   const scale = share * 1024 / (Math.max(right - left, bottom - top) / 10);
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024"><g transform="translate(512 512) scale(${1024 / width}) translate(-512 -512)">${tile.join("")}</g>`
-    + `<g transform="translate(512 512) scale(${scale}) translate(${-(left + right) / 20} ${-(top + bottom) / 20})">${figure}</g></svg>`;
+  return `<g transform="translate(512 512) scale(${scale}) translate(${-(left + right) / 20} ${-(top + bottom) / 20})">${figure}</g>`;
 }
 
-async function renderNative(outputs: Map<string, Buffer>, source: Buffer, svg: string, ink: string, glyph: string, cropped: Buffer, logo: Buffer, mark: (size: number) => Promise<Buffer>) {
-  outputs.set("assets/gond-1024.png", await sharp(source).resize(1024, 1024).png().toBuffer());
-  const desktop = Buffer.from(await desktopMark(svg, await mascot(ink)));
-  outputs.set(desktopSource, await sharp(desktop).resize(1024, 1024).png().toBuffer());
-  outputs.set("apps/desktop/src/logo.svg", desktop);
-  const wrap = (body: string) => Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">${body}</svg>`);
-  // A luminance mask cuts the source's ink hole out of the white glass layer.
-  const glyphSvg = wrap(`<defs><mask id="glyph"><g transform="${svg.match(/<g transform="([^"]+)"/)![1]}">${glyph.replaceAll(ink, "black")}</g></mask></defs><rect width="1024" height="1024" fill="white" mask="url(#glyph)"/>`);
-  outputs.set("apps/ios/AppIcon.icon/Assets/cog.svg", glyphSvg);
-  const silhouette = (size: number) => sharp(glyphSvg).resize(size, size).png().toBuffer();
+// The brand mark: the mascot centred on the ink tile, the tile full-bleed.
+export async function brandMark(figure?: string, share = MARK_MASCOT): Promise<string> {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024"><g transform="translate(512 512) scale(${1024 / 768}) translate(-512 -512)">${TILE}</g>`
+    + `${await placed(figure ?? await mascot(), share)}</svg>`;
+}
+
+const canvas = (body: string) => Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">${body}</svg>`);
+
+// The mascot on a square of ink, for surfaces that are opaque or masked by
+// the system.
+async function onInk(figure: string, share: number): Promise<Buffer> {
+  return canvas(`<rect width="1024" height="1024" fill="${INK}"/>${await placed(figure, share)}`);
+}
+
+// A one-colour silhouette: the white cog with the eyes cut out, so the eyes
+// show whatever is behind (the launcher's ink, a tint, the status bar).
+async function glyph(figure: string, share: number): Promise<Buffer> {
+  return canvas(`<defs><mask id="glyph">${await placed(figure.replaceAll(INK, "black"), share)}</mask></defs><rect width="1024" height="1024" fill="white" mask="url(#glyph)"/>`);
+}
+
+export async function renderBrand(): Promise<Map<string, Buffer>> {
+  const figure = await mascot();
+  const small = await mascot(INK, true);
+  const source = Buffer.from(await brandMark(figure));
+  const tiny = await brandMark(small, SMALL_MASCOT.share);
+  const mark = (size: number) => sharp(source).resize(size, size).png().toBuffer();
+  // A favicon's 16, 32 and 48 frames are a 16 px tab at 1x, 2x and 3x.
+  const favicon = (size: number) => sharp(Buffer.from(size < 256 ? tiny : source.toString())).resize(size, size).png().toBuffer();
+  const logo = await mark(512);
+  const badge = await glyph(small, GLYPH_MASCOT);
+  const outputs = new Map<string, Buffer>([
+    [sourcePath, source],
+    ["apps/web/public/logo.png", logo],
+    ["apps/web/app/icon.png", logo],
+    ["apps/web/app/favicon.ico", ico(await Promise.all(icoSizes.map(favicon)))],
+    ["apps/web/public/apple-touch-icon.png", await sharp(await onInk(figure, MARK_MASCOT)).resize(180, 180).removeAlpha().png().toBuffer()],
+    ["apps/web/public/logo-maskable.png", await sharp(await onInk(figure, MASKABLE_MASCOT)).resize(512, 512).removeAlpha().png().toBuffer()],
+    ["apps/web/public/notification-badge.png", await sharp(badge).resize(96, 96).png().toBuffer()],
+    ["apps/web/app/opengraph-image.png", await sharp({ create: { width: 1200, height: 630, channels: 3, background: INK } })
+      .composite([{ input: await mark(400), gravity: "centre" }]).png().toBuffer()],
+  ]);
+  await renderNative(outputs, source, figure, badge, logo, mark);
+  return outputs;
+}
+
+async function renderNative(outputs: Map<string, Buffer>, source: Buffer, figure: string, badge: Buffer, logo: Buffer, mark: (size: number) => Promise<Buffer>) {
+  outputs.set("assets/gond-1024.png", await mark(1024));
+  outputs.set(desktopSource, await mark(1024));
+  outputs.set("apps/desktop/src/logo.svg", source);
+  // Icon Composer draws the ink fill edge to edge and one white glass layer
+  // over it; the eyes are holes in that layer, so they are the fill's ink.
+  outputs.set("apps/ios/AppIcon.icon/Assets/cog.svg", await glyph(figure, MARK_MASCOT));
   const android = "apps/android/app/src/main/res";
-  const adaptive = await silhouette(432);
+  const adaptive = await sharp(await glyph(figure, LAUNCHER_MASCOT)).resize(432, 432).png().toBuffer();
   outputs.set(`${android}/drawable-nodpi/ic_launcher_foreground.png`, adaptive);
   outputs.set(`${android}/drawable-nodpi/ic_launcher_monochrome.png`, adaptive);
-  outputs.set(`${android}/drawable-nodpi/ic_splash.png`, await sharp(source).resize(288, 288).png().toBuffer());
+  // The splash screen shows its icon in a circle two thirds of the canvas wide.
+  outputs.set(`${android}/drawable-nodpi/ic_splash.png`, await sharp(await onInk(figure, LAUNCHER_MASCOT)).resize(288, 288).removeAlpha().png().toBuffer());
   outputs.set(`${android}/drawable-nodpi/ic_gond.png`, logo);
   for (const [dpi, size] of [["mdpi", 24], ["hdpi", 36], ["xhdpi", 48], ["xxhdpi", 72], ["xxxhdpi", 96]] as const) {
-    outputs.set(`${android}/drawable-${dpi}/ic_notification.png`, await silhouette(size));
+    outputs.set(`${android}/drawable-${dpi}/ic_notification.png`, await sharp(badge).resize(size, size).png().toBuffer());
     outputs.set(`${android}/mipmap-${dpi}/ic_launcher.png`, await mark(size * 2));
   }
   const imageset = "apps/ios/Gond/Assets.xcassets/BrandMark.imageset";
   outputs.set(`${imageset}/mark.png`, logo);
   outputs.set(`${imageset}/Contents.json`, Buffer.from(JSON.stringify({ images: [{ filename: "mark.png", idiom: "universal" }], info: { author: "xcode", version: 1 } }, null, 2) + "\n"));
   // Xcode compiles AppIcon.icon for older iOS too; this is an opaque reference, not a second app icon catalog.
-  outputs.set("assets/gond-ios-1024.png", await sharp(cropped).resize(1024, 1024).flatten({ background: ink }).removeAlpha().png().toBuffer());
+  outputs.set("assets/gond-ios-1024.png", await sharp(await onInk(figure, MARK_MASCOT)).resize(1024, 1024).removeAlpha().png().toBuffer());
   const fill = (value: string) => [{ value: { solid: value } }, { appearance: "dark", value: { solid: value } }];
   outputs.set("apps/ios/AppIcon.icon/icon.json", Buffer.from(JSON.stringify({
     "fill-specializations": fill("extended-srgb:0.10588,0.10196,0.09412,1.00000"),
