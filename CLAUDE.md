@@ -1,7 +1,7 @@
 # Gond: how we build it
 
-Brand source: `packages/shared/brand/gond-mark.svg`; build with `bun run brand:build`, check with `bun run brand:build -- --check`; mascots are not the brand mark; web and native icons derive from it, including desktop via Tauri; do not edit the source or derived assets by hand.
-The desktop icon is its own render (`desktopMark`, `apps/desktop/icon-source.png`): the tile full-bleed and the cog at `DESKTOP_GLYPH` (68%) of it, since Windows draws it at 16 to 32 px beside full-bleed neighbours; `brand.test.ts` fails a frame under 95% tile or 60% cog.
+Brand source: `packages/shared/brand/gond-mark.svg`; build with `bun run brand:build`, check with `bun run brand:build -- --check`; mascots are not the brand mark; web and native icons derive from it, the desktop's (built by Tauri) only its tile; do not edit the source or derived assets by hand.
+The desktop icon and the desktop Connect mark are the mascot (`desktopMark`, `mascot` in `scripts/brand.ts`, geometry read from `gond-bot.tsx`, so a mascot change needs `brand:build`): a white cog with ink eyes on the brand's ink tile, the tile full-bleed and the mascot at `DESKTOP_MASCOT` (74%), since Windows draws it at 16 to 32 px beside full-bleed neighbours; `brand.test.ts` fails a frame under 95% tile or 60% mascot, or without both eyes from 24 px.
 
 Read this before changing anything. The README says what Gond is; this
 says how it is made and which rules must hold. It names the files and
