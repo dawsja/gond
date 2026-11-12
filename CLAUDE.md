@@ -1441,10 +1441,17 @@ a restart resumes (`resumeTeachings`), pictures expire a week after
   `~/.claude/projects` that Gond never loads, so a bot said it saved
   what only one engine would see. Notes kept there before are moved into
   the bot's MEMORY.md once (`foldClaudeMemory`, `fold-memory`).
-- **Models** (`models.mjs`): Claude Code has no list, so it offers its
-  aliases (`fable`, `opus`, `sonnet`, `haiku`, `opus` the default), which
-  never go stale; only their labels carry versions, edited by hand. A CLI
-  that can't answer returns nothing.
+- **Models** (`models.mjs`): the list is the CLI's own, asked as the
+  person (`claudeModelInfo`: the `models` of its answer to an `initialize`
+  control request, no model called, the process stopped once it answers
+  or at its timeout). `modelsFromInfo` keeps its order and leaves out only
+  broken or repeated rows, the `default` pointer and a row naming a model
+  already listed, never a model by name or version; `opus` is marked
+  default when listed. `createModelLists` keeps each account's list five
+  minutes, one look at a time; a failed look keeps the last good list,
+  else `FALLBACK_CLAUDE_MODELS`, version-free aliases (a test fails on a
+  digit), so the list is never empty and nothing in it is edited by hand.
+  A sign-in, an update or a reset forgets the lists.
 - **Sign-in** (`sign-in.mjs`): the CLI's own login in a pty as the
   person (wide so links don't wrap, `CI` dropped), the link parsed out,
   the code written back, the result confirmed by the CLI. Only the link,

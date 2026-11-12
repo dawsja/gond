@@ -145,6 +145,48 @@ export async function checkClaude({ bin = CLAUDE_BIN, cwd, env, uid, gid }) {
   }
 }
 
+const MODELS_TIMEOUT_MS = 15_000;
+
+/**
+ * The models this CLI offers the account, as its own picker lists them: the `models` of its answer to an
+ * `initialize` control request. No model is called and nothing else of the answer (the account among it)
+ * is kept. Null when the CLI is missing, too old to answer, times out or answers something else.
+ */
+export async function claudeModelInfo({ bin = CLAUDE_BIN, cwd, env, uid, gid, timeoutMs = MODELS_TIMEOUT_MS }) {
+  const requestId = `models-${process.pid}-${Date.now()}`;
+  const answered = new AbortController();
+  let models = null;
+  try {
+    await spawnClaude({
+      bin,
+      args: ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--strict-mcp-config"],
+      cwd,
+      env,
+      uid,
+      gid,
+      prompt: `${JSON.stringify({ type: "control_request", request_id: requestId, request: { subtype: "initialize" } })}\n`,
+      timeoutMs,
+      signal: answered.signal,
+      onLine: (line) => {
+        if (models || !line.startsWith("{")) return;
+        let message;
+        try {
+          message = JSON.parse(line);
+        } catch {
+          return;
+        }
+        const reply = message?.type === "control_response" ? message.response : null;
+        if (reply?.request_id !== requestId) return;
+        models = reply.subtype === "success" && Array.isArray(reply.response?.models) ? reply.response.models : [];
+        answered.abort();
+      },
+    });
+  } catch {
+    return null;
+  }
+  return models;
+}
+
 /**
  * Writes the system prompt where only the agent user reads it and returns
  * the path plus a cleanup. Outside the workspace on purpose: the repo's
