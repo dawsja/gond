@@ -20,7 +20,7 @@ import { runFileJob } from "./file-job.mjs";
 import { JPEG_FROM_HEIC, MAX_UPLOAD_BYTES, previewArgv } from "./preview.mjs";
 import { createSessionStore, turnPrompt } from "./sessions.mjs";
 import { createHomeSizes, diskOf, memoryByUid, memoryNow } from "./stats.mjs";
-import { engineModels } from "./models.mjs";
+import { createModelLists } from "./models.mjs";
 import { SIGN_IN_COLS, SIGN_IN_KEEP_MS, SIGN_IN_ROWS, SignInJob, needsCode, signInArgv } from "./sign-in.mjs";
 
 const PORT = Number(process.env.PORT || 8787);
@@ -722,7 +722,9 @@ function cancelSignIns(account = null) {
 }
 
 function signedIn(account, engine) {
-  return Promise.resolve(engine === "claude" && authStatus({ env: agentEnv(account), ...asUser(account) }).loggedIn === true);
+  const yes = engine === "claude" && authStatus({ env: agentEnv(account), ...asUser(account) }).loggedIn === true;
+  if (yes) modelLists.forget(`${account.id}:`);
+  return Promise.resolve(yes);
 }
 
 async function startSignIn(account, engine) {
@@ -1666,6 +1668,7 @@ async function startUpdate() {
     current.finishedAt = new Date().toISOString();
     versionsCache = null;
     forgetClaudeVersion();
+    modelLists.forget();
   });
   return { ok: true, startedAt: update.startedAt };
 }
@@ -1678,19 +1681,15 @@ async function resetHome() {
   const { removed, accounts: people } = accounts.reset({ keepLogins: true });
   fs.rmSync(path.join(STATE_DIR, "teach"), { recursive: true, force: true });
   versionsCache = null;
+  modelLists.forget();
   return { ok: true, removed, accounts: people };
 }
 
-const MODELS_CACHE_MS = 5 * 60 * 1000;
-const modelsCache = new Map();
+// What a CLI lists depends on the account's sign-in and the CLI's version, so a sign-in, an update or a reset forgets it.
+const modelLists = createModelLists();
 
-async function enginesModels(account, engine) {
-  const key = `${account.id}:${engine}`;
-  const cached = modelsCache.get(key);
-  if (cached && Date.now() - cached.at < MODELS_CACHE_MS) return cached.models;
-  const models = await engineModels(engine, { bins: ENGINE_BINS, env: agentEnv(account), ...asUser(account) }).catch(() => []);
-  if (models.length) modelsCache.set(key, { at: Date.now(), models });
-  return models;
+function enginesModels(account, engine) {
+  return modelLists.get(`${account.id}:${engine}`, engine, { bins: ENGINE_BINS, cwd: account.home, env: agentEnv(account), ...asUser(account) });
 }
 
 let versionsCache = null;
@@ -2027,6 +2026,7 @@ async function accountsRoute(request, parts) {
     if (account.admin) throw new HttpError(400, "The admin's account can't be removed");
     await closeAccountWork(account);
     recordings.removeUser(account.id);
+    modelLists.forget(`${account.id}:`);
     return { ok: true, removed: accounts.remove(parts[1]) };
   }
   throw new HttpError(404, "Not found");
