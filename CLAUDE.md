@@ -1,6 +1,7 @@
 # Gond: how we build it
 
 Brand source: `packages/shared/brand/gond-mark.svg`; build with `bun run brand:build`, check with `bun run brand:build -- --check`; mascots are not the brand mark; web and native icons derive from it, including desktop via Tauri; do not edit the source or derived assets by hand.
+The desktop icon is its own render (`desktopMark`, `apps/desktop/icon-source.png`): the tile full-bleed and the cog at `DESKTOP_GLYPH` (68%) of it, since Windows draws it at 16 to 32 px beside full-bleed neighbours; `brand.test.ts` fails a frame under 95% tile or 60% cog.
 
 Read this before changing anything. The README says what Gond is; this
 says how it is made and which rules must hold. It names the files and

@@ -73,3 +73,24 @@ test("native consumers keep their generated layers and ink backgrounds", async (
   expect(adaptive).toContain('<background android:drawable="@color/ic_launcher_background"');
   expect(await readFile(join(root, "apps/ios/Gond/ConnectView.swift"), "utf8")).toContain('Image("BrandMark")');
 });
+
+test("the desktop icon is full-bleed with a large cog at every size", async () => {
+  const icons = join(root, "apps/desktop/src-tauri/icons");
+  const images = [...icoFrames(await readFile(join(icons, "icon.ico")), [16, 24, 32, 48, 64, 256]), ...await Promise.all(["32x32.png", "64x64.png", "128x128.png", "icon.png", "StoreLogo.png"].map((name) => readFile(join(icons, name))))];
+  for (const image of images) {
+    const { data, info } = await sharp(image).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    const span = (white: boolean) => {
+      let low = Infinity, high = -1;
+      for (let y = 0; y < info.height; y++) for (let x = 0; x < info.width; x++) {
+        const i = (y * info.width + x) * 4;
+        if (data[i + 3] < 128 || (white && data[i] + data[i + 1] + data[i + 2] < 384)) continue;
+        low = Math.min(low, x, y);
+        high = Math.max(high, x, y);
+      }
+      return high - low + 1;
+    };
+    const tile = span(false);
+    expect(tile / info.width, `${info.width} px tile`).toBeGreaterThanOrEqual(0.95);
+    expect(span(true) / tile, `${info.width} px cog`).toBeGreaterThanOrEqual(0.6);
+  }
+});

@@ -74,9 +74,37 @@ export async function renderBrand(): Promise<Map<string, Buffer>> {
   return outputs;
 }
 
+// Share of the canvas the desktop icon's cog spans. Windows draws a taskbar icon
+// at 16 to 32 px with no tile of its own, so the source's margin and small cog
+// read as a small icon beside full-bleed neighbours.
+export const DESKTOP_GLYPH = 0.68;
+const desktopSource = "apps/desktop/icon-source.png";
+
+async function desktopMark(svg: string, glyph: string): Promise<Buffer> {
+  const wrap = (body: string) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">${body}</svg>`;
+  const around = (scale: number, body: string) => `<g transform="translate(512 512) scale(${scale}) translate(-512 -512)">${body}</g>`;
+  const tile = svg.match(/<rect[^>]*\/>/g);
+  const width = Number(tile?.[0].match(/width="([\d.]+)"/)?.[1]);
+  if (tile?.length !== 2 || !width) throw new Error("Missing brand tile");
+  // The cog is centred on 512, so scaling about the centre keeps its place and rotation.
+  const { data, info } = await sharp(Buffer.from(wrap(glyph))).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  let low = info.width, high = -1;
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i + 3] < 128) continue;
+    const x = (i / 4) % info.width, y = Math.floor(i / 4 / info.width);
+    low = Math.min(low, x, y);
+    high = Math.max(high, x, y);
+  }
+  const extent = 2 * Math.max(512 - low, high + 1 - 512);
+  return Buffer.from(wrap(around(1024 / width, tile.join("")) + around(DESKTOP_GLYPH * 1024 / extent, glyph)));
+}
+
 async function renderNative(outputs: Map<string, Buffer>, source: Buffer, svg: string, ink: string, glyph: string, cropped: Buffer, logo: Buffer, mark: (size: number) => Promise<Buffer>) {
   outputs.set("assets/gond-1024.png", await sharp(source).resize(1024, 1024).png().toBuffer());
-  outputs.set("apps/desktop/src/logo.svg", source);
+  outputs.set(desktopSource, await sharp(await desktopMark(svg, glyph)).resize(1024, 1024).png().toBuffer());
+  // The Connect screen's mark is the tile alone, as the web's BrandMark draws logo.png.
+  if (!svg.includes('viewBox="0 0 1024 1024"')) throw new Error("Unexpected brand viewBox");
+  outputs.set("apps/desktop/src/logo.svg", Buffer.from(svg.replace('viewBox="0 0 1024 1024"', 'viewBox="64 64 896 896"')));
   const wrap = (body: string) => Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">${body}</svg>`);
   // A luminance mask cuts the source's ink hole out of the white glass layer.
   const glyphSvg = wrap(`<defs><mask id="glyph"><g transform="${svg.match(/<g transform="([^"]+)"/)![1]}">${glyph.replaceAll(ink, "black")}</g></mask></defs><rect width="1024" height="1024" fill="white" mask="url(#glyph)"/>`);
@@ -193,7 +221,7 @@ export async function checkBrand() {
       throw new Error(`${path}: ${error instanceof Error ? error.message : error}`);
     }
   }
-  await desktopBrand(true, outputs.get("assets/gond-1024.png")!);
+  await desktopBrand(true, outputs.get(desktopSource)!);
 }
 
 if (import.meta.main) {
@@ -207,6 +235,6 @@ if (import.meta.main) {
       await writeFile(join(root, path), image);
       console.log(`${path}: ${image.length} bytes`);
     }
-    console.log(`Desktop: ${await desktopBrand(false, outputs.get("assets/gond-1024.png")!)} Tauri assets regenerated`);
+    console.log(`Desktop: ${await desktopBrand(false, outputs.get(desktopSource)!)} Tauri assets regenerated`);
   }
 }
