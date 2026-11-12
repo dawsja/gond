@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- The web app's dark tokens. -->
 <resources>
-    <color name="background">#121212</color>
-    <color name="foreground">#E0E0E0</color>
-    <color name="card">#1E1E1E</color>
-    <color name="muted_foreground">#A0A0A0</color>
+    <color name="background">#0C0C0C</color>
+    <color name="foreground">#EDEDED</color>
+    <color name="card">#151515</color>
+    <color name="muted_foreground">#A1A1A1</color>
     <color name="ash">#8A8A8A</color>
-    <color name="primary">#E0E0E0</color>
-    <color name="on_primary">#121212</color>
-    <color name="destructive">#CF6679</color>
-    <color name="input">#474747</color>
+    <color name="primary">#EDEDED</color>
+    <color name="on_primary">#0C0C0C</color>
+    <color name="destructive">#F97C7C</color>
+    <color name="input">#313131</color>
     <color name="ic_launcher_background">#1b1a18</color>
 </resources>

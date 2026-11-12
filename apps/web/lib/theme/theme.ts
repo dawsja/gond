@@ -1,10 +1,13 @@
 import { mobileShell } from "@/lib/shell";
 
-export const THEMES = ["system", "light", "dark", "gond"] as const;
+export const THEMES = ["system", "light", "dark"] as const;
 export type Theme = (typeof THEMES)[number];
 export type ResolvedTheme = "light" | "dark";
 
 export const THEME_STORAGE_KEY = "gond-theme";
+
+/** The old Gond theme, gone: a device that saved it opens dark and keeps dark from then on. */
+const RETIRED_DARK = "gond";
 
 // The person's color lives on the server; this copy only paints the first frame before /api/me answers.
 const ACCENT_STORAGE_KEY = "gond-accent";
@@ -15,32 +18,46 @@ export function isTheme(value: unknown): value is Theme {
   return typeof value === "string" && (THEMES as readonly string[]).includes(value);
 }
 
-/** System follows the device; Gond is an explicit dark palette. */
+/** System follows the device; Light and Dark hold whatever the device says. */
 export function followsDevice(theme: Theme): boolean {
   return theme === "system";
 }
 
+/** What a saved value means: a theme, the retired one as Dark, anything else as System. */
+export function themeOf(raw: unknown): Theme {
+  if (raw === RETIRED_DARK) return "dark";
+  return isTheme(raw) ? raw : "system";
+}
+
 export function readStoredTheme(): Theme {
+  let raw: string | null;
   try {
-    const raw = window.localStorage.getItem(THEME_STORAGE_KEY);
-    return isTheme(raw) ? raw : "system";
+    raw = window.localStorage.getItem(THEME_STORAGE_KEY);
   } catch {
     return "system";
   }
+  const theme = themeOf(raw);
+  if (raw === RETIRED_DARK) {
+    try {
+      window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+    } catch {
+      /* private mode: read as Dark again next time */
+    }
+  }
+  return theme;
 }
 
 export function resolveTheme(theme: Theme): ResolvedTheme {
-  if (theme === "gond") return "dark";
   if (theme === "light" || theme === "dark") return theme;
   return window.matchMedia(DARK_QUERY).matches ? "dark" : "light";
 }
 
-export const THEME_BACKGROUNDS = { light: "#f5f3ee", dark: "#121212", gond: "#000000" } as const;
+export const THEME_BACKGROUNDS = { light: "#f6f7f9", dark: "#0c0c0c" } as const;
 
 export function applyTheme(resolved: ResolvedTheme, theme: Theme = resolved) {
   document.documentElement.classList.toggle("dark", resolved === "dark");
   document.documentElement.setAttribute("data-theme", theme);
-  const background = THEME_BACKGROUNDS[theme === "gond" ? "gond" : resolved];
+  const background = THEME_BACKGROUNDS[resolved];
   // Both media variants must reflect an explicit choice, even when the device uses another scheme.
   document.querySelectorAll('meta[name="theme-color"]').forEach((meta) => meta.setAttribute("content", background));
 }
@@ -102,6 +119,6 @@ const SIZE_SCRIPT = `var s=localStorage.getItem(${JSON.stringify(SIZE_STORAGE_KE
 
 export const THEME_INIT_SCRIPT = `(function(){try{var r=document.documentElement,t="system";try{t=localStorage.getItem(${JSON.stringify(
   THEME_STORAGE_KEY,
-)});}catch(e){}if(${JSON.stringify(THEMES)}.indexOf(t)<0)t="system";var d=t==="gond"||t==="dark"||(t==="system"&&matchMedia(${JSON.stringify(
+)});if(t===${JSON.stringify(RETIRED_DARK)}){t="dark";localStorage.setItem(${JSON.stringify(THEME_STORAGE_KEY)},t)}}catch(e){}if(${JSON.stringify(THEMES)}.indexOf(t)<0)t="system";var d=t==="dark"||(t==="system"&&matchMedia(${JSON.stringify(
   DARK_QUERY,
-)}).matches);r.classList.toggle("dark",d);r.setAttribute("data-theme",t);var b=${JSON.stringify(THEME_BACKGROUNDS)}[t==="gond"?"gond":d?"dark":"light"];document.querySelectorAll('meta[name="theme-color"]').forEach(function(m){m.setAttribute("content",b)});var a=localStorage.getItem(${JSON.stringify(ACCENT_STORAGE_KEY)});if(a&&/^[a-z]+$/.test(a))r.setAttribute("data-accent",a);if(window.gondMobile)r.setAttribute("data-shell","phone");${SIZE_SCRIPT}}catch(e){}})()`;
+)}).matches);r.classList.toggle("dark",d);r.setAttribute("data-theme",t);var b=${JSON.stringify(THEME_BACKGROUNDS)}[d?"dark":"light"];document.querySelectorAll('meta[name="theme-color"]').forEach(function(m){m.setAttribute("content",b)});var a=localStorage.getItem(${JSON.stringify(ACCENT_STORAGE_KEY)});if(a&&/^[a-z]+$/.test(a))r.setAttribute("data-accent",a);if(window.gondMobile)r.setAttribute("data-shell","phone");${SIZE_SCRIPT}}catch(e){}})()`;

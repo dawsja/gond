@@ -10,15 +10,15 @@
 }
 
 :root {
-  --background: #f5f3ee;
-  --foreground: #1b1a18;
+  --background: #f6f7f9;
+  --foreground: #16181d;
   --card: #ffffff;
-  --muted-foreground: #6b6863;
-  --ash: #6b6863;
-  --primary: #1b1a18;
+  --muted-foreground: #5b6170;
+  --ash: #646a79;
+  --primary: #16181d;
   --primary-foreground: #ffffff;
-  --destructive: #c2301a;
-  --input: #c9c5bb;
+  --destructive: #bd1f1f;
+  --input: #d2d6dd;
   --input-fill: var(--card);
   --ring: var(--foreground);
   color-scheme: light;
@@ -26,15 +26,15 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #121212;
-    --foreground: #e0e0e0;
-    --card: #1e1e1e;
-    --muted-foreground: #a0a0a0;
+    --background: #0c0c0c;
+    --foreground: #ededed;
+    --card: #151515;
+    --muted-foreground: #a1a1a1;
     --ash: #8a8a8a;
-    --primary: #e0e0e0;
-    --primary-foreground: #1e1e1e;
-    --destructive: #cf6679;
-    --input: #474747;
+    --primary: #ededed;
+    --primary-foreground: #151515;
+    --destructive: #f97c7c;
+    --input: #313131;
     --input-fill: color-mix(in oklch, var(--input) 30%, transparent);
     --ring: var(--foreground);
     color-scheme: dark;

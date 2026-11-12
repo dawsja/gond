@@ -378,7 +378,7 @@ export function AppSidebar({ onOpen }: { onOpen: (dialog: ShellDialog) => void }
   const { query, setQuery, rows, hits } = useBotSearch();
 
   return (
-    <Sidebar collapsible="offcanvas" className="bg-background [&_[data-sidebar=sidebar]]:bg-background">
+    <Sidebar collapsible="offcanvas">
       <SidebarHeader className="flex-row items-center gap-2 px-3 pt-3 pb-2">
         <BotSearchInput query={query} setQuery={setQuery} />
         <NewMenu onOpen={onOpen} />

@@ -28,7 +28,7 @@ pub fn start(app: AppHandle) {
 
 fn page(title: &str, text: &str) -> String {
     format!(
-        "<!doctype html><meta charset=\"utf-8\"><title>{title}</title><style>body{{font:15px system-ui,sans-serif;display:grid;place-items:center;min-height:90vh;margin:0;color:#1b1a18;background:#f5f3ee}}@media(prefers-color-scheme:dark){{body{{color:#e0e0e0;background:#121212}}}}main{{max-width:26rem;text-align:center}}h1{{font-size:18px}}</style><main><h1>{title}</h1><p>{text}</p></main>"
+        "<!doctype html><meta charset=\"utf-8\"><title>{title}</title><style>body{{font:15px system-ui,sans-serif;display:grid;place-items:center;min-height:90vh;margin:0;color:#16181d;background:#f6f7f9}}@media(prefers-color-scheme:dark){{body{{color:#ededed;background:#0c0c0c}}}}main{{max-width:26rem;text-align:center}}h1{{font-size:18px}}</style><main><h1>{title}</h1><p>{text}</p></main>"
     )
 }
 
