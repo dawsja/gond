@@ -1,13 +1,14 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/toast";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { THEME_BACKGROUNDS, THEME_INIT_SCRIPT } from "@/lib/theme/theme";
 import "./globals.css";
 
-const inter = Inter({ variable: "--font-inter", subsets: ["latin"], weight: ["400", "500", "600", "700"] });
-const jetbrains = JetBrains_Mono({ variable: "--font-jetbrains", subsets: ["latin"], weight: ["400", "500", "600"] });
+// Google's latin variable builds, committed so `next build` needs no network (CLAUDE.md, Web).
+const inter = localFont({ src: "./fonts/inter-latin-wght.woff2", weight: "400 700", variable: "--font-inter" });
+const jetbrains = localFont({ src: "./fonts/jetbrains-mono-latin-wght.woff2", weight: "400 600", variable: "--font-jetbrains" });
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.APP_URL ?? "http://localhost:3000"),
