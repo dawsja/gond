@@ -304,13 +304,17 @@ The address rules are mirrored in each app with the same tests.
   contrast drops (text 4.5:1, the focus ring 3:1, destructive on its
   wash, every accent's shades in both themes, a bubble's rings
   drawn solid) or when a shell's copy of the page colours drifts.
-- **Fonts are self-hosted**: Inter and JetBrains Mono, Google's latin
-  variable builds, each with its OFL, in `apps/web/app/fonts`, loaded by
-  `next/font/local` in `app/layout.tsx` as `--font-inter` and
-  `--font-jetbrains`. To update one, replace its file with the latin woff2
-  that `fonts.googleapis.com/css2` names for it. Never `next/font/google`:
-  it downloads during `next build`, so a flaky font host fails the image
-  build (`test/fonts.test.ts`).
+- **Fonts are self-hosted**: Inter and JetBrains Mono, Google's variable
+  builds, one woff2 per subset with the family's OFL, in `apps/web/app/fonts`,
+  loaded by `next/font/local` in `app/fonts.ts` as one family each
+  (`--font-inter`, `--font-jetbrains`): every subset is a face with Google's
+  `unicode-range`, in Google's order, and only latin is preloaded, so a page
+  downloads another subset only for characters it uses. `--font-sans`,
+  `--font-heading` and `--font-mono` end in a generic family, so a glyph no
+  face has never falls to a serif. To update, replace each file and range
+  with what `fonts.googleapis.com/css2` names for it. Never
+  `next/font/google`: it downloads during `next build`, so a flaky font host
+  fails the image build (`test/fonts.test.ts`).
 - **Mascots come from the gond-bot skill** (`components/hq/gond-bot.tsx`),
   copied 1:1. Don't redraw the cog. `shape` (`BOT_SHAPES`) picks a body
   from `BODIES` under the same eyes and animations; only the cog spins. A
