@@ -59,7 +59,7 @@ struct NativeLayer: View {
         .animation(.easeOut(duration: 0.2), value: ui.chrome?.thread)
         .animation(.easeOut(duration: 0.2), value: ui.chats == nil)
         // SwiftUI's own Quick Look: a QLPreviewController presented from a SwiftUI app shows no Done or Share.
-        .quickLookPreview(Binding(get: { ui.picture }, set: { ui.showPicture($0) }), in: ui.pictureFiles)
+        .quickLookPreview(Binding(get: { ui.preview }, set: { ui.selectPreview($0) }), in: ui.previewFiles)
     }
 }
 
@@ -274,6 +274,7 @@ struct ChromeView: View {
     /// The page's text just put in the field, which isn't sent back to it.
     @State private var applied: String?
     @State private var keyboard: CGFloat = 0
+    @State private var showsMenu = false
     /// The composer with what sits on it, which the page keeps a gap of under its own.
     @State private var blockHeight: CGFloat = 44
     @FocusState private var focused: Bool
@@ -281,9 +282,10 @@ struct ChromeView: View {
     var body: some View {
         // Laid out over the whole screen from the window's own insets, as the page lays out its
         // header and composer, so the two match to the point; the reader redraws it on a rotation.
-        GeometryReader { _ in
+        GeometryReader { proxy in
             let insets = UIApplication.shared.windowInsets
             let bottom = composerBottom(safeBottom: insets.bottom)
+            let menuOpen = showsMenu && !state.covered && !state.menu.isEmpty
             VStack(spacing: 0) {
                 header
                     .padding(.horizontal, 12 * s)
@@ -302,6 +304,38 @@ struct ChromeView: View {
             .onChange(of: bottom) { push(bottom: bottom) }
             .onChange(of: blockHeight) { push(bottom: bottom) }
             .onAppear { push(bottom: bottom) }
+            // The menu can cover the bot pill. Its backdrop also owns taps outside the menu.
+            .allowsHitTesting(!menuOpen)
+            .accessibilityHidden(menuOpen)
+            .overlay {
+                if menuOpen {
+                    let top = insets.top + 6 * s
+                    let side = 12 * s
+                    let shape = RoundedRectangle(cornerRadius: 26)
+                    ZStack(alignment: .topTrailing) {
+                        Color.black.opacity(0.22)
+                            .ignoresSafeArea()
+                            .contentShape(Rectangle())
+                            .onTapGesture(perform: dismissMenu)
+                            .accessibilityHidden(true)
+
+                        ViewThatFits(in: .vertical) {
+                            menuActions
+                                .glassControl(in: shape, interactive: false)
+                            ScrollView { menuActions }
+                                .clipShape(shape)
+                                .glassControl(in: shape, interactive: false)
+                        }
+                        .frame(width: min(250, max(0, proxy.size.width - 2 * side)))
+                        .frame(maxHeight: max(0, proxy.size.height - top - max(insets.bottom, keyboard)), alignment: .top)
+                        .padding(.top, top)
+                        .padding(.trailing, side)
+                        .accessibilityElement(children: .contain)
+                        .accessibilityAddTraits(.isModal)
+                        .accessibilityAction(.escape, dismissMenu)
+                    }
+                }
+            }
         }
         .ignoresSafeArea()
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { note in
@@ -313,6 +347,8 @@ struct ChromeView: View {
             withAnimation(.easeOut(duration: 0.25)) { keyboard = 0 }
         }
         .onAppear(perform: applyPageText)
+        .onChange(of: state.covered) { if state.covered { dismissMenu() } }
+        .onChange(of: state.menu.isEmpty) { if state.menu.isEmpty { dismissMenu() } }
         .onChange(of: state.composer.textRev) { applyPageText() }
         .onChange(of: state.composer.focusRev) { focused = true }
         .onChange(of: text) {
@@ -387,19 +423,7 @@ struct ChromeView: View {
                 Spacer(minLength: 0)
 
                 if !state.menu.isEmpty {
-                    Menu {
-                        ForEach(Array(state.menu.enumerated()), id: \.offset) { _, group in
-                            Section {
-                                ForEach(group) { item in
-                                    Button(role: item.destructive == true ? .destructive : nil) {
-                                        ui.send(["type": "menu", "id": item.id])
-                                    } label: {
-                                        Label(item.label, systemImage: item.symbol)
-                                    }
-                                }
-                            }
-                        }
-                    } label: {
+                    Button { showsMenu = true } label: {
                         Image(systemName: "ellipsis")
                             .font(.system(size: 17 * s, weight: .semibold))
                             .frame(width: 44 * s, height: 44 * s)
@@ -413,6 +437,33 @@ struct ChromeView: View {
             }
             .foregroundStyle(Theme.foreground)
         }
+    }
+
+    private func dismissMenu() {
+        showsMenu = false
+    }
+
+    private var menuActions: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(state.menu.enumerated()), id: \.offset) { index, group in
+                if index > 0 { Divider().padding(.horizontal, 16) }
+                ForEach(group) { item in
+                    Button(role: item.destructive == true ? .destructive : nil) {
+                        dismissMenu()
+                        ui.send(["type": "menu", "id": item.id])
+                    } label: {
+                        Label(item.label, systemImage: item.symbol)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(item.destructive == true ? Theme.destructive : Theme.foreground)
+                }
+            }
+        }
+        .padding(8)
     }
 
     /// The composer and what sits on it: the room's bots to @mention, the files going with it, the quote being answered.

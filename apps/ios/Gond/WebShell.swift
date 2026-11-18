@@ -20,6 +20,7 @@ final class WebShell: NSObject {
     private var notificationsState = "prompt"
     private var pushState = "{}"
     private var downloads: [ObjectIdentifier: URL] = [:]
+    private var pdfPreviews: [ObjectIdentifier: URL] = [:]
     private var progressObservation: NSKeyValueObservation?
 
     init(model: AppModel) {
@@ -348,21 +349,34 @@ extension WebShell: WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse, decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
-        let disposition = (navigationResponse.response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Disposition")?.lowercased() ?? ""
-        if navigationResponse.isForMainFrame && (!navigationResponse.canShowMIMEType || disposition.hasPrefix("attachment")) {
-            return decisionHandler(.download)
-        }
-        decisionHandler(.allow)
+        guard navigationResponse.isForMainFrame else { return decisionHandler(.allow) }
+        let response = navigationResponse.response as? HTTPURLResponse
+        let download = !navigationResponse.canShowMIMEType || isAttachmentDownload(response) || pdfPreviewSource(navigationResponse) != nil
+        decisionHandler(download ? .download : .allow)
+    }
+
+    private func isAttachmentDownload(_ response: HTTPURLResponse?) -> Bool {
+        response?.value(forHTTPHeaderField: "Content-Disposition")?.lowercased().hasPrefix("attachment") == true
+    }
+
+    private func pdfPreviewSource(_ navigation: WKNavigationResponse) -> URL? {
+        guard navigation.isForMainFrame, ownPage,
+              let response = navigation.response as? HTTPURLResponse,
+              (200..<300).contains(response.statusCode), response.mimeType == "application/pdf",
+              ServerURL.sameOrigin(response.url, server), !isAttachmentDownload(response),
+              let source = webView.backForwardList.currentItem?.url, ServerURL.sameOrigin(source, server) else { return nil }
+        return source
     }
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
         ownPage = ServerURL.sameOrigin(webView.url, server)
-        model?.ui.clear()
     }
 
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
         ownPage = ServerURL.sameOrigin(webView.url, server)
         hasPage = true
+        // A provisional load that becomes a download leaves the current page and its chrome in place.
+        model?.ui.clear()
         pushInsets(webView.safeAreaInsets)
     }
 
@@ -385,6 +399,7 @@ extension WebShell: WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
+        pdfPreviews[ObjectIdentifier(download)] = pdfPreviewSource(navigationResponse)
         download.delegate = self
     }
 
@@ -415,25 +430,42 @@ extension WebShell: WKUIDelegate {
 
 extension WebShell: WKDownloadDelegate {
     func download(_ download: WKDownload, decideDestinationUsing response: URLResponse, suggestedFilename: String) async -> URL? {
+        let id = ObjectIdentifier(download)
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
-        guard (try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)) != nil else { return nil }
-        let name = suggestedFilename.isEmpty ? "download" : suggestedFilename
+        guard (try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)) != nil else {
+            pdfPreviews.removeValue(forKey: id)
+            return nil
+        }
+        var name = suggestedFilename.isEmpty ? "download" : suggestedFilename
+        if pdfPreviews[id] != nil && (name as NSString).pathExtension.lowercased() != "pdf" { name += ".pdf" }
         let destination = folder.appendingPathComponent(name)
-        downloads[ObjectIdentifier(download)] = destination
+        downloads[id] = destination
         return destination
     }
 
-    /// A saved attachment goes to the share sheet, where Save to Files, AirDrop or another app takes it.
     func downloadDidFinish(_ download: WKDownload) {
-        guard let file = downloads.removeValue(forKey: ObjectIdentifier(download)), let top = UIApplication.shared.topViewController else { return }
+        let id = ObjectIdentifier(download)
+        let previewSource = pdfPreviews.removeValue(forKey: id)
+        guard let file = downloads.removeValue(forKey: id) else { return }
+        if let previewSource {
+            if ownPage, webView.backForwardList.currentItem?.url == previewSource,
+               let model, model.screen == .web, model.ui.previewPDF(file) { return }
+            try? FileManager.default.removeItem(at: file.deletingLastPathComponent())
+            return
+        }
+        guard let top = UIApplication.shared.topViewController else { return }
         let share = UIActivityViewController(activityItems: [file], applicationActivities: nil)
         share.popoverPresentationController?.sourceView = top.view
         top.present(share, animated: true)
     }
 
     func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
-        downloads.removeValue(forKey: ObjectIdentifier(download))
-        UIApplication.shared.topViewController?.showNotice("Couldn't download that file. Try again.")
+        let id = ObjectIdentifier(download)
+        let previewSource = pdfPreviews.removeValue(forKey: id)
+        if let file = downloads.removeValue(forKey: id) {
+            try? FileManager.default.removeItem(at: file.deletingLastPathComponent())
+        }
+        UIApplication.shared.topViewController?.showNotice(previewSource == nil ? "Couldn't download that file. Try again." : "Couldn't open that PDF. Try again.")
     }
 }
 

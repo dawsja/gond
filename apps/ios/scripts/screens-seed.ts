@@ -24,6 +24,7 @@ say("you", "Nice. And the old ones?");
 say(patch.id, "Anything older than 30 days is gone, so 112 GB is free on the NAS again.");
 say("you", "Show me the backyard camera");
 say(patch.id, "Here it is, a minute ago.", [storeAttachment({ name: "backyard.png", mediaType: "image/png", data: backyard() })]);
+say(patch.id, "The backup report is attached too.", [storeAttachment({ name: "backup-report.pdf", mediaType: "application/pdf", data: backupReport() })]);
 setReaction(answer, "you", "👍");
 
 const room = createRoom("Homelab", [patch.id, net.id, sentry.id], user);
@@ -32,6 +33,25 @@ postMessage({ threadId: room.id, author: sentry.id, body: "Two failed sign-ins o
 
 // The conversation, then the room, as the job reads them.
 console.log(`${patch.threadId} ${room.id}`);
+
+/** A one-page PDF for the attachment preview. All offsets are into ASCII text. */
+function backupReport(): Uint8Array {
+  const page = "BT /F1 22 Tf 72 720 Td (Backup report) Tj ET\n";
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    `<< /Length ${page.length} >>\nstream\n${page}endstream`,
+  ];
+  let pdf = "%PDF-1.4\n";
+  const offsets = ["0000000000 65535 f \n"];
+  for (const [index, object] of objects.entries()) {
+    offsets.push(`${String(pdf.length).padStart(10, "0")} 00000 n \n`);
+    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
+  }
+  return Buffer.from(`${pdf}xref\n0 ${offsets.length}\n${offsets.join("")}trailer\n<< /Size ${offsets.length} /Root 1 0 R >>\nstartxref\n${pdf.length}\n%%EOF\n`, "ascii");
+}
 
 /** A 1200 by 800 picture of a sunny backyard, so Quick Look has something to show. */
 function backyard(): Uint8Array {

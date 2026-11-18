@@ -7,6 +7,80 @@ final class ScreensTests: XCTestCase {
         continueAfterFailure = true
     }
 
+    func testConversationMenuReceivesTapsOverBotDetails() throws {
+        let env = ProcessInfo.processInfo.environment
+        guard let server = env["GOND_SCREENS_SERVER"], let cookie = env["GOND_SCREENS_COOKIE"], let thread = env["GOND_SCREENS_THREAD"] else {
+            throw XCTSkip("This test needs the seeded iPhone screenshot server")
+        }
+
+        let app = XCUIApplication()
+        app.launchEnvironment = ["GOND_SCREENS_SERVER": server, "GOND_SCREENS_COOKIE": cookie, "GOND_SCREENS_PATH": "/app/t/\(thread)"]
+        app.launch()
+        defer { app.terminate() }
+
+        let more = app.buttons["chrome.more"]
+        guard more.waitForExistence(timeout: 60) else {
+            XCTFail("The conversation menu never became available")
+            return
+        }
+        let details = app.buttons["chrome.details"].frame
+        let back = app.buttons["chrome.back"].frame
+        let origin = app.coordinate(withNormalizedOffset: .zero)
+        let edit = app.buttons["Edit profile"]
+
+        more.tap()
+        guard edit.waitForExistence(timeout: 5) else {
+            XCTFail("The conversation menu did not open")
+            return
+        }
+        origin.withOffset(CGVector(dx: back.midX, dy: back.midY)).tap()
+        XCTAssertFalse(edit.exists, "An outside tap should dismiss the menu")
+        XCTAssertTrue(more.exists, "The back button behind the menu should not navigate")
+
+        more.tap()
+        guard edit.waitForExistence(timeout: 5) else {
+            XCTFail("The conversation menu did not reopen")
+            return
+        }
+        let overlap = edit.frame.intersection(details)
+        guard !overlap.isEmpty else {
+            XCTFail("Edit profile must overlap the bot details pill for this test")
+            return
+        }
+        origin.withOffset(CGVector(dx: overlap.midX, dy: overlap.midY)).tap()
+        XCTAssertTrue(app.webViews.staticTexts["Edit Patch"].waitForExistence(timeout: 5))
+    }
+
+    func testPDFPreviewClosesBackToConversation() throws {
+        let env = ProcessInfo.processInfo.environment
+        guard let server = env["GOND_SCREENS_SERVER"], let cookie = env["GOND_SCREENS_COOKIE"], let thread = env["GOND_SCREENS_THREAD"] else {
+            throw XCTSkip("This test needs the seeded iPhone screenshot server")
+        }
+
+        let app = XCUIApplication()
+        app.launchEnvironment = ["GOND_SCREENS_SERVER": server, "GOND_SCREENS_COOKIE": cookie, "GOND_SCREENS_PATH": "/app/t/\(thread)"]
+        app.launch()
+        defer { app.terminate() }
+
+        let attachment = app.webViews.links["Open backup-report.pdf"]
+        guard attachment.waitForExistence(timeout: 60) else {
+            XCTFail("The PDF attachment never became available")
+            return
+        }
+        attachment.tap()
+
+        let close = app.buttons.matching(NSPredicate(format: "label IN %@", ["Done", "Close"])).firstMatch
+        guard close.waitForExistence(timeout: 15) else {
+            XCTFail("The PDF viewer should have a close button")
+            return
+        }
+        close.tap()
+        let more = app.buttons["chrome.more"]
+        let headerReady = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == YES AND hittable == YES"), object: more)
+        XCTAssertEqual(XCTWaiter.wait(for: [headerReady], timeout: 5), .completed, "The conversation header should be usable again")
+        XCTAssertTrue(attachment.exists, "Closing the preview should return to the same chat")
+    }
+
     func testScreens() throws {
         let env = ProcessInfo.processInfo.environment
         guard let server = env["GOND_SCREENS_SERVER"], let cookie = env["GOND_SCREENS_COOKIE"], let thread = env["GOND_SCREENS_THREAD"] else {

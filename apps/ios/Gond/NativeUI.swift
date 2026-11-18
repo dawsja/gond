@@ -182,9 +182,9 @@ final class NativeUI: ObservableObject {
     @Published private(set) var opening = false
     /// How many points a CSS pixel takes on the page (Settings → Appearance → Size); the chrome is drawn at it.
     @Published private(set) var scale: CGFloat = 1
-    /// The picture Quick Look shows, and the ones it swipes through.
-    @Published private(set) var picture: URL?
-    @Published private(set) var pictureFiles: [URL] = []
+    /// The file Quick Look shows, and the files it can swipe through.
+    @Published private(set) var preview: URL?
+    @Published private(set) var previewFiles: [URL] = []
     private var picturesAsked: String?
 
     weak var shell: WebShell?
@@ -325,10 +325,10 @@ final class NativeUI: ObservableObject {
         answer(id, pick)
     }
 
-    // MARK: Pictures
+    // MARK: Quick Look
 
     private func showPictures(_ request: PicturesRequest) {
-        guard !opening, !request.items.isEmpty else { return answer(request.id, nil) }
+        guard !opening, preview == nil, !request.items.isEmpty else { return answer(request.id, nil) }
         opening = true
         Task {
             // Quick Look needs files; the pictures come with the web view's session.
@@ -349,22 +349,31 @@ final class NativeUI: ObservableObject {
                 UIApplication.shared.topViewController?.showNotice("Couldn't open that picture. Try again.")
                 return answer(request.id, nil)
             }
-            pictureFiles = files.compactMap { $0 }
-            log.notice("quick look opens \(self.pictureFiles.count, privacy: .public) pictures, \((try? Data(contentsOf: files[wanted]!).count) ?? -1, privacy: .public) bytes shown")
+            previewFiles = files.compactMap { $0 }
             picturesAsked = request.id
-            picture = files[wanted]
+            preview = files[wanted]
         }
     }
 
-    /// Quick Look moved to another picture, or closed (nil), which answers the page.
-    func showPicture(_ url: URL?) {
+    func previewPDF(_ file: URL) -> Bool {
+        guard !opening, preview == nil else { return false }
+        previewFiles = [file]
+        preview = file
+        return true
+    }
+
+    /// Quick Look changed the selected file or closed.
+    func selectPreview(_ url: URL?) {
+        guard preview != url else { return }
         log.notice("quick look shows \(url?.lastPathComponent ?? "nothing", privacy: .public)")
-        picture = url
-        guard url == nil, let id = picturesAsked else { return }
-        picturesAsked = nil
-        answer(id, nil)
+        preview = url
+        guard url == nil else { return }
+        if let id = picturesAsked {
+            picturesAsked = nil
+            answer(id, nil)
+        }
         // Quick Look still draws them while it slides away; they go once it's long gone.
-        let files = pictureFiles
+        let files = previewFiles
         Task {
             try? await Task.sleep(for: .seconds(30))
             for file in files { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
