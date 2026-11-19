@@ -10,8 +10,10 @@ const holder = globalThis as typeof globalThis & { __gondDbReady?: string };
 
 /**
  * At start nothing is running: the messages a turn had claimed go back to wait (marked as cut off, so
- * their next turn checks before redoing anything), and every card still open expires, since no turn
- * waits on it any more and it would otherwise hold its bot up for good.
+ * their next turn checks before redoing anything), and every card still open closes, since no turn
+ * waits on it any more and it would otherwise hold its bot up for good. One that keeps its turn's work
+ * (`CardWork`) is paused rather than expired, so the person can still answer it and the bot picks the
+ * work up from there instead of answering its message again (`pausedOn`).
  */
 export function releaseClaims(db: Database): number {
   const at = now();
@@ -19,12 +21,14 @@ export function releaseClaims(db: Database): number {
   const cut = db.query("SELECT id FROM gond_messages WHERE claimed_by IS NOT NULL AND claimed_by != 'routing' AND answered_at IS NULL").all() as { id: string }[];
   for (const { id } of cut) noteInterrupted(id);
   db.query("UPDATE gond_messages SET claimed_by = NULL WHERE claimed_by IS NOT NULL").run();
+  const paused = db.query("UPDATE gond_approvals SET status = 'expired', outcome = 'paused', resolved_at = ? WHERE status = 'pending' AND note IS NOT NULL").run(at).changes;
   const cards =
+    paused +
     db.query("UPDATE gond_approvals SET status = 'expired', resolved_at = ? WHERE status = 'pending'").run(at).changes +
     db.query("UPDATE gond_secret_requests SET status = 'expired', resolved_at = ? WHERE status = 'pending'").run(at).changes;
   // An export's job lived in memory too; the person starts it again.
   db.query("UPDATE gond_exports SET status = 'failed', error = ?, finished_at = ? WHERE status = 'preparing'").run("Gond restarted while it was being prepared. Start it again.", at);
-  if (cut.length || cards) console.info(`[gond] Picking up after a restart: ${cut.length} message(s) to answer again, ${cards} open card(s) expired`);
+  if (cut.length || cards) console.info(`[gond] Picking up after a restart: ${cut.length} message(s) to answer again, ${cards - paused} open card(s) expired, ${paused} paused to answer later`);
   return cards;
 }
 

@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { personId, userId } from "../access.ts";
 import type { Env } from "../app.ts";
 import { setUserTimezone } from "../data/prefs.ts";
-import { readDeviceNotices } from "@gond/shared";
+import { isPaused, readDeviceNotices } from "@gond/shared";
 import { countSubscriptions, removeSubscription, saveSubscription, setSubscriptionNotices, subscriptionNotices } from "../data/push.ts";
 import { getPushDevice, registerPushDevice, removePushDevice, setPushDeviceNotices } from "../data/push-devices.ts";
 import { answerableOnPhone, decide } from "../approvals.ts";
@@ -108,7 +108,7 @@ export function pushAnswerRoutes() {
     const approval = getApproval(body.approvalId);
     const thread = approval ? getThread(approval.threadId) : null;
     if (!approval || !thread || personOf(thread.userId) !== device.userId) return c.json({ error: "Couldn't find that card" }, 404);
-    if (approval.status !== "pending") return c.json({ error: "That card was already answered or ran out of time" }, 409);
+    if (approval.status !== "pending" && !isPaused(approval)) return c.json({ error: "That card was already answered or ran out of time" }, 409);
     if (!answerableOnPhone(approval)) return c.json({ error: "Open Gond to answer this card" }, 409);
     const answered = decide(approval.id, { decision: body.decision });
     return c.json({ status: answered?.status ?? approval.status });

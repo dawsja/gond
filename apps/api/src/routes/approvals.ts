@@ -1,4 +1,4 @@
-import { approvalDecisionSchema } from "@gond/shared";
+import { approvalDecisionSchema, isPaused } from "@gond/shared";
 import { Hono } from "hono";
 import { ownsThread, userId } from "../access.ts";
 import type { Env } from "../app.ts";
@@ -26,7 +26,7 @@ export function approvalsRoutes() {
     if (!parsed.success) return c.json({ error: "Say allow, deny or always" }, 400);
     const asked = getApproval(c.req.param("id"));
     if (!asked || !ownsThread(c, asked.threadId)) return c.json({ error: "Couldn't find that approval" }, 404);
-    const problem = asked.status === "pending" ? answerProblem(asked, parsed.data) : null;
+    const problem = asked.status === "pending" || isPaused(asked) ? answerProblem(asked, parsed.data) : null;
     if (problem) return c.json({ error: problem }, 400);
     const approval = decide(c.req.param("id"), parsed.data);
     return approval ? c.json({ approval }) : c.json({ error: "Couldn't find that approval" }, 404);

@@ -1,9 +1,9 @@
 "use client";
 
-import { bareToolName, emailDraftOf, ruleLabel, type Approval, type ApprovalAnswer, type Bot, type Message } from "@gond/shared";
+import { bareToolName, emailDraftOf, isPaused, ruleLabel, type Approval, type ApprovalAnswer, type Bot, type Message } from "@gond/shared";
 import { CreditCard, FilePen, Globe, KeyRound, LogIn, Monitor, Plug, Send, ShieldQuestion, SquareTerminal, Trash2 } from "lucide-react";
 import { useState, type ReactNode } from "react";
-import { ActionCard, ActionCardDone, ActionCode, ActionRows, cheerOnFold, type ActionItem, type ActionRow, NOBODY_ANSWERED, SET_ASIDE } from "@/components/action-card";
+import { ActionCard, ActionCardDone, ActionCode, ActionRows, cheerOnFold, pausedLine, type ActionItem, type ActionRow, NOBODY_ANSWERED, SET_ASIDE } from "@/components/action-card";
 import { EmailApprovalCard } from "@/components/email-card";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -98,6 +98,8 @@ export function ApprovalCard({ message, approval, bot, noticed = false, onDecide
 function ToolApprovalCard({ message, approval, bot, noticed, onDecide }: { message: Message; approval: Approval | null; bot: Bot | undefined; noticed: boolean; onDecide: (id: string, answer: ApprovalAnswer) => Promise<void> }) {
   const [busy, setBusy] = useState<Decision | null>(null);
   const status = approval?.status ?? "pending";
+  // Nobody answered it in time, but it can still be answered: it stays open, marked paused.
+  const paused = isPaused(approval);
   const shape = shapeOf(message, approval, bot?.name ?? "A bot");
   const decide = async (decision: Decision) => {
     if (!message.approvalId || busy) return;
@@ -109,7 +111,7 @@ function ToolApprovalCard({ message, approval, bot, noticed, onDecide }: { messa
       setBusy(null);
     }
   };
-  if (status !== "pending") {
+  if (status !== "pending" && !paused) {
     const custom = approval?.tool === "ask_approval";
     const done =
       status === "allowed"
@@ -128,6 +130,7 @@ function ToolApprovalCard({ message, approval, bot, noticed, onDecide }: { messa
       title={shape.title}
       by={shape.by}
       note={shape.note}
+      paused={paused ? pausedLine(bot?.name ?? "the bot") : undefined}
       actions={
         <>
           <Button size="xl" variant="tint" className="w-full" disabled={Boolean(busy)} onClick={() => void decide("allow")}>

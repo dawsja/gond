@@ -1,7 +1,7 @@
 "use client";
 
 import type { Bot } from "@gond/shared";
-import { Check, ChevronDown, Lock, X } from "lucide-react";
+import { Check, ChevronDown, Lock, Pause, X } from "lucide-react";
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { BotAvatar } from "@/components/bot-avatar";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +19,9 @@ export const NOBODY_ANSWERED = "Nobody answered in time";
 /** A card the person wrote past instead of answering: nothing ran, and the bot read what they wrote. */
 export const SET_ASIDE = { status: "Set aside", by: "You wrote instead, so nothing ran" };
 
+/** Under a paused card's buttons: nobody answered in time, but an answer now still picks the work back up. */
+export const pausedLine = (name: string) => `Paused, since nobody answered in time. Answer now and ${name} picks it back up.`;
+
 /** Call as the person answers a card, so its folded line hops. */
 export function cheerOnFold(id: string) {
   answeredHere.add(id);
@@ -28,9 +31,10 @@ export function cheerOnFold(id: string) {
  * Every card a bot posts for the person to act on: the bot's bubble grey with the pill edge, its icon,
  * the question with "Needs you", then what it is about, the buttons and a line on privacy. A card from
  * a bot speaking up on its own (`noticed`) wears the person's color. One that is only telling the person
- * how something goes (`needs` false) has no badge.
+ * how something goes (`needs` false) has no badge. One nobody answered in time that can still be
+ * answered (`paused`, its line) says so quietly instead of "Needs you".
  */
-export function ActionCard({ icon, title, by, children, actions, note, noticed = false, needs = true, className }: { icon: ReactNode; title: ReactNode; by?: ReactNode; children?: ReactNode; actions?: ReactNode; note?: ReactNode; noticed?: boolean; needs?: boolean; className?: string }) {
+export function ActionCard({ icon, title, by, children, actions, note, paused, noticed = false, needs = true, className }: { icon: ReactNode; title: ReactNode; by?: ReactNode; children?: ReactNode; actions?: ReactNode; note?: ReactNode; paused?: ReactNode; noticed?: boolean; needs?: boolean; className?: string }) {
   return (
     <div className="relative w-full max-w-[440px]">
       <div data-slot="action-card" className={cn("relative flex flex-col gap-3.5 rounded-3xl border p-4", noticed ? "border-tint-edge bg-tint-wash" : "border-primary-edge bg-bubble-bot", className)}>
@@ -40,7 +44,11 @@ export function ActionCard({ icon, title, by, children, actions, note, noticed =
             <p className="text-[15px] leading-5 font-semibold break-words">{title}</p>
             {by ? <p className="text-[12.5px] leading-4 break-words text-muted-foreground">{by}</p> : null}
           </div>
-          {noticed || !needs ? null : (
+          {paused ? (
+            <Badge tone="neutral" className="shrink-0">
+              Paused
+            </Badge>
+          ) : noticed || !needs ? null : (
             <Badge tone="warn" className="shrink-0">
               Needs you
             </Badge>
@@ -51,6 +59,12 @@ export function ActionCard({ icon, title, by, children, actions, note, noticed =
           // Side by side at equal widths while every label fits on one line; a label that doesn't
           // takes its own row, and one wider than the card wraps inside its button.
           <div className="flex flex-wrap gap-2 max-sm:flex-col *:h-auto *:min-h-11 *:min-w-fit *:flex-1 *:py-2.5 *:text-center *:leading-5 *:whitespace-normal *:[overflow-wrap:anywhere]">{actions}</div>
+        ) : null}
+        {paused ? (
+          <p className="flex items-start gap-1.5 text-[11.5px] leading-4 text-muted-foreground">
+            <Pause className="mt-px size-3 shrink-0" aria-hidden="true" />
+            <span>{paused}</span>
+          </p>
         ) : null}
         {note ? (
           <p className="flex items-start gap-1.5 text-[11.5px] leading-4 text-muted-foreground">

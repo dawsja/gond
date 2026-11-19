@@ -29,8 +29,22 @@ function parsed<T>(text: string | null, fallback: T): T {
   }
 }
 
+/**
+ * How long a paused card can still be answered, from when it was asked: long enough for "tonight" or
+ * "first thing tomorrow", short enough that what the bot had found is still roughly true. It also
+ * bounds every query for paused cards to the recent end of the (status, created_at) index.
+ */
+export const LATE_ANSWER_HOURS = 24;
+
+/** The oldest a card can have been asked and still be answered late. */
+function answerableSince(at = Date.now()): string {
+  return new Date(at - LATE_ANSWER_HOURS * 3_600_000).toISOString();
+}
+
 function toApproval(row: Row): Approval {
   const input = parsed<Record<string, unknown>>(row.input, {});
+  // A paused card asked too long ago reads as plainly expired, whether or not the sweep reached it yet.
+  const lapsed = row.outcome === "paused" && row.created_at <= answerableSince();
   return {
     id: row.id,
     botId: row.bot_id,
@@ -42,20 +56,84 @@ function toApproval(row: Row): Approval {
     rule: row.rule,
     createdAt: row.created_at,
     resolvedAt: row.resolved_at,
-    outcome: row.outcome ?? null,
+    outcome: lapsed ? null : (row.outcome ?? null),
     edited: Boolean(row.edited),
-    note: row.note ?? null,
+    // While a card waits or is paused, the column holds its turn's work (`CardWork`), which is Gond's own.
+    note: row.status === "pending" || row.outcome === "paused" ? null : (row.note ?? null),
     revises: parsed<Approval["revises"]>(row.revises, null),
   };
 }
 
-export function createApproval(input: { botId: string; threadId: string; tool: string; summary: string; input: Record<string, unknown>; revises?: Approval["revises"] }): Approval {
+/**
+ * What the turn that posted a card was answering and had done by then. Kept with a card that may be
+ * answered late, so the turn that starts again on a late answer is told, even after a restart.
+ */
+export type CardWork = { answering: string; done: string[] };
+
+/** `work` marks a card that can be paused when nobody answers it in time (`pauseApproval`). */
+export function createApproval(input: { botId: string; threadId: string; tool: string; summary: string; input: Record<string, unknown>; revises?: Approval["revises"]; work?: CardWork }): Approval {
   const id = newId("ap");
   ensureDatabase()
-    .query("INSERT INTO gond_approvals (id, bot_id, thread_id, tool, summary, input, status, created_at, revises) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)")
-    .run(id, input.botId, input.threadId, input.tool, input.summary, JSON.stringify(input.input), now(), input.revises ? JSON.stringify(input.revises) : null);
+    .query("INSERT INTO gond_approvals (id, bot_id, thread_id, tool, summary, input, status, created_at, revises, note) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)")
+    .run(id, input.botId, input.threadId, input.tool, input.summary, JSON.stringify(input.input), now(), input.revises ? JSON.stringify(input.revises) : null, input.work ? JSON.stringify(input.work) : null);
   approvalsChanged();
   return getApproval(id)!;
+}
+
+/** The work a waiting or paused card holds; null for any other card. */
+export function cardWork(id: string): CardWork | null {
+  const row = ensureDatabase().query("SELECT note FROM gond_approvals WHERE id = ? AND (status = 'pending' OR outcome = 'paused')").get(id) as { note: string | null } | null;
+  const work = parsed<Partial<CardWork> | null>(row?.note ?? null, null);
+  return work && typeof work.answering === "string" ? { answering: work.answering, done: Array.isArray(work.done) ? work.done.filter((step): step is string => typeof step === "string") : [] } : null;
+}
+
+/** A waiting card that keeps its work closes paused instead of expired: it can still be answered. */
+export function pauseApproval(id: string): boolean {
+  const changed = ensureDatabase().query("UPDATE gond_approvals SET status = 'expired', outcome = 'paused', resolved_at = ? WHERE id = ? AND status = 'pending' AND note IS NOT NULL").run(now(), id).changes;
+  if (changed) approvalsChanged();
+  return changed > 0;
+}
+
+/** The cards in a conversation that can still be answered late, newest first. */
+export function pausedApprovals(threadId: string): Approval[] {
+  const rows = ensureDatabase().query("SELECT * FROM gond_approvals WHERE status = 'expired' AND created_at > ? AND thread_id = ? AND outcome = 'paused' ORDER BY created_at DESC").all(answerableSince(), threadId) as Row[];
+  return rows.map(toApproval);
+}
+
+/** Paused cards that can't be answered any more (one, a conversation's, or one bot's there) read as plainly expired from now. The ones it closed. */
+export function unpauseApprovals(where: { id?: string; threadId?: string; botId?: string }): Approval[] {
+  const clauses = ["status = 'expired'", "created_at > ?", "outcome = 'paused'"];
+  const params: string[] = [answerableSince()];
+  for (const [clause, value] of [["id = ?", where.id], ["thread_id = ?", where.threadId], ["bot_id = ?", where.botId]] as const) {
+    if (!value) continue;
+    clauses.push(clause);
+    params.push(value);
+  }
+  const rows = ensureDatabase().query(`UPDATE gond_approvals SET outcome = NULL, note = NULL WHERE ${clauses.join(" AND ")} RETURNING *`).all(...params) as Row[];
+  if (rows.length) approvalsChanged();
+  return rows.map(toApproval);
+}
+
+/**
+ * Paused cards that went past `LATE_ANSWER_HOURS` in the last day are put to rest, so their notices
+ * can come off the phones. Older ones (a Gond that was off for days) already read as expired.
+ */
+export function lapsePausedApprovals(at = Date.now()): Approval[] {
+  const rows = ensureDatabase()
+    .query("UPDATE gond_approvals SET outcome = NULL, note = NULL WHERE status = 'expired' AND created_at > ? AND created_at <= ? AND outcome = 'paused' RETURNING *")
+    .all(answerableSince(at - 24 * 3_600_000), answerableSince(at)) as Row[];
+  if (rows.length) approvalsChanged();
+  return rows.map(toApproval);
+}
+
+/** A paused card answered late; null when it was already answered or stopped being answerable. */
+export function resolvePaused(id: string, status: "allowed" | "denied", rule: string | null, answer: { outcome?: ApprovalOutcome | null; note?: string | null; input?: Record<string, unknown> } = {}): Approval | null {
+  const changed = ensureDatabase()
+    .query("UPDATE gond_approvals SET status = ?, rule = ?, resolved_at = ?, outcome = ?, note = ?, edited = ?, input = COALESCE(?, input) WHERE id = ? AND status = 'expired' AND outcome = 'paused' AND created_at > ?")
+    .run(status, rule, now(), answer.outcome ?? null, answer.note ?? null, answer.input ? 1 : 0, answer.input ? JSON.stringify(answer.input) : null, id, answerableSince()).changes;
+  if (!changed) return null;
+  approvalsChanged();
+  return getApproval(id);
 }
 
 export function getApproval(id: string): Approval | null {

@@ -1,4 +1,4 @@
-import { isRemoteAuthor, replyLine, type Bot, type Message, type Thread } from "@gond/shared";
+import { isPaused, isRemoteAuthor, replyLine, type Bot, type Message, type Thread } from "@gond/shared";
 import { BoxError, readBoxFile, type BoxConfig } from "./box.ts";
 import { getApproval } from "./data/approvals.ts";
 import { memberOfAuthor } from "./data/spaces.ts";
@@ -64,7 +64,9 @@ export function authorName(author: string, threadId: string, names: Map<string, 
 
 /** How an approval card ended, so a bot reading back knows its person's answer and not only that it asked. */
 function approvalEnding(m: Message): string {
-  const status = m.approvalId ? getApproval(m.approvalId)?.status : undefined;
+  const card = m.approvalId ? getApproval(m.approvalId) : null;
+  const status = card?.status;
+  if (isPaused(card)) return "; nobody answered in time, so that work is paused: if your person answers it, Gond tells you and you carry on";
   return status === "allowed" ? "; your person said yes" : status === "denied" ? "; your person said no" : status === "expired" ? "; nobody answered in time" : status === "pending" ? "; waiting for your person" : "";
 }
 

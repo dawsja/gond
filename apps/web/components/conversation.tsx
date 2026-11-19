@@ -1,6 +1,6 @@
 "use client";
 
-import { handleOf, plainMarkdown, REACTIONS, roomTargets, type Approval, type ApprovalAnswer, type Bot, type ChatAttachment, type ImageAspect, type LiveEvent, type Message, type ReactionEmoji, type Thread, type ThreadSpace } from "@gond/shared";
+import { handleOf, isPaused, plainMarkdown, REACTIONS, roomTargets, type Approval, type ApprovalAnswer, type Bot, type ChatAttachment, type ImageAspect, type LiveEvent, type Message, type ReactionEmoji, type Thread, type ThreadSpace } from "@gond/shared";
 import { inertChoices, remoteMember, spaceMentionables, spaceSubtitle } from "@/lib/spaces";
 import { ArrowUp, ChevronLeft, Copy, CornerUpLeft, Download, Eye, ListEnd, EllipsisVertical, File as FileIcon, FileArchive, FileHeadphone, FilePlay, FileSpreadsheet, FileText, Lock, Monitor, PanelRight, Paperclip, Pencil, Phone, Plus, RotateCcw, TextSelect, Undo2, X } from "lucide-react";
 import dynamic from "next/dynamic";
@@ -939,9 +939,9 @@ export function Conversation({ threadId }: { threadId: string }) {
       replaceMessage({ id: event.messageId, reactions: event.reactions });
     } else if (event.topic === "approvals") {
       void catchUp();
-      // A decided approval never changes again; only the ones still waiting can have moved.
+      // A decided approval never changes again; only the ones still waiting, or paused and still answerable, can have moved.
       for (const [id, approval] of approvalMap) {
-        if (approval.status !== "pending") continue;
+        if (approval.status !== "pending" && !isPaused(approval)) continue;
         void api<{ approval: Approval }>(`/api/approvals/${id}`)
           .then((d) => setResolved((current) => new Map(current).set(id, d.approval)))
           .catch(() => undefined);

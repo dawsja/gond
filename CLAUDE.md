@@ -417,6 +417,20 @@ The address rules are mirrored in each app with the same tests.
   turn answering the person ends there, aborted with cause `expired`
   (quiet, no incident), while a turn on a teammate's errand hears
   `expiredText` and goes on. A card closed by Stop says nothing.
+- **A paused card can still be answered** (`pauseOnExpiry`, `isPaused`:
+  `expired` with outcome `paused`, no migration): an approval or email
+  card from a turn answering the person, outside a space, keeps that
+  turn's message and steps in its `note` (`CardWork`, never sent to the
+  page) and at 15 minutes, or at a restart, pauses instead: no line, the
+  turn ends, the card stays open with a "Paused" badge and stays on the
+  phones. A late answer never runs the action: `decideLate` posts a
+  hidden prompt (`lateAnswerText`: what ran, the answer, check first,
+  never repeat) and only the same call (`actionKey`) goes through once in
+  that turn (`lateYes`, spent by `takeLateYes`); anything else asks
+  again. Sign-ins, secrets, money (`answerableLate`) and another Gond's
+  request keep the strict expiry. Only a bot's newest card there waits;
+  the person's next line there, Stop, a newer card or
+  `LATE_ANSWER_HOURS` (24) retires it. It never shows in Worth a look.
 - **A message is only its bubble**: no avatar beside it (a room names the
   bot above), no time under it (a tap shows it, `showsTime` in
   `conversation.tsx`). A picture
@@ -839,7 +853,9 @@ One line each: where to start, and what must not change.
   can't be duplicated and a conversation can't be cleared: no routes.
 - **A restart never strands a bot.** At start `releaseClaims` in
   `db/init.ts` puts every claimed message back to wait, marked cut off
-  (`src/resume.ts`), and expires every open card. A turn the computer
+  (`src/resume.ts`), and closes every open card, pausing those that can
+  be answered late, whose message then isn't answered again
+  (`pausedOn`). A turn the computer
   cuts off (an update, a failed health check, "still busy") isn't an
   incident: the message waits with the steps that ran, nothing new starts
   until the computer answers (`computerAway`, every 15 s), and after 30

@@ -411,6 +411,14 @@ export function failuresAnswering(message: Pick<Message, "id" | "threadId">, set
   return toMessages(rows);
 }
 
+/**
+ * Spends the one call a late yes lets through: the hidden prompt it started carries the card until then.
+ * True the first time only, so a turn that runs again after a cut can't send the same thing twice.
+ */
+export function takeLateYes(promptId: string, approvalId: string): boolean {
+  return ensureDatabase().query("UPDATE gond_messages SET approval_id = NULL WHERE id = ? AND kind = 'prompt' AND approval_id = ?").run(promptId, approvalId).changes > 0;
+}
+
 /** Every card of this kind in the person's conversations, oldest first. */
 export function cardsOf(userId: string, approvalId: string): Message[] {
   const rows = ensureDatabase()

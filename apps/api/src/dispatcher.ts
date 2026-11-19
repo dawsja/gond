@@ -12,6 +12,7 @@ import { isUpdating } from "./updater.ts";
 import { subscribe } from "./events.ts";
 import { runDueShoppingChecks } from "./shopping.ts";
 import { expireDueCheckouts } from "./data/shopping.ts";
+import { retireLapsedCards } from "./approvals.ts";
 
 type State = { timer: ReturnType<typeof setInterval> | null; owner: string; ticking: boolean; lastChase: number; woken: boolean };
 const holder = globalThis as typeof globalThis & { __gondDispatcher?: State };
@@ -78,6 +79,7 @@ async function tick() {
       current.lastChase = Date.now();
       chaseStalledDelegations();
       expireTeachingFrames();
+      retireLapsedCards();
       if (!isUpdating() && !computerAway()) runDueCheckIns();
     }
 

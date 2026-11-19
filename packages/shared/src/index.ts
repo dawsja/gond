@@ -242,8 +242,16 @@ export type Approval = {
   revises: { tool: string; input: Record<string, unknown> } | null;
 };
 
-/** Past yes or no: an email sent from its draft or saved, sent back with a note, or set aside because the person wrote instead. */
-export type ApprovalOutcome = "sent" | "saved" | "changes" | "aside";
+/**
+ * Past yes or no: an email sent from its draft or saved, sent back with a note, or set aside because the person wrote instead.
+ * `paused` is an expired card whose work waits on it: the person can still answer it (`isPaused`), and the bot starts again.
+ */
+export type ApprovalOutcome = "sent" | "saved" | "changes" | "aside" | "paused";
+
+/** A card nobody answered in time that can still be answered, which starts its bot's work again. */
+export function isPaused(approval: Pick<Approval, "status" | "outcome"> | null | undefined): boolean {
+  return approval?.status === "expired" && approval.outcome === "paused";
+}
 
 export const MAX_APPROVAL_NOTE = 2000;
 

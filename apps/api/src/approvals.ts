@@ -1,15 +1,16 @@
 import { posix } from "node:path";
-import { QUIET_REPLY, appAction, approvalLine, editedEmailInput, emailDraftOf, emailEditable, emailMode, sendDraftAction, type Approval, type ApprovalAnswer, type ApprovalLevel, type Bot } from "@gond/shared";
+import { QUIET_REPLY, appAction, approvalLine, editedEmailInput, emailDraftOf, emailEditable, emailMode, handleOf, isPaused, plainMarkdown, routineName, sendDraftAction, type Approval, type ApprovalAnswer, type ApprovalLevel, type Bot, type Message } from "@gond/shared";
 import { boxHome } from "./box.ts";
 import { approvalTimeoutMs } from "./config.ts";
-import { addRule, createApproval, getApproval, listApprovals, listRules, resolveApproval } from "./data/approvals.ts";
+import { addRule, cardWork, createApproval, getApproval, lapsePausedApprovals, listApprovals, listRules, pauseApproval, pausedApprovals, resolveApproval, resolvePaused, unpauseApprovals } from "./data/approvals.ts";
 import { getBot } from "./data/bots.ts";
 import { personOf } from "./data/profiles.ts";
 import { botHome } from "./memory.ts";
 import { hideSecrets } from "./data/secrets.ts";
-import { postMessage } from "./data/threads.ts";
+import { getMessage, getThread, postMessage, takeLateYes } from "./data/threads.ts";
 import { withdrawFromPhones } from "./phone-push.ts";
 import { sendPush } from "./push.ts";
+import { lateAnswerText } from "./resume.ts";
 
 type Pending = { resolve: (answer: Answer) => void; timer: ReturnType<typeof setTimeout> };
 export type Decision = "allow" | "deny" | "always" | "expired";
@@ -123,6 +124,64 @@ const enders = new WeakMap<AbortSignal, () => void>();
 /** The responder says how to end a turn whose answer is the person's, so a card that times out needs no model round. */
 export function endTurnOnExpiry(signal: AbortSignal, end: () => void): void {
   enders.set(signal, end);
+}
+
+/**
+ * A turn whose work can start again: what it answers, the steps it has finished so far, and the card
+ * whose late yes started it, if one did (the hidden prompt carries it until its one call is spent).
+ */
+type Resumable = { messageId: string; card: string | null; done: () => readonly string[] };
+const resumable = new WeakMap<AbortSignal, Resumable>();
+
+/**
+ * The responder marks a turn whose work can start again later: a card it waits on that nobody
+ * answers in time is paused instead of expired, so the person can still answer it, and the bot
+ * starts again from there (`decideLate`). The turn still ends at once (`endTurnOnExpiry`).
+ */
+export function pauseOnExpiry(signal: AbortSignal, turn: Resumable): void {
+  resumable.set(signal, turn);
+}
+
+// A sign-in or a secret needs values typed fresh, and money or a key waits for nobody: these keep the strict expiry.
+const STRICT_TOOLS = new Set(["request_login", "type_secret", "forget_secret"]);
+const MONEY_ACTION = /(^|_)(PAY|PAYS|PAYMENT|PAYMENTS|PAYOUT|TRANSFER|PURCHASE|BUY|CHECKOUT|CHARGE|REFUND|ORDER)(_|$)/;
+
+/** Whether a card may wait for a late answer: never a sign-in, a secret, a server's keys or money. */
+export function answerableLate(tool: string, input: Record<string, unknown>): boolean {
+  if (STRICT_TOOLS.has(tool)) return false;
+  if (tool === "ask_approval") return input.kind !== "purchase" && !input.total;
+  if (tool === "add_mcp_server") return !input.headers && !(input.env && typeof input.env === "object" && Object.keys(input.env).length);
+  return !MONEY_ACTION.test(appAction(tool).action);
+}
+
+/** What makes two calls the same action: the fields whatever their order, empty ones aside, and for a command only the command. */
+function actionKey(tool: string, input: Record<string, unknown>): string {
+  return JSON.stringify(canonical(tool === "Bash" ? { command: input.command, background: input.run_in_background === true } : input));
+}
+
+function canonical(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonical);
+  if (!value || typeof value !== "object") return value;
+  const out: Record<string, unknown> = {};
+  for (const key of Object.keys(value).sort()) {
+    const field = (value as Record<string, unknown>)[key];
+    if (field === undefined || field === null || field === "" || (Array.isArray(field) && !field.length)) continue;
+    out[key] = canonical(field);
+  }
+  return out;
+}
+
+/**
+ * The one call a late yes lets through, in the turn it started (`decideLate`): the same bot, conversation,
+ * tool and input as the card the person answered, once, as they left it (an edited letter, Send now).
+ * Anything else, or a second call, posts a new card.
+ */
+function lateYes(bot: Pick<Bot, "id">, threadId: string, tool: string, input: Record<string, unknown>, signal?: AbortSignal): Answer | null {
+  const turn = signal ? resumable.get(signal) : undefined;
+  const card = turn?.card ? getApproval(turn.card) : null;
+  if (!turn || !card || card.status !== "allowed" || card.botId !== bot.id || card.threadId !== threadId || card.tool !== tool) return null;
+  if (actionKey(tool, input) !== actionKey(tool, card.input) || !takeLateYes(turn.messageId, card.id)) return null;
+  return { decision: "allow", input: card.input, edited: card.edited, send: card.outcome === "sent", note: null, aside: false };
 }
 
 /**
@@ -272,6 +331,8 @@ function redrafting(botId: string, threadId: string, tool: string): Approval["re
 export async function askApproval(input: { bot: Bot; threadId: string; tool: string; input: Record<string, unknown>; summary?: string; signal?: AbortSignal }): Promise<Answer> {
   const { tool } = input;
   const answer = (decision: Decision): Answer => ({ decision, input: input.input, edited: false, send: false, note: null, aside: false });
+  const late = lateYes(input.bot, input.threadId, tool, input.input, input.signal);
+  if (late) return late;
 
   /*
    * The level as it is right now, not as it was when the turn started: a
@@ -295,7 +356,7 @@ export async function askApproval(input: { bot: Bot; threadId: string; tool: str
  * (Spaces), and only its owner can say yes to that.
  */
 export function askOwner(input: { bot: Bot; threadId: string; input: Record<string, unknown>; summary: string; signal?: AbortSignal }): Promise<Answer> {
-  return postCard({ ...input, tool: "ask_approval" });
+  return postCard({ ...input, tool: "ask_approval", strict: true });
 }
 
 /** Whether a phone may answer this card from its lock screen: a plain yes or no, never an email, whose card can be read and edited only in full. */
@@ -312,18 +373,57 @@ function onPhones(): Map<string, string> {
   return holder.__gondCardsOnPhones;
 }
 
-/** A card closed (answered, expired, set aside): its buttons come off the phones that had them. */
-function offPhones(id: string) {
-  const person = onPhones().get(id);
+/**
+ * A card closed (answered, expired, set aside): its buttons come off the phones that had them. A paused
+ * card may outlive the process that pushed it, so `card` names whose phones would have it then.
+ */
+function offPhones(id: string, card?: Pick<Approval, "botId" | "tool" | "input">) {
+  const bot = !onPhones().has(id) && card ? getBot(card.botId) : null;
+  const person = onPhones().get(id) ?? (bot?.notify && answerableOnPhone(card!) ? personOf(bot.userId) : null);
   if (!person) return;
   onPhones().delete(id);
   void withdrawFromPhones(person, `card-${id}`);
 }
 
-function postCard(input: { bot: Bot; threadId: string; tool: string; input: Record<string, unknown>; summary?: string; signal?: AbortSignal }): Promise<Answer> {
+/** Paused cards that can't be answered any more read as expired, and come off the phones. How many. */
+function unpause(where: Parameters<typeof unpauseApprovals>[0]): number {
+  return offPhonesAll(unpauseApprovals(where));
+}
+
+function offPhonesAll(cards: Approval[]): number {
+  for (const card of cards) offPhones(card.id, card);
+  return cards.length;
+}
+
+/** The person wrote in the conversation or stopped it: its paused cards can't be answered any more. How many closed. */
+export function retirePausedCards(threadId: string): number {
+  return unpause({ threadId });
+}
+
+/** Paused cards asked more than `LATE_ANSWER_HOURS` ago come off the phones; from the dispatcher's minute. */
+export function retireLapsedCards(at = Date.now()): number {
+  return offPhonesAll(lapsePausedApprovals(at));
+}
+
+/** Whether a conversation holds a card that can still be answered late, so "stop" there has something to stop. */
+export function hasPausedCards(threadId: string): boolean {
+  return pausedApprovals(threadId).length > 0;
+}
+
+/** The bots whose work on this message waits on a paused card: answering it again would only redo that work. */
+export function pausedOn(message: Pick<Message, "id" | "threadId">): Set<string> {
+  return new Set(pausedApprovals(message.threadId).flatMap((card) => (cardWork(card.id)?.answering === message.id ? [card.botId] : [])));
+}
+
+/** `strict`: the card expires in time whatever it asks, as another Gond's request to act does. */
+function postCard(input: { bot: Bot; threadId: string; tool: string; input: Record<string, unknown>; summary?: string; signal?: AbortSignal; strict?: boolean }): Promise<Answer> {
   const { bot, threadId, tool } = input;
   const answer = (decision: Decision): Answer => ({ decision, input: input.input, edited: false, send: false, note: null, aside: false });
-  const approval = createApproval({ botId: bot.id, threadId, tool, summary: hideSecrets(input.summary ?? summarize(tool, input.input)), input: input.input, revises: redrafting(bot.id, threadId, tool) });
+  const turn = !input.strict && input.signal ? resumable.get(input.signal) : undefined;
+  const work = turn && answerableLate(tool, input.input) ? { answering: turn.messageId, done: turn.done().slice(-20) } : undefined;
+  // Only a bot's newest card in a conversation can be answered late.
+  unpause({ threadId, botId: bot.id });
+  const approval = createApproval({ botId: bot.id, threadId, tool, summary: hideSecrets(input.summary ?? summarize(tool, input.input)), input: input.input, revises: redrafting(bot.id, threadId, tool), work });
   postMessage({ threadId, author: bot.id, kind: "approval", body: approval.summary, approvalId: approval.id, answered: true });
   if (bot.notify) {
     const card = answerableOnPhone(approval) ? { id: approval.id, allow: buttonLabel(input.input.allow, "Allow"), deny: buttonLabel(input.input.deny, "Deny") } : undefined;
@@ -337,6 +437,12 @@ function postCard(input: { bot: Bot; threadId: string; tool: string; input: Reco
       clearTimeout(timer);
       input.signal?.removeEventListener("abort", expire);
       if (!pending().delete(approval.id)) return;
+      // Nobody answered, but the work can start again on a late answer: the turn ends quietly, and the card stays answerable, on the phones too.
+      if (!input.signal?.aborted && work && pauseApproval(approval.id)) {
+        resolve(answer("expired"));
+        enders.get(input.signal!)?.();
+        return;
+      }
       offPhones(approval.id);
       resolveApproval(approval.id, "expired");
       resolve(answer("expired"));
@@ -364,19 +470,27 @@ export function answerProblem(approval: Approval, given: ApprovalAnswer): string
 
 const emailAddressOf = (who: string) => /<([^<>]+)>/.exec(who)?.[1]?.trim() ?? who.trim();
 
-export function decide(id: string, given: ApprovalAnswer): Approval | null {
-  const approval = getApproval(id);
-  if (!approval) return null;
-  if (approval.status !== "pending") return approval;
+/** What an answer does to its card: the rule an Always saves, the letter as the person left it, the note on a no. */
+function answerOf(approval: Approval, given: ApprovalAnswer) {
   const { decision } = given;
   const rule = decision === "always" && approval.tool !== "ask_approval" ? ruleFor(approval.tool, approval.input) : null;
-  if (rule) addRule(approval.botId, rule);
   const email = emailDraftOf(approval.tool, approval.input);
   const input = given.edit ? editedEmailInput(approval.tool, approval.input, given.edit) : approval.input;
   const edited = given.edit && JSON.stringify(input) !== JSON.stringify(approval.input) ? input : undefined;
   const note = decision === "deny" ? (given.note?.trim() ?? null) : null;
   const outcome = note ? "changes" : decision === "deny" || email?.mode !== "draft" ? null : given.send ? "sent" : "saved";
-  const resolved = resolveApproval(id, decision === "deny" ? "denied" : "allowed", rule, { outcome, note: note ? hideSecrets(note) : null, input: edited });
+  return { status: decision === "deny" ? ("denied" as const) : ("allowed" as const), rule, input, edited, note, outcome } as const;
+}
+
+export function decide(id: string, given: ApprovalAnswer): Approval | null {
+  const approval = getApproval(id);
+  if (!approval) return null;
+  if (isPaused(approval)) return decideLate(approval, given);
+  if (approval.status !== "pending") return approval;
+  const { decision } = given;
+  const { status, rule, input, edited, note, outcome } = answerOf(approval, given);
+  if (rule) addRule(approval.botId, rule);
+  const resolved = resolveApproval(id, status, rule, { outcome, note: note ? hideSecrets(note) : null, input: edited });
   offPhones(id);
   const waiter = pending().get(id);
   if (waiter) {
@@ -385,6 +499,49 @@ export function decide(id: string, given: ApprovalAnswer): Approval | null {
     waiter.resolve({ decision, input, edited: Boolean(edited), send: Boolean(given.send) && decision === "allow", note, aside: false });
   }
   return resolved;
+}
+
+/**
+ * A late answer to a paused card. Nothing it allowed runs from here, since the price, the recipient or
+ * the state may have changed: the bot starts the work again on a hidden prompt that says what it had
+ * done and what the person said, checks where things stand, and only the same call goes through once
+ * without a new card (`lateYes`).
+ */
+function decideLate(approval: Approval, given: ApprovalAnswer): Approval | null {
+  const work = cardWork(approval.id);
+  const { status, rule, input, edited, note, outcome } = answerOf(approval, given);
+  const resolved = resolvePaused(approval.id, status, rule, { outcome, note: note ? hideSecrets(note) : null, input: edited });
+  if (!resolved) return getApproval(approval.id);
+  if (rule) addRule(approval.botId, rule);
+  offPhones(approval.id, approval);
+  const bot = getBot(approval.botId);
+  const thread = getThread(approval.threadId);
+  if (!bot || !thread) return resolved;
+  const body = hideSecrets(
+    lateAnswerText({
+      card: approval.summary,
+      tool: approval.tool,
+      answer: note ? { changes: note } : status === "denied" ? "no" : given.send && outcome === "sent" ? "send" : rule ? "always" : "yes",
+      input,
+      edited: Boolean(edited),
+      working: workingOn(work ? getMessage(work.answering) : null),
+      done: work?.done ?? [],
+    }),
+  );
+  // Only a yes carries the card, which is what lets its one call through (`lateYes`).
+  postMessage({ threadId: thread.id, author: "system", kind: "prompt", approvalId: status === "allowed" ? approval.id : null, body: thread.kind === "room" ? `@${handleOf(bot.name)} ${body}` : body });
+  return resolved;
+}
+
+/** The work a paused card stopped, in words for the bot: what it was answering. */
+function workingOn(message: Message | null): string | null {
+  if (!message) return null;
+  const words = plainMarkdown(message.body).replace(/\s+/g, " ").trim();
+  const quote = `"${words.length > 300 ? `${words.slice(0, 299).trimEnd()}…` : words}"`;
+  if (message.author === "you") return `the person's message ${quote}`;
+  if (message.author === "routine") return `your routine "${routineName(message.body) ?? words.slice(0, 80)}"`;
+  if (message.kind === "prompt") return `a task from Gond: ${quote}`;
+  return `${getBot(message.author)?.name ?? "a teammate"}'s message ${quote}`;
 }
 
 export function openApprovals(): Approval[] {

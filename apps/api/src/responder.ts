@@ -36,7 +36,7 @@ import { createRedactor } from "./redact.ts";
 import { skillsFor, skillsIndex, skillsReady } from "./skills.ts";
 import { renderSoul, skillsInUse, systemPromptFor, talkReminder } from "./souls.ts";
 import { clearWork, clipOutput, createTurnClock, keepTurn, labelStep, noteRouteTime, recordStep, routeTimeOf, timingLine, type StepUpdate } from "./work.ts";
-import { boxPermission, endTurnOnExpiry, setAside } from "./approvals.ts";
+import { boxPermission, endTurnOnExpiry, hasPausedCards, pauseOnExpiry, pausedOn, retirePausedCards, setAside } from "./approvals.ts";
 import { noteInterrupted, takeInterrupted, wasInterrupted } from "./resume.ts";
 import { turnTiming } from "./config.ts";
 import { MAX_CHAIN, MAX_ROOM_LINES, resultDepth } from "./limits.ts";
@@ -183,8 +183,8 @@ async function settled(threadId: string, ms = STOP_SETTLE_MS) {
   while (turnsIn(threadId).length && Date.now() < until) await new Promise((resolve) => setTimeout(resolve, 100));
 }
 
-/** What a stop halted: the turns and what they were answering, and everything they had set going. */
-type StopReport = { stopped: number; dropped: number; tasks: string[]; screen: boolean; teammates: string[]; sent: number; followUps: number; recordings: number };
+/** What a stop halted: the turns and what they were answering, and everything they had set going, paused cards too. */
+type StopReport = { stopped: number; dropped: number; tasks: string[]; screen: boolean; teammates: string[]; sent: number; followUps: number; recordings: number; cards?: number };
 
 async function stopWorkFrom(threadId: string, since: string | null, seen: Set<string>, report: StopReport) {
   for (const handoff of openDelegationsFrom(threadId, since)) {
@@ -232,6 +232,7 @@ export async function stopThread(threadId: string, options: { quiet?: boolean } 
   report.dropped = closePending(threadId) + guests.dropped;
   report.recordings = await stopTeachingsIn(threadId);
   report.dropped += stopCheckoutsIn(threadId);
+  report.cards = retirePausedCards(threadId);
   await stopWorkFrom(threadId, null, new Set([threadId]), report);
 
   if (owner && getPrimary(owner)?.threadId === threadId && stopCheckIn(owner)) report.stopped += 1;
@@ -262,13 +263,14 @@ export function stoppedReply(report: StopReport): string {
   if (report.followUps) lines.push(`I cancelled ${plural(report.followUps, "follow-up")} I had planned.`);
   if (report.dropped) lines.push(`I dropped ${plural(report.dropped, "waiting message")}.`);
   if (report.recordings) lines.push("I stopped watching and threw away the recording.");
+  if (report.cards) lines.push(`I closed ${plural(report.cards, "card")} still waiting for your answer, so nothing on ${report.cards === 1 ? "it" : "them"} will run.`);
   if (!lines.length) return "Nothing was running, so there was nothing to stop.";
   return ["Stopped.", lines.map((line) => `- ${line}`).join("\n"), "I won't pick it back up unless you ask."].join("\n\n");
 }
 
 /** Whether a stop in this conversation would halt anything. */
 export function hasWork(threadId: string): boolean {
-  return turnsIn(threadId).length > 0 || openDelegationsFrom(threadId).length > 0 || threadBusy(threadId) || teachingIn(threadId) || hasGuestWork(threadId);
+  return turnsIn(threadId).length > 0 || openDelegationsFrom(threadId).length > 0 || threadBusy(threadId) || teachingIn(threadId) || hasGuestWork(threadId) || hasPausedCards(threadId);
 }
 
 export async function stopBot(bot: Bot) {
@@ -382,6 +384,8 @@ type PersonLine = { body: string; attachments?: ChatAttachment[]; after?: boolea
 
 export async function postFromPerson(thread: Thread, input: PersonLine): Promise<Message> {
   if (!input.attachments?.length && !input.replyTo && isStopRequest(input.body) && hasWork(thread.id)) return stopFromMessage(thread, input.body);
+  // The person moved on: a card nobody answered in time can't be answered late any more.
+  retirePausedCards(thread.id);
   // In a space people talk to each other too: a line that names none of the person's bots is only said.
   const inSpace = spaceTargets(thread, input.body);
   if (inSpace && !inSpace.length) return postInSpace(thread, input, []);
@@ -702,6 +706,8 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
   };
   // What this turn finished, in words, for the turn that answers again if this one is cut off.
   const done: string[] = [];
+  // A card this turn waits on can be answered late, which starts its work again; a space's turns and a teammate's errands keep the strict expiry.
+  if (active.route === "person" && !isSpace(thread)) pauseOnExpiry(controller.signal, { messageId: message.id, card: message.kind === "prompt" ? message.approvalId : null, done: () => done });
   const resumed = takeInterrupted(message.id);
   const step = (raw: StepUpdate) => {
     clock.step(raw);
@@ -1050,6 +1056,8 @@ export async function answerMessage(message: Message): Promise<void> {
   // A bot's room line that names a member who has spoken here since already reached it, by steer while
   // it was working: waking it again would only repeat what it said.
   const answeredAlready = wasInterrupted(message.id) || answering ? spokeSince(thread.id, message) : new Set<string>();
+  // A bot whose work on it waits on a paused card (a restart closed its turn) picks it up from that card, not from scratch.
+  for (const botId of pausedOn(message)) answeredAlready.add(botId);
   const named = answering ? wokenBy(message, thread, answering, bots) : targetsFor(message, thread, bots, before, workingIn(thread.id));
   const owed = named.filter((b) => !answeredAlready.has(b.id));
   if (answeredAlready.size && !owed.length) {

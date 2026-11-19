@@ -1,9 +1,9 @@
 "use client";
 
-import { emailAddress, emailDraftOf, emailEditable, emailName, sendDraftAction, wordDiff, type Approval, type ApprovalAnswer, type Bot, type EmailDraft, type EmailEdit, type Message } from "@gond/shared";
+import { emailAddress, emailDraftOf, emailEditable, emailName, isPaused, sendDraftAction, wordDiff, type Approval, type ApprovalAnswer, type Bot, type EmailDraft, type EmailEdit, type Message } from "@gond/shared";
 import { ArrowUp, ChevronDown, ChevronUp, CornerUpLeft, Forward, Mail, NotebookPen, Paperclip, Pencil, Undo2 } from "lucide-react";
 import { useState, type ReactNode } from "react";
-import { ActionCard, ActionCardDone, cheerOnFold, NOBODY_ANSWERED, SET_ASIDE } from "@/components/action-card";
+import { ActionCard, ActionCardDone, cheerOnFold, NOBODY_ANSWERED, pausedLine, SET_ASIDE } from "@/components/action-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput, InputGroupText } from "@/components/ui/input-group";
@@ -184,8 +184,9 @@ export function EmailApprovalCard({ message, approval, email, bot, noticed, onDe
   const [ask, setAsk] = useState("");
   const [busy, setBusy] = useState<"send" | "save" | "deny" | "ask" | null>(null);
   const icon = EMAIL_ICONS[email.mode];
+  const paused = isPaused(approval);
 
-  if (approval.status !== "pending") {
+  if (approval.status !== "pending" && !paused) {
     const by = `${emailGist(email)}${approval.edited ? " · Edited by you" : ""}`;
     if (approval.outcome === "changes") return <ActionCardDone id={message.id} bot={bot} icon={icon} title="Changes asked" by={approval.note ?? undefined} status="Sent back" tone="neutral" />;
     if (approval.outcome === "sent") return <ActionCardDone id={message.id} bot={bot} icon={icon} title="Email sent" by={by} status="Sent" tone="ok" />;
@@ -224,6 +225,7 @@ export function EmailApprovalCard({ message, approval, email, bot, noticed, onDe
       icon={icon}
       title={words.title}
       by={`${name} · ${email.app}${before ? " · New draft" : ""}`}
+      paused={paused ? pausedLine(name) : undefined}
       note={sendsDraft ? "It waits in your drafts once you tap Save draft. Send now sends it instead." : email.mode === "draft" ? "Nothing is saved until you tap Save draft." : `Nothing goes out until you tap ${words.allow}.`}
       actions={
         sendsDraft ? (
