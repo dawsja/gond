@@ -71,9 +71,9 @@ export function BotFiles({ bot }: { bot: Bot }) {
 
   return (
     <section>
-      <h2 className="text-[12px] font-medium uppercase tracking-wide text-muted-foreground">Files</h2>
+      <h2 className="text-[13px] font-semibold">Files</h2>
       {folder !== "." ? (
-        <button type="button" onClick={() => go(folder.includes("/") ? folder.slice(0, folder.lastIndexOf("/")) : ".")} className="mt-2 flex w-full items-center gap-1.5 rounded-lg px-1 py-1 text-left text-[13px] font-medium outline-none hover:bg-card focus-visible:ring-3 focus-visible:ring-ring/50 pointer-coarse:min-h-11">
+        <button type="button" onClick={() => go(folder.includes("/") ? folder.slice(0, folder.lastIndexOf("/")) : ".")} className="mt-2 flex w-full items-center gap-1.5 rounded-lg px-1 py-1 text-left text-[13px] font-medium outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 pointer-coarse:min-h-11">
           <ChevronLeft className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
           <FolderOpen className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
           <span className="truncate">{folder}</span>
@@ -86,7 +86,7 @@ export function BotFiles({ bot }: { bot: Bot }) {
       ) : failure ? (
         <p className="mt-2 text-[12.5px] text-muted-foreground">{failure}</p>
       ) : entries.length === 0 ? (
-        <Empty className="mt-2 border px-3 py-5">
+        <Empty className="mt-2 rounded-2xl border-0 bg-muted px-3 py-5">
           <EmptyHeader>
             <EmptyMedia variant="icon">
               <Folder />
@@ -100,7 +100,7 @@ export function BotFiles({ bot }: { bot: Bot }) {
           {shown!.map((entry) => {
             const path = join(folder, entry.name);
             return (
-              <li key={entry.name} className="flex items-center gap-1 rounded-lg hover:bg-card">
+              <li key={entry.name} className="flex items-center gap-1 rounded-lg hover:bg-muted">
                 <button type="button" onClick={() => (entry.dir ? go(path) : setOpened({ path, entry }))} className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-1 py-1.5 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 pointer-coarse:min-h-11">
                   <FileIcon entry={entry} />
                   <span className="min-w-0 flex-1 truncate text-[13px]">{entry.name}</span>

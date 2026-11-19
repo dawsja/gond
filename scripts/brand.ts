@@ -116,6 +116,68 @@ async function glyph(figure: string, share: number): Promise<Buffer> {
   return canvas(`<defs><mask id="glyph">${await placed(figure.replaceAll(INK, "black"), share)}</mask></defs><rect width="1024" height="1024" fill="white" mask="url(#glyph)"/>`);
 }
 
+// Three bots standing together over the desktop's Connect screen, as the iPhone's Connect draws
+// them: the mascot in 3D, every shade mixed from each bot's one colour the way gond-bot.tsx does.
+// They blink, glance and float in the file itself, since the page shows it as a picture.
+const TEAM = [
+  { color: "#2F6FD6", x: 2, y: 16, size: 144, turn: -10 },
+  { color: "#1F9E8F", x: 132, y: 56, size: 112, turn: 6 },
+  { color: "#D2483C", x: 230, y: 10, size: 128, turn: 12 },
+] as const;
+
+function mix(a: string, b: string, t: number): string {
+  const channel = (hex: string, i: number) => parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16);
+  return `#${[0, 1, 2].map((i) => Math.round(channel(a, i) * (1 - t) + channel(b, i) * t).toString(16).padStart(2, "0")).join("")}`;
+}
+
+function bot3d(color: string, id: string): string {
+  const base = color.toLowerCase();
+  const tone = {
+    top: mix(base, "#ffffff", 0.3), bottom: mix(base, "#000000", 0.36),
+    rimLight: mix(base, "#ffffff", 0.75), rimDark: mix(base, "#000000", 0.62),
+    visorTop: mix(base, "#0a0b0d", 0.84), visorBottom: mix(base, "#050506", 0.94),
+    eye: mix(base, "#ffffff", 0.88), glow: mix(base, "#ffffff", 0.4),
+  };
+  const ring = (cx: number, cy: number, r: number) => `M${cx - r} ${cy} a${r} ${r} 0 1 0 ${r * 2} 0 a${r} ${r} 0 1 0 ${-r * 2} 0 Z`;
+  const hub = ring(52, 54, 31);
+  const visor = ring(52, 54, 24);
+  const url = (name: string) => `url(#${id}-${name})`;
+  const eye = ({ x, y }: { x: number; y: number }) =>
+    `<g class="eye"><g transform="rotate(${EYE.turn} ${x} ${y})"><rect x="${x - EYE.width / 2}" y="${y - EYE.height / 2}" width="${EYE.width}" height="${EYE.height}" rx="${EYE.width / 2}" fill="${tone.eye}"/><circle cx="${x - 1.2}" cy="${y - 5}" r="1.3" fill="#fff" opacity="0.7"/></g></g>`;
+  return `<defs>`
+    + `<linearGradient id="${id}-body" x1="20%" y1="0%" x2="80%" y2="100%"><stop offset="0%" stop-color="${tone.top}"/><stop offset="55%" stop-color="${base}"/><stop offset="100%" stop-color="${tone.bottom}"/></linearGradient>`
+    + `<linearGradient id="${id}-rim" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="${tone.rimLight}" stop-opacity="0.9"/><stop offset="45%" stop-color="${base}" stop-opacity="0"/><stop offset="100%" stop-color="${tone.rimDark}" stop-opacity="0.9"/></linearGradient>`
+    + `<radialGradient id="${id}-shine" cx="32%" cy="18%" r="62%"><stop offset="0%" stop-color="#fff" stop-opacity="0.42"/><stop offset="100%" stop-color="#fff" stop-opacity="0"/></radialGradient>`
+    + `<linearGradient id="${id}-visor" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="${tone.visorTop}"/><stop offset="100%" stop-color="${tone.visorBottom}"/></linearGradient>`
+    + `<radialGradient id="${id}-aura" cx="50%" cy="48%" r="55%"><stop offset="0%" stop-color="${tone.glow}" stop-opacity="0.26"/><stop offset="100%" stop-color="${tone.glow}" stop-opacity="0"/></radialGradient>`
+    + `<linearGradient id="${id}-sheen" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#fff" stop-opacity="0.16"/><stop offset="100%" stop-color="#fff" stop-opacity="0"/></linearGradient>`
+    + `<clipPath id="${id}-visor-clip"><path d="${visor}"/></clipPath>`
+    + `<filter id="${id}-glow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur in="SourceAlpha" stdDeviation="1.8" result="blur"/><feFlood flood-color="${tone.glow}" flood-opacity="0.9"/><feComposite in2="blur" operator="in" result="halo"/><feMerge><feMergeNode in="halo"/><feMergeNode in="SourceGraphic"/></feMerge></filter>`
+    + `</defs>`
+    + `<path d="${COG}" fill="none" stroke="${url("rim")}" stroke-width="${BODY_STROKE + 1.6}" stroke-linejoin="round"/>`
+    + `<path d="${COG}" fill="${url("body")}" stroke="${url("body")}" stroke-width="${BODY_STROKE}" stroke-linejoin="round"/>`
+    + `<path d="${hub}" fill="none" stroke="${tone.rimDark}" stroke-opacity="0.35" stroke-width="1.6"/>`
+    + `<path d="${hub}" fill="${url("body")}"/><path d="${hub}" fill="${url("shine")}"/>`
+    + `<path d="${visor}" fill="none" stroke="#000" stroke-opacity="0.32" stroke-width="2.4"/><path d="${visor}" fill="${url("visor")}"/>`
+    + `<g clip-path="${url("visor-clip")}"><rect width="100" height="100" fill="${url("aura")}"/>`
+    + `<g transform="translate(0 -1) translate(52.25 58) scale(0.92) translate(-52.25 -58)"><g class="face" filter="${url("glow")}">${EYES.map(eye).join("")}`
+    + `<rect x="49" y="68.2" width="7.5" height="2.6" rx="1.3" fill="${tone.glow}" opacity="0.85"/></g></g>`
+    + `<path d="M20 20 L58 20 L36 90 L20 90 Z" fill="${url("sheen")}"/></g>`;
+}
+
+export function team(): string {
+  const style = ".float{animation:float 5s ease-in-out infinite}.face{animation:glance 8s ease-in-out infinite}"
+    + ".eye{transform-box:fill-box;transform-origin:center;animation:blink 4.6s ease-in-out infinite}"
+    + ".b2,.b2 .face{animation-delay:-1.6s}.b2 .eye{animation-delay:-1.3s}.b3,.b3 .face{animation-delay:-3.2s}.b3 .eye{animation-delay:-2.9s}"
+    + "@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}"
+    + "@keyframes blink{0%,93%,100%{transform:scaleY(1)}96%{transform:scaleY(0.08)}}"
+    + "@keyframes glance{0%,35%,100%{transform:translate(0,0)}45%,62%{transform:translate(-3px,1px)}72%,88%{transform:translate(3px,0)}}"
+    + "@media (prefers-reduced-motion:reduce){.float,.face,.eye{animation:none}}";
+  const bots = TEAM.map(({ color, x, y, size, turn }, i) =>
+    `<g class="float b${i + 1}"><g transform="translate(${x} ${y}) scale(${size / 100}) rotate(${turn} 52 54)">${bot3d(color, `b${i + 1}`)}</g></g>`);
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 176"><style>${style}</style>${bots.join("")}</svg>\n`;
+}
+
 export async function renderBrand(): Promise<Map<string, Buffer>> {
   const figure = await mascot();
   const small = await mascot(INK, true);
@@ -145,6 +207,7 @@ async function renderNative(outputs: Map<string, Buffer>, source: Buffer, figure
   outputs.set("assets/gond-1024.png", await mark(1024));
   outputs.set(desktopSource, await mark(1024));
   outputs.set("apps/desktop/src/logo.svg", source);
+  outputs.set("apps/desktop/src/team.svg", Buffer.from(team()));
   // Icon Composer draws the ink fill edge to edge and one white glass layer
   // over it; the eyes are holes in that layer, so they are the fill's ink.
   outputs.set("apps/ios/AppIcon.icon/Assets/cog.svg", await glyph(figure, MARK_MASCOT));

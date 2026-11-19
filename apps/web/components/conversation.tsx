@@ -1376,7 +1376,7 @@ export function Conversation({ threadId }: { threadId: string }) {
           <FollowComposer height={composerHeight} />
           {nativeChrome ? <NativeJump onCanJump={setCanJump} jumpRev={jumpRev} /> : null}
           <MessageScroller className="flex-1">
-            <MessageScrollerViewport preserveScrollOnPrepend className="px-3 pt-[calc(64px+var(--safe-top)+var(--call-pill-space))] pb-(--composer-h) sm:px-4">
+            <MessageScrollerViewport preserveScrollOnPrepend className="px-3 pt-[calc(64px+var(--safe-top)+var(--call-pill-space))] pb-(--composer-h) sm:px-4 wide:px-[max(1.5rem,calc((100%-46rem)/2))]">
               <MessageScrollerContent className="gap-3 py-4">
                 {earlier && messages.length > 0 ? (
                   <MessageScrollerItem>
@@ -1459,7 +1459,7 @@ export function Conversation({ threadId }: { threadId: string }) {
           // Under the app's composer the page keeps its own in place, unseen, so what sits above it (the
           // bots to mention, files, a quote, the / list) and the messages' padding stay where they were.
           style={nativeChrome ? { paddingBottom: "var(--native-composer-bottom, max(0.75rem, var(--safe-bottom)))" } : undefined}
-          className={cn("pointer-events-none absolute inset-x-0 bottom-0 z-20 px-3 pt-2.5 pb-[max(12px,var(--safe-bottom))] sm:px-4 sm:pt-3 [&>*]:pointer-events-auto", nativeChrome && "transition-[padding] duration-250 ease-out")}
+          className={cn("pointer-events-none absolute inset-x-0 bottom-0 z-20 px-3 pt-2.5 pb-[max(12px,var(--safe-bottom))] sm:px-4 sm:pt-3 wide:px-[max(1.5rem,calc((100%-46rem)/2))] wide:pb-5 [&>*]:pointer-events-auto", nativeChrome && "transition-[padding] duration-250 ease-out")}
         >
           {chips.length && !nativeChrome ? (
             // One row a thumb swipes along on a phone, however many bots; on a wide screen they wrap.
@@ -1521,7 +1521,7 @@ export function Conversation({ threadId }: { threadId: string }) {
             <TooltipContent>Attach files</TooltipContent>
           </Tooltip>
 
-          <InputGroup variant="pill" className={cn("min-h-11 rounded-[22px] pr-1.5", nativeChrome && "invisible overflow-hidden")} style={nativeChrome ? { height: "var(--native-composer-height, 2.75rem)" } : undefined}>
+          <InputGroup variant="pill" className={cn("min-h-11 rounded-[22px] pr-1.5 wide:shadow-subtle-3", nativeChrome && "invisible overflow-hidden")} style={nativeChrome ? { height: "var(--native-composer-height, 2.75rem)" } : undefined}>
             <InputGroupTextarea
               ref={composerField}
               value={draft}

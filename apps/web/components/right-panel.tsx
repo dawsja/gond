@@ -47,7 +47,7 @@ function ComputerSlot({ thread, bot, screen }: { thread: Thread; bot: Bot; scree
 
 function RoutineRow({ routine, onOpen, onChange }: { routine: Routine; onOpen: () => void; onChange: () => Promise<void> }) {
   return (
-    <li className="flex items-start gap-2 rounded-lg px-1 py-1.5 hover:bg-card">
+    <li className="flex items-start gap-2 rounded-lg px-1 py-1.5 hover:bg-muted">
       <Clock className={cn("mt-0.5 size-3.5 shrink-0", routine.enabled ? "text-muted-foreground" : "text-ash")} aria-hidden="true" />
       <button type="button" onClick={onOpen} className="min-w-0 flex-1 text-left outline-none focus-visible:underline">
         <span className={cn("block truncate text-[13px] font-medium", !routine.enabled && "text-muted-foreground")}>{routine.name}</span>
@@ -88,7 +88,7 @@ function RightPanelContent({ thread, bot, screen }: { thread: Thread; bot: Bot |
     return (
       <>
         <section>
-          <h2 className="text-[12px] font-medium uppercase tracking-wide text-muted-foreground">{thread.space ? "Your bots in this space" : "In this room"}</h2>
+          <h2 className="text-[13px] font-semibold">{thread.space ? "Your bots in this space" : "In this room"}</h2>
           <ul className="mt-2 flex flex-col gap-1.5">
             {members.map((b) => (
               <li key={b.id} className="flex items-center gap-2 text-[13px]">
@@ -105,7 +105,7 @@ function RightPanelContent({ thread, bot, screen }: { thread: Thread; bot: Bot |
         <SpaceSection thread={thread} />
         {drivers.map((driver) => (
           <section key={driver.id}>
-            <h2 className="text-[12px] font-medium uppercase tracking-wide text-muted-foreground">{driver.name}&apos;s computer</h2>
+            <h2 className="text-[13px] font-semibold">{driver.name}&apos;s computer</h2>
             <div className="mt-2">
               <ComputerSlot thread={thread} bot={driver} screen={screen} />
             </div>
@@ -118,18 +118,18 @@ function RightPanelContent({ thread, bot, screen }: { thread: Thread; bot: Bot |
   return (
     <>
       <section>
-        <h2 className="text-[12px] font-medium uppercase tracking-wide text-muted-foreground">{bot.name}&apos;s computer</h2>
+        <h2 className="text-[13px] font-semibold">{bot.name}&apos;s computer</h2>
         <div className="mt-2">
           <ComputerSlot thread={thread} bot={bot} screen={screen} />
         </div>
       </section>
 
       <section>
-        <h2 className="text-[12px] font-medium uppercase tracking-wide text-muted-foreground">Routines</h2>
+        <h2 className="text-[13px] font-semibold">Routines</h2>
         {routines === null ? (
           routinesFailed ? <LoadFailed what="the routines" onRetry={() => void load()} className="mt-2" /> : <Skeleton className="mt-2 h-14 rounded-xl" />
         ) : routines.length === 0 ? (
-          <Empty className="mt-2 border px-3 py-5">
+          <Empty className="mt-2 rounded-2xl border-0 bg-muted px-3 py-5">
             <EmptyHeader>
               <EmptyMedia variant="icon">
                 <Clock />
@@ -150,7 +150,7 @@ function RightPanelContent({ thread, bot, screen }: { thread: Thread; bot: Bot |
       <BotFiles bot={bot} />
 
       <section>
-        <h2 className="text-[12px] font-medium uppercase tracking-wide text-muted-foreground">Profile</h2>
+        <h2 className="text-[13px] font-semibold">Profile</h2>
         <dl className="mt-2 flex flex-col gap-1.5 text-[12.5px]">
           <div className="flex justify-between gap-2">
             <dt className="text-muted-foreground">Approvals</dt>
@@ -169,7 +169,7 @@ function RightPanelContent({ thread, bot, screen }: { thread: Thread; bot: Bot |
 
 export function RightPanel(props: { thread: Thread; bot: Bot | null; screen?: ScreenProps }) {
   return (
-    <aside className="hidden w-72 shrink-0 flex-col gap-5 overflow-y-auto border-l bg-background p-4 xwide:flex">
+    <aside className="island my-2 mr-2 hidden w-72 shrink-0 flex-col gap-6 overflow-y-auto overscroll-contain px-4 pt-5 pb-4 xwide:flex">
       <RightPanelContent {...props} />
     </aside>
   );

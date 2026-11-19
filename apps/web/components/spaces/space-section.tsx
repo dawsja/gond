@@ -19,7 +19,7 @@ import { Switch } from "@/components/ui/switch";
 import { api, post } from "@/lib/api";
 import { spaceSubtitle } from "@/lib/spaces";
 
-const heading = "text-[12px] font-medium uppercase tracking-wide text-muted-foreground";
+const heading = "text-[13px] font-semibold";
 
 /** A room's place among other Gonds, in its details: an invite for a room, everything about a space. */
 export function SpaceSection({ thread }: { thread: Thread }) {

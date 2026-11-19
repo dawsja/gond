@@ -153,7 +153,7 @@ export function SettingsPage({ user, section, index = false }: { user: SessionUs
                 aria-current={active ? "page" : undefined}
                 className={cn(
                   "flex h-9 shrink-0 items-center gap-2.5 rounded-xl px-3 text-[13.5px] font-medium whitespace-nowrap outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50",
-                  active ? "bg-card text-foreground shadow-subtle" : "text-muted-foreground hover:bg-card/60 hover:text-foreground",
+                  active ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted/70 hover:text-foreground",
                 )}
               >
                 <Icon className="size-4" aria-hidden="true" />
@@ -264,12 +264,12 @@ export function SettingsPage({ user, section, index = false }: { user: SessionUs
         </div>
         {index ? <div className="wide:hidden">{list}</div> : null}
         <div className={cn("flex flex-col gap-5 wide:flex-row wide:items-start wide:gap-8", index && "hidden wide:flex")}>
-          {/* The title and the sections stay put while a section scrolls; the section starts level with the first of them. */}
-          <div className="hidden wide:sticky wide:top-8 wide:flex wide:w-44 wide:shrink-0 wide:flex-col wide:gap-5">
-            <h1 className="text-[22px] leading-8 font-semibold tracking-[-0.4px]">Settings</h1>
+          {/* The title and the sections stay put in their island while a section scrolls, and scroll inside it when the window is short. */}
+          <div className="hidden wide:island wide:sticky wide:top-8 wide:flex wide:max-h-[calc(100dvh-4rem)] wide:w-52 wide:shrink-0 wide:flex-col wide:gap-4 wide:overflow-y-auto wide:overscroll-contain wide:p-3 wide:pt-4">
+            <h1 className="px-3 text-[20px] leading-8 font-semibold tracking-[-0.4px]">Settings</h1>
             {nav}
           </div>
-          <div className="flex min-w-0 flex-1 flex-col gap-5 wide:pt-[52px]">
+          <div className="flex min-w-0 flex-1 flex-col gap-5 wide:pt-4">
             <div className={cn(!index && "hidden wide:block")}>
               <h2 className="text-[17px] font-semibold">{current.label}</h2>
               <p className="text-[13.5px] text-muted-foreground">{current.blurb}</p>

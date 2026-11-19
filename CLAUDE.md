@@ -76,7 +76,10 @@ mid sign-in) can't use it. The microphone is granted to that origin only.
 The address rules are mirrored in each app with the same tests.
 
 - `apps/desktop`: Rust and Tauri v2, a Windows installer (NSIS) and a
-  Linux AppImage. Connect is `src/connect.*`. The bridge is
+  Linux AppImage. Connect is `src/connect.*`: three 3D bots above the
+  words as on the iPhone (`team.svg`, written by `brand:build` from the
+  cog's geometry and shaded as `GondBot` shades, never edited by hand)
+  and the form as an island. The bridge is
   `window.gondDesktop`, injected by `src-tauri/src/init.js`; every
   command in `bridge.rs` checks the origin. `on_permission_request` in
   `lib.rs` allows notifications, clipboard reads and the microphone to
@@ -290,6 +293,16 @@ The address rules are mirrored in each app with the same tests.
   exactly as wide, its items wrapping.
   The picture viewer (`image-viewer.tsx`) is the one exception: the
   picture itself over `bg-black/90`, pills floating like a header.
+- **Wide is islands.** On a wide screen the panes float on the page as
+  `island` cards (`@utility island` in `globals.css`: `bg-card`, 22 px
+  corners, `shadow-subtle-2`): the chat list (`Sidebar
+  variant="floating"`), a conversation's details (`RightPanel`) and
+  Settings' sections. The conversation sits on the page between them,
+  its messages and composer in a centred 46rem column, the composer
+  lifted with `shadow-subtle-3` (the one pill with a shadow). Inside an
+  island, hovers and the active row are `bg-muted` and a bot's job is
+  quiet text, not a badge. A new pane at that width is an island, never
+  a bordered column. Phones keep their own look.
 - **Layers are fixed**: dialogs and sheets `z-50`, the computer's window
   `z-[70]`, a confirm `z-[90]`, everything that floats from a control
   (lists, menus, popovers, tooltips) and toasts `z-[100]`. A new layer

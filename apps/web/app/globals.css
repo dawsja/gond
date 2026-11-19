@@ -504,6 +504,15 @@ html[data-selecting] [data-selecting-in] * {
   --tw-inset-shadow: inset 0 1px 0 rgb(255 255 255 / 0.65), inset 0 -1px 0 rgb(90 55 0 / 0.35);
 }
 
+/* On a wide screen the panes float on the page as islands: the chat list, a conversation's details,
+   Settings' sections. Hovers and the active row inside one are bg-muted. */
+@utility island {
+  border-radius: 22px;
+  background-color: var(--card);
+  box-shadow: var(--shadow-subtle-2);
+  --surface: var(--card);
+}
+
 /* `scrollbar-none` stays for the call sites that say it out loud; the base already does the same. */
 @utility scrollbar-none {
   scrollbar-width: none;

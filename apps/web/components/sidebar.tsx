@@ -141,7 +141,7 @@ const Row = memo(function Row({ thread, bot, active, bots, activity, draft, onOp
   const drafted = !active && !working && !calling && draft ? draft.replace(/\s+/g, " ").trim() : "";
   return (
     <ThreadMenu thread={thread} bot={bot} onOpen={onOpen} onAsk={onAsk} lift="row" trigger={<SidebarMenuItem />}>
-        <SidebarMenuButton size="lg" isActive={active} render={<Link href={`/app/t/${thread.id}`} aria-current={active ? "page" : undefined} onClick={() => setOpenMobile(false)} />} className="h-[76px] gap-4 rounded-2xl px-3 data-active:bg-card data-active:[--surface:var(--card)] data-active:shadow-subtle hover:bg-card/60 wide:h-14 wide:gap-3 wide:rounded-xl wide:px-2.5">
+        <SidebarMenuButton size="lg" isActive={active} render={<Link href={`/app/t/${thread.id}`} aria-current={active ? "page" : undefined} onClick={() => setOpenMobile(false)} />} className="h-[76px] gap-4 rounded-2xl px-3 data-active:bg-card data-active:[--surface:var(--card)] data-active:shadow-subtle hover:bg-card/60 wide:h-[60px] wide:gap-3 wide:px-2.5 wide:hover:bg-muted wide:data-active:bg-muted wide:data-active:[--surface:var(--muted)] wide:data-active:shadow-none">
           {bot ? (
             <>
               <BotAvatar bot={bot} size={48} mood={working ? "thinking" : undefined} className="wide:hidden" />
@@ -159,9 +159,14 @@ const Row = memo(function Row({ thread, bot, active, bots, activity, draft, onOp
               <span className="flex min-w-0 flex-1 items-center gap-1.5">
                 <span className="max-w-[75%] shrink-0 truncate text-[17px] font-semibold wide:text-[14px]">{thread.name || bot?.name || "Room"}</span>
                 {bot?.title && thread.kind !== "room" ? (
-                  <Badge variant="secondary" className="h-5 min-w-0 shrink px-1.5 text-[11.5px] font-normal text-muted-foreground wide:h-4 wide:text-[10.5px]" title={bot.title}>
-                    <span className="truncate">{bot.title}</span>
-                  </Badge>
+                  <>
+                    <Badge variant="secondary" className="h-5 min-w-0 shrink px-1.5 text-[11.5px] font-normal text-muted-foreground wide:hidden" title={bot.title}>
+                      <span className="truncate">{bot.title}</span>
+                    </Badge>
+                    <span className="hidden min-w-0 shrink truncate text-[12px] text-ash wide:inline" title={bot.title}>
+                      {bot.title}
+                    </span>
+                  </>
                 ) : null}
                 {bot?.pinned || thread.pinned ? <Pin className="size-3 shrink-0 text-muted-foreground" aria-label="Pinned" /> : null}
               </span>
@@ -350,7 +355,7 @@ export function BotRows({ rows, hits, query, setQuery, lookAs, onOpen, onAsk }: 
               const who = hit.author === "you" ? "You" : (bots.find((b) => b.id === hit.author)?.name ?? thread?.name ?? "Bot");
               return (
                 <SidebarMenuItem key={hit.id}>
-                  <SidebarMenuButton size="lg" render={<Link href={`/app/t/${hit.threadId}?m=${hit.id}`} onClick={() => setQuery("")} />} className="h-auto items-start gap-2.5 rounded-xl px-2.5 py-2 hover:bg-card/60">
+                  <SidebarMenuButton size="lg" render={<Link href={`/app/t/${hit.threadId}?m=${hit.id}`} onClick={() => setQuery("")} />} className="h-auto items-start gap-2.5 rounded-xl px-2.5 py-2 hover:bg-card/60 wide:hover:bg-muted">
                     <MessageSquareText className="mt-1 text-muted-foreground" aria-hidden="true" />
                     <span className="flex min-w-0 flex-1 flex-col">
                       <span className="truncate text-[12.5px] font-medium">
@@ -378,8 +383,8 @@ export function AppSidebar({ onOpen }: { onOpen: (dialog: ShellDialog) => void }
   const { query, setQuery, rows, hits } = useBotSearch();
 
   return (
-    <Sidebar collapsible="offcanvas">
-      <SidebarHeader className="flex-row items-center gap-2 px-3 pt-3 pb-2">
+    <Sidebar variant="floating" collapsible="offcanvas">
+      <SidebarHeader className="flex-row items-center gap-2 px-2.5 pt-2.5 pb-2">
         <BotSearchInput query={query} setQuery={setQuery} />
         <NewMenu onOpen={onOpen} />
       </SidebarHeader>
@@ -392,12 +397,12 @@ export function AppSidebar({ onOpen }: { onOpen: (dialog: ShellDialog) => void }
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="border-t">
+      <SidebarFooter className="px-2 pb-2">
         <CallBar />
         <SidebarMenu className="gap-0.5">
 
           <SidebarMenuItem>
-            <ProfileMenu trigger={<SidebarMenuButton isActive={pathname.startsWith("/app/settings")} aria-label="Your menu" className="h-10 gap-3 rounded-xl px-2.5 text-[13.5px] font-medium data-active:bg-card data-active:shadow-subtle hover:bg-card/60" />}>
+            <ProfileMenu trigger={<SidebarMenuButton isActive={pathname.startsWith("/app/settings")} aria-label="Your menu" className="h-10 gap-3 rounded-2xl px-2.5 text-[13.5px] font-medium hover:bg-muted data-active:bg-muted" />}>
               <PersonAvatar name={me.name} avatar={me.avatar} size={24} />
               <span className="truncate">{me.name}</span>
               {profiles.length > 1 ? <span className="ml-auto truncate text-[12px] font-normal text-muted-foreground">{me.profile.label}</span> : null}

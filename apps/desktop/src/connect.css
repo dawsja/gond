@@ -14,13 +14,13 @@
   --foreground: #16181d;
   --card: #ffffff;
   --muted-foreground: #5b6170;
-  --ash: #646a79;
-  --primary: #16181d;
-  --primary-foreground: #ffffff;
   --destructive: #bd1f1f;
   --input: #d2d6dd;
-  --input-fill: var(--card);
-  --ring: var(--foreground);
+  --primary: #ffffff;
+  --primary-edge: #d2d6dd;
+  --primary-edge-focus: #bfc4cd;
+  --tint-solid: #2c62ba;
+  --shadow: 0 16px 40px rgba(15, 23, 42, 0.12), 0 0 0 1px rgba(15, 23, 42, 0.04);
   color-scheme: light;
 }
 
@@ -30,13 +30,13 @@
     --foreground: #ededed;
     --card: #151515;
     --muted-foreground: #a1a1a1;
-    --ash: #8a8a8a;
-    --primary: #ededed;
-    --primary-foreground: #151515;
     --destructive: #f97c7c;
     --input: #313131;
-    --input-fill: color-mix(in oklch, var(--input) 30%, transparent);
-    --ring: var(--foreground);
+    --primary: #232323;
+    --primary-edge: #313131;
+    --primary-edge-focus: #494949;
+    --tint-solid: #2b61b9;
+    --shadow: 0 16px 40px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.04);
     color-scheme: dark;
   }
 }
@@ -71,14 +71,10 @@ body {
 header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 16px 32px;
-  font-size: 14px;
-  font-weight: 500;
-}
-
-header img {
-  border-radius: 9999px;
+  gap: 10px;
+  padding: 18px 28px;
+  font-size: 16px;
+  font-weight: 650;
 }
 
 main {
@@ -87,38 +83,47 @@ main {
   flex-direction: column;
   justify-content: center;
   width: 100%;
-  max-width: 384px;
+  max-width: 456px;
   margin: 0 auto;
-  padding: 0 16px 96px;
+  padding: 0 16px 72px;
 }
 
-.eyebrow {
-  margin: 0;
-  color: var(--ash);
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: -0.32px;
-  text-transform: uppercase;
+/* The team you're about to reach, as on the iPhone's Connect: team.svg, drawn by brand:build. */
+.team {
+  display: block;
+  width: 360px;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto 20px;
 }
 
 h1 {
-  margin: 12px 0 0;
-  font-size: 28px;
-  font-weight: 600;
-  letter-spacing: -0.56px;
+  margin: 0;
+  text-align: center;
+  font-size: 34px;
+  font-weight: 650;
+  line-height: 40px;
+  letter-spacing: -0.04em;
 }
 
 .description {
-  margin: 8px 0 24px;
+  margin: 10px 0 28px;
   color: var(--muted-foreground);
-  font-size: 14px;
+  text-align: center;
+  font-size: 15px;
   line-height: 24px;
 }
 
+/* The form is an island, as the panes of the app are. */
 form {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid var(--primary-edge);
+  border-radius: 30px;
+  background: var(--card);
+  box-shadow: var(--shadow);
 }
 
 .field {
@@ -128,8 +133,10 @@ form {
 }
 
 label {
-  font-size: 14px;
-  font-weight: 500;
+  padding-left: 6px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .field[data-invalid="true"] label {
@@ -137,28 +144,26 @@ label {
 }
 
 input {
-  height: 40px;
+  height: 50px;
   width: 100%;
-  padding: 4px 12px;
-  border: 1px solid var(--input);
-  border-radius: 16px;
-  background: var(--input-fill);
+  padding: 0 20px;
+  border: 1px solid var(--primary-edge);
+  border-radius: 9999px;
+  background: var(--primary);
   color: inherit;
   font: inherit;
-  font-size: 14px;
+  font-size: 15px;
   outline: none;
-  transition:
-    border-color 0.15s,
-    box-shadow 0.15s;
+  transition: border-color 0.15s;
 }
 
 input::placeholder {
   color: var(--muted-foreground);
 }
 
+input:hover,
 input:focus-visible {
-  border-color: var(--ring);
-  box-shadow: 0 0 0 3px color-mix(in oklch, var(--ring) 50%, transparent);
+  border-color: var(--primary-edge-focus);
 }
 
 input[aria-invalid="true"] {
@@ -168,8 +173,9 @@ input[aria-invalid="true"] {
 
 .error {
   margin: 0;
+  padding: 0 6px;
   color: var(--destructive);
-  font-size: 14px;
+  font-size: 13.5px;
   line-height: 20px;
 }
 
@@ -178,28 +184,27 @@ button {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  height: 44px;
-  margin-top: 8px;
+  height: 52px;
   padding: 0 20px;
   border: 1px solid transparent;
   border-radius: 9999px;
-  background: var(--primary);
-  color: var(--primary-foreground);
+  background: var(--tint-solid);
+  color: #ffffff;
   font: inherit;
-  font-size: 14px;
-  font-weight: 500;
+  font-size: 16px;
+  font-weight: 600;
   cursor: pointer;
   outline: none;
   transition: background-color 0.15s;
 }
 
 button:hover {
-  background: color-mix(in oklch, var(--primary) 85%, transparent);
+  background: color-mix(in oklch, var(--tint-solid), black 12%);
 }
 
 button:focus-visible {
-  border-color: var(--ring);
-  box-shadow: 0 0 0 3px color-mix(in oklch, var(--ring) 50%, transparent);
+  outline: 2px solid var(--foreground);
+  outline-offset: 2px;
 }
 
 button:disabled {
@@ -218,6 +223,13 @@ button:disabled {
 
 [hidden] {
   display: none !important;
+}
+
+/* A short window keeps the words and the form. */
+@media (max-height: 600px) {
+  .team {
+    display: none;
+  }
 }
 
 @keyframes spin {
