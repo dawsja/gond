@@ -11,6 +11,8 @@ import { cn } from "@/lib/utils";
 // Cards the person answered on this page, so the one they just said yes to celebrates as it folds and
 // an old answered card loaded from history doesn't.
 const answeredHere = new Set<string>();
+// How long the bot smiles at a card the person just answered: about one hop.
+const GLAD_MS = 1600;
 
 /** Under an expired card's title: why it closed. */
 export const NOBODY_ANSWERED = "Nobody answered in time";
@@ -71,9 +73,15 @@ const CONFETTI: { color: string; dx: number; dy: number; delay: number; shape: s
 /** Once answered, a card folds to one line with how it ended; one the person just answered hops. */
 export function ActionCardDone({ id, bot, icon, title, by, status, tone }: { id?: string; bot?: Bot; icon: ReactNode; title: ReactNode; by?: ReactNode; status: string; tone: "ok" | "bad" | "neutral" }) {
   const [celebrate] = useState(() => Boolean(id && tone === "ok" && answeredHere.has(id)));
+  const [glad, setGlad] = useState(celebrate);
   useEffect(() => {
     if (id) answeredHere.delete(id);
   }, [id]);
+  useEffect(() => {
+    if (!glad) return;
+    const t = setTimeout(() => setGlad(false), GLAD_MS);
+    return () => clearTimeout(t);
+  }, [glad]);
   return (
     <div data-slot="action-card" className={cn("flex w-full max-w-[440px] items-center gap-3 rounded-3xl border py-3 pr-3.5 pl-3", tone === "ok" ? "border-tone-ok-edge bg-tone-ok-wash" : "border-primary-edge bg-bubble-bot")}>
       {bot ? (
@@ -83,7 +91,7 @@ export function ActionCardDone({ id, bot, icon, title, by, status, tone }: { id?
                 <span key={i} aria-hidden="true" className={cn("absolute top-1/2 left-1/2 animate-confetti opacity-0 motion-reduce:hidden", bit.shape)} style={{ background: bit.color, animationDelay: `${bit.delay}s`, "--dx": `${bit.dx}px`, "--dy": `${bit.dy}px` } as CSSProperties} />
               ))
             : null}
-          <BotAvatar bot={{ ...bot, primary: false }} size={32} className={cn(celebrate && "animate-hop motion-reduce:animate-none")} />
+          <BotAvatar bot={{ ...bot, primary: false }} size={32} mood={glad ? "glad" : undefined} className={cn(celebrate && "animate-hop motion-reduce:animate-none")} />
         </span>
       ) : (
         <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary text-muted-foreground [&_svg]:size-4">{icon}</span>

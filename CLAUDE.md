@@ -1,6 +1,6 @@
 # Gond: how we build it
 
-Brand mark: the Gond mascot (a white cog with ink eyes) on the ink tile, made by `brandMark` and `mascot` in `scripts/brand.ts` from the geometry in `gond-bot.tsx` and written to `packages/shared/brand/gond-mark.svg` (pinned by sha in `brand.test.ts`, byte-equal to the desktop's `logo.svg` and the figure the landing pins); every web, Android, iPhone and desktop icon derives from it; build with `bun run brand:build`, check with `bun run brand:build -- --check`; never edit the mark or a derived asset by hand, and never redraw the mascot for it.
+Brand mark: the Gond mascot (a white cog with ink eyes) on the ink tile, made by `brandMark` and `mascot` in `scripts/brand.ts` from the geometry in `gond-bot-shapes.ts` (the app draws the same geometry in 3D; icons stay flat) and written to `packages/shared/brand/gond-mark.svg` (pinned by sha in `brand.test.ts`, byte-equal to the desktop's `logo.svg` and the figure the landing pins); every web, Android, iPhone and desktop icon derives from it; build with `bun run brand:build`, check with `bun run brand:build -- --check`; never edit the mark or a derived asset by hand, and never redraw the mascot for it.
 The mascot spans `MARK_MASCOT` (74%) of what a surface shows (the launcher layers and splash `LAUNCHER_MASCOT`, the maskable icon `MASKABLE_MASCOT`); surfaces always 24 px or smaller (favicon frames to 48, status bar icons, the web badge) take `SMALL_MASCOT`, wider eyes in one place; one-colour layers are the cog with the eyes cut out. `brand.test.ts` fails a surface without both eyes, with the old cog-with-hole (a hole between the eyes, `r="12"`, a retired hash), outside its span or safe circle, or a silhouette that is not white.
 
 Read this before changing anything. The README says what Gond is; this
@@ -121,8 +121,8 @@ The address rules are mirrored in each app with the same tests.
   otherwise.
 - `apps/ios`: Swift and SwiftUI, iPhone only, iOS 17 and up. Connect is
   native (`ConnectView.swift`, Liquid Glass from iOS 26 via `glassEffect`
-  and `.glassProminent`, a material before, over faces drawn from the
-  cog, `CogShape`); then a `WKWebView` (`WebShell.swift`).
+  and `.glassProminent`, a material before, over 3D faces drawn from the
+  cog, `BotFace` on `CogShape`); then a `WKWebView` (`WebShell.swift`).
   - `gondMobile` is a document-start script that defines itself only on
     the saved origin and posts to a message handler, which checks the
     frame's origin again. WebKit's messages are one way, so what the page
@@ -304,12 +304,22 @@ The address rules are mirrored in each app with the same tests.
   contrast drops (text 4.5:1, the focus ring 3:1, destructive on its
   wash, every accent's shades in both themes, a bubble's rings
   drawn solid) or when a shell's copy of the page colours drifts.
-- **Mascots come from the gond-bot skill** (`components/hq/gond-bot.tsx`),
-  copied 1:1. Don't redraw the cog. `shape` (`BOT_SHAPES`) picks a body
-  from `BODIES` under the same eyes and animations; only the cog spins. A
-  new shape is a path there and a name in `BOT_SHAPES`. A bot may wear a
-  picture instead (`usePicturePicker`, a 512 px PNG or a GIF as is,
-  `gond_bot_avatars`, `Bot.avatar`); `BotAvatar` draws either.
+- **Mascots are 3D, drawn by `GondBot`** (`components/hq/gond-bot.tsx`)
+  on the geometry in `gond-bot-shapes.ts` (`COG`, `BODIES`, `EYES`), which
+  the icons share. Don't redraw the cog. A shaded body, a dark visor
+  (`LAYOUT` per body), glowing eyes and a mouth, every shade mixed from
+  the bot's one colour (`shadesOf`), so `BOT_COLORS` and what's stored stay
+  a single hex. Below 40 px the glow, sheen and catch-lights go (`fine`).
+  The cog keeps a still hub and only its teeth turn; only the cog spins.
+  `shape` (`BOT_SHAPES`) picks a body under the same eyes and animations;
+  a new shape is a path in `BODIES`, a `LAYOUT` entry and a name in
+  `BOT_SHAPES`. `mood` is set by Gond, never stored or picked: `thinking`
+  while it works (work lines, Chats rows and pinned faces), `talking`
+  while its voice speaks on a call (`call.speaking`), `glad` as an
+  answered card folds (`GLAD_MS`). The box homepage and the iPhone's
+  Connect faces draw the same 3D cog. A bot may wear a picture instead
+  (`usePicturePicker`, a 512 px PNG or a GIF as is, `gond_bot_avatars`,
+  `Bot.avatar`); `BotAvatar` draws either.
 
 ### Layout
 

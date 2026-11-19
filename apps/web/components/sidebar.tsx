@@ -110,7 +110,7 @@ function ThreadMenu({ thread, bot, onOpen, onAsk, trigger, lift, children }: { t
   );
 }
 
-const PinnedTile = memo(function PinnedTile({ thread, bot, active, onOpen, onAsk }: { thread: ThreadRow; bot: Bot | undefined; active: boolean; onOpen: (dialog: ShellDialog) => void; onAsk: (ask: Ask) => void }) {
+const PinnedTile = memo(function PinnedTile({ thread, bot, active, working, onOpen, onAsk }: { thread: ThreadRow; bot: Bot | undefined; active: boolean; working: boolean; onOpen: (dialog: ShellDialog) => void; onAsk: (ask: Ask) => void }) {
   const { setOpenMobile } = useSidebar();
   const { bots } = useStore();
   return (
@@ -118,8 +118,8 @@ const PinnedTile = memo(function PinnedTile({ thread, bot, active, onOpen, onAsk
       <Link href={`/app/t/${thread.id}`} aria-current={active ? "page" : undefined} onClick={() => setOpenMobile(false)} className="relative flex w-28 flex-col items-center gap-3 rounded-2xl py-3 outline-none focus-visible:ring-3 focus-visible:ring-ring/50 wide:w-22 wide:gap-1.5 wide:py-2">
         {bot ? (
           <>
-            <BotAvatar bot={bot} size={96} className="wide:hidden" />
-            <BotAvatar bot={bot} size={64} className="hidden wide:inline-flex" />
+            <BotAvatar bot={bot} size={96} mood={working ? "thinking" : undefined} className="wide:hidden" />
+            <BotAvatar bot={bot} size={64} mood={working ? "thinking" : undefined} className="hidden wide:inline-flex" />
           </>
         ) : (
           <>
@@ -144,8 +144,8 @@ const Row = memo(function Row({ thread, bot, active, bots, activity, draft, onOp
         <SidebarMenuButton size="lg" isActive={active} render={<Link href={`/app/t/${thread.id}`} aria-current={active ? "page" : undefined} onClick={() => setOpenMobile(false)} />} className="h-[76px] gap-4 rounded-2xl px-3 data-active:bg-card data-active:[--surface:var(--card)] data-active:shadow-subtle hover:bg-card/60 wide:h-14 wide:gap-3 wide:rounded-xl wide:px-2.5">
           {bot ? (
             <>
-              <BotAvatar bot={bot} size={48} className="wide:hidden" />
-              <BotAvatar bot={bot} size={40} className="hidden wide:inline-flex" />
+              <BotAvatar bot={bot} size={48} mood={working ? "thinking" : undefined} className="wide:hidden" />
+              <BotAvatar bot={bot} size={40} mood={working ? "thinking" : undefined} className="hidden wide:inline-flex" />
             </>
           ) : (
             <>
@@ -329,7 +329,7 @@ export function BotRows({ rows, hits, query, setQuery, lookAs, onOpen, onAsk }: 
           {pinned.length ? (
             <ul className="mb-2 flex flex-wrap justify-center gap-x-2 gap-y-2 px-1 pt-6 pb-4 wide:mb-1 wide:gap-x-1 wide:pt-2 wide:pb-3" aria-label="Pinned">
               {pinned.map(({ thread, bot }) => (
-                <PinnedTile key={thread.id} thread={thread} bot={bot} active={pathname === `/app/t/${thread.id}`} onOpen={onOpen} onAsk={onAsk} />
+                <PinnedTile key={thread.id} thread={thread} bot={bot} active={pathname === `/app/t/${thread.id}`} working={Boolean(bot && activity[thread.id]?.[bot.id])} onOpen={onOpen} onAsk={onAsk} />
               ))}
             </ul>
           ) : null}

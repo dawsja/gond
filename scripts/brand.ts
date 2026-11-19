@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import sharp from "sharp";
+import { BODY_STROKE, COG, EYE, EYES } from "../apps/web/components/hq/gond-bot-shapes.ts";
 
 export const root = join(import.meta.dir, "..");
 export const sourcePath = "packages/shared/brand/gond-mark.svg";
@@ -65,26 +66,17 @@ export const MASKABLE_MASCOT = MARK_MASCOT * 0.8;
 // A status bar icon is 24 dp; the figure keeps a hair of padding.
 export const GLYPH_MASCOT = 0.9;
 const desktopSource = "apps/desktop/icon-source.png";
-const mascotPath = "apps/web/components/hq/gond-bot.tsx";
-
-// The mascot standing still with its eyes open, its geometry read from the
-// component so no surface can drift from it: a white cog, ink eyes. `small`
-// widens and spreads the eyes about their own centres for tiny surfaces.
+// The icons keep the mascot flat, a white cog with ink eyes, while the app
+// draws it in 3D; both read one geometry so no surface can drift from it.
+// `small` widens and spreads the eyes about their own centres for tiny surfaces.
 export async function mascot(ink = INK, small = false): Promise<string> {
-  const source = await readFile(join(root, mascotPath), "utf8");
-  const cog = source.match(/const COG =\s*"([^"]+)"/)?.[1];
-  const stroke = source.match(/<path d=\{shape === "cog" \? COG[^>]*strokeWidth="([\d.]+)"/)?.[1];
-  const eye = source.match(/<rect x=\{cx - ([\d.]+)\} y=\{cy - ([\d.]+)\} width="([\d.]+)" height="([\d.]+)" rx="([\d.]+)" fill="#fff" transform=\{`rotate\((-?[\d.]+) \$\{cx\} \$\{cy\}\)`\}/);
-  const eyes = [...source.matchAll(/eye\(\{ cx: ([\d.]+), cy: ([\d.]+), lid:/g)].map(([, cx, cy]) => [Number(cx), Number(cy)]);
-  if (!cog || !stroke || !eye || eyes.length !== 2) throw new Error(`Mascot geometry not found in ${mascotPath}`);
-  const [, dx, dy, width, height, rx, turn] = eye;
-  const body = `<path d="${cog}" fill="#ffffff" stroke="#ffffff" stroke-width="${stroke}" stroke-linejoin="round"/>`;
-  if (!small) return body + eyes.map(([cx, cy]) => `<rect x="${cx - Number(dx)}" y="${cy - Number(dy)}" width="${width}" height="${height}" rx="${rx}" fill="${ink}" transform="rotate(${turn} ${cx} ${cy})"/>`).join("");
-  const mid = [(eyes[0][0] + eyes[1][0]) / 2, (eyes[0][1] + eyes[1][1]) / 2];
-  const w = Number(width) * SMALL_MASCOT.eyeWidth, h = Number(height) * SMALL_MASCOT.eyeHeight;
-  return body + eyes.map(([x, y]) => {
+  const body = `<path d="${COG}" fill="#ffffff" stroke="#ffffff" stroke-width="${BODY_STROKE}" stroke-linejoin="round"/>`;
+  if (!small) return body + EYES.map(({ x: cx, y: cy }) => `<rect x="${cx - EYE.width / 2}" y="${cy - EYE.height / 2}" width="${EYE.width}" height="${EYE.height}" rx="${EYE.width / 2}" fill="${ink}" transform="rotate(${EYE.turn} ${cx} ${cy})"/>`).join("");
+  const mid = [(EYES[0].x + EYES[1].x) / 2, (EYES[0].y + EYES[1].y) / 2];
+  const w = EYE.width * SMALL_MASCOT.eyeWidth, h = EYE.height * SMALL_MASCOT.eyeHeight;
+  return body + EYES.map(({ x, y }) => {
     const cx = mid[0] + (x - mid[0]) * SMALL_MASCOT.spread, cy = mid[1] + (y - mid[1]) * SMALL_MASCOT.spread;
-    return `<rect x="${cx - w / 2}" y="${cy - h / 2}" width="${w}" height="${h}" rx="${w / 2}" fill="${ink}" transform="rotate(${turn} ${cx} ${cy})"/>`;
+    return `<rect x="${cx - w / 2}" y="${cy - h / 2}" width="${w}" height="${h}" rx="${w / 2}" fill="${ink}" transform="rotate(${EYE.turn} ${cx} ${cy})"/>`;
   }).join("");
 }
 

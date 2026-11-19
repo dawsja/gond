@@ -191,7 +191,7 @@ export function CallPill() {
       {card ? (
         <div className="pointer-events-auto flex h-11 max-w-full min-w-0 items-center gap-2 rounded-full border border-primary-edge bg-card pr-1.5 pl-1.5 shadow-subtle-3 [--surface:var(--card)]">
           <button type="button" onClick={open} className="flex min-w-0 items-center gap-2 rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
-            {bot ? <BotAvatar bot={bot} size={32} /> : null}
+            {bot ? <BotAvatar bot={bot} size={32} mood={call.speaking ? "talking" : undefined} /> : null}
             <span className="truncate text-[13.5px] font-semibold">{card.summary || "A card needs you"}</span>
             <Badge tone="warn" className="shrink-0">
               Needs you
@@ -204,7 +204,7 @@ export function CallPill() {
       ) : (
         <div className="pointer-events-auto flex h-11 max-w-full min-w-0 items-center gap-2 rounded-full bg-foreground pr-1.5 pl-1.5 text-background shadow-subtle-3 [--surface:var(--foreground)]">
           <button type="button" onClick={open} aria-label={`Back to the call with ${bot?.name ?? "your bot"}`} className="flex min-w-0 items-center gap-2 rounded-full pr-1 outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
-            {bot ? <BotAvatar bot={bot} size={32} /> : null}
+            {bot ? <BotAvatar bot={bot} size={32} mood={call.speaking ? "talking" : undefined} /> : null}
             <span className="truncate text-[13.5px] font-semibold">{bot?.name ?? "Call"}</span>
             <CallWave call={call} bot={bot} className="h-4" />
             <span className="text-xs tabular-nums opacity-70">{clock}</span>
@@ -233,7 +233,7 @@ export function CallBar() {
   return (
     <div className="mb-1 hidden flex-col gap-2 rounded-2xl border border-primary-edge bg-card p-2 [--surface:var(--card)] wide:flex">
       <Link href={`/app/t/${call.info.threadId}`} className="flex min-w-0 items-center gap-2.5 rounded-xl p-0.5 outline-none hover:bg-primary-hover focus-visible:ring-3 focus-visible:ring-ring/50">
-        {bot ? <BotAvatar bot={bot} size={32} /> : null}
+        {bot ? <BotAvatar bot={bot} size={32} mood={call.speaking ? "talking" : undefined} /> : null}
         <span className="flex min-w-0 flex-1 flex-col leading-tight">
           <span className="truncate text-[13.5px] font-semibold">{bot?.name ?? "Call"}</span>
           <span className="truncate text-[11.5px] font-medium text-tint-ink tabular-nums">

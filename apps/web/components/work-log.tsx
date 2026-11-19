@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 export function WorkLine({ bot, line, waiting = false }: { bot: Bot | undefined; line: string; waiting?: boolean }) {
   return (
     <div className={markerVariants()}>
-      {bot ? <BotAvatar bot={bot} size={22} /> : null}
+      {bot ? <BotAvatar bot={bot} size={22} mood={waiting ? undefined : "thinking"} /> : null}
       <MarkerContent className={cn("min-w-0 flex-1 truncate font-mono text-[12px]", !waiting && "shimmer")}>{line}</MarkerContent>
     </div>
   );
@@ -42,7 +42,7 @@ export function WorkLines({ working, label }: { working: { bot: Bot; line: strin
       {open
         ? working.map(({ bot, line, waiting }) => (
             <div key={bot.id} className={cn(markerVariants(), "pl-[38px]")}>
-              <BotAvatar bot={bot} size={18} />
+              <BotAvatar bot={bot} size={18} mood={waiting ? undefined : "thinking"} />
               <MarkerContent className={cn("min-w-0 flex-1 truncate font-mono text-[12px]", !waiting && "shimmer")}>{line}</MarkerContent>
             </div>
           ))

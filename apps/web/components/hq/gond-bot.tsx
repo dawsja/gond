@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useId, useState, type CSSProperties } from "react";
+import { BODIES, BODY_STROKE, COG, EYE, EYES, type GondBotShape } from "@/components/hq/gond-bot-shapes";
 import { rem } from "@/lib/utils";
 
 type GondBotExpression = "happy" | "wink" | "surprised";
-type GondBotShape = "cog" | "gumdrop" | "cloud" | "circle" | "triangle";
+/** What the bot is doing right now, set by Gond and never stored: working, on a call, or pleased for a moment. */
+export type GondBotMood = "thinking" | "talking" | "glad";
 
 type GondBotProps = {
   color?: string;
@@ -16,18 +18,46 @@ type GondBotProps = {
   label?: string;
   // Eyes shut, slow breaths and a drift of z's; no blinking, glancing or hello.
   asleep?: boolean;
+  mood?: GondBotMood;
 };
 
-const COG =
-  "M40.14 25.36 C44.29 23.64 45 17 52 17 C59 17 59.71 23.64 63.86 25.36 C68.02 27.08 73.21 22.89 78.16 27.84 C83.11 32.79 78.92 37.98 80.64 42.14 C82.36 46.29 89 47 89 54 C89 61 82.36 61.71 80.64 65.86 C78.92 70.02 83.11 75.21 78.16 80.16 C73.21 85.11 68.02 80.92 63.86 82.64 C59.71 84.36 59 91 52 91 C45 91 44.29 84.36 40.14 82.64 C35.98 80.92 30.79 85.11 25.84 80.16 C20.89 75.21 25.08 70.02 23.36 65.86 C21.64 61.71 15 61 15 54 C15 47 21.64 46.29 23.36 42.14 C25.08 37.98 20.89 32.79 25.84 27.84 C30.79 22.89 35.98 27.08 40.14 25.36 Z";
+// Every shade comes from the bot's one colour, so the picker and what's stored stay a single hex.
+function mix(a: string, b: string, t: number) {
+  const channel = (hex: string, i: number) => parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16);
+  const out = [0, 1, 2].map((i) => Math.round(channel(a, i) * (1 - t) + channel(b, i) * t));
+  return `#${out.map((n) => n.toString(16).padStart(2, "0")).join("")}`;
+}
 
-// Other bodies for the same eyes, drawn in the cog's box (centred on x 52) so every shape sits the same size.
-const BODIES: Record<Exclude<GondBotShape, "cog">, string> = {
-  gumdrop: "M52 19 C73 19 86.5 41 88 66 C89 82 82.5 88.5 71 89.2 C58 90.2 46 90.2 33 89.2 C21.5 88.5 15 82 16 66 C17.5 41 31 19 52 19 Z",
-  cloud: "M29 79 A17 17 0 0 1 26.46 45.19 A3 3 0 0 0 29.01 42.32 A21 21 0 0 1 70.55 38.67 A3 3 0 0 0 73.28 41.04 A19 19 0 0 1 72 79 Z",
-  circle: "M18 54 A34 34 0 1 1 86 54 A34 34 0 1 1 18 54 Z",
-  triangle: "M58.53 26.38 L83.47 73.62 Q90 86 76 86 L28 86 Q14 86 20.53 73.62 L45.47 26.38 Q52 14 58.53 26.38 Z",
+function shadesOf(color: string) {
+  const base = /^#[0-9a-f]{6}$/i.test(color) ? color : "#189C47";
+  return {
+    base,
+    top: mix(base, "#ffffff", 0.3),
+    bottom: mix(base, "#000000", 0.36),
+    rimLight: mix(base, "#ffffff", 0.75),
+    rimDark: mix(base, "#000000", 0.62),
+    visorTop: mix(base, "#0a0b0d", 0.84),
+    visorBottom: mix(base, "#050506", 0.94),
+    eye: mix(base, "#ffffff", 0.88),
+    glow: mix(base, "#ffffff", 0.4),
+  };
+}
+
+const circle = (cx: number, cy: number, r: number) => `M${cx - r} ${cy} a${r} ${r} 0 1 0 ${r * 2} 0 a${r} ${r} 0 1 0 ${-r * 2} 0 Z`;
+
+// The cog keeps a still hub in front of its teeth, so only the teeth turn and the light never turns with them.
+const HUB = circle(52, 54, 31);
+
+// Where each body's visor sits (its own outline shrunk about a point, or a disc) and how the face fits in it.
+const LAYOUT: Record<GondBotShape, { visor: string; at: [number, number]; scale: number; face: { x: number; y: number; scale: number } }> = {
+  cog: { visor: circle(52, 54, 24), at: [52, 54], scale: 1, face: { x: 0, y: -1, scale: 0.92 } },
+  circle: { visor: circle(52, 54, 25.5), at: [52, 54], scale: 1, face: { x: 0, y: -1, scale: 0.95 } },
+  gumdrop: { visor: BODIES.gumdrop, at: [52, 61], scale: 0.7, face: { x: 0, y: 2.5, scale: 0.95 } },
+  cloud: { visor: BODIES.cloud, at: [51, 60], scale: 0.7, face: { x: -0.5, y: 2.5, scale: 0.86 } },
+  triangle: { visor: BODIES.triangle, at: [52, 67], scale: 0.66, face: { x: 0, y: 9, scale: 0.76 } },
 };
+
+const FACE_AT = { x: 52.25, y: 58 };
 
 export function GondBot({
   color = "#189C47",
@@ -38,10 +68,17 @@ export function GondBot({
   tilt = 0,
   label = "Gond bot saying hello",
   asleep = false,
+  mood,
 }: GondBotProps) {
   const [blink, setBlink] = useState(false);
   const [hello, setHello] = useState<"bounce" | "spin" | null>(greet && !asleep ? "bounce" : null);
   const [look, setLook] = useState({ x: 0, y: 0 });
+  const id = useId().replace(/[^a-zA-Z0-9_-]/g, "");
+  const ref = (name: string) => `gb${id}-${name}`;
+  const url = (name: string) => `url(#${ref(name)})`;
+  const now = asleep ? undefined : mood;
+  // The glow, sheen and catch-lights blur into mud below this, and each glow is a filter.
+  const fine = size >= 40;
 
   useEffect(() => {
     if (asleep) return;
@@ -58,18 +95,18 @@ export function GondBot({
   }, [asleep]);
 
   useEffect(() => {
-    if (asleep) return;
+    if (asleep || now) return;
     let t: ReturnType<typeof setTimeout>;
     const loop = () => {
       t = setTimeout(() => {
-        setLook({ x: (Math.random() - 0.5) * 4, y: (Math.random() - 0.5) * 3 });
+        setLook({ x: (Math.random() - 0.5) * 5, y: (Math.random() - 0.5) * 3.5 });
         setTimeout(() => setLook({ x: 0, y: 0 }), 900);
         loop();
       }, 3500 + Math.random() * 4000);
     };
     loop();
     return () => clearTimeout(t);
-  }, [asleep]);
+  }, [asleep, now]);
 
   useEffect(() => {
     if (!hello) return;
@@ -79,36 +116,129 @@ export function GondBot({
 
   const sayHello = () => !asleep && setHello(shape === "cog" && Math.random() < 0.5 ? "spin" : "bounce");
 
-  const eye = ({ cx, cy, lid }: { cx: number; cy: number; lid: boolean }) =>
-    asleep ? (
-      <path d={`M${cx - 6} ${cy} q6 4 12 0`} stroke="#fff" strokeWidth="3.2" fill="none" strokeLinecap="round" />
-    ) : lid ? (
-      <path d={`M${cx - 6} ${cy} q6 -5 12 0`} stroke="#fff" strokeWidth="3.2" fill="none" strokeLinecap="round" />
-    ) : expression === "surprised" ? (
-      <circle cx={cx} cy={cy} r="6.5" fill="#fff" />
-    ) : (
-      <rect x={cx - 3.7} y={cy - 9} width="7.4" height="18" rx="3.7" fill="#fff" transform={`rotate(-16 ${cx} ${cy})`} />
+  const tone = shadesOf(color);
+  const layout = LAYOUT[shape] ?? LAYOUT.cog;
+  const body = shape === "cog" ? COG : (BODIES[shape] ?? COG);
+  const visorTransform = layout.scale === 1 ? undefined : `translate(${layout.at[0]} ${layout.at[1]}) scale(${layout.scale}) translate(${-layout.at[0]} ${-layout.at[1]})`;
+  const faceTransform = `translate(${layout.face.x} ${layout.face.y}) translate(${FACE_AT.x} ${FACE_AT.y}) scale(${layout.face.scale}) translate(${-FACE_AT.x} ${-FACE_AT.y})`;
+  const glow = fine ? url("glow") : undefined;
+
+  const eye = (cx: number, cy: number, wink: boolean) => {
+    const line = { stroke: tone.eye, strokeWidth: 3.4, fill: "none", strokeLinecap: "round" as const };
+    if (asleep) return <path d={`M${cx - 6} ${cy} q6 4.5 12 0`} {...line} />;
+    // Glad arcs lean with the line between the eyes, so the smile sits level with the face.
+    if (now === "glad") return <path d={`M${cx - 6} ${cy + 3} q6 -11 12 0`} {...line} strokeWidth={3.8} transform={`rotate(-12 ${cx} ${cy})`} />;
+    if (wink) return <path d={`M${cx - 6} ${cy} q6 -5 12 0`} {...line} />;
+    if (expression === "surprised")
+      return (
+        <>
+          <circle cx={cx} cy={cy} r="6" fill={tone.eye} />
+          {fine ? <circle cx={cx - 2} cy={cy - 2.2} r="1.5" fill="#fff" opacity="0.75" /> : null}
+        </>
+      );
+    return (
+      <g transform={`rotate(${EYE.turn} ${cx} ${cy})`}>
+        <rect x={cx - EYE.width / 2} y={cy - EYE.height / 2} width={EYE.width} height={EYE.height} rx={EYE.width / 2} fill={tone.eye} />
+        {fine ? <circle cx={cx - 1.2} cy={cy - 5} r="1.3" fill="#fff" opacity="0.7" /> : null}
+      </g>
     );
+  };
 
   return (
     <div
-      className={`gb${hello ? ` gb-${hello}` : ""}${asleep ? " gb-asleep" : ""}`}
+      className={`gb${hello ? ` gb-${hello}` : ""}${asleep ? " gb-asleep" : ""}${now ? ` gb-${now}` : ""}${shape === "cog" ? " gb-gear" : ""}`}
       style={{ width: rem(size), height: rem(size), "--tilt": `${tilt}deg` } as CSSProperties}
       onClick={sayHello}
       role="img"
       aria-label={label}
     >
       <svg viewBox="0 0 100 100" className="gb-svg">
+        <defs>
+          <linearGradient id={ref("body")} x1="20%" y1="0%" x2="80%" y2="100%">
+            <stop offset="0%" stopColor={tone.top} />
+            <stop offset="55%" stopColor={tone.base} />
+            <stop offset="100%" stopColor={tone.bottom} />
+          </linearGradient>
+          <linearGradient id={ref("rim")} x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor={tone.rimLight} stopOpacity="0.9" />
+            <stop offset="45%" stopColor={tone.base} stopOpacity="0" />
+            <stop offset="100%" stopColor={tone.rimDark} stopOpacity="0.9" />
+          </linearGradient>
+          <radialGradient id={ref("shine")} cx="32%" cy="18%" r="62%">
+            <stop offset="0%" stopColor="#fff" stopOpacity="0.42" />
+            <stop offset="100%" stopColor="#fff" stopOpacity="0" />
+          </radialGradient>
+          <linearGradient id={ref("visor")} x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor={tone.visorTop} />
+            <stop offset="100%" stopColor={tone.visorBottom} />
+          </linearGradient>
+          <radialGradient id={ref("aura")} cx="50%" cy="48%" r="55%">
+            <stop offset="0%" stopColor={tone.glow} stopOpacity="0.26" />
+            <stop offset="100%" stopColor={tone.glow} stopOpacity="0" />
+          </radialGradient>
+          <linearGradient id={ref("sheen")} x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#fff" stopOpacity="0.16" />
+            <stop offset="100%" stopColor="#fff" stopOpacity="0" />
+          </linearGradient>
+          <clipPath id={ref("visor-clip")}>
+            <path d={layout.visor} transform={visorTransform} />
+          </clipPath>
+          {fine ? (
+            // The eyes' own outline blurred and filled with the bot's light shade: a glow in its colour.
+            <filter id={ref("glow")} x="-60%" y="-60%" width="220%" height="220%">
+              <feGaussianBlur in="SourceAlpha" stdDeviation="1.8" result="blur" />
+              <feFlood floodColor={tone.glow} floodOpacity="0.9" />
+              <feComposite in2="blur" operator="in" result="halo" />
+              <feMerge>
+                <feMergeNode in="halo" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+          ) : null}
+        </defs>
+
         <g className="gb-body">
           <g className="gb-shape">
-            <g className="gb-cog">
-              <path d={shape === "cog" ? COG : (BODIES[shape] ?? COG)} fill={color} stroke={color} strokeWidth="5" strokeLinejoin="round" />
+            <g className="gb-turn">
+              <path d={body} fill="none" stroke={url("rim")} strokeWidth={BODY_STROKE + 1.6} strokeLinejoin="round" />
+              <path d={body} fill={url("body")} stroke={url("body")} strokeWidth={BODY_STROKE} strokeLinejoin="round" />
             </g>
-          </g>
+            {shape === "cog" ? (
+              <>
+                <path d={HUB} fill="none" stroke={tone.rimDark} strokeOpacity="0.35" strokeWidth="1.6" />
+                <path d={HUB} fill={url("body")} />
+              </>
+            ) : null}
+            {fine ? <path d={shape === "cog" ? HUB : body} fill={url("shine")} stroke={shape === "cog" ? "none" : url("shine")} strokeWidth={BODY_STROKE} strokeLinejoin="round" /> : null}
 
-          <g className="gb-face" style={{ transform: asleep ? undefined : `translate(${look.x}px, ${look.y}px)` }}>
-            <g className={`gb-eye${blink ? " gb-blink" : ""}`}>{eye({ cx: 44, cy: 56.5, lid: false })}</g>
-            <g className={`gb-eye${blink ? " gb-blink" : ""}`}>{eye({ cx: 60.5, cy: 53, lid: expression === "wink" })}</g>
+            <path d={layout.visor} transform={visorTransform} fill="none" stroke="#000" strokeOpacity="0.32" strokeWidth={2.4 / layout.scale} />
+            <path d={layout.visor} transform={visorTransform} fill={url("visor")} />
+
+            <g clipPath={url("visor-clip")}>
+              {fine ? <rect x="0" y="0" width="100" height="100" fill={url("aura")} /> : null}
+              <g transform={faceTransform}>
+                <g className="gb-face" style={{ transform: asleep || now ? undefined : `translate(${look.x}px, ${look.y}px)` }}>
+                  {now === "thinking" ? (
+                    <g filter={glow}>
+                      {[42, 52.25, 62.5].map((cx, i) => (
+                        <circle key={cx} className="gb-dot" cx={cx} cy="55" r="3.6" fill={tone.eye} style={{ animationDelay: `${i * 0.16}s` }} />
+                      ))}
+                    </g>
+                  ) : (
+                    <g filter={glow}>
+                      <g className={`gb-eye${blink ? " gb-blink" : ""}`}>{eye(EYES[0].x, EYES[0].y, false)}</g>
+                      <g className={`gb-eye${blink ? " gb-blink" : ""}`}>{eye(EYES[1].x, EYES[1].y, expression === "wink")}</g>
+                    </g>
+                  )}
+                  {now === "glad" ? (
+                    <path d="M47 69 q5.5 5 11 0" stroke={tone.glow} strokeWidth="2.6" fill="none" strokeLinecap="round" filter={glow} />
+                  ) : asleep ? null : (
+                    <rect className="gb-mouth" x="49" y="68.2" width="7.5" height="2.6" rx="1.3" fill={tone.glow} opacity="0.85" filter={glow} />
+                  )}
+                </g>
+              </g>
+              {fine ? <path d="M20 20 L58 20 L36 90 L20 90 Z" fill={url("sheen")} /> : null}
+            </g>
           </g>
         </g>
 
@@ -125,13 +255,22 @@ export function GondBot({
         .gb { display:inline-block; cursor:pointer; user-select:none; }
         .gb-svg { width:100%; height:100%; overflow:visible; }
         .gb-body { transform-box:fill-box; transform-origin:50% 90%; animation: gb-rock 2.6s ease-in-out infinite; }
-        .gb-bounce .gb-body { animation: gb-hello 1.3s cubic-bezier(.34,1.56,.64,1) 1; }
         .gb-shape { transform-box:fill-box; transform-origin:50% 90%; transform: rotate(var(--tilt)); }
-        .gb-cog { transform-box:fill-box; transform-origin:50% 50%; }
-        .gb-spin .gb-cog { animation: gb-spin 1.2s cubic-bezier(.3,.9,.2,1) 1; }
+        .gb-turn { transform-box:fill-box; transform-origin:50% 50%; }
         .gb-face { transition: transform .5s cubic-bezier(.2,.8,.2,1); }
         .gb-eye { transform-box:fill-box; transform-origin:center; }
         .gb-blink { animation: gb-blink .15s ease-in-out; }
+        .gb-mouth { transform-box:fill-box; transform-origin:center; }
+        .gb-dot { transform-box:fill-box; transform-origin:center; animation: gb-dot 1s ease-in-out infinite; }
+
+        .gb-thinking .gb-body { animation: gb-hover 2.8s ease-in-out infinite; }
+        .gb-thinking.gb-gear .gb-turn { animation: gb-spin 9s linear infinite; }
+        .gb-talking .gb-body { animation: gb-nod 1.1s ease-in-out infinite; }
+        .gb-talking .gb-mouth { animation: gb-talk .55s ease-in-out infinite; }
+        .gb-glad .gb-body { animation: gb-hop 1.4s cubic-bezier(.34,1.56,.64,1) infinite; }
+
+        .gb-bounce .gb-body { animation: gb-hello 1.3s cubic-bezier(.34,1.56,.64,1) 1; }
+        .gb-spin .gb-turn { animation: gb-spin 1.2s cubic-bezier(.3,.9,.2,1) 1; }
 
         .gb-asleep .gb-body { animation: gb-breathe 4.8s ease-in-out infinite; }
         .gb-z { opacity:0; animation: gb-z 3.6s ease-out infinite; }
@@ -141,6 +280,11 @@ export function GondBot({
         @keyframes gb-breathe { 0%,100%{transform:scale(1,1) rotate(-3deg)} 50%{transform:scale(1.03,.97) rotate(-3deg) translateY(1px)} }
         @keyframes gb-z { 0%{opacity:0; transform:translate(-4px,6px)} 25%{opacity:.9} 100%{opacity:0; transform:translate(4px,-6px)} }
         @keyframes gb-rock { 0%,100%{transform:scale(1,1) rotate(0)} 30%{transform:scale(.99,1.02) rotate(-2deg)} 65%{transform:scale(1.02,.99) rotate(2deg)} }
+        @keyframes gb-hover { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-2.5px)} }
+        @keyframes gb-dot { 0%,60%,100%{transform:translateY(0) scale(1)} 30%{transform:translateY(-4px) scale(1.15)} }
+        @keyframes gb-nod { 0%,100%{transform:translateY(0) rotate(0)} 25%{transform:translateY(-2px) rotate(-1.5deg)} 60%{transform:translateY(-1px) rotate(1deg)} }
+        @keyframes gb-talk { 0%,100%{transform:scale(1,1)} 50%{transform:scale(1.5,2.6)} }
+        @keyframes gb-hop { 0%,60%,100%{transform:translateY(0) scale(1,1)} 12%{transform:translateY(1px) scale(1.08,.92)} 30%{transform:translateY(-7px) scale(.95,1.06)} 45%{transform:translateY(0) scale(1.04,.96)} }
         @keyframes gb-hello {
           0%{transform:scale(1) rotate(0)}
           25%{transform:scale(1.12,.9) rotate(-8deg) translateY(2px)}
@@ -150,7 +294,7 @@ export function GondBot({
         }
         @keyframes gb-spin { 0%{transform:rotate(0)} 100%{transform:rotate(360deg)} }
         @keyframes gb-blink { 0%,100%{transform:scaleY(1)} 50%{transform:scaleY(.08)} }
-        @media (prefers-reduced-motion: reduce) { .gb-body,.gb-cog,.gb-blink,.gb-z{animation:none!important} .gb-z{opacity:.8} }
+        @media (prefers-reduced-motion: reduce) { .gb-body,.gb-turn,.gb-blink,.gb-z,.gb-dot,.gb-mouth{animation:none!important} .gb-z{opacity:.8} }
       `}</style>
     </div>
   );
