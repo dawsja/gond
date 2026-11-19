@@ -2076,6 +2076,63 @@ describe("data", () => {
     expect(getBotAvatar(bot.id)).toBeNull();
   });
 
+  test("a saved Always allow is its owner's to see and forget, and once forgotten the bot asks again", async () => {
+    const { Hono } = await import("hono");
+    const { botsRoutes } = await import("../src/routes/bots.ts");
+    const { createBot, deleteBot } = await import("../src/data/bots.ts");
+    const { listMessages } = await import("../src/data/threads.ts");
+    const { getApproval, listRules } = await import("../src/data/approvals.ts");
+    const { askApproval, decide } = await import("../src/approvals.ts");
+    const { botInputSchema } = await import("@gond/shared");
+    const bot = createBot(botInputSchema.parse({ name: "Ruled", approval: "ask" }), "u-rules");
+    const open = (person: string, profile?: string) => {
+      const app = new Hono<{ Variables: { session: unknown; profile?: string } }>();
+      app.use("*", async (c, next) => {
+        c.set("session", { user: { id: person } });
+        if (profile) c.set("profile", profile);
+        await next();
+      });
+      return app.route("/api", botsRoutes() as never);
+    };
+    const mine = open("u-rules");
+    // The same person with another of their profiles open, and someone else entirely.
+    const otherProfile = open("u-rules", "u-rules-work");
+    const someoneElse = open("u-rules-other");
+    const forget = (app: ReturnType<typeof open>, rule: string) => app.request(`/api/bots/${bot.id}/rules`, { method: "DELETE", body: JSON.stringify({ rule }) });
+    const lastCard = () => listMessages(bot.threadId).at(-1)!;
+
+    const asked = askApproval({ bot, threadId: bot.threadId, tool: "Bash", input: { command: "git status" } });
+    const card = lastCard();
+    decide(card.approvalId!, { decision: "always" });
+    expect((await asked).decision).toBe("always");
+    expect(listRules(bot.id)).toEqual(["Bash(git:*)"]);
+    expect(getApproval(card.approvalId!)!.rule).toBe("Bash(git:*)");
+    expect((await askApproval({ bot, threadId: bot.threadId, tool: "Bash", input: { command: "git log" } })).decision).toBe("allow");
+    expect(lastCard().id).toBe(card.id);
+
+    for (const app of [otherProfile, someoneElse]) {
+      expect((await app.request(`/api/bots/${bot.id}/rules`)).status).toBe(404);
+      expect((await app.request(`/api/bots/${bot.id}`)).status).toBe(404);
+      expect((await forget(app, "Bash(git:*)")).status).toBe(404);
+    }
+    expect(listRules(bot.id)).toEqual(["Bash(git:*)"]);
+
+    expect(await (await mine.request(`/api/bots/${bot.id}/rules`)).json()).toEqual({ rules: ["Bash(git:*)"] });
+    expect((await forget(mine, "")).status).toBe(400);
+    expect((await forget(mine, "Bash(git:*)")).status).toBe(204);
+    expect(listRules(bot.id)).toEqual([]);
+    // The card that saved it no longer says "From now on".
+    expect(getApproval(card.approvalId!)).toMatchObject({ status: "allowed", rule: null });
+
+    const again = askApproval({ bot, threadId: bot.threadId, tool: "Bash", input: { command: "git log" } });
+    const next = lastCard();
+    expect(next.id).not.toBe(card.id);
+    expect(next.kind).toBe("approval");
+    decide(next.approvalId!, { decision: "deny" });
+    expect((await again).decision).toBe("deny");
+    deleteBot(bot.id);
+  });
+
   test("a bot is a cog unless it is given another shape", async () => {
     const { createBot, getBot, updateBot } = await import("../src/data/bots.ts");
     const { ensureDatabase } = await import("../src/db/init.ts");

@@ -9,6 +9,7 @@ import { CheckInsFields, useCheckIns } from "@/components/check-ins-fields";
 import { useDiscardChanges } from "@/components/discard-changes";
 import { GondBot } from "@/components/hq/gond-bot";
 import { usePicturePicker } from "@/components/picture-crop-dialog";
+import { SavedRulesField, useSavedRules } from "@/components/saved-rules";
 import { useStore } from "@/components/store";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -60,12 +61,14 @@ export function BotDialog({ botId, onClose }: { botId: string | null; onClose: (
   const hereChanged = here !== null && here === mutedHere;
   // Check-ins are the primary bot's, kept for the profile and saved with the dialog.
   const checkIns = useCheckIns(Boolean(existing?.primary));
+  // What it may do without asking, from Always allow on its cards; a removal is saved with the dialog.
+  const rules = useSavedRules(existing?.id ?? null);
   // A bot's own model counts only where the AI runs now, so it is sent only when the person changed it.
   const models = useBotModels();
   const ownModel = models ? botModelFor(existing, models.current.source) : "";
   const [model, setModel] = useState<string | null>(null);
   const modelChanged = model !== null && model !== ownModel;
-  const dirty = photo !== undefined || hereChanged || checkIns.changed || modelChanged || (existing ? JSON.stringify(form) !== JSON.stringify(pick(existing)) : Boolean(form.title.trim() || form.description.trim()));
+  const dirty = photo !== undefined || hereChanged || checkIns.changed || rules.changed || modelChanged || (existing ? JSON.stringify(form) !== JSON.stringify(pick(existing)) : Boolean(form.title.trim() || form.description.trim()));
   const discard = useDiscardChanges(dirty && !busy, onClose);
 
   useEffect(() => {
@@ -97,6 +100,11 @@ export function BotDialog({ botId, onClose }: { botId: string | null; onClose: (
       if (checkIns.changed) {
         await checkIns.save().catch(() => {
           throw new Error(`Couldn't change ${bot.name}'s check-ins. Try again.`);
+        });
+      }
+      if (rules.changed) {
+        await rules.save().catch(() => {
+          throw new Error(`Couldn't change what ${bot.name} may do without asking. Try again.`);
         });
       }
       await refresh();
@@ -218,6 +226,7 @@ export function BotDialog({ botId, onClose }: { botId: string | null; onClose: (
               </Select>
               <FieldDescription>{APPROVAL_LEVEL_LABELS[form.approval].detail} Any bot can add teammates and hand work to them; your primary bot is the one that coordinates.</FieldDescription>
             </Field>
+            {existing ? <SavedRulesField name={form.name.trim() || existing.name} state={rules} disabled={busy} /> : null}
 
             <BotModelField models={models} value={model ?? ownModel} disabled={busy} onChange={setModel} />
 

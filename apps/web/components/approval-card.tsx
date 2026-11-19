@@ -5,6 +5,7 @@ import { CreditCard, FilePen, Globe, KeyRound, LogIn, Monitor, Plug, Send, Shiel
 import { useState, type ReactNode } from "react";
 import { ActionCard, ActionCardDone, ActionCode, ActionRows, cheerOnFold, pausedLine, type ActionItem, type ActionRow, NOBODY_ANSWERED, SET_ASIDE } from "@/components/action-card";
 import { EmailApprovalCard } from "@/components/email-card";
+import { UndoAlways } from "@/components/saved-rules";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
@@ -97,6 +98,8 @@ export function ApprovalCard({ message, approval, bot, noticed = false, onDecide
 
 function ToolApprovalCard({ message, approval, bot, noticed, onDecide }: { message: Message; approval: Approval | null; bot: Bot | undefined; noticed: boolean; onDecide: (id: string, answer: ApprovalAnswer) => Promise<void> }) {
   const [busy, setBusy] = useState<Decision | null>(null);
+  // Undo is only for an Always allow given here a moment ago, never an old one.
+  const [undo, setUndo] = useState<"offered" | "done" | null>(null);
   const status = approval?.status ?? "pending";
   // Nobody answered it in time, but it can still be answered: it stays open, marked paused.
   const paused = isPaused(approval);
@@ -105,6 +108,7 @@ function ToolApprovalCard({ message, approval, bot, noticed, onDecide }: { messa
     if (!message.approvalId || busy) return;
     setBusy(decision);
     if (decision !== "deny") cheerOnFold(message.id);
+    if (decision === "always") setUndo("offered");
     try {
       await onDecide(message.approvalId, { decision });
     } finally {
@@ -113,15 +117,23 @@ function ToolApprovalCard({ message, approval, bot, noticed, onDecide }: { messa
   };
   if (status !== "pending" && !paused) {
     const custom = approval?.tool === "ask_approval";
+    const rule = undo === "done" ? null : (approval?.rule ?? null);
     const done =
       status === "allowed"
-        ? { status: approval?.rule ? "Always" : (shape.allowed ?? (custom ? shape.allow : "Allowed")), tone: "ok" as const }
+        ? { status: rule ? "Always" : (shape.allowed ?? (custom ? shape.allow : "Allowed")), tone: "ok" as const }
         : status === "denied"
           ? { status: shape.denied ?? (custom ? shape.deny : "Denied"), tone: shape.denied ? ("neutral" as const) : ("bad" as const) }
           : { status: approval?.outcome === "aside" ? SET_ASIDE.status : "Expired", tone: "neutral" as const };
     const title = shape.title;
-    const by = approval?.rule ? `From now on: ${ruleLabel(approval.rule)}` : approval?.outcome === "aside" ? SET_ASIDE.by : status === "expired" ? NOBODY_ANSWERED : shape.by;
-    return <ActionCardDone id={message.id} bot={bot} icon={shape.icon} title={title} by={by} status={done.status} tone={done.tone} />;
+    const by = rule ? `From now on: ${ruleLabel(rule)}` : approval?.outcome === "aside" ? SET_ASIDE.by : status === "expired" ? NOBODY_ANSWERED : shape.by;
+    const card = <ActionCardDone id={message.id} bot={bot} icon={shape.icon} title={title} by={by} status={done.status} tone={done.tone} />;
+    if (undo !== "offered" || !approval || !rule) return card;
+    return (
+      <div className="flex w-full max-w-[440px] flex-col items-start gap-1">
+        {card}
+        <UndoAlways botId={approval.botId} rule={rule} onUndone={() => setUndo("done")} />
+      </div>
+    );
   }
   return (
     <ActionCard

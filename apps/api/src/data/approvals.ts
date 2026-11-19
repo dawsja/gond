@@ -178,7 +178,10 @@ export function addRule(botId: string, rule: string) {
   approvalsChanged();
 }
 
+/** Forgets a saved rule, and the cards that saved it stop saying "From now on", since it no longer holds. */
 export function removeRule(botId: string, rule: string) {
-  ensureDatabase().query("DELETE FROM gond_approval_rules WHERE bot_id = ? AND rule = ?").run(botId, rule);
+  const db = ensureDatabase();
+  db.query("DELETE FROM gond_approval_rules WHERE bot_id = ? AND rule = ?").run(botId, rule);
+  db.query("UPDATE gond_approvals SET rule = NULL WHERE bot_id = ? AND rule = ?").run(botId, rule);
   approvalsChanged();
 }

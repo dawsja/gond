@@ -643,6 +643,12 @@ One line each: where to start, and what must not change.
 - **Check-ins** (`check-ins-fields.tsx` in the primary bot's Edit dialog,
   `Message.checkIn`): a check-in line wears the person's colour (the
   `tint` bubble) under "Checked in". It is the primary bot's alone.
+- **Saved approvals** (`saved-rules.tsx` in a bot's Edit dialog, `GET`
+  and `DELETE /api/bots/:id/rules`): every Always allow rule in words
+  (`ruleLabel`), shown only when the bot has some, removed on Save so the
+  next one asks again; forgetting one clears `rule` on the cards that
+  saved it (`removeRule`). A card just answered Always offers Undo
+  (`UndoAlways`).
 - **Linked sign-in** (`linked-sign-in.tsx`): the local account links the
   provider (`LinkedSignIn`), and an account the provider made moves its
   sign-in to the local one (`MoveSignIn`, `POST /api/me/sign-ins/move` in

@@ -191,10 +191,11 @@ export function botsRoutes() {
 
   app.get("/bots/:id/rules", (c) => (ownBot(c, c.req.param("id")) ? c.json({ rules: listRules(c.req.param("id")) }) : c.json({ error: "Couldn't find that bot" }, 404)));
   app.delete("/bots/:id/rules", async (c) => {
+    const bot = ownBot(c, c.req.param("id"));
+    if (!bot) return c.json({ error: "Couldn't find that bot" }, 404);
     const body = await readBody(c);
-    if (typeof body.rule !== "string" || !body.rule) return c.json({ error: "Say which rule to forget" }, 400);
-    if (!ownBot(c, c.req.param("id"))) return c.json({ error: "Couldn't find that bot" }, 404);
-    removeRule(c.req.param("id"), body.rule);
+    if (typeof body.rule !== "string" || !body.rule) return c.json({ error: "Say which approval to forget" }, 400);
+    removeRule(bot.id, body.rule);
     return c.body(null, 204);
   });
 
