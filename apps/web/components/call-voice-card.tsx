@@ -6,12 +6,12 @@ import { useCallback, useEffect, useState } from "react";
 import { LoadFailed } from "@/components/load-failed";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Field, FieldLabel, FieldTitle } from "@/components/ui/field";
+import { Field, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
-import { VoiceModelChoices } from "@/components/voice-models";
+import { SpeechModelSelect } from "@/components/voice-models";
 import { useVoice, useVoiceModels } from "@/hooks/use-voice";
 import { api } from "@/lib/api";
 
@@ -32,12 +32,12 @@ async function playSample(id: string) {
 
 export function CallVoiceCard() {
   const { voice, setVoice } = useVoice();
-  const { models, failed: modelsFailed, reload: reloadModels } = useVoiceModels(voice?.using);
+  const { models, setModels, failed: modelsFailed, reload: reloadModels } = useVoiceModels(voice?.using);
   const [list, setList] = useState<Voices | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
   const provider = voice?.using ?? null;
-  const callModel = voice?.callModel ?? null;
+  const callModel = models?.call.chosen ?? null;
 
   const load = useCallback(async () => {
     try {
@@ -51,11 +51,15 @@ export function CallVoiceCard() {
     void Promise.resolve().then(load);
   }, [load, provider, callModel]);
 
+  /** Picking the default saves none, so calls move to each newer model the key offers. */
   async function pickModel(id: string) {
+    const pick = id === models?.call.default ? "" : id;
+    setModels((current) => (current ? { ...current, call: { ...current.call, chosen: id } } : current));
     try {
-      setVoice(await api<VoiceSettings>("/api/voice", { method: "PUT", body: JSON.stringify({ callModel: id }) }));
+      setVoice(await api<VoiceSettings>("/api/voice", { method: "PUT", body: JSON.stringify({ callModel: pick }) }));
     } catch (failure) {
       toast.add({ type: "error", title: failure instanceof Error ? failure.message : "Couldn't save the model." });
+      void reloadModels();
     }
   }
 
@@ -89,16 +93,16 @@ export function CallVoiceCard() {
         <CardDescription>What your primary bot talks on when you call it, and how it sounds.</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        {voice?.using === "openai" ? (
+        {voice?.using ? (
           modelsFailed && !models ? (
             <LoadFailed what="the call models" onRetry={() => void reloadModels()} />
           ) : models ? (
             <Field>
-              <FieldTitle>Model</FieldTitle>
-              <VoiceModelChoices name="call-model" models={models.call} value={voice.callModel} onPick={(id) => void pickModel(id)} />
+              <FieldLabel htmlFor="call-model">Model</FieldLabel>
+              <SpeechModelSelect id="call-model" models={models.call} value={models.call.chosen} onPick={(id) => void pickModel(id)} />
             </Field>
           ) : (
-            <Skeleton className="h-40 rounded-2xl" />
+            <Skeleton className="h-16 max-w-sm rounded-xl" />
           )
         ) : null}
         {!voice || (!list && !error) ? (

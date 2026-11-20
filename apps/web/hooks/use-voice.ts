@@ -20,12 +20,12 @@ export function useVoice() {
   return { voice, setVoice };
 }
 
-/** The OpenAI speech models the voice key can use, described and priced; only an OpenAI-compatible key has any. */
+/** The speech models the voice key offers for the microphone and calls, and the ones in use; reloaded when the AI or voice settings change. */
 export function useVoiceModels(using: VoiceProvider | null | undefined) {
   const [models, setModels] = useState<VoiceModelList | null>(null);
   const [failed, setFailed] = useState(false);
   const load = useCallback(async () => {
-    if (using !== "openai") return;
+    if (!using) return;
     try {
       setModels(await apiShared<VoiceModelList>("/api/voice/models"));
       setFailed(false);
@@ -36,5 +36,8 @@ export function useVoiceModels(using: VoiceProvider | null | undefined) {
   useEffect(() => {
     void Promise.resolve().then(load);
   }, [load]);
-  return { models: using === "openai" ? models : null, failed, reload: load };
+  useLiveEvents((event) => {
+    if (event.topic === "ai") void load();
+  });
+  return { models: using ? models : null, setModels, failed, reload: load };
 }

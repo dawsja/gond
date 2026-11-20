@@ -1,4 +1,4 @@
-import { CALL_MODELS, CALL_SAMPLE_RATE, OPENAI_CALL_MODELS, VOICE_MODELS, type VoiceProvider } from "@gond/shared";
+import { CALL_MODELS, CALL_SAMPLE_RATE, VOICE_MODELS, callProtocol, type VoiceProvider } from "@gond/shared";
 
 /** What a speaking model said or asked for, the same whichever model it is. */
 export type VoiceSignal =
@@ -37,7 +37,7 @@ type LinkOptions = {
   history: string;
   greeting: string;
   botName: string;
-  /** The model the call runs on: the person's pick on OpenAI, xAI's own on xAI. */
+  /** The model the call runs on, as `speechModel` chose it. */
   model: string;
   /** The person's pick for this provider, else its default. */
   voice: string | undefined;
@@ -467,6 +467,5 @@ export function acknowledge(link: VoiceLink, id: string, botName: string) {
 }
 
 export function openVoiceLink(provider: VoiceProvider, options: LinkOptions): VoiceLink {
-  const live = provider === "openai" && OPENAI_CALL_MODELS.find((model) => model.id === options.model)?.protocol !== "realtime";
-  return live ? liveLink(options) : realtimeLink(provider, options);
+  return callProtocol(provider, options.model) === "live" ? liveLink(options) : realtimeLink(provider, options);
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { VOICE_MODELS, type VoiceSettings } from "@gond/shared";
+import type { VoiceSettings } from "@gond/shared";
 import { useState, type FormEvent } from "react";
 import { LoadFailed } from "@/components/load-failed";
 import { Button } from "@/components/ui/button";
@@ -8,30 +8,25 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Field, FieldDescription, FieldError, FieldLabel, FieldTitle } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { VoiceModelChoices } from "@/components/voice-models";
+import { SpeechModelSelect, TYPED_MODEL } from "@/components/voice-models";
 import { useVoice, useVoiceModels } from "@/hooks/use-voice";
 import { api } from "@/lib/api";
 
-const TYPED = "__typed__";
-
-function usingLine(voice: VoiceSettings) {
-  if (!voice.using) return "Add a voice key above to turn on the microphone.";
-  return `Using ${VOICE_MODELS[voice.using].label} (${voice.using === "openai" ? voice.openaiModel : VOICE_MODELS[voice.using].model}).`;
-}
-
 export function VoiceCard() {
   const { voice, setVoice } = useVoice();
-  const { models, failed, reload } = useVoiceModels(voice?.using);
+  const { models, setModels, failed, reload } = useVoiceModels(voice?.using);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [typing, setTyping] = useState(false);
   const [model, setModel] = useState<string | null>(null);
 
-  async function save(openaiModel: string) {
+  /** An empty pick, or the default's own id, follows each newer model the key offers. */
+  async function save(pick: string) {
     setSaving(true);
     setError(null);
     try {
-      setVoice(await api<VoiceSettings>("/api/voice", { method: "PUT", body: JSON.stringify({ openaiModel }) }));
+      setVoice(await api<VoiceSettings>("/api/voice", { method: "PUT", body: JSON.stringify({ transcribeModel: pick }) }));
+      setModels((current) => (current ? { ...current, transcribe: { ...current.transcribe, chosen: pick || current.transcribe.default } } : current));
       setModel(null);
       setTyping(false);
     } catch (failure) {
@@ -43,11 +38,12 @@ export function VoiceCard() {
 
   function saveTyped(event: FormEvent) {
     event.preventDefault();
-    if (model !== null) void save(model);
+    if (model !== null) void save(model.trim());
   }
 
-  const listed = models ? [...models.transcribe.map((m) => m.id), ...models.others] : [];
-  const showTyped = Boolean(voice && models && (typing || !listed.includes(voice.openaiModel)));
+  const chosen = models?.transcribe.chosen ?? "";
+  const listed = models ? [...models.transcribe.groups.flatMap((group) => group.models), ...models.others] : [];
+  const showTyped = Boolean(models?.own && (typing || !listed.includes(chosen)));
 
   return (
     <Card>
@@ -58,46 +54,54 @@ export function VoiceCard() {
       <CardContent className="flex flex-col gap-4">
         {!voice ? (
           <Skeleton className="h-20 rounded-xl" />
-        ) : voice.using !== "openai" ? (
+        ) : !voice.using ? (
           <Field>
             <FieldTitle>Turns speech into text</FieldTitle>
-            <FieldDescription>{usingLine(voice)}</FieldDescription>
+            <FieldDescription>Add a voice key above to turn on the microphone.</FieldDescription>
           </Field>
         ) : failed && !models ? (
           <LoadFailed what="the models" onRetry={() => void reload()} />
         ) : !models ? (
-          <Skeleton className="h-40 rounded-2xl" />
+          <Skeleton className="h-16 max-w-sm rounded-xl" />
         ) : (
           <Field data-disabled={saving || undefined}>
-            <FieldTitle>Turns speech into text</FieldTitle>
-            <VoiceModelChoices
-              name="transcribe-model"
+            <FieldLabel htmlFor="transcribe-model">Turns speech into text</FieldLabel>
+            <SpeechModelSelect
+              id="transcribe-model"
               models={models.transcribe}
               others={models.others}
-              value={showTyped ? TYPED : voice.openaiModel}
+              typed={models.own}
+              value={showTyped ? TYPED_MODEL : chosen}
               disabled={saving}
               onPick={(id) => {
-                if (id === TYPED) setTyping(true);
-                else void save(id);
+                if (id === TYPED_MODEL) setTyping(true);
+                else void save(id === models.transcribe.default ? "" : id);
               }}
-              extra={{ value: TYPED, label: "Another model id", detail: "For a server of your own, like a local Whisper." }}
             />
             {error ? <FieldError>{error}</FieldError> : null}
           </Field>
         )}
-        {showTyped && voice ? (
+        {showTyped && models ? (
           <form onSubmit={saveTyped}>
             <Field data-disabled={saving || undefined}>
-              <FieldLabel htmlFor="voice-openai-model">Model id</FieldLabel>
-              <div className="flex gap-2">
-                <Input id="voice-openai-model" value={model ?? voice.openaiModel} onChange={(e) => setModel(e.target.value)} placeholder={VOICE_MODELS.openai.model} autoComplete="off" spellCheck={false} disabled={saving} />
-                {model !== null && model.trim() !== voice.openaiModel ? (
+              <FieldLabel htmlFor="voice-model-id">Model id</FieldLabel>
+              <div className="flex max-w-sm gap-2">
+                <Input
+                  id="voice-model-id"
+                  value={model ?? (listed.includes(chosen) ? "" : chosen)}
+                  onChange={(e) => setModel(e.target.value)}
+                  placeholder={models.transcribe.default}
+                  autoComplete="off"
+                  spellCheck={false}
+                  disabled={saving}
+                />
+                {model !== null && model.trim() !== chosen ? (
                   <Button type="submit" variant="outline" disabled={saving}>
                     Save
                   </Button>
                 ) : null}
               </div>
-              <FieldDescription>{`The model id your server serves. Empty puts ${VOICE_MODELS.openai.model} back.`}</FieldDescription>
+              <FieldDescription>{`The model id your server serves. Empty puts ${models.transcribe.default} back.`}</FieldDescription>
             </Field>
           </form>
         ) : null}

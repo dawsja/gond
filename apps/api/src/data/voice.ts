@@ -1,4 +1,4 @@
-import { CALL_MODELS, CALL_VOICE_ID, OPENAI_CALL_MODELS, OPENAI_TRANSCRIBE_MODELS, VOICE_MODELS, VOICE_PROVIDERS, isRetired, isXaiUrl, type VoiceProvider, type VoiceSettings } from "@gond/shared";
+import { CALL_VOICE_ID, VOICE_PROVIDERS, isXaiUrl, type VoiceProvider, type VoiceSettings } from "@gond/shared";
 import { ensureDatabase } from "../db/init.ts";
 import { emit } from "../events.ts";
 import { now } from "../ids.ts";
@@ -21,38 +21,30 @@ function voiceProvider(userId: string): VoiceProvider | null {
   return baseUrl ? (isXaiUrl(baseUrl) ? "xai" : "openai") : null;
 }
 
-/** A picked model OpenAI has since shut down reads as the recommended one, so the microphone and calls keep working. */
-function transcribeModel(id: string | null | undefined): string {
-  const known = OPENAI_TRANSCRIBE_MODELS.find((model) => model.id === id);
-  return id && !(known && isRetired(known)) ? id : VOICE_MODELS.openai.model;
+function pickOf(id: string | null | undefined): string | null {
+  return id?.trim() || null;
 }
 
-function callModel(id: string | null | undefined): string {
-  const known = OPENAI_CALL_MODELS.find((model) => model.id === id);
-  return known && !isRetired(known) ? known.id : CALL_MODELS.openai.model;
-}
-
+/** The person's picks as saved, null being the default; `speechModel` says what a job runs on now. */
 export function getVoice(userId: string): VoiceSettings {
   const row = ensureDatabase().query("SELECT voice_model, call_voice, call_model FROM gond_user_prefs WHERE user_id = ?").get(userId) as Row | null;
-  return { using: voiceProvider(userId), openaiModel: transcribeModel(row?.voice_model), callModel: callModel(row?.call_model), callVoice: callVoiceOf(row?.call_voice) };
+  return { using: voiceProvider(userId), transcribeModel: pickOf(row?.voice_model), callModel: pickOf(row?.call_model), callVoice: callVoiceOf(row?.call_voice) };
 }
 
-/** An empty `openaiModel` puts OpenAI's own model back; a `callModel` must be one of `OPENAI_CALL_MODELS`. */
-export function setVoice(userId: string, patch: { openaiModel?: string; callModel?: string }): VoiceSettings {
+/** Null or empty puts a job back on the default, so it moves to each newer model the key offers; the route checks a pick first. */
+export function setVoice(userId: string, patch: { transcribeModel?: string | null; callModel?: string | null }): VoiceSettings {
   const db = ensureDatabase();
-  if (patch.openaiModel !== undefined) {
-    const model = patch.openaiModel.trim() || VOICE_MODELS.openai.model;
+  if (patch.transcribeModel !== undefined) {
     db.query("INSERT INTO gond_user_prefs (user_id, voice_model, updated_at) VALUES (?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET voice_model = excluded.voice_model, updated_at = excluded.updated_at").run(
       userId,
-      model === VOICE_MODELS.openai.model ? null : model,
+      pickOf(patch.transcribeModel),
       now(),
     );
   }
   if (patch.callModel !== undefined) {
-    const model = callModel(patch.callModel);
     db.query("INSERT INTO gond_user_prefs (user_id, call_model, updated_at) VALUES (?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET call_model = excluded.call_model, updated_at = excluded.updated_at").run(
       userId,
-      model === CALL_MODELS.openai.model ? null : model,
+      pickOf(patch.callModel),
       now(),
     );
   }

@@ -1,24 +1,11 @@
-import {
-  CALL_MODELS,
-  CALL_VOICE_ID,
-  OPENAI_CALL_MODELS,
-  OPENAI_TRANSCRIBE_MODELS,
-  TRANSCRIBE_MAX_BYTES,
-  VOICE_MODEL_ID,
-  VOICE_MODELS,
-  isRetired,
-  openAiCallVoices,
-  type CallVoice,
-  type VoiceModel,
-  type VoiceModelList,
-  type VoiceProvider,
-} from "@gond/shared";
+import { CALL_MODELS, CALL_VOICE_ID, TRANSCRIBE_MAX_BYTES, VOICE_MODELS, openAiCallVoices, type CallVoice, type SpeechJob, type VoiceProvider } from "@gond/shared";
 import { Hono } from "hono";
 import type { Env } from "../app.ts";
 import { ownThread, userId } from "../access.ts";
 import { getBot } from "../data/bots.ts";
 import { providerBaseUrl, providerKey } from "../data/providers.ts";
 import { getVoice, setCallVoice, setVoice } from "../data/voice.ts";
+import { canPick, speechModel, voiceAccess, voiceModelsFor } from "../speech-models.ts";
 import { authHeaders, upstreamUrl } from "../providers.ts";
 import { readBody } from "./body.ts";
 
@@ -51,77 +38,47 @@ async function voicesFor(provider: VoiceProvider, baseUrl: string, key: string, 
   return voices;
 }
 
-const modelLists = new Map<string, { at: number; ids: string[] | null }>();
-
-/** The model ids the key's server lists, or null when it won't say. */
-async function listedModels(baseUrl: string, key: string): Promise<string[] | null> {
-  const cacheKey = `${baseUrl}\n${key}`;
-  const cached = modelLists.get(cacheKey);
-  if (cached && Date.now() - cached.at < VOICE_LIST_MS) return cached.ids;
-  const res = await fetch(upstreamUrl(baseUrl, "models", ""), { headers: authHeaders("voice", baseUrl, key), redirect: "manual", signal: AbortSignal.timeout(15_000) }).catch(() => null);
-  const payload = res?.ok ? ((await res.json().catch(() => null)) as { data?: { id?: unknown }[] } | null) : null;
-  const ids = payload?.data ? payload.data.flatMap((model) => (typeof model.id === "string" && VOICE_MODEL_ID.test(model.id) ? [model.id] : [])) : null;
-  modelLists.set(cacheKey, { at: Date.now(), ids });
-  return ids;
-}
-
-function isOpenAi(baseUrl: string): boolean {
-  try {
-    return new URL(baseUrl).hostname.toLowerCase() === "api.openai.com";
-  } catch {
-    return false;
-  }
-}
-
-const described = ({ id, name, about, price, recommended, retires }: VoiceModel): VoiceModel => ({ id, name, about, price, ...(recommended ? { recommended } : {}), ...(retires ? { retires } : {}) });
-
-/**
- * The catalog's models the key's server lists, all of them when it lists none of them (or won't say), and
- * a server of the person's own its other ids, since only they know what it serves.
- */
-export function voiceModelsFrom(listed: string[] | null, openAi: boolean): VoiceModelList {
-  const offer = (catalog: VoiceModel[]) => {
-    const live = catalog.filter((model) => !isRetired(model));
-    const known = listed ? live.filter((model) => listed.includes(model.id)) : [];
-    return (known.length ? known : live).map(described);
-  };
-  const catalog = new Set([...OPENAI_TRANSCRIBE_MODELS, ...OPENAI_CALL_MODELS].map((model) => model.id));
-  return { transcribe: offer(OPENAI_TRANSCRIBE_MODELS), call: offer(OPENAI_CALL_MODELS), others: openAi || !listed ? [] : listed.filter((id) => !catalog.has(id)) };
-}
-
 export function voiceRoutes() {
   const app = new Hono<Env>();
 
   app.get("/voice", (c) => c.json(getVoice(userId(c))));
 
   app.put("/voice", async (c) => {
+    const who = userId(c);
     const body = await readBody(c);
-    const { openaiModel, callModel } = body;
-    if (openaiModel === undefined && callModel === undefined) return c.json({ error: "There was nothing to change" }, 400);
-    if (openaiModel !== undefined && (typeof openaiModel !== "string" || (openaiModel.trim() && !VOICE_MODEL_ID.test(openaiModel.trim())))) return c.json({ error: "That isn't a model id" }, 400);
-    const call = OPENAI_CALL_MODELS.find((model) => model.id === callModel);
-    if (callModel !== undefined && (!call || isRetired(call))) return c.json({ error: "Calls can't run on that model" }, 400);
-    return c.json(setVoice(userId(c), { openaiModel: openaiModel as string | undefined, callModel: call?.id }));
+    const picks: [SpeechJob, unknown][] = [
+      ["transcribe", body.transcribeModel],
+      ["call", body.callModel],
+    ];
+    const given = picks.filter(([, id]) => id !== undefined);
+    if (!given.length) return c.json({ error: "There was nothing to change" }, 400);
+    const access = voiceAccess(who);
+    if (!access) return c.json({ error: "Add a voice key in Settings → Voice first" }, 409);
+    const patch: { transcribeModel?: string | null; callModel?: string | null } = {};
+    for (const [job, id] of given) {
+      if (id !== null && typeof id !== "string") return c.json({ error: "That isn't a model id" }, 400);
+      const pick = id?.trim() || null;
+      if (pick && !(await canPick(access, job, pick))) return c.json({ error: job === "call" ? "Calls can't run on that model" : "Your key doesn't offer that model" }, 400);
+      patch[job === "call" ? "callModel" : "transcribeModel"] = pick;
+    }
+    return c.json(setVoice(who, patch));
   });
 
   app.get("/voice/models", async (c) => {
     const who = userId(c);
-    const baseUrl = getVoice(who).using === "openai" ? providerBaseUrl(who, "voice") : null;
-    const key = baseUrl ? providerKey(who, "voice") : null;
-    if (!baseUrl || !key) return c.json({ transcribe: [], call: [], others: [] } satisfies VoiceModelList);
-    return c.json(voiceModelsFrom(await listedModels(baseUrl, key), isOpenAi(baseUrl)));
+    const access = voiceAccess(who);
+    if (!access) return c.json({ error: "Add a voice key in Settings → Voice first" }, 409);
+    return c.json(await voiceModelsFor(who, access));
   });
 
   app.get("/voice/voices", async (c) => {
     const who = userId(c);
-    const voice = getVoice(who);
-    const provider = voice.using;
-    const baseUrl = provider ? providerBaseUrl(who, "voice") : null;
-    const key = provider ? providerKey(who, "voice") : null;
-    if (!provider || !baseUrl || !key) return c.json({ provider: null, voices: [], chosen: null });
-    const voices = await voicesFor(provider, baseUrl, key, voice.callModel);
+    const access = voiceAccess(who);
+    if (!access) return c.json({ provider: null, voices: [], chosen: null });
+    const { provider, baseUrl, key } = access;
+    const voices = await voicesFor(provider, baseUrl, key, provider === "openai" ? await speechModel(who, "call", access) : "");
     if (!voices) return c.json({ error: `${VOICE_MODELS[provider].label} didn't list its voices. Try again.` }, 502);
-    const picked = voice.callVoice[provider];
+    const picked = getVoice(who).callVoice[provider];
     return c.json({ provider, voices, chosen: picked && voices.some((v) => v.id === picked) ? picked : CALL_MODELS[provider].voice });
   });
 
@@ -166,21 +123,19 @@ export function voiceRoutes() {
     const extension = audioExtension(file.name);
     if (!extension) return c.json({ error: "That isn't a recording this can read" }, 400);
     if (file.size > TRANSCRIBE_MAX_BYTES) return c.json({ error: "The recording is too long" }, 413);
-    const voice = getVoice(who);
-    const kind = voice.using;
-    const baseUrl = kind ? providerBaseUrl(who, "voice") : null;
-    const key = kind ? providerKey(who, "voice") : null;
-    if (!kind || !baseUrl || !key) return c.json({ error: "Add a voice key in Settings → Voice to talk to your bots" }, 409);
+    const access = voiceAccess(who);
+    if (!access) return c.json({ error: "Add a voice key in Settings → Voice to talk to your bots" }, 409);
+    const { provider: kind, baseUrl, key } = access;
 
     const { path, label } = VOICE_MODELS[kind];
-    const model = kind === "openai" ? voice.openaiModel : VOICE_MODELS[kind].model;
+    const model = await speechModel(who, "transcribe", access);
     const upstream = new FormData();
     upstream.set("model", model);
     upstream.set("file", file, `recording.${extension}`);
     const threadId = form?.get("threadId");
     const thread = typeof threadId === "string" ? ownThread(c, threadId) : null;
-    // Only GPT Transcribe of OpenAI's models takes hints; a server of the person's own may use them.
-    const hints = OPENAI_TRANSCRIBE_MODELS.find((candidate) => candidate.id === model)?.hints ?? true;
+    // Of OpenAI's models only GPT Transcribe takes hints; a server of the person's own may use them.
+    const hints = access.own || /^gpt-transcribe/.test(model);
     if (thread && kind === "openai" && hints) {
       const names = new Set([...thread.members, thread.botId].flatMap((id) => (id ? [getBot(id)?.name] : [])));
       for (const name of names) if (name && !/[<>\r\n]/.test(name)) upstream.append("keywords[]", name);

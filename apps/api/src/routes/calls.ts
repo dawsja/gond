@@ -16,10 +16,10 @@ export function callsRoutes() {
 
   app.get("/call", (c) => c.json({ call: callOf(userId(c)) }));
 
-  app.post("/threads/:id/call", (c) => {
+  app.post("/threads/:id/call", async (c) => {
     const thread = ownThread(c, c.req.param("id"));
     if (!thread) return c.json({ error: "Couldn't find that conversation." }, 404);
-    const started = startCall(thread, userId(c));
+    const started = await startCall(thread, userId(c));
     return started.ok ? c.json({ call: started.call }) : c.json({ error: started.error }, started.status);
   });
 

@@ -635,8 +635,9 @@ One line each: where to start, and what must not change.
   is never sent for them. Only the voice key can transcribe; without one
   the mic is dimmed and says where to add one. Always the
   system's default input. `Permissions-Policy` allows the microphone for
-  the app's own origin only. The model is picked from `VoiceModelChoices`
-  (`voice-models.tsx`), each row with what it's for and its price.
+  the app's own origin only. The model is picked from `SpeechModelSelect`
+  (`voice-models.tsx`), the bots' model picker's dropdown: the key's own
+  ids, the default marked, no descriptions or prices.
 - **Calls** (`components/call/`, `CallProvider` in `call-provider.tsx`):
   only the primary bot, only its own chat (`CallButton`; on iPhone "Call"
   in ⋯, `useDial`). The `AudioContext` is made in the tap, before any
@@ -1182,15 +1183,19 @@ One line each: where to start, and what must not change.
   is only the bots'. No engine takes it (`EngineProviderKind`), and the
   LLM proxy refuses it, so nothing on the computer reaches it.
   `VOICE_KEYS` copied each person's OpenAI-compatible key into it.
-- **Voice models** (`OPENAI_TRANSCRIBE_MODELS`, `OPENAI_CALL_MODELS` in
-  shared, `GET /api/voice/models`, `voiceModelsFrom`): OpenAI's speech
-  models, described and priced by hand from its docs
-  (`VOICE_PRICES_AS_OF`), since its API lists only ids. They are the one
-  price list Gond keeps; check them when OpenAI changes its speech line.
-  The route offers those the key's `/models` lists, and a server of the
-  person's own its own ids. A model past `retires` reads as the
-  recommended one (`getVoice`), so a shutdown never breaks the mic or a
-  call.
+- **Voice models** (`SPEECH_FAMILIES`, `speechModels`, `chosenModel` in
+  shared; `src/speech-models.ts`; `GET /api/voice/models`): come from the
+  voice key's own `/models`, OpenAI's or xAI's, kept ten minutes
+  (`listedModels`); Gond keeps no list of them. Every version of a family
+  it can talk to is offered, newest first, and the newest is the default.
+  A family's pattern pins the major version Gond knows (a new one may talk
+  differently), except xAI's realtime voice. A saved pick of null is the
+  default and follows each newer model; picking the default item saves
+  null. A pick runs only while the key offers it, so a shutdown or a move
+  to another provider's key falls back to the default. A key that lists
+  none, or won't say, runs on `VOICE_MODELS` and `CALL_MODELS`. A server
+  of the person's own (`own`) adds its other ids and takes any id for the
+  microphone.
 - **Transcription** (`src/routes/voice.ts`, `src/data/voice.ts`,
   `voiceProvider`, `VOICE_MODELS`): the person's voice key, through
   `upstreamUrl` and `authHeaders`, on xAI's `stt` when it points at xAI. The format comes from the file's
@@ -1199,7 +1204,7 @@ One line each: where to start, and what must not change.
 - **Calls** (`src/calls.ts`, `src/voice-link.ts`, `src/routes/calls.ts`):
   `POST /api/threads/:id/call` takes only the primary bot's own chat
   (`callableBot`, so the route decides, not the button). On OpenAI the
-  person's `callModel` picks the protocol: GPT-Live's own session, or the
+  call's model picks the protocol (`callProtocol`): GPT-Live's own session, or the
   Realtime API (`realtimeLink`, `realtimeSession`, the path xAI takes,
   transcribing the person with `gpt-transcribe`), whose voices are fewer
   (`openAiCallVoices`). The API holds

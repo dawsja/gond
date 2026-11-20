@@ -2386,21 +2386,42 @@ describe("calls", () => {
     expect(xai.type).toBeUndefined();
   });
 
-  test("voice models offered are the catalog's the key lists, never a retired one, and a server of one's own adds its own ids", async () => {
-    const { voiceModelsFrom } = await import("../src/routes/voice.ts");
-    const { isRetired, openAiCallVoices } = await import("@gond/shared");
-    const ids = (list: { id: string }[]) => list.map((model) => model.id);
-    const openai = voiceModelsFrom(["gpt-transcribe", "whisper-1", "gpt-live-1", "gpt-realtime-2.1", "gpt-image-2"], true);
-    expect(ids(openai.call)).toEqual(["gpt-live-1", "gpt-realtime-2.1"]);
-    expect(openai.transcribe[0]).toMatchObject({ id: "gpt-transcribe", recommended: true, price: "$0.0045 a minute" });
+  test("voice models come from the key's list, newest first, the newest the default and a pick kept only while offered", async () => {
+    const { voiceModelsFrom } = await import("../src/speech-models.ts");
+    const { callProtocol, chosenModel, openAiCallVoices, speechModels } = await import("@gond/shared");
+    const listed = ["gpt-live-1", "gpt-realtime-2.1-mini", "gpt-live-1.2", "gpt-realtime-2.1", "gpt-live-1.1", "gpt-live-2", "gpt-live-transcribe", "gpt-realtime-whisper", "gpt-4o-realtime-preview", "whisper-1", "gpt-transcribe", "gpt-image-2"];
+    const openai = voiceModelsFrom("openai", listed, false, { call: null, transcribe: null });
+    // A new major version may talk differently, and the transcription-only models never hold a call.
+    expect(openai.call.groups).toEqual([
+      { name: "GPT-Live", models: ["gpt-live-1.2", "gpt-live-1.1", "gpt-live-1"] },
+      { name: "GPT-Realtime", models: ["gpt-realtime-2.1", "gpt-realtime-2.1-mini"] },
+    ]);
+    expect(openai.call).toMatchObject({ default: "gpt-live-1.2", chosen: "gpt-live-1.2" });
+    expect(openai.transcribe).toMatchObject({ default: "gpt-transcribe", groups: [{ models: ["gpt-transcribe"] }, { models: ["whisper-1"] }] });
     expect(openai.others).toEqual([]);
-    // Unlisted (or a server that won't say): the whole catalog.
-    expect(ids(voiceModelsFrom(null, true).call)).toEqual(["gpt-live-1", "gpt-realtime-2.1", "gpt-realtime-2.1-mini"]);
-    expect(voiceModelsFrom(["Systran/faster-whisper-small"], false).others).toEqual(["Systran/faster-whisper-small"]);
-    expect(isRetired({ retires: "2027-02-26" }, Date.parse("2027-02-27"))).toBe(true);
-    expect(isRetired({}, Date.parse("2030-01-01"))).toBe(false);
+    expect(speechModels("openai", "transcribe", ["gpt-transcribe", "gpt-transcribe-2"]).default).toBe("gpt-transcribe-2");
+
+    // A pick holds while the key offers it; once it's gone, or on another provider's key, the default runs.
+    expect(chosenModel("openai", "call", "gpt-realtime-2.1", listed, false)).toBe("gpt-realtime-2.1");
+    expect(chosenModel("openai", "call", "gpt-live-1.0", listed, false)).toBe("gpt-live-1.2");
+    expect(chosenModel("openai", "call", "gpt-realtime-2.1", null, false)).toBe("gpt-realtime-2.1");
+    expect(chosenModel("xai", "transcribe", "whisper-1", null, false)).toBe("grok-voice-transcribe-2.0");
+    // A server of one's own keeps any id for the microphone, and adds its other ids.
+    expect(chosenModel("openai", "transcribe", "Systran/faster-whisper-small", ["other"], true)).toBe("Systran/faster-whisper-small");
+    expect(chosenModel("openai", "call", "my-voice", ["my-voice"], true)).toBe("gpt-live-1.1");
+    expect(voiceModelsFrom("openai", ["Systran/faster-whisper-small", "gpt-live-1"], true, { call: null, transcribe: null }).others).toEqual(["Systran/faster-whisper-small"]);
+
+    // xAI: its realtime voices at any version, and its alias only when it lists none.
+    expect(speechModels("xai", "call", ["grok-voice-2.0", "grok-voice-3.0", "grok-voice-transcribe-2.0", "grok-4"])).toEqual({ groups: [{ name: "Grok Voice", models: ["grok-voice-3.0", "grok-voice-2.0"] }], default: "grok-voice-3.0" });
+    expect(speechModels("xai", "call", ["grok-4"]).default).toBe("grok-voice-latest");
+    expect(speechModels("xai", "transcribe", null).default).toBe("grok-voice-transcribe-2.0");
+
+    expect(callProtocol("openai", "gpt-live-1.2")).toBe("live");
+    expect(callProtocol("openai", "gpt-realtime-2.1")).toBe("realtime");
+    expect(callProtocol("xai", "grok-voice-3.0")).toBe("realtime");
+    const ids = (list: { id: string }[]) => list.map((voice) => voice.id);
     expect(ids(openAiCallVoices("gpt-realtime-2.1"))).not.toContain("quartz");
-    expect(ids(openAiCallVoices("gpt-live-1"))).toContain("quartz");
+    expect(ids(openAiCallVoices("gpt-live-1.2"))).toContain("quartz");
   });
 
   test("speech said apart is joined as sentences, and a word split across fragments stays whole", async () => {

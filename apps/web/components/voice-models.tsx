@@ -1,75 +1,77 @@
 "use client";
 
-import { VOICE_PRICES_AS_OF, type VoiceModel } from "@gond/shared";
-import type { ReactNode } from "react";
-import { Badge } from "@/components/ui/badge";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { cn } from "@/lib/utils";
+import type { SpeechModels } from "@gond/shared";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-// The dates are days, kept as UTC midnight, so they read the same in every time zone.
-const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+/** The "Something else…" item, for typing the id of a model a server of the person's own serves. */
+export const TYPED_MODEL = "__typed__";
+const TYPED_LABEL = "Something else…";
 
-function Row({ id, value, index, disabled, children }: { id: string; value: string; index: number; disabled: boolean; children: ReactNode }) {
+function ModelName({ id, isDefault }: { id: string; isDefault: boolean }) {
   return (
-    <div className={cn("flex items-start gap-3 p-3 pl-4", index > 0 && "border-t")}>
-      <RadioGroupItem value={value} id={id} disabled={disabled} className="mt-0.5" />
-      <label htmlFor={id} className="flex min-w-0 flex-1 flex-col gap-0.5">
-        {children}
-      </label>
-    </div>
+    <span className="flex min-w-0 items-center gap-2">
+      <span className="truncate">{id}</span>
+      {isDefault ? <span className="shrink-0 text-muted-foreground">Default</span> : null}
+    </span>
   );
 }
 
 /**
- * OpenAI's models for one job, each with what it's for and its price, the recommended one marked.
- * `others` are a server's own ids, offered bare; `extra` is one more row, like typing an id.
+ * The models the voice key offers for one job, listed as the bots' model picker lists its own: by family
+ * when there are several, the default marked. `others` are a server's own ids; `typed` adds Something else.
  */
-export function VoiceModelChoices({
-  name,
+export function SpeechModelSelect({
+  id,
   models,
   others = [],
+  typed = false,
   value,
   disabled = false,
   onPick,
-  extra,
 }: {
-  name: string;
-  models: VoiceModel[];
+  id: string;
+  models: SpeechModels;
   others?: string[];
-  value: string | null;
+  typed?: boolean;
+  value: string;
   disabled?: boolean;
   onPick: (id: string) => void;
-  extra?: { value: string; label: string; detail: string };
 }) {
-  const rows = models.length + others.length;
+  const items = [...models.groups.flatMap((group) => group.models), ...others].map((model) => ({ value: model, label: model }));
+  if (typed) items.push({ value: TYPED_MODEL, label: TYPED_LABEL });
+  const labelled = models.groups.length + (others.length ? 1 : 0) > 1;
   return (
-    <div className="flex flex-col gap-2">
-      <RadioGroup aria-label={name} value={value} onValueChange={(next) => typeof next === "string" && onPick(next)} className="gap-0 overflow-hidden rounded-2xl border">
-        {models.map((model, index) => (
-          <Row key={model.id} id={`${name}-${model.id}`} value={model.id} index={index} disabled={disabled}>
-            <span className="flex flex-wrap items-center gap-1.5">
-              <span className="text-[14px] font-medium">{model.name}</span>
-              {model.recommended ? <Badge tone="ok">Recommended</Badge> : null}
-              {model.retires ? <Badge tone="warn">Retires {day(model.retires)}</Badge> : null}
-            </span>
-            <span className="text-[12.5px] text-muted-foreground">{model.about}</span>
-            <span className="text-[12.5px] font-medium">{model.price}</span>
-          </Row>
+    <Select items={items} value={value} disabled={disabled} onValueChange={(next) => next && onPick(String(next))}>
+      <SelectTrigger id={id} className="w-full max-w-sm">
+        <SelectValue>{(current: string) => (current === TYPED_MODEL ? TYPED_LABEL : <ModelName id={current} isDefault={current === models.default} />)}</SelectValue>
+      </SelectTrigger>
+      <SelectContent>
+        {models.groups.map((group) => (
+          <SelectGroup key={group.name}>
+            {labelled ? <SelectLabel>{group.name}</SelectLabel> : null}
+            {group.models.map((model) => (
+              <SelectItem key={model} value={model}>
+                <ModelName id={model} isDefault={model === models.default} />
+              </SelectItem>
+            ))}
+          </SelectGroup>
         ))}
-        {others.map((id, index) => (
-          <Row key={id} id={`${name}-${id}`} value={id} index={models.length + index} disabled={disabled}>
-            <code className="truncate font-mono text-[13px]">{id}</code>
-            <span className="text-[12.5px] text-muted-foreground">On your server</span>
-          </Row>
-        ))}
-        {extra ? (
-          <Row id={`${name}-${extra.value}`} value={extra.value} index={rows} disabled={disabled}>
-            <span className="text-[14px] font-medium">{extra.label}</span>
-            <span className="text-[12.5px] text-muted-foreground">{extra.detail}</span>
-          </Row>
+        {others.length ? (
+          <SelectGroup>
+            {labelled ? <SelectLabel>On your server</SelectLabel> : null}
+            {others.map((model) => (
+              <SelectItem key={model} value={model}>
+                {model}
+              </SelectItem>
+            ))}
+          </SelectGroup>
         ) : null}
-      </RadioGroup>
-      {models.length ? <p className="text-[12.5px] text-muted-foreground">{`OpenAI's list prices on ${day(VOICE_PRICES_AS_OF)}, paid to OpenAI on your key.`}</p> : null}
-    </div>
+        {typed ? (
+          <SelectGroup>
+            <SelectItem value={TYPED_MODEL}>{TYPED_LABEL}</SelectItem>
+          </SelectGroup>
+        ) : null}
+      </SelectContent>
+    </Select>
   );
 }

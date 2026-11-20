@@ -99,57 +99,90 @@ export function isXaiUrl(url: string): boolean {
 }
 
 /**
- * An OpenAI speech model a person can pick, with what it's for and its price as OpenAI's docs and pricing
- * page put them on `VOICE_PRICES_AS_OF`, since its API lists only ids. One past `retires` (an ISO date,
- * OpenAI's shutdown) gives way to the recommended one.
+ * The speech models a voice key runs come from its own model list, never from a list Gond keeps: every
+ * version of a family Gond can talk to is offered, newest first, and the newest of the first family the
+ * key lists is the default. A family's pattern pins the major version Gond knows, since a new one may
+ * talk differently; xAI's realtime voice keeps one protocol, so any version of it is offered. When the key
+ * lists none of them, or won't say, the provider's model in `VOICE_MODELS` or `CALL_MODELS` stands in.
  */
-export type VoiceModel = { id: string; name: string; about: string; price: string; recommended?: boolean; retires?: string };
-export const VOICE_PRICES_AS_OF = "2026-10-29";
+export type SpeechJob = "call" | "transcribe";
+export type SpeechFamily = { name: string; pattern: RegExp };
+export const SPEECH_FAMILIES: Record<VoiceProvider, Record<SpeechJob, SpeechFamily[]>> = {
+  openai: {
+    call: [
+      { name: "GPT-Live", pattern: /^gpt-live-1(?:\.\d+)*$/ },
+      { name: "GPT-Realtime", pattern: /^gpt-realtime-2(?:\.\d+)*(?:-mini)?$/ },
+    ],
+    transcribe: [
+      { name: "GPT Transcribe", pattern: /^gpt-transcribe(?:-\d+(?:\.\d+)*)?$/ },
+      { name: "GPT-4o and Whisper", pattern: /^(?:gpt-4o(?:-mini)?-transcribe|whisper-1)$/ },
+    ],
+  },
+  xai: {
+    call: [{ name: "Grok Voice", pattern: /^grok-voice-\d+(?:\.\d+)*$/ }],
+    transcribe: [{ name: "Grok Voice Transcribe", pattern: /^grok-voice-transcribe-\d+(?:\.\d+)*$/ }],
+  },
+};
 
-/** For the microphone, on `audio/transcriptions`. `hints` takes the chat's names as keywords. */
-export const OPENAI_TRANSCRIBE_MODELS: (VoiceModel & { hints?: boolean })[] = [
-  { id: "gpt-transcribe", name: "GPT Transcribe", about: "OpenAI's most accurate. It takes the names in the chat as hints, so it spells them right.", price: "$0.0045 a minute", recommended: true, hints: true },
-  { id: "gpt-4o-mini-transcribe", name: "GPT-4o mini Transcribe", about: "Cheaper, and a little less accurate.", price: "About $0.003 a minute", retires: "2027-02-26" },
-  { id: "gpt-4o-transcribe", name: "GPT-4o Transcribe", about: "OpenAI's accurate one before GPT Transcribe.", price: "About $0.006 a minute", retires: "2027-02-26" },
-  { id: "whisper-1", name: "Whisper", about: "The original. Plain transcripts with no hints.", price: "$0.006 a minute", retires: "2027-02-26" },
-];
-
+/** One job's models, grouped by family, and the one it runs on unless the person picks another. */
+export type SpeechModels = { groups: { name: string; models: string[] }[]; default: string };
 /**
- * For calls. `live` is GPT-Live's own session, full duplex; `realtime` is the Realtime API, which takes
- * turns and hands work over by a function call, as xAI's does.
+ * What `/api/voice/models` offers: per job, the models the key lists, its default and the one in use; a
+ * server of the person's own (`own`) adds its other ids (`others`) and takes any id for the microphone.
  */
-export const OPENAI_CALL_MODELS: (VoiceModel & { protocol: "live" | "realtime" })[] = [
-  { id: "gpt-live-1", name: "GPT-Live", about: "OpenAI's most natural voice. It listens while it talks, so interrupting it feels like a real conversation.", price: "$0.05 a minute", recommended: true, protocol: "live" },
-  {
-    id: "gpt-realtime-2.1",
-    name: "GPT-Realtime 2.1",
-    about: "Takes turns rather than talking over you, and is steadier with spelled-out names, numbers and noisy rooms. Fewer voices.",
-    price: "$32 per million audio tokens in, $64 out, plus $0.0045 a minute to write down what you say",
-    protocol: "realtime",
-  },
-  {
-    id: "gpt-realtime-2.1-mini",
-    name: "GPT-Realtime 2.1 mini",
-    about: "The cheapest. Quick, and a little less sharp than 2.1. Fewer voices.",
-    price: "$10 per million audio tokens in, $20 out, plus $0.0045 a minute to write down what you say",
-    protocol: "realtime",
-  },
-];
+export type VoiceModelList = { call: SpeechModels & { chosen: string }; transcribe: SpeechModels & { chosen: string }; others: string[]; own: boolean };
 
-/** What `/api/voice/models` offers: the catalog's models the key lists, and a server of the person's own its own ids. */
-export type VoiceModelList = { transcribe: VoiceModel[]; call: VoiceModel[]; others: string[] };
+const versionOf = (id: string) => (id.match(/\d+/g) ?? []).map(Number);
 
-export function isRetired(model: { retires?: string }, at = Date.now()): boolean {
-  return Boolean(model.retires && Date.parse(model.retires) <= at);
+/** Higher versions first (`gpt-live-1.1` before `gpt-live-1`), a plain id before its `-mini`. */
+function newerFirst(a: string, b: string): number {
+  const [x, y] = [versionOf(a), versionOf(b)];
+  for (let i = 0; i < Math.max(x.length, y.length); i++) {
+    const step = (y[i] ?? -1) - (x[i] ?? -1);
+    if (step) return step;
+  }
+  return a.length - b.length || a.localeCompare(b);
 }
 
-/** `openaiModel` is for an OpenAI-compatible server that names its own models, like a local Whisper. */
+export function speechModels(provider: VoiceProvider, job: SpeechJob, listed: readonly string[] | null): SpeechModels {
+  const families = SPEECH_FAMILIES[provider][job];
+  const groups = families
+    .map(({ name, pattern }) => ({ name, models: [...new Set((listed ?? []).filter((id) => pattern.test(id)))].sort(newerFirst) }))
+    .filter((group) => group.models.length);
+  if (groups.length) return { groups, default: groups[0]!.models[0]! };
+  const fallback = job === "call" ? CALL_MODELS[provider].model : VOICE_MODELS[provider].model;
+  return { groups: [{ name: families[0]!.name, models: [fallback] }], default: fallback };
+}
+
+/**
+ * The model a job runs on: the person's pick while the key still offers it, else the default. A server
+ * of the person's own keeps any id for the microphone and any family's for calls, since it may not list
+ * them; a list that couldn't be read keeps a pick of the provider's own families.
+ */
+export function chosenModel(provider: VoiceProvider, job: SpeechJob, pick: string | null, listed: readonly string[] | null, own: boolean): string {
+  const offered = speechModels(provider, job, listed);
+  if (!pick) return offered.default;
+  const ours = SPEECH_FAMILIES[provider][job].some(({ pattern }) => pattern.test(pick));
+  if (own) return job === "transcribe" || ours ? pick : offered.default;
+  return ours && (listed === null || listed.includes(pick)) ? pick : offered.default;
+}
+
+/**
+ * How a call talks: GPT-Live's own session, full duplex, or the Realtime API, which takes turns and
+ * hands work over by a function call, as xAI's does.
+ */
+export function callProtocol(provider: VoiceProvider, model: string): "live" | "realtime" {
+  return provider === "openai" && !/^gpt-realtime/.test(model) ? "live" : "realtime";
+}
+
+/** A server of the person's own names its models; OpenAI's and xAI's are only those of `SPEECH_FAMILIES`. */
 export type VoiceSettings = {
   /** Null without a voice key. */
   using: VoiceProvider | null;
-  openaiModel: string;
-  /** The model a call on OpenAI runs on, one of `OPENAI_CALL_MODELS`. */
-  callModel: string;
+  /** The microphone's model as picked; null is the default, the newest the key offers. */
+  transcribeModel: string | null;
+  /** A call's model as picked; null is the default, the newest the key offers. */
+  callModel: string | null;
   /** The voice a call speaks in, per provider, since each has its own; missing is the provider's default. */
   callVoice: Partial<Record<VoiceProvider, string>>;
 };
@@ -160,13 +193,13 @@ export const TRANSCRIBE_MAX_BYTES = 10 * 1024 * 1024;
 export const TRANSCRIBE_MAX_SECONDS = 120;
 
 /**
- * A live call with the primary bot runs on a speaking model with the person's own key: OpenAI's
- * (GPT-Live unless they picked another of `OPENAI_CALL_MODELS`) or xAI's realtime voice. It only talks;
- * anything past small talk it hands to the bot's own turn.
+ * A live call with the primary bot runs on a speaking model with the person's own key, OpenAI's or
+ * xAI's, `model` standing in when the key lists none (`speechModels`). It only talks; anything past small
+ * talk it hands to the bot's own turn.
  */
 export const CALL_MODELS: Record<VoiceProvider, { model: string; voice: string; label: string }> = {
   xai: { model: "grok-voice-latest", voice: "eve", label: "xAI Grok" },
-  openai: { model: "gpt-live-1", voice: "marin", label: "OpenAI" },
+  openai: { model: "gpt-live-1.1", voice: "marin", label: "OpenAI" },
 };
 /**
  * GPT-Live's voices, from OpenAI's docs, since its API has no list to ask (xAI's does: `GET /v1/tts/voices`).
@@ -207,8 +240,7 @@ const REALTIME_VOICES = new Set(["marin", "cedar", "alloy", "ash", "ballad", "co
 
 /** The voices an OpenAI call model speaks in. */
 export function openAiCallVoices(model: string): CallVoice[] {
-  const realtime = OPENAI_CALL_MODELS.find((candidate) => candidate.id === model)?.protocol === "realtime";
-  return realtime ? OPENAI_CALL_VOICES.filter((voice) => REALTIME_VOICES.has(voice.id)) : OPENAI_CALL_VOICES;
+  return callProtocol("openai", model) === "realtime" ? OPENAI_CALL_VOICES.filter((voice) => REALTIME_VOICES.has(voice.id)) : OPENAI_CALL_VOICES;
 }
 
 /** Both sides of a call are mono 16-bit PCM at this rate. */

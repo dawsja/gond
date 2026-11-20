@@ -1,12 +1,12 @@
-import { CALL_MAX_MINUTES, CALL_MODELS, isStopRequest, openAiCallVoices, plainMarkdown, type Bot, type CallEvent, type CallInfo, type Message, type Thread, type VoiceProvider, type VoiceSettings } from "@gond/shared";
+import { CALL_MAX_MINUTES, isStopRequest, openAiCallVoices, plainMarkdown, type Bot, type CallEvent, type CallInfo, type Message, type Thread, type VoiceProvider, type VoiceSettings } from "@gond/shared";
 import { getBot } from "./data/bots.ts";
-import { providerBaseUrl, providerKey } from "./data/providers.ts";
 import { getThread, listMessages, postMessage, recentMessages } from "./data/threads.ts";
 import { getUser } from "./data/users.ts";
 import { getVoice } from "./data/voice.ts";
 import { subscribe } from "./events.ts";
 import { newId, now } from "./ids.ts";
 import { hasWork, stopFromMessage } from "./responder.ts";
+import { speechModel, voiceAccess } from "./speech-models.ts";
 import { acknowledge, openVoiceLink, type VoiceLink, type VoiceSignal } from "./voice-link.ts";
 
 // A pause this long ends what one side was saying, and it goes into the chat.
@@ -133,20 +133,20 @@ function callableBot(thread: Thread): Bot | null {
   return bot?.primary ? bot : null;
 }
 
-/** The person's voice for this provider, unless their OpenAI call model doesn't speak in it. */
-function callVoice(settings: VoiceSettings, provider: VoiceProvider): string | undefined {
+/** The person's voice for this provider, unless the OpenAI model the call runs on doesn't speak in it. */
+function callVoice(settings: VoiceSettings, provider: VoiceProvider, model: string): string | undefined {
   const voice = settings.callVoice[provider];
-  return provider === "openai" && voice && !openAiCallVoices(settings.callModel).some((candidate) => candidate.id === voice) ? undefined : voice;
+  return provider === "openai" && voice && !openAiCallVoices(model).some((candidate) => candidate.id === voice) ? undefined : voice;
 }
 
-export function startCall(thread: Thread, userId: string): StartCall {
+export async function startCall(thread: Thread, userId: string): Promise<StartCall> {
   const bot = callableBot(thread);
   if (!bot) return { ok: false, status: 400, error: "You can only call your primary bot, from its own chat." };
+  const access = voiceAccess(userId);
+  if (!access) return { ok: false, status: 409, error: "A call needs a voice key. Add one in Settings → Voice." };
+  const model = await speechModel(userId, "call", access);
   const voiceSettings = getVoice(userId);
-  const provider = voiceSettings.using;
-  const baseUrl = provider ? providerBaseUrl(userId, "voice") : null;
-  const key = provider ? providerKey(userId, "voice") : null;
-  if (!provider || !baseUrl || !key) return { ok: false, status: 409, error: "A call needs a voice key. Add one in Settings → Voice." };
+  const { provider, baseUrl, key } = access;
 
   const previous = callOf(userId);
   if (previous) endCall(previous.id, null);
@@ -188,8 +188,8 @@ export function startCall(thread: Thread, userId: string): StartCall {
     history: historyOf(thread, bot),
     greeting: greetingFor(bot),
     botName: bot.name,
-    model: provider === "openai" ? voiceSettings.callModel : CALL_MODELS.xai.model,
-    voice: callVoice(voiceSettings, provider),
+    model,
+    voice: callVoice(voiceSettings, provider, model),
     on: (signal) => onSignal(call, provider, signal),
   });
   call.orphan = setTimeout(() => endCall(info.id, null), ORPHAN_MS);

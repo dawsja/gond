@@ -1553,6 +1553,8 @@ describe("data", () => {
     const upstream = Bun.serve({
       port: 0,
       async fetch(request) {
+        // Neither server lists its models, so each runs on its provider's own.
+        if (request.method === "GET") return new Response("Not found", { status: 404 });
         const form = await request.formData();
         const file = form.get("file");
         seen.push({ path: new URL(request.url).pathname, auth: request.headers.get("authorization"), model: form.get("model"), name: file instanceof File ? file.name : null });
@@ -1568,7 +1570,7 @@ describe("data", () => {
       return app.request("/api/transcribe", { method: "POST", body: form });
     };
     try {
-      expect(getVoice("u-voice")).toEqual({ using: null, openaiModel: "gpt-transcribe", callModel: "gpt-live-1", callVoice: {} });
+      expect(getVoice("u-voice")).toEqual({ using: null, transcribeModel: null, callModel: null, callVoice: {} });
       expect((await send()).status).toBe(409);
       // The bots' OpenAI-compatible key is theirs alone.
       saveProvider("u-voice", "openai", { baseUrl: `http://127.0.0.1:${upstream.port}/v1`, apiKey: "sk-bots-key-123456" });
@@ -1581,18 +1583,20 @@ describe("data", () => {
       expect(await heard.json()).toEqual({ text: "hello there" });
       expect(seen[0]).toEqual({ path: "/v1/audio/transcriptions", auth: "Bearer sk-voice-key-123456", model: "gpt-transcribe", name: "recording.mp4" });
 
-      const local = await app.request("/api/voice", { method: "PUT", body: JSON.stringify({ openaiModel: "Systran/faster-whisper-small" }) });
-      expect(await local.json()).toMatchObject({ using: "openai", openaiModel: "Systran/faster-whisper-small" });
+      const local = await app.request("/api/voice", { method: "PUT", body: JSON.stringify({ transcribeModel: "Systran/faster-whisper-small" }) });
+      expect(await local.json()).toMatchObject({ using: "openai", transcribeModel: "Systran/faster-whisper-small" });
       await send();
       expect(seen[1]!.model).toBe("Systran/faster-whisper-small");
-      expect((await app.request("/api/voice", { method: "PUT", body: JSON.stringify({ openaiModel: "bad model" }) })).status).toBe(400);
+      expect((await app.request("/api/voice", { method: "PUT", body: JSON.stringify({ transcribeModel: "bad model" }) })).status).toBe(400);
       expect((await app.request("/api/voice", { method: "PUT", body: JSON.stringify({}) })).status).toBe(400);
-      expect(setVoice("u-voice", { openaiModel: "" }).openaiModel).toBe("gpt-transcribe");
+      expect(setVoice("u-voice", { transcribeModel: "" }).transcribeModel).toBeNull();
       const realtime = await app.request("/api/voice", { method: "PUT", body: JSON.stringify({ callModel: "gpt-realtime-2.1" }) });
-      expect(await realtime.json()).toMatchObject({ callModel: "gpt-realtime-2.1", openaiModel: "gpt-transcribe" });
+      expect(await realtime.json()).toMatchObject({ callModel: "gpt-realtime-2.1", transcribeModel: null });
       expect((await app.request("/api/voice", { method: "PUT", body: JSON.stringify({ callModel: "gpt-image-2" }) })).status).toBe(400);
       expect(setVoice("u-voice", { callModel: "gpt-live-1" }).callModel).toBe("gpt-live-1");
 
+      // A pick made on the old key doesn't follow the person to xAI.
+      setVoice("u-voice", { transcribeModel: "Systran/faster-whisper-small" });
       saveProvider("u-voice", "voice", { baseUrl: "https://api.x.ai/v1", apiKey: "xai-voice-key-123456" });
       expect(getVoice("u-voice").using).toBe("xai");
       await send();
@@ -5923,6 +5927,7 @@ describe("call voices", () => {
       async fetch(request) {
         const path = new URL(request.url).pathname;
         if (path === "/v1/models") return Response.json({ data: [{ id: "gpt-live-1" }, { id: "gpt-realtime-2.1-mini" }, { id: "my-whisper" }] });
+        if (path.endsWith("/models")) return new Response("Not found", { status: 404 });
         if (path === "/x/v1/tts/voices") return Response.json({ voices: [{ voice_id: "eve", name: "Eve", language: "en" }, { voice_id: "ara", name: "Ara", language: "en" }, { voice_id: "../bad", name: "Bad" }] });
         said.push({ path, body: await request.json() });
         return new Response(new Uint8Array([0xff, 0xfb, 1, 2]), { headers: { "content-type": "audio/mpeg" } });
@@ -5955,12 +5960,12 @@ describe("call voices", () => {
       await app.request("/api/voice/call-voice", { method: "PUT", body: JSON.stringify({ voice: "marin" }) });
       expect(getVoice("u-voices").callVoice).toEqual({ xai: "ara" });
 
-      // The models the key lists, described; a server of one's own adds its own ids.
-      const models = (await (await app.request("/api/voice/models")).json()) as { call: { id: string; price: string }[]; transcribe: { id: string }[]; others: string[] };
-      expect(models.call.map((m) => m.id)).toEqual(["gpt-live-1", "gpt-realtime-2.1-mini"]);
-      expect(models.call[0]!.price).toBe("$0.05 a minute");
-      expect(models.transcribe[0]!.id).toBe("gpt-transcribe");
-      expect(models.others).toEqual(["my-whisper"]);
+      // The models the key lists, the newest the default; a server of one's own adds its other ids.
+      const modelList = async () => (await (await app.request("/api/voice/models")).json()) as import("@gond/shared").VoiceModelList;
+      const models = await modelList();
+      expect(models.call).toEqual({ groups: [{ name: "GPT-Live", models: ["gpt-live-1"] }, { name: "GPT-Realtime", models: ["gpt-realtime-2.1-mini"] }], default: "gpt-live-1", chosen: "gpt-live-1" });
+      expect(models.transcribe).toMatchObject({ default: "gpt-transcribe", chosen: "gpt-transcribe" });
+      expect(models).toMatchObject({ others: ["my-whisper"], own: true });
       // A GPT-Live voice the Realtime API doesn't have reads as the default there.
       await app.request("/api/voice/call-voice", { method: "PUT", body: JSON.stringify({ voice: "quartz" }) });
       expect(((await (await app.request("/api/voice/voices")).json()) as { chosen: string }).chosen).toBe("quartz");
@@ -5968,6 +5973,11 @@ describe("call voices", () => {
       const realtime = (await (await app.request("/api/voice/voices")).json()) as { voices: { id: string }[]; chosen: string };
       expect(realtime.chosen).toBe("marin");
       expect(realtime.voices.map((v) => v.id)).not.toContain("quartz");
+      expect((await modelList()).call.chosen).toBe("gpt-realtime-2.1-mini");
+      // Picking the default again follows the newest the key offers.
+      await app.request("/api/voice", { method: "PUT", body: JSON.stringify({ callModel: "" }) });
+      expect(getVoice("u-voices").callModel).toBeNull();
+      expect((await modelList()).call.chosen).toBe("gpt-live-1");
     } finally {
       restore();
       upstream.stop(true);
@@ -6024,8 +6034,8 @@ describe("calls", () => {
       const thread = getThread(bot.threadId)!;
       expect(bot.primary).toBe(true);
       const helper = createBot(botInputSchema.parse({ name: "Ledger Caller", title: "Books" }), "u-caller");
-      expect(startCall(getThread(helper.threadId)!, "u-caller")).toMatchObject({ ok: false, status: 400 });
-      const started = startCall(thread, "u-caller");
+      expect(await startCall(getThread(helper.threadId)!, "u-caller")).toMatchObject({ ok: false, status: 400 });
+      const started = await startCall(thread, "u-caller");
       if (!started.ok) throw new Error(started.error);
       const events: { type: string }[] = [];
       listen(started.call.id, (event) => events.push(event));
@@ -6106,7 +6116,7 @@ describe("calls", () => {
     try {
       const bot = createBot(botInputSchema.parse({ name: "Patch Socket" }), "u-socket");
       saveProvider("u-socket", "voice", { baseUrl: "https://api.x.ai/v1", apiKey: "xai-socket-key-1234567890" });
-      const started = startCall(getThread(bot.threadId)!, "u-socket");
+      const started = await startCall(getThread(bot.threadId)!, "u-socket");
       if (!started.ok) throw new Error(started.error);
       const url = `http://127.0.0.1:${gond.port}/api/calls/${started.call.id}/socket`;
       const upgrade = (origin: string) => fetch(url, { headers: { upgrade: "websocket", connection: "Upgrade", "sec-websocket-version": "13", "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==", origin } });
