@@ -321,6 +321,7 @@ jobs:
     env:
       CARRY_DESKTOP: ${{ needs.changes.outputs.carry_desktop }}
       CARRY_ANDROID: ${{ needs.changes.outputs.carry_android }}
+      GOND_RELEASE_KEY: ${{ secrets.GOND_RELEASE_KEY }}
     steps:
       - if: needs.changes.outputs.desktop == 'true' || needs.changes.outputs.android == 'true'
         uses: actions/download-artifact@v8
@@ -402,6 +403,24 @@ jobs:
           else
             gh release create "$RELEASE_TAG" release/* --repo "$GITHUB_REPOSITORY" --title "Gond $RELEASE_TAG" --generate-notes
           fi
+      # gond.io/download/windows, /linux and /android serve the newest release's apps from R2 (bucket
+      # gond-releases), through the gond-landing repo's Worker. This copies the files the GitHub
+      # release has after the step above, so the two match, then points those links at this release
+      # unless a newer one already has them. GOND_RELEASE_KEY is the Worker's RELEASE_UPLOAD_KEY and
+      # can only write release files; without it (a fork) nothing is copied.
+      - name: Copy the release to gond.io
+        if: env.GOND_RELEASE_KEY != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir mirror
+          for file in mirror/*; do
+            name=$(basename "$file")
+            curl -sS --fail-with-body --retry 3 -T "$file" "https://gond.io/internal/releases/$RELEASE_TAG/$name" \
+              -H "Authorization: Bearer $GOND_RELEASE_KEY" -H "X-Content-SHA256: $(sha256sum "$file" | cut -d' ' -f1)"
+            echo
+          done
+          curl -sS --fail-with-body --retry 3 -X POST "https://gond.io/internal/releases/$RELEASE_TAG/publish" -H "Authorization: Bearer $GOND_RELEASE_KEY"
 
   build:
     name: Build ${{ matrix.name }} ${{ matrix.arch }}

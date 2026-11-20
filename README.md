@@ -78,7 +78,8 @@ affiliated with xAI, Meta or Anthropic.
   …) and everyone gets their own bots, AI, apps, secrets and Linux account.
 - **Phone and desktop.** The web app is built phone-first and can go on your
   home screen. There's also an Android app and a Rust/Tauri app for Windows
-  and Linux on the releases page.
+  and Linux. Download them from [gond.io](https://gond.io/#install) or the
+  [releases page](https://github.com/dawsja/gond/releases).
 
 ## Quick start
 
