@@ -521,8 +521,9 @@ One line each: where to start, and what must not change.
   isn't woken by it (`spokeSince`). `message_bot` from a room turn to a
   member is said in the room as an @mention. A `::choices` tap in a room
   goes as `@handle option` to the bot that offered it.
-- **The composer**: a message past one line moves its buttons (Later,
-  the mic, Send) to a row beneath (`stacked`), held until it's empty so
+- **The composer**: one pill, attach (+) at its start. A message past one
+  line moves its buttons (attach to the left, Later, the mic and Send to
+  the right) to a row beneath (`stacked`), held until it's empty so
   the wider text can't flip it back. `lib/composer-layout.ts` gates it on
   the draft: empty is always inline, even without a resize notification.
   Send empties the field as it's tapped; a failed send puts its text back

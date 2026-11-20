@@ -747,6 +747,7 @@ export function Conversation({ threadId }: { threadId: string }) {
   // it stays that way until it's empty, or the wider text could fit one line again and flip back.
   const [stackedLatch, setStacked] = useState(false);
   const stacked = composerLayout(draft, false, stackedLatch);
+  const below = stacked && !nativeChrome;
   useEffect(() => {
     if (draft) return;
     // Clearing a one-line field need not resize it. Reset for the next draft without waiting for that.
@@ -1294,6 +1295,19 @@ export function Conversation({ threadId }: { threadId: string }) {
   // The iPhone app's header has no room for the phone circle, so there the call is first in the menu.
   const actions = nativeChrome && callable && !onCall ? [[{ id: "call", label: `Call ${callable.name}`, icon: Phone, symbol: "phone", run: calling.dial }], ...botActions] : botActions;
   const status = boxUpdating ? " · the computer is updating, replies wait" : onCall ? " · on a call" : busy ? " · working" : waitingOnYou ? " · waiting on you" : watches.length ? ` · watching ${watches.length === 1 ? "1 thing" : `${watches.length} things`}` : "";
+  // At the pill's start on one line, first in the row beneath once the message stacks.
+  const attachButton = (
+    <Tooltip>
+      <TooltipTrigger render={<InputGroupButton variant="ghost" size="icon-sm" aria-label="Attach files" render={<label />} nativeButton={false} className={cn("cursor-pointer rounded-full", below && "mr-auto")} />}>
+        <Plus aria-hidden="true" className="size-5" />
+        <input type="file" multiple className="sr-only" onChange={(e) => {
+          attach([...(e.target.files ?? [])]);
+          e.target.value = "";
+        }} />
+      </TooltipTrigger>
+      <TooltipContent>Attach files</TooltipContent>
+    </Tooltip>
+  );
 
   return (
     <div className="flex min-h-0 flex-1">
@@ -1510,18 +1524,8 @@ export function Conversation({ threadId }: { threadId: string }) {
           {onCall ? <CallComposer call={onCall} bot={bot ?? undefined} className={cn(nativeChrome && "invisible")} /> : (
           <div className="relative flex items-end gap-2.5">
           {slash ? <SlashMenu kind={slash.kind} skills={skills} people={mentionable} query={slash.query} selected={slash.selected} onPickSkill={(skill) => insertSkill(skill.slug)} onPickPerson={insertMention} /> : null}
-          <Tooltip>
-            <TooltipTrigger render={<Button size="icon-xl" aria-label="Attach files" render={<label />} nativeButton={false} className={cn("cursor-pointer", nativeChrome && "invisible")} />}>
-              <Plus aria-hidden="true" />
-              <input type="file" multiple className="sr-only" onChange={(e) => {
-                attach([...(e.target.files ?? [])]);
-                e.target.value = "";
-              }} />
-            </TooltipTrigger>
-            <TooltipContent>Attach files</TooltipContent>
-          </Tooltip>
-
-          <InputGroup variant="pill" className={cn("min-h-11 rounded-[22px] pr-1.5 wide:shadow-subtle-3", nativeChrome && "invisible overflow-hidden")} style={nativeChrome ? { height: "var(--native-composer-height, 2.75rem)" } : undefined}>
+          <InputGroup variant="pill" className={cn("min-h-11 rounded-[22px] px-1.5 wide:shadow-subtle-3", nativeChrome && "invisible overflow-hidden")} style={nativeChrome ? { height: "var(--native-composer-height, 2.75rem)" } : undefined}>
+            {below ? null : <InputGroupAddon align="inline-start" className="self-end pt-0 pb-[5px] pl-0">{attachButton}</InputGroupAddon>}
             <InputGroupTextarea
               ref={composerField}
               value={draft}
@@ -1540,9 +1544,10 @@ export function Conversation({ threadId }: { threadId: string }) {
               aria-label={bot ? `Message ${bot.name}` : "Message the room"}
               enterKeyHint={touch ? "enter" : "send"}
               // An empty field is one row whatever its hint, so a long one never makes the pill taller.
-              className="max-h-40 min-h-[42px] px-4 py-2.5 text-[16px] leading-5 placeholder-shown:h-[42px] placeholder-shown:overflow-hidden placeholder-shown:[field-sizing:fixed] placeholder:truncate sm:text-[14px]"
+              className={cn("max-h-40 min-h-[42px] py-2.5 pr-4 text-[16px] leading-5 placeholder-shown:h-[42px] placeholder-shown:overflow-hidden placeholder-shown:[field-sizing:fixed] placeholder:truncate sm:text-[14px]", below ? "pl-2.5" : "pl-1.5")}
             />
-            <InputGroupAddon align={stacked && !nativeChrome ? "block-end" : "inline-end"} className={cn("mr-0 gap-1 pt-0 pr-0 pb-[5px] has-[>button]:mr-0", stacked && !nativeChrome ? "justify-end pl-2" : "self-end")}>
+            <InputGroupAddon align={below ? "block-end" : "inline-end"} className={cn("mr-0 gap-1 pt-0 pr-0 pb-[5px] has-[>button]:mr-0", below ? "justify-end pl-0" : "self-end")}>
+              {below ? attachButton : null}
 
               {busy && draft.trim() && !files.length ? (
                 <Tooltip>
