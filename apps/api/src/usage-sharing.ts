@@ -27,6 +27,7 @@ export async function reportUsage(relayUrl = PUSH_RELAY_URL): Promise<boolean> {
 }
 
 let soon: ReturnType<typeof setTimeout> | null = null;
+let interval: ReturnType<typeof setInterval> | null = null;
 
 function reportSoon(ms: number) {
   if (soon) clearTimeout(soon);
@@ -47,8 +48,19 @@ export function changeSharing(on: boolean): UsageSharing {
 
 export function startUsageSharing() {
   if (usageSharing()) reportSoon(FIRST_MS);
-  const timer = setInterval(() => {
+  interval = setInterval(() => {
     if (usageSharing()) reportSoon(0);
   }, EVERY_MS);
-  timer.unref?.();
+  interval.unref?.();
+}
+
+export function stopUsageSharing() {
+  if (soon) {
+    clearTimeout(soon);
+    soon = null;
+  }
+  if (interval) {
+    clearInterval(interval);
+    interval = null;
+  }
 }

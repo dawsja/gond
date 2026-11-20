@@ -8,7 +8,7 @@ import { Marker, MarkerContent } from "@/components/ui/marker";
 import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "@/components/ui/toast";
 import { api, post } from "@/lib/api";
-import { describeSchedule } from "@/lib/schedule";
+import { describeSchedule, describeTrigger } from "@/lib/schedule";
 
 /** The bot's watches that are on, refetched when a routine changes. */
 export function useWatches(botId: string | null): Routine[] {
@@ -105,7 +105,7 @@ export function NoticedLinks({ message, watch, bot }: { message: Message; watch:
           <PopoverHeader>
             <PopoverTitle>{watch ? `${name} is watching “${watch}”` : `${name} noticed this`}</PopoverTitle>
             <PopoverDescription>
-              {routine ? `It checks ${lowerFirst(describeSchedule(routine.cron))}, and only speaks up when something changes that matters to you.` : "It only speaks up when something changes that matters to you."} Ask {name} to change or stop it any time.
+              {routine ? `It ${routine.trigger ? `looks ${lowerFirst(describeTrigger(routine.trigger))}` : `checks ${lowerFirst(describeSchedule(routine.cron))}`}, and only speaks up when something changes that matters to you.` : "It only speaks up when something changes that matters to you."} Ask {name} to change or stop it any time.
             </PopoverDescription>
           </PopoverHeader>
         </PopoverContent>

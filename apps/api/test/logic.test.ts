@@ -1987,9 +1987,9 @@ describe("memory in the database", () => {
 describe("bot pictures", () => {
   test("an upgrade drops the pictures bots wore, and a bot that wore one falls back to its own mascot", async () => {
     const { Database } = await import("bun:sqlite");
-    const { runMigrations, LATEST_VERSION } = await import("../src/db/migrations.ts");
+    const { runMigrations, BOT_PICTURES_GONE_VERSION } = await import("../src/db/migrations.ts");
     const db = new Database(":memory:", { strict: true });
-    runMigrations(db, LATEST_VERSION - 1);
+    runMigrations(db, BOT_PICTURES_GONE_VERSION - 1);
     const at = "2026-11-01T00:00:00Z";
     db.query("INSERT INTO gond_bots (id, name, color, expression, shape, model, thread_id, user_id, created_at, updated_at) VALUES ('b1', 'Patch', '#11998A', 'wink', 'cloud', 'opus', 't-b1', 'u1', ?, ?)").run(at, at);
     db.query("INSERT INTO gond_bot_avatars (bot_id, media_type, data, updated_at) VALUES ('b1', 'image/png', ?, ?)").run(new Uint8Array([137, 80, 78, 71]), at);

@@ -13,12 +13,15 @@ import { subscribe } from "./events.ts";
 import { runDueShoppingChecks } from "./shopping.ts";
 import { expireDueCheckouts } from "./data/shopping.ts";
 import { retireLapsedCards } from "./approvals.ts";
+import { runScheduledRetention } from "./backup.ts";
+import { runDetailReminders } from "./details.ts";
+import { keepListening } from "./triggers.ts";
 
-type State = { timer: ReturnType<typeof setInterval> | null; owner: string; ticking: boolean; lastChase: number; woken: boolean };
+type State = { timer: ReturnType<typeof setInterval> | null; owner: string; ticking: boolean; lastChase: number; woken: boolean; stopped: boolean; unsubscribe: (() => void) | null };
 const holder = globalThis as typeof globalThis & { __gondDispatcher?: State };
 
 function state(): State {
-  return (holder.__gondDispatcher ??= { timer: null, owner: randomString(8), ticking: false, lastChase: 0, woken: false });
+  return (holder.__gondDispatcher ??= { timer: null, owner: randomString(8), ticking: false, lastChase: 0, woken: false, stopped: false, unsubscribe: null });
 }
 
 const TICK_MS = 2_000;
@@ -26,22 +29,35 @@ const TICK_MS = 2_000;
 export function startDispatcher(options: { intervalMs?: number } = {}) {
   const current = state();
   if (current.timer) return;
+  current.stopped = false;
   current.timer = setInterval(() => void tick(), options.intervalMs ?? TICK_MS);
   // A new message, or a bot coming free, is picked up at once; the interval is only the fallback.
-  subscribe((event) => {
+  current.unsubscribe = subscribe((event) => {
     if (event.topic === "thread" || (event.topic === "activity" && event.line === null)) wake();
   });
   console.info("[gond] Dispatcher started");
 }
 
+/** Stops scheduling new ticks or claiming work during graceful shutdown. */
+export function stopDispatcher() {
+  const current = state();
+  current.stopped = true;
+  if (current.timer) {
+    clearInterval(current.timer);
+    current.timer = null;
+  }
+  current.unsubscribe?.();
+  current.unsubscribe = null;
+}
+
 /** One tick on the next turn of the event loop, however many ask for it before then. */
 function wake() {
   const current = state();
-  if (current.woken) return;
+  if (current.woken || current.stopped) return;
   current.woken = true;
   setTimeout(() => {
     current.woken = false;
-    void tick();
+    if (!current.stopped) void tick();
   }, 0);
 }
 
@@ -68,7 +84,7 @@ function followUpPrompt(note: string, setAt: string): string {
 
 async function tick() {
   const current = state();
-  if (current.ticking) return;
+  if (current.ticking || current.stopped) return;
   current.ticking = true;
   try {
     runDueRoutines();
@@ -80,6 +96,9 @@ async function tick() {
       chaseStalledDelegations();
       expireTeachingFrames();
       retireLapsedCards();
+      runDetailReminders();
+      runScheduledRetention();
+      keepListening();
       if (!isUpdating() && !computerAway()) runDueCheckIns();
     }
 

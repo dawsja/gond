@@ -63,6 +63,8 @@ export type ChatAttachment = {
   name: string;
   mediaType: string;
   size: number;
+  /** Removed by the server's retention (Settings → Data & backups): only its name and size are left. */
+  removed?: true;
 };
 
 export type Message = {

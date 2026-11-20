@@ -6329,6 +6329,8 @@ describe("profiles", () => {
     db.query("INSERT INTO gond_peer_checks (user_id, peer_key, checked_at) VALUES (?, ?, ?)").run(work.id, "k".repeat(64), "2026-01-01T00:00:00Z");
     const { setCheckIns } = await import("../src/data/check-ins.ts");
     setCheckIns(work.id, { everyHours: 4 });
+    const { saveDetail } = await import("../src/data/details.ts");
+    saveDetail(work.id, { kind: "person", label: "Sam", expiresOn: null, fields: [{ label: "Passport", private: true, value: "P1234567" }] });
     const bots = [bot.id, other.id];
     const threads = [bot.threadId, other.threadId, room.id];
 

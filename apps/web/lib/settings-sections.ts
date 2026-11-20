@@ -1,5 +1,5 @@
 import type { UserRole } from "@gond/shared";
-import { Bell, Gauge, Globe, Layers, Link2, Blocks, BrainCircuit, Info, KeyRound, LogIn, MessageCircleHeart, Mic, Monitor, Palette, Server, Sparkles, UserRound } from "lucide-react";
+import { Bell, BookUser, Database, Gauge, Globe, Layers, Link2, Blocks, BrainCircuit, Info, KeyRound, LogIn, MessageCircleHeart, Mic, Monitor, Palette, Server, Sparkles, UserRound } from "lucide-react";
 
 /** The headings Settings' list is grouped under; a section with no group sits on its own at the end. */
 const SETTINGS_GROUPS = [
@@ -15,6 +15,7 @@ export const SETTINGS_SECTIONS = [
   { id: "profiles", group: "you", label: "Profiles", blurb: "Keep work and home apart. Each profile has its own bots, chats, keys and computer.", icon: Layers, admin: false },
   { id: "notifications", group: "you", label: "Notifications", blurb: "Choose whether this browser or app tells you when a bot finishes or needs you.", icon: Bell, admin: false },
   { id: "appearance", group: "you", label: "Appearance", blurb: "Pick your theme, size and chat color.", icon: Palette, admin: false },
+  { id: "details", group: "you", label: "Your details", blurb: "Keep your household's details so bots can fill in forms. Private ones are typed in for you, never shown.", icon: BookUser, admin: false },
   { id: "personalization", group: "you", label: "Personalization", blurb: "Choose how your bots talk to you and how many emojis they use.", icon: MessageCircleHeart, admin: false },
   { id: "computer", group: "you", label: "Your computer", blurb: "Put the computer your bots work on back the way it was built.", icon: Monitor, admin: false },
   { id: "ai", group: "bots", label: "AI", blurb: "Choose what your bots run on: Claude Code on your plan or a key, your ChatGPT or Grok plan, or an API key.", icon: BrainCircuit, admin: false },
@@ -27,6 +28,7 @@ export const SETTINGS_SECTIONS = [
   { id: "shared-computer", group: "server", label: "Shared computer", blurb: "Check on the computer everyone's bots run on, update it or reset it.", icon: Server, admin: true },
   { id: "auth", group: "server", label: "Authentication", blurb: "Set up your identity provider and see who has signed in.", icon: LogIn, admin: true },
   { id: "other-gonds", group: "server", label: "Other Gonds", blurb: "Turn on Spaces, name this Gond, pick its relay and see the Gonds it knows.", icon: Globe, admin: true },
+  { id: "data", group: "server", label: "Data & backups", blurb: "Back up the database and choose how long old files and usage history stay.", icon: Database, admin: true },
   { id: "about", group: null, label: "About", blurb: "Check the version and updates, see your server and read where Gond comes from.", icon: Info, admin: false },
 ] as const;
 

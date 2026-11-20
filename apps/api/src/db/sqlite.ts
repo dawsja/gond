@@ -18,6 +18,21 @@ export function closeDb() {
   holder.__gondSqlite = undefined;
 }
 
+/** Flush the WAL file and optimize query planner stats before closing on graceful shutdown. */
+export function checkpointAndCloseDb() {
+  const cached = holder.__gondSqlite;
+  if (!cached) return;
+  try {
+    cached.db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+    cached.db.exec("PRAGMA optimize");
+  } catch (error) {
+    console.warn(`[gond] couldn't checkpoint database on shutdown: ${error instanceof Error ? error.message : error}`);
+  } finally {
+    cached.db.close();
+    holder.__gondSqlite = undefined;
+  }
+}
+
 export function getDb(): Database {
   const file = dbPath();
   const cached = holder.__gondSqlite;

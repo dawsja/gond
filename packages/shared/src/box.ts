@@ -58,6 +58,8 @@ export type ServerUpdate = {
   blocked: string | null;
   phase: ServerUpdatePhase;
   error: string | null;
+  /** The last try stopped because the database couldn't be backed up first; the admin may go on without one. */
+  backupFailed: boolean;
 };
 
 /** Whether release `a` (1.2.3, with or without a v) is newer than `b`; anything that isn't one never is. */

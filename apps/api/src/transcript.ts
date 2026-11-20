@@ -23,7 +23,7 @@ export function transcriptLines(lines: Message[], bots: Bot[], self: Pick<Bot, "
       const nameOf = (author: string) => authorName(author, m.threadId, names, self?.id);
       const via = m.fromThreadId && names.has(m.author) && m.author !== self?.id ? (m.note === "action" ? " (teammate, action for you)" : m.note === "info" ? " (teammate, for your information)" : " (teammate, by message)") : "";
       const said = m.spoken ? (m.author === self?.id ? " (your voice, on a call)" : " (on a call)") : "";
-      const files = m.attachments.length ? ` [attached: ${m.attachments.map((a) => a.name).join(", ")}]` : "";
+      const files = m.attachments.length ? ` [attached: ${m.attachments.map((a) => (a.removed ? `${a.name} (removed since, to save space)` : a.name)).join(", ")}]` : "";
       const reactions = m.reactions.length ? ` [reactions: ${m.reactions.map((r) => `${nameOf(r.author)} ${r.emoji}`).join(", ")}]` : "";
       const body = m.body.length > clipAt ? `${m.body.slice(0, clipAt)}…` : m.body;
       return `${nameOf(m.author)}${via}${said}: ${replyLine(m.replyTo, nameOf)}${m.kind === "approval" ? `(asked for approval: ${body}${approvalEnding(m)})` : m.kind === "signin" ? `(posted a sign-in card: ${body})` : m.kind === "teach" ? `(posted a Show me how card: ${body})` : m.kind === "control" ? "(posted a Take Control card)" : body}${files}${reactions}`;

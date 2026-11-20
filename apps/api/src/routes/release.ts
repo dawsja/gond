@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Env } from "../app.ts";
 import { serverUpdateReport, serverVersion, startServerUpdate } from "../release.ts";
+import { readBody } from "./body.ts";
 
 export function releaseRoutes() {
   const app = new Hono<Env>();
@@ -14,7 +15,8 @@ export function releaseRoutes() {
     const report = await serverUpdateReport();
     if (report.blocked) return c.json({ error: report.blocked }, 409);
     if (!report.available) return c.json({ error: "Gond is already up to date" }, 409);
-    startServerUpdate();
+    const body = await readBody(c);
+    startServerUpdate({ withoutBackup: body.withoutBackup === true });
     return c.json({ update: await serverUpdateReport() });
   });
 

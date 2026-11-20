@@ -1,4 +1,4 @@
-import { joinNames } from "@gond/shared";
+import { APP_CATALOG, joinNames, type RoutineTrigger } from "@gond/shared";
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
@@ -64,8 +64,15 @@ export function describeSchedule(cron: string): string {
   return "On a custom schedule";
 }
 
-/** When a routine runs, in words: a reminder's one time ("Once, Thu, Oct 24, 8:00 AM"), else its schedule. */
-export function describeRoutine(routine: { cron: string; once: boolean; nextRunAt: string | null }): string {
+/** What starts a routine an app's event runs, in words: "Each time “New Gmail Message” happens in Gmail". */
+export function describeTrigger(trigger: RoutineTrigger): string {
+  const app = APP_CATALOG.find((entry) => entry.toolkit === trigger.toolkit)?.name ?? trigger.toolkit.charAt(0).toUpperCase() + trigger.toolkit.slice(1);
+  return `Each time “${trigger.name}” happens in ${app}`;
+}
+
+/** When a routine runs, in words: its app's event, a reminder's one time ("Once, Thu, Oct 24, 8:00 AM"), else its schedule. */
+export function describeRoutine(routine: { cron: string; once: boolean; nextRunAt: string | null; trigger?: RoutineTrigger | null }): string {
+  if (routine.trigger) return describeTrigger(routine.trigger);
   if (!routine.once) return describeSchedule(routine.cron);
   return routine.nextRunAt ? `Once, ${new Date(routine.nextRunAt).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}` : "Once";
 }

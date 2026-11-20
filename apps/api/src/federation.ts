@@ -297,7 +297,7 @@ export async function startFederation() {
   void flush();
 }
 
-function stopFederation() {
+export function stopFederation() {
   const current = state();
   if (current.timer) clearInterval(current.timer);
   current.timer = null;

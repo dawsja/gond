@@ -22,12 +22,14 @@ import { profilesRoutes } from "./routes/profiles.ts";
 import { signInsRoutes } from "./routes/sign-ins.ts";
 import { pushAnswerRoutes, pushRoutes } from "./routes/push.ts";
 import { secretsRoutes } from "./routes/secrets.ts";
+import { detailsRoutes } from "./routes/details.ts";
 import { skillsRoutes } from "./routes/skills.ts";
 import { routinesRoutes } from "./routes/routines.ts";
 import { settingsRoutes } from "./routes/settings.ts";
 import { threadsRoutes } from "./routes/threads.ts";
 import { authConfig, usersRoutes } from "./routes/users.ts";
 import { releaseRoutes } from "./routes/release.ts";
+import { serverRoutes } from "./routes/server.ts";
 import { voiceRoutes } from "./routes/voice.ts";
 import { callsRoutes } from "./routes/calls.ts";
 import { usageRoutes } from "./routes/usage.ts";
@@ -81,7 +83,7 @@ export function createApp() {
     await next();
   });
 
-  for (const path of ["/api/server/update", "/api/box/update", "/api/box/reset", "/api/onboarding/*", "/api/users", "/api/users/*", "/api/oidc", "/api/oidc/*", "/api/usage/sharing"]) {
+  for (const path of ["/api/server/update", "/api/server/storage", "/api/server/storage/*", "/api/server/backups", "/api/server/backups/*", "/api/box/update", "/api/box/reset", "/api/onboarding/*", "/api/users", "/api/users/*", "/api/oidc", "/api/oidc/*", "/api/usage/sharing"]) {
     app.use(path, requireAdmin);
   }
   app.on(["POST", "PATCH", "PUT", "DELETE"], ["/api/settings"], requireAdmin);
@@ -152,6 +154,7 @@ export function createApp() {
   app.route("/api", skillsRoutes());
   app.route("/api", mcpRoutes());
   app.route("/api", secretsRoutes());
+  app.route("/api", detailsRoutes());
   app.route("/api", shoppingRoutes());
   app.route("/api", providerRoutes());
   app.route("/api", voiceRoutes());
@@ -161,6 +164,7 @@ export function createApp() {
   app.route("/api", checkInsRoutes());
   app.route("/api", usersRoutes());
   app.route("/api", releaseRoutes());
+  app.route("/api", serverRoutes());
 
   app.notFound((c) => c.json({ error: "There's nothing at that address" }, 404));
   app.onError((error, c) => {

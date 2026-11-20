@@ -2,7 +2,7 @@
 
 import { handleOf, joinNames, plainMarkdown, REACTIONS, roomTargets, type Approval, type ApprovalAnswer, type Bot, type ChatAttachment, type Message, type ReactionEmoji, type Routine, type Thread, type ThreadSpace } from "@gond/shared";
 import { inertChoices, remoteMember, spaceMentionables, spaceSubtitle } from "@/lib/spaces";
-import { ChevronLeft, Copy, CornerUpLeft, Download, Eye, EllipsisVertical, File as FileIcon, FileArchive, FileHeadphone, FilePlay, FileSpreadsheet, FileText, Lock, Monitor, PanelRight, Paperclip, Pencil, Phone, RotateCcw, TextSelect, Undo2 } from "lucide-react";
+import { ChevronLeft, Copy, CornerUpLeft, Download, Eye, EllipsisVertical, File as FileIcon, FileArchive, FileHeadphone, FilePlay, FileSpreadsheet, FileText, FileX, ImageOff, Lock, Monitor, PanelRight, Paperclip, Pencil, Phone, RotateCcw, TextSelect, Undo2 } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -232,9 +232,9 @@ function colorOf(author: string, bots: Bot[], space?: ThreadSpace | null): strin
   return remote ? remote.color : (bots.find((b) => b.id === author)?.color ?? null);
 }
 
-/** A file shown as a picture, on its own outside the bubble: anything an image but an SVG, which could run script. */
+/** A file shown as a picture, on its own outside the bubble: anything an image but an SVG, which could run script, while it's still kept. */
 function isPicture(file: ChatAttachment): boolean {
-  return file.mediaType.startsWith("image/") && file.mediaType !== "image/svg+xml";
+  return !file.removed && file.mediaType.startsWith("image/") && file.mediaType !== "image/svg+xml";
 }
 
 function revealIn(message: Message, reveals: Record<string, PictureReveal>): PictureReveal | undefined {
@@ -434,7 +434,18 @@ const Line = memo(function Line({ message, threadId, bots, other, bot, approval,
             ) : null}
             {files.length ? (
               <AttachmentGroup className={cn(message.body && "mt-2")}>
-                {files.map((file) => (
+                {files.map((file) =>
+                  file.removed ? (
+                    <Attachment key={file.id} size="sm" aria-label={`${file.name}, removed to save space`}>
+                      <AttachmentMedia variant="icon" className="text-muted-foreground">
+                        {file.mediaType.startsWith("image/") ? <ImageOff /> : <FileX />}
+                      </AttachmentMedia>
+                      <AttachmentContent>
+                        <AttachmentTitle className="text-muted-foreground">{file.name}</AttachmentTitle>
+                        <AttachmentDescription>Removed to save space</AttachmentDescription>
+                      </AttachmentContent>
+                    </Attachment>
+                  ) : (
                   <Attachment key={file.id} size="sm">
                     <AttachmentTrigger render={<a href={`/api/attachments/${file.id}`} target="_blank" rel="noreferrer" aria-label={`Open ${file.name}`} />} />
                     <AttachmentMedia variant="icon">
@@ -450,7 +461,8 @@ const Line = memo(function Line({ message, threadId, bots, other, bot, approval,
                       </AttachmentAction>
                     </AttachmentActions>
                   </Attachment>
-                ))}
+                  ),
+                )}
               </AttachmentGroup>
             ) : null}
           </BubbleContent>

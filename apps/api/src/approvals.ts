@@ -143,7 +143,9 @@ export function pauseOnExpiry(signal: AbortSignal, turn: Resumable): void {
 }
 
 // A sign-in or a secret needs values typed fresh, and money or a key waits for nobody: these keep the strict expiry.
-const STRICT_TOOLS = new Set(["request_login", "type_secret", "forget_secret"]);
+const STRICT_TOOLS = new Set(["request_login", "type_secret", "forget_secret", "use_details"]);
+// Typing a household's private details (a passport, an insurance number) into a page asks every time, whatever the level or a saved rule says.
+const EVERY_TIME_TOOLS = new Set(["use_details"]);
 const MONEY_ACTION = /(^|_)(PAY|PAYS|PAYMENT|PAYMENTS|PAYOUT|TRANSFER|PURCHASE|BUY|CHECKOUT|CHARGE|REFUND|ORDER)(_|$)/;
 
 /** Whether a card may wait for a late answer: never a sign-in, a secret, a server's keys or money. */
@@ -238,7 +240,7 @@ const ESCALATES = new Set(["sudo", "su", "doas"]);
 const SEGMENTS = /\s*(?:\|\||&&|[;|\n\r`()]|\$\()\s*/;
 
 export function mustAsk(tool: string, input: Record<string, unknown>, bot: Pick<Bot, "id" | "userId">): boolean {
-  if (tool === "ask_approval" || tool === "add_mcp_server" || tool === "request_login" || tool === "type_secret" || tool === "forget_secret") return true;
+  if (tool === "ask_approval" || tool === "add_mcp_server" || tool === "request_login" || tool === "type_secret" || tool === "forget_secret" || tool === "use_details" || tool === "save_details") return true;
   if (tool === "Bash") return typeof input.command === "string" && riskyCommand(input.command, bot);
   if (physicalAccess(tool, input)) return true;
   // A draft goes nowhere, but the letter card is how the person sees what was written, so it asks too.
@@ -343,7 +345,7 @@ export async function askApproval(input: { bot: Bot; threadId: string; tool: str
   const bot = getBot(input.bot.id) ?? input.bot;
   // Unlocking a door, a car or an alarm asks every time, whatever the level or a saved rule says, and only while it's current.
   const physical = physicalAccess(tool, input.input);
-  if (physical) return postCard({ ...input, bot, strict: true });
+  if (physical || EVERY_TIME_TOOLS.has(tool)) return postCard({ ...input, bot, strict: true });
   // An email that goes out can't be called back, so even Always allow shows the letter first.
   if (bot.approval === "full" && !sendsEmail(tool)) return answer("allow");
   if (READ_ONLY.has(tool)) return answer("allow");

@@ -1086,6 +1086,21 @@ One line each: where to start, and what must not change.
   (`isWatchRun`), what follows up to the person's next message is
   `noticed` (`noticedRuns`), and unread noticed is `Thread.noticed`
   (`noticedIn` in `src/data/threads.ts`). Bots offer watches themselves; there is no form.
+- **Routines an app's event starts** (`src/triggers.ts`, `list_triggers`,
+  `create_routine`'s `trigger`, `Routine.trigger`, `describeTrigger`):
+  Composio's triggers, heard on one realtime channel per Composio key
+  (`subscribeTriggers`, `listenFor`, kept by `keepListening` from the
+  dispatcher's minute), so the Gond needs no address on the internet. Such
+  a routine has no cron and no next run; Composio keeps a trigger for it
+  (`event_id`) only while it is on (`armRoutine`, `disarmRoutine`, from the
+  tools, the route and a bot's deletion), and a disconnected app or a new
+  Composio key pauses it (`pauseEventRoutines`). An event finds its routine
+  by that id and only through its owner's key (`deliverEvent`); it runs as
+  a routine run with what the app sent set apart as outside text
+  (`eventText`: capped, redacted, unable to close its block). An event while
+  a run waits joins it (`EVENTS_PER_RUN`); past `EVENT_RUNS_PER_HOUR` the
+  routine rests and its next run hears how many it missed. Events while the
+  API is down are lost. Never a reminder, never in a template.
 - **Templates** (`src/bot-bundle.ts`, `src/bot-templates.ts`,
   `botTemplateSchema`): a `.bot` zip of `bot.json` and each routine's
   skill as `.skill`; a `picture` in an older one is never read. Memory,
@@ -1374,6 +1389,24 @@ One line each: where to start, and what must not change.
   `fresh` asks again; "Use a saved sign-in" fills from the API, the web
   never sees a value. `readLogin` reads only secrets with a site, so an
   API key is never typed into a page.
+- **Your details** (`src/details.ts`, `data/details.ts`,
+  `routes/details.ts`, `gond_details`, `details-card.tsx` in Settings →
+  Your details): a profile's household records (people, IDs, insurance,
+  vehicles; `DETAIL_KINDS`, `checkDetail`), every field sealed together. A
+  private field's value never leaves the API: routes and `list_details`
+  say only that it is saved, a private field left empty keeps its value,
+  and one made readable must be typed again. Private values are secrets to
+  the redactor (`privateDetailValues`). `use_details` asks on a strict card
+  every time, whatever the level (`EVERY_TIME_TOOLS`, no Always, never
+  late), then holds each value for 30 minutes under a `detailTypeName`
+  (never a card's), bound to the site of the page the browser shows
+  (`boundSite`), for `type_login`; with no page open it refuses. A
+  screenshot can still show one. `save_details` saves readable fields only,
+  on a card (`mustAsk`), and never overwrites a private one. An expiry
+  reminds the primary bot by hidden prompt at 90, 30 and 7 days and on the
+  day (`expiryStage`, `runDetailReminders`), in the person's daytime, each
+  marked before it posts (`markReminded`); a new date starts over. Never in
+  a space, an export or a template.
 
 ### Apps, MCP, skills
 
@@ -1477,12 +1510,33 @@ One line each: where to start, and what must not change.
   `GOND_VERSION` comes from CI ("dev" never offers to update). `GET
   /api/server/update` (admin) checks GitHub at most every ten minutes
   unless `?check=1`; notes are commit subjects (`releaseNotes`). `POST`
-  pulls images, updates the computer (`updateComputer`), recreates web,
+  pulls images, backs up the database (`createBackup("pre-update")`) and
+  stops there, saying why, when it can't (`backupFailed`; only the admin's
+  "Update without a backup" goes on), updates the computer (`updateComputer`), recreates web,
   and last starts a helper from the new API image to replace the API
   (`replaceSelf`), since a container can't recreate itself.
   `recreateContainer` drops what inspect folded in from the old image
   (env including the version, command, labels). Pages check `GET
   /api/version` on focus or reconnect and reload on change.
+- **Data and backups** (`src/backup.ts`, `src/storage-worker.ts`,
+  `routes/server.ts`, `server-storage-section.tsx` in Settings → Data &
+  backups, admin only). Nothing heavy runs on the API's thread: a backup
+  (`VACUUM INTO`), the storage figures and cleanup each run in a worker on
+  a connection of its own (`inWorker`), backups and cleanups one at a time.
+  Never a full `VACUUM`: it holds every write until the whole file is
+  rewritten, so cleanup deletes in small batches and the space is used
+  again, while the file keeps its size. A backup is checked against the
+  disk first (`roomFor`, `HEADROOM`), removing only older ones of its own
+  kind and only when that's enough, and goes under a temporary name
+  renamed into `<dataDir>/backups/` (`0600`); a half-made one is cleared
+  (`clearPartial`). The last 3 manual and 2 pre-update are kept (`KEEP`).
+  Retention (`usage_keep_days`, `attachments_keep_days`) runs daily from
+  the dispatcher (`runScheduledRetention`). A removed file is marked
+  `removed` on its message in the same transaction that deletes it
+  (`markRemoved`), so the chat draws "Removed to save space", the viewer
+  skips it and a bot hears it's gone; its message stays.
+  `SIGTERM`/`SIGINT` stop the dispatcher, usage sharing, federation and
+  calls, drain HTTP and run `checkpointAndCloseDb` (`index.ts`).
 
 ### Spaces
 

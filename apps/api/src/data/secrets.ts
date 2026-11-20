@@ -6,6 +6,7 @@ import { heldLoginValues } from "../logins.ts";
 import { createRedactor } from "../redact.ts";
 import { decryptSecret, encryptSecret } from "../secrets.ts";
 import { allComposioKeys } from "./composio-keys.ts";
+import { privateDetailValues } from "./details.ts";
 import { allMcpProxyTokens } from "./mcp.ts";
 import { allProviderKeys, allProviderProxyTokens } from "./providers.ts";
 import { shoppingCardValues } from "./shopping.ts";
@@ -141,7 +142,7 @@ export function allSecretValues(): string[] {
     }
   }
   const serverComposio = (process.env.COMPOSIO_API_KEY ?? "").trim();
-  return [...out, ...[...heldLoginValues(), ...shoppingCardValues()].flatMap((value) => [value, ...cardNumberForms(value).slice(1)]), ...allProviderKeys(), ...allProviderProxyTokens(), ...allMcpProxyTokens(), ...allComposioKeys(), ...(serverComposio ? [serverComposio] : [])];
+  return [...out, ...privateDetailValues(), ...[...heldLoginValues(), ...shoppingCardValues()].flatMap((value) => [value, ...cardNumberForms(value).slice(1)]), ...allProviderKeys(), ...allProviderProxyTokens(), ...allMcpProxyTokens(), ...allComposioKeys(), ...(serverComposio ? [serverComposio] : [])];
 }
 
 export function injectSecrets(text: string, userId: string, missing?: (name: string) => void): string {

@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field";
 import { Switch } from "@/components/ui/switch";
 import { api, patch } from "@/lib/api";
-import { describeSchedule } from "@/lib/schedule";
+import { describeSchedule, describeTrigger } from "@/lib/schedule";
 
 export const setRoutineEnabled = (routine: Routine, enabled: boolean) => patch(`/api/routines/${routine.id}`, { enabled });
 
@@ -47,7 +47,8 @@ export function RoutineDetails({ bot, routine, onClose, onChange }: { bot: Bot; 
         <FieldGroup className="gap-4">
           <Field>
             <FieldTitle>When</FieldTitle>
-            <p className="text-sm">{routine.once ? "Once, then it removes itself" : describeSchedule(routine.cron)}</p>
+            <p className="text-sm">{routine.trigger ? describeTrigger(routine.trigger) : routine.once ? "Once, then it removes itself" : describeSchedule(routine.cron)}</p>
+            {routine.trigger ? <FieldDescription>It starts the moment that happens, with what the app sent. Events close together arrive in one run.</FieldDescription> : null}
             {routine.enabled && routine.nextRunAt ? <FieldDescription>{routine.once ? "On" : "Next"} {when(routine.nextRunAt)}</FieldDescription> : null}
           </Field>
           {routine.skillId ? (
@@ -64,7 +65,7 @@ export function RoutineDetails({ bot, routine, onClose, onChange }: { bot: Bot; 
             <Field orientation="horizontal">
               <FieldContent>
                 <FieldTitle>{routine.enabled ? "On" : "Paused"}</FieldTitle>
-                <FieldDescription>{routine.enabled ? "Runs on the schedule above." : "Kept, but won't run until you turn it on."}</FieldDescription>
+                <FieldDescription>{routine.enabled ? (routine.trigger ? "Runs each time that happens." : "Runs on the schedule above.") : "Kept, but won't run until you turn it on."}</FieldDescription>
               </FieldContent>
               <Switch id="routine-enabled" checked={routine.enabled} disabled={busy} onCheckedChange={(on) => void toggle(on)} aria-label="Routine on or off" />
             </Field>

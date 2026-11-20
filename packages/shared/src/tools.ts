@@ -410,6 +410,14 @@ export function describeTool(name: string, input: Record<string, unknown> = {}, 
       return { verb: "Deleting a secret", detail: short(input.name) };
     case "request_login":
       return { verb: "Requesting a sign-in", detail: short(input.site) ? `to ${short(input.site)}` : null };
+    case "list_details":
+      return { verb: "Looking at your details", detail: null };
+    case "use_details":
+      return { verb: "Getting your details ready", detail: short(input.site) ? `for ${short(input.site)}` : null };
+    case "save_details":
+      return { verb: "Saving your details", detail: short(input.record) };
+    case "list_triggers":
+      return { verb: "Looking up what can start a routine", detail: short(input.app) ? `in ${short(input.app)}` : null };
     case "ask_approval":
       return { verb: "Requesting approval", detail: null };
     case "send_screenshot":
@@ -493,6 +501,14 @@ export function approvalLine(name: string, input: Record<string, unknown> = {}, 
       const name = short(input.name);
       return name ? `delete the secret ${name}` : "delete a secret";
     }
+    case "use_details": {
+      const site = short(input.site);
+      return site ? `type your details on ${site}` : "type your details";
+    }
+    case "save_details": {
+      const record = short(input.record);
+      return record ? `save ${record} to your details` : "save to your details";
+    }
     case "ask_approval": {
       const summary = short(input.summary ?? input.action ?? input.text, 300);
       return summary ?? "go on";
@@ -520,6 +536,7 @@ export function ruleLabel(rule: string, context: ToolLabelContext = {}): string 
   if (rule === "Bash") return "any command";
   if (rule === "computer") return "the computer";
   if (rule === "request_login") return "your saved sign-ins";
+  if (rule === "save_details") return "saving your details";
   if (rule === "WebFetch") return "opening pages";
   if (rule === "Edit" || rule === "Write" || rule === "MultiEdit" || rule === "NotebookEdit") return "changing files";
   if (COMPOSIO_ACTION.test(rule)) {

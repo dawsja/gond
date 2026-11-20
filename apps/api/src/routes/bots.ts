@@ -16,6 +16,8 @@ import { appUrl } from "../config.ts";
 import { getAi } from "../data/ai.ts";
 import { currentModel } from "../engines.ts";
 import { readBody } from "./body.ts";
+import { disarmRoutine } from "../triggers.ts";
+import { listRoutines } from "../data/routines.ts";
 
 /**
  * A bot's own model from a request: absent leaves it, empty goes back to Settings → AI's, and an id is
@@ -145,6 +147,8 @@ export function botsRoutes() {
     if (!bot) return c.json({ error: "Couldn't find that bot" }, 404);
     await stopBot(bot);
     await forgetBotTeachings(bot.id, bot.userId);
+    // Its routines go with it, and so do the triggers Composio keeps for them.
+    for (const routine of listRoutines(bot.id)) await disarmRoutine(bot.userId, routine.id);
     deleteBot(bot.id);
     void refreshSpaces(bot.userId).catch(() => undefined);
     const box = boxConfig(userId(c));

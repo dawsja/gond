@@ -3,6 +3,7 @@ import { APP_CATALOG, CURATED_TOOLKITS, appLogoUrl, type AppCatalogEntry, type C
 import { indexApps, type AppIndex } from "./catalog.ts";
 import { appUrl } from "./config.ts";
 import { readComposioKey, setComposioKey } from "./data/composio-keys.ts";
+import { eventRoutinesOf, setRoutineEventId, updateRoutine } from "./data/routines.ts";
 import { getConnection, listConnections, removeConnection, removeConnections, saveConnection } from "./data/settings.ts";
 import { getUser, isAdmin } from "./data/users.ts";
 
@@ -49,6 +50,19 @@ export function applyComposioKey(userId: string, apiKey: string) {
   if (composioKey(userId) === before) return;
   removeConnections(userId);
   forgetComposioCache(userId);
+  pauseEventRoutines(userId);
+}
+
+/**
+ * Routines an app's event starts stop when the app is gone from under them (disconnected, or a new
+ * Composio key, whose project has none of the old triggers): paused, so turning one on makes its trigger again.
+ */
+function pauseEventRoutines(userId: string, toolkit?: string) {
+  for (const routine of eventRoutinesOf(userId)) {
+    if (toolkit && routine.trigger?.toolkit !== toolkit) continue;
+    setRoutineEventId(routine.id, null);
+    if (routine.enabled) updateRoutine(routine.id, { enabled: false });
+  }
 }
 
 async function sdk(userId: string): Promise<Composio> {
@@ -238,6 +252,7 @@ export async function disconnect(userId: string, toolkit: string): Promise<boole
   } catch {
     /* the local record goes either way */
   }
+  pauseEventRoutines(userId, toolkit);
   return removeConnection(userId, toolkit);
 }
 
@@ -312,4 +327,44 @@ export async function executeAction(userId: string, slug: string, args: Record<s
   const result = await client.tools.execute(slug, { userId: composioUserId(userId), arguments: args, connectedAccountId: account.accountId, dangerouslySkipVersionCheck: true });
   if (!result.successful) throw new Error(`${result.error ?? `${slug} failed`}${result.logId ? ` (Composio log ${result.logId})` : ""}`);
   return result.data;
+}
+
+export type TriggerType = { slug: string; name: string; description: string; instructions: string | null; toolkit: string; app: string; config: Record<string, unknown> };
+
+function triggerTypeOf(item: { slug: string; name: string; description: string; instructions?: string; toolkit: { slug: string; name: string }; config: Record<string, unknown> }): TriggerType {
+  return { slug: item.slug, name: item.name, description: item.description, instructions: item.instructions ?? null, toolkit: item.toolkit.slug.toLowerCase(), app: item.toolkit.name, config: item.config ?? {} };
+}
+
+/** The events in one of the person's apps that can start a routine (Composio's trigger types). */
+export async function triggerTypes(userId: string, toolkit: string): Promise<TriggerType[]> {
+  const answer = await (await sdk(userId)).triggers.listTypes({ toolkits: [toolkit.toLowerCase()], limit: 100 });
+  return answer.items.map(triggerTypeOf);
+}
+
+export async function triggerType(userId: string, slug: string): Promise<TriggerType> {
+  return triggerTypeOf(await (await sdk(userId)).triggers.getType(slug));
+}
+
+/** Has Composio watch the person's app for an event, on their connected account; the trigger's id. */
+export async function startTrigger(userId: string, toolkit: string, slug: string, config: Record<string, unknown>): Promise<string> {
+  const client = await sdk(userId);
+  let account = getConnection(userId, toolkit);
+  if (account?.status !== "active") account = await healConnection(userId, toolkit);
+  if (!account || account.status !== "active") throw new Error(`${toolkit} isn't connected for this person. Call connect_app for it first.`);
+  const { triggerId } = await client.triggers.create(composioUserId(userId), slug, { connectedAccountId: account.accountId, triggerConfig: config });
+  return triggerId;
+}
+
+export async function stopTrigger(userId: string, triggerId: string): Promise<void> {
+  await (await sdk(userId)).triggers.delete(triggerId);
+}
+
+/**
+ * Composio's realtime channel for the person's project: every event of every trigger in it, without this
+ * Gond needing an address on the internet. One per key; the caller keeps it (`src/triggers.ts`).
+ */
+export async function subscribeTriggers(userId: string, onEvent: (event: unknown) => void, onError: (detail: Record<string, unknown>) => void): Promise<() => Promise<void>> {
+  const client = await sdk(userId);
+  await client.triggers.subscribe(onEvent, {}, onError);
+  return () => client.triggers.unsubscribe();
 }

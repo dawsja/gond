@@ -1,4 +1,4 @@
-import { DEFAULT_ENGINES, ENGINE_ACCESS, ENGINES, MODEL_ID_PATTERN, PROVIDER_KINDS, type Connection, type Engine, type EngineSettings, type Onboarding, type Settings } from "@gond/shared";
+import { DEFAULT_ENGINES, ENGINE_ACCESS, ENGINES, MODEL_ID_PATTERN, PROVIDER_KINDS, isRetentionDays, type Connection, type Engine, type EngineSettings, type Onboarding, type RetentionDays, type ServerRetention, type Settings } from "@gond/shared";
 import { ensureDatabase } from "../db/init.ts";
 import { serverSettingsChanged, settingsChanged } from "../events.ts";
 import { now } from "../ids.ts";
@@ -72,6 +72,31 @@ export function setUsageSharing(on: boolean): UsageSharingState {
   if (on === (usageSharing() !== null)) return usageSharing();
   const next = on ? { epoch: `ep_${crypto.randomUUID().replaceAll("-", "")}`, since: now() } : null;
   ensureDatabase().query("UPDATE gond_settings SET usage_sharing = ?, updated_at = ? WHERE id = 1").run(next ? JSON.stringify(next) : null, now());
+  serverSettingsChanged();
+  return next;
+}
+
+function asRetention(value: unknown): RetentionDays {
+  return isRetentionDays(value) ? value : 0;
+}
+
+export function retentionSettings(): ServerRetention {
+  const row = ensureDatabase().query("SELECT usage_keep_days, attachments_keep_days FROM gond_settings WHERE id = 1").get() as { usage_keep_days: number; attachments_keep_days: number } | null;
+  return {
+    usageKeepDays: asRetention(row?.usage_keep_days),
+    attachmentsKeepDays: asRetention(row?.attachments_keep_days),
+  };
+}
+
+export function setRetentionSettings(patch: Partial<ServerRetention>): ServerRetention {
+  const current = retentionSettings();
+  const next: ServerRetention = {
+    usageKeepDays: patch.usageKeepDays !== undefined ? asRetention(patch.usageKeepDays) : current.usageKeepDays,
+    attachmentsKeepDays: patch.attachmentsKeepDays !== undefined ? asRetention(patch.attachmentsKeepDays) : current.attachmentsKeepDays,
+  };
+  ensureDatabase()
+    .query("UPDATE gond_settings SET usage_keep_days = ?, attachments_keep_days = ?, updated_at = ? WHERE id = 1")
+    .run(next.usageKeepDays, next.attachmentsKeepDays, now());
   serverSettingsChanged();
   return next;
 }

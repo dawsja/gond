@@ -1137,6 +1137,35 @@ const MIGRATIONS: Array<string | ((db: Database) => void)> = [
   markMemoryOnComputer,
   // Bots no longer wear a picture of their own: each is its mascot, and the pictures people uploaded go.
   `DROP TABLE IF EXISTS gond_bot_avatars`,
+  // Your details: what a person keeps about their household for bots to fill forms with. The fields are
+  // sealed together, so a private one's value never leaves the API; the expiry stays readable for the
+  // minute's sweep, and `reminded` is the last reminder sent for it (days before, 0 on the day).
+  `
+  CREATE TABLE gond_details (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    label TEXT NOT NULL,
+    fields TEXT NOT NULL,
+    expires_on TEXT,
+    reminded INTEGER,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX gond_details_user ON gond_details (user_id, label);
+  CREATE INDEX gond_details_expiry ON gond_details (expires_on) WHERE expires_on IS NOT NULL;
+  `,
+  // A routine an app's event starts instead of its cron: the event it waits for, and the trigger Composio
+  // keeps for it while it is on, by which an arriving event finds it.
+  `
+  ALTER TABLE gond_routines ADD COLUMN event TEXT;
+  ALTER TABLE gond_routines ADD COLUMN event_id TEXT;
+  CREATE INDEX gond_routines_event ON gond_routines (event_id) WHERE event_id IS NOT NULL;
+  `,
+  `
+  ALTER TABLE gond_settings ADD COLUMN usage_keep_days INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE gond_settings ADD COLUMN attachments_keep_days INTEGER NOT NULL DEFAULT 0;
+  `,
 ];
 
 /**
@@ -1283,6 +1312,7 @@ export const SEARCH_INDEX_VERSION = MIGRATIONS.findIndex((step) => typeof step =
 export const XAI_KEYS_VERSION = MIGRATIONS.indexOf(foldXaiKeys) + 1;
 export const VOICE_KEYS_VERSION = MIGRATIONS.indexOf(VOICE_KEYS) + 1;
 export const MEMORY_MOVES_VERSION = MIGRATIONS.indexOf(markMemoryOnComputer) + 1;
+export const BOT_PICTURES_GONE_VERSION = MIGRATIONS.findIndex((step) => typeof step === "string" && step.includes("DROP TABLE IF EXISTS gond_bot_avatars")) + 1;
 export const LATEST_VERSION = MIGRATIONS.length;
 
 type Named = { name: string; sql: string | null };

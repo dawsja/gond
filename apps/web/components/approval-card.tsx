@@ -1,7 +1,7 @@
 "use client";
 
 import { bareToolName, emailDraftOf, isPaused, physicalAccess, ruleLabel, type Approval, type ApprovalAnswer, type Bot, type Message } from "@gond/shared";
-import { CreditCard, FilePen, Globe, KeyRound, LogIn, Monitor, Plug, Send, ShieldQuestion, SquareTerminal, Trash2 } from "lucide-react";
+import { BookUser, CreditCard, FilePen, Globe, KeyRound, LogIn, Monitor, Plug, Send, ShieldQuestion, SquareTerminal, Trash2 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { ActionCard, ActionCardDone, ActionCode, ActionRows, cheerOnFold, pausedLine, type ActionItem, type ActionRow, NOBODY_ANSWERED, SET_ASIDE } from "@/components/action-card";
 import { EmailApprovalCard } from "@/components/email-card";
@@ -83,6 +83,33 @@ function shapeOf(message: Message, approval: Approval | null, name: string): Sha
       return { ...base, icon: <KeyRound aria-hidden="true" />, title: "Delete a saved secret?", by: text(input.reason) ? `${name} · ${text(input.reason)}` : name, body: <ActionCode>{text(input.name) ?? message.body}</ActionCode>, allow: "Delete", deny: "Keep it", always: false, allowed: "Deleted", denied: "Kept" };
     case "request_login":
       return { ...base, icon: <LogIn aria-hidden="true" />, title: "Use your saved sign-in?", by: text(input.site) ? `${name} · ${text(input.site)}` : name, body: null };
+    case "use_details": {
+      const site = text(input.site);
+      const rows = rowsOf(input.details);
+      return {
+        ...base,
+        icon: <BookUser aria-hidden="true" />,
+        title: "Fill in your details?",
+        by: [name, site, text(input.reason)].filter(Boolean).join(" · "),
+        body: (
+          <div className="flex flex-col gap-2">
+            {rows.length ? <ActionRows rows={rows} /> : null}
+            <p className="text-[13.5px] text-muted-foreground">{site ? `Typed only on ${site}, for the next 30 minutes.` : "Typed only on that site, for the next 30 minutes."} {name} never sees them.</p>
+          </div>
+        ),
+        allow: "Fill them in",
+        deny: "Not now",
+        always: false,
+        allowed: "Filled in",
+        denied: "Not filled in",
+      };
+    }
+    case "save_details": {
+      const fields = rowsOf(input.fields);
+      const expires = text(input.expires_on);
+      const rows = expires ? [...fields, { label: "Expires", value: expires }] : fields;
+      return { ...base, icon: <BookUser aria-hidden="true" />, title: `Save to ${text(input.record) ?? "your details"}?`, by: `${name} · to your details`, body: rows.length ? <ActionRows rows={rows} /> : null, allow: "Save", deny: "Don't save", allowed: "Saved", denied: "Not saved" };
+    }
     case "add_mcp_server":
       return { ...base, icon: <Plug aria-hidden="true" />, title: "Add an MCP server?", by: `${name} · for all your bots`, body: <ActionCode>{text(input.url) ?? message.body}</ActionCode>, always: false };
     default:

@@ -3,6 +3,7 @@ import { ownBot, userId } from "../access.ts";
 import type { Env } from "../app.ts";
 import { listBots } from "../data/bots.ts";
 import { getRoutine, listRoutines, updateRoutine } from "../data/routines.ts";
+import { armRoutine, disarmRoutine } from "../triggers.ts";
 import { readBody } from "./body.ts";
 
 export function routinesRoutes() {
@@ -26,6 +27,11 @@ export function routinesRoutes() {
     if (typeof body.enabled !== "boolean") return c.json({ error: "A routine can only be switched on or off here. Ask its bot to change it." }, 400);
     const current = ownRoutine(c, c.req.param("id"));
     if (!current) return c.json({ error: "Couldn't find that routine" }, 404);
+    // One an app's event starts has the app watch for it only while it's on.
+    if (current.trigger && body.enabled && !current.enabled && (await armRoutine(userId(c), current))) {
+      return c.json({ error: `Couldn't turn it on. Check that ${current.trigger.toolkit} is still connected in Settings → Apps, then try again.` }, 502);
+    }
+    if (current.trigger && !body.enabled) await disarmRoutine(userId(c), current.id);
     return c.json({ routine: updateRoutine(current.id, { enabled: body.enabled }) });
   });
 

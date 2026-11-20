@@ -409,3 +409,8 @@ export function endCall(id: string, reason: string | null) {
 export function endCallsOf(userId: string) {
   for (const call of [...calls().values()]) if (call.userId === userId) endCall(call.info.id, null);
 }
+
+/** Ends every active voice call on graceful shutdown. */
+export function endAllCalls() {
+  for (const call of [...calls().values()]) endCall(call.info.id, "The server is restarting.");
+}

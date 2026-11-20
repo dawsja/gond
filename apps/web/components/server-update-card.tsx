@@ -87,11 +87,11 @@ export function ServerUpdateCard() {
     setChecking(false);
   };
 
-  const start = async () => {
+  const start = async (withoutBackup = false) => {
     setStarting(true);
     setError(null);
     try {
-      const data = await post<{ update: ServerUpdate }>("/api/server/update");
+      const data = await post<{ update: ServerUpdate }>("/api/server/update", withoutBackup ? { withoutBackup: true } : {});
       setUpdate(data.update);
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "Couldn't start the update.");
@@ -152,8 +152,13 @@ export function ServerUpdateCard() {
                 <>
                   <Button size="lg" variant="tint" className="w-full" disabled={starting} onClick={() => void start()}>
                     {starting ? <Spinner data-icon="inline-start" /> : <Download data-icon="inline-start" aria-hidden="true" />}
-                    Update Gond
+                    {update.backupFailed ? "Try again" : "Update Gond"}
                   </Button>
+                  {update.backupFailed ? (
+                    <Button size="lg" variant="outline" className="w-full" disabled={starting} onClick={() => void start(true)}>
+                      Update without a backup
+                    </Button>
+                  ) : null}
                   <p className="text-[12px] leading-4 text-muted-foreground">Takes a few minutes. Anything a bot is doing stops; ask again once it&apos;s back. Every open page and app moves to the new version by itself.</p>
                 </>
               )}

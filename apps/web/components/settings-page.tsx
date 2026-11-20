@@ -25,8 +25,10 @@ import { VoiceCard } from "@/components/voice-card";
 import { VoiceKeyCard } from "@/components/voice-key-card";
 import { CallVoiceCard } from "@/components/call-voice-card";
 import { SecretsCard } from "@/components/secrets-card";
+import { DetailsCard } from "@/components/details-card";
 import { OtherGondsSection, SpaceDefaultsCard } from "@/components/spaces/spaces-settings";
 import { ServerCard } from "@/components/server-card";
+import { ServerStorageSection } from "@/components/server-storage-section";
 import { SkillsCard } from "@/components/skills-card";
 import { UsersCard } from "@/components/users-card";
 import { useLiveEvents } from "@/components/hq/live-events";
@@ -210,6 +212,9 @@ export function SettingsPage({ user, section, index = false }: { user: SessionUs
     case "appearance":
       body = <AppearanceCard />;
       break;
+    case "details":
+      body = <DetailsCard />;
+      break;
     case "personalization":
       body = <PersonalizationCard />;
       break;
@@ -256,6 +261,9 @@ export function SettingsPage({ user, section, index = false }: { user: SessionUs
       break;
     case "other-gonds":
       body = <OtherGondsSection />;
+      break;
+    case "data":
+      body = <ServerStorageSection />;
       break;
     case "about":
       body = (

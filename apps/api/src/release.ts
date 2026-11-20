@@ -1,4 +1,5 @@
 import { newerVersion, type ServerUpdate, type ServerUpdatePhase } from "@gond/shared";
+import { BackupError, createBackup } from "./backup.ts";
 import { env } from "./config.ts";
 import { dockerAvailability, DockerError, findServiceContainer, imageId, pullImage, recreateContainer, replaceSelf, selfContainer } from "./docker.ts";
 import { boxUpdate, isUpdating, updateComputer } from "./updater.ts";
@@ -10,7 +11,7 @@ const MAX_NOTES = 6;
 
 type Latest = { at: number; latest: string | null; notes: string[] };
 
-const holder = globalThis as typeof globalThis & { __gondRelease?: Latest; __gondServerUpdate?: { phase: ServerUpdatePhase; error: string | null } };
+const holder = globalThis as typeof globalThis & { __gondRelease?: Latest; __gondServerUpdate?: { phase: ServerUpdatePhase; error: string | null; backupFailed: boolean } };
 
 /** The release this server runs, from the image (`GOND_VERSION`); "dev" for anything built otherwise. */
 export function serverVersion(): string {
@@ -54,11 +55,11 @@ async function latestRelease(force = false): Promise<Latest> {
 }
 
 function state() {
-  return (holder.__gondServerUpdate ??= { phase: "idle", error: null });
+  return (holder.__gondServerUpdate ??= { phase: "idle", error: null, backupFailed: false });
 }
 
-function set(phase: ServerUpdatePhase, error: string | null = null) {
-  holder.__gondServerUpdate = { phase, error };
+function set(phase: ServerUpdatePhase, error: string | null = null, backupFailed = false) {
+  holder.__gondServerUpdate = { phase, error, backupFailed };
 }
 
 function blocked(): string | null {
@@ -80,7 +81,7 @@ const running = (phase: ServerUpdatePhase) => phase !== "idle" && phase !== "don
  * the web container, and last hands the API's own replacement to a helper container. Every page
  * reloads itself once the new API answers with its version.
  */
-export function startServerUpdate(): ServerUpdate["phase"] {
+export function startServerUpdate({ withoutBackup = false }: { withoutBackup?: boolean } = {}): ServerUpdate["phase"] {
   if (running(state().phase) || isUpdating()) return state().phase;
   set("pulling");
   void (async () => {
@@ -88,6 +89,18 @@ export function startServerUpdate(): ServerUpdate["phase"] {
       const self = await selfContainer();
       const web = await findServiceContainer("web");
       for (const info of [self, web]) await pullImage(info.Config.Image, () => undefined);
+      // A copy of the database before anything changes, so a migration that goes wrong can be undone.
+      // Without one the update stops, and only the admin's own choice goes on without it.
+      if (!withoutBackup) {
+        try {
+          const snapshot = await createBackup("pre-update");
+          console.info(`[gond] Saved pre-update database backup ${snapshot.name}`);
+        } catch (error) {
+          const why = error instanceof BackupError ? error.message : "The database couldn't be copied.";
+          console.warn(`[gond] the update stopped: no backup (${error instanceof Error ? error.message : error})`);
+          return set("failed", `Gond didn't update, since it couldn't back up its database first. Nothing changed. ${why}`, true);
+        }
+      }
       set("computer");
       if (!(await updateComputer())) throw new Error(boxUpdate().error ?? "The computer didn't update.");
       set("web");
