@@ -6,7 +6,7 @@ import { storeAttachment, postMessage } from "./data/threads.ts";
 import { cardNumberForms, hideSecrets, readLogin, readSecret } from "./data/secrets.ts";
 import { emitDesktop, markDriving, tookControl, untilHandedBack, waitForScreen } from "./desktop.ts";
 import type { DriverTool, ToolPart } from "./driver.ts";
-import { heldIn, heldLogin, holdLogin } from "./logins.ts";
+import { heldIn, heldLogin, heldLoginFor, holdLogin, notePage, type HeldLogin } from "./logins.ts";
 import { createRedactor } from "./redact.ts";
 import { botHome } from "./memory.ts";
 import { sendPush } from "./push.ts";
@@ -175,7 +175,7 @@ const POINTS = [
  * box ever sees. Anthropic's own computer tool sends one action in its form;
  * it becomes a batch of one.
  */
-export function screenSteps(input: Record<string, unknown>, target: ScreenTarget, scale: Scale | null, login: (name: string) => string | null): { steps: ScreenStep[] } | { error: string } {
+export function screenSteps(input: Record<string, unknown>, target: ScreenTarget, scale: Scale | null, login: (name: string) => string | HeldLogin | null): { steps: ScreenStep[] } | { error: string } {
   if (typeof input.action === "string") {
     if (input.action === "cursor_position") return { error: "There is no cursor_position; take a screenshot to see the pointer." };
     input = { actions: [fromNativeAction(input)] };
@@ -192,18 +192,22 @@ export function screenSteps(input: Record<string, unknown>, target: ScreenTarget
     if (target === "desktop" && BROWSER_ONLY_STEPS.includes(type)) return { error: `${where}: ${type} is a browser action; use the browser tool for websites.` };
     if (type === "type_login") {
       const name = String(step.name ?? "").trim().toUpperCase();
-      const value = name ? login(name) : null;
+      const found = name ? login(name) : null;
+      const { value, site } = typeof found === "string" ? { value: found, site: null } : (found ?? { value: "", site: null });
       if (!value) return { error: `NOT typed: there is no ${name || "sign-in detail"} for this conversation or among the stored secrets. Call request_login, or request_secret for a password that isn't a website's. Nothing in this batch ran.` };
+      // The box checks the page against it as it types, so a batch that navigates first can't carry it elsewhere.
+      if (site && target !== "browser") return { error: `NOT typed: ${name} was given for ${site}, so it is typed only with the browser tool, on that site's page. Nothing in this batch ran.` };
+      const bound = site ? { site } : {};
       const ref = target === "browser" && typeof step.ref === "string" && step.ref ? step.ref : null;
       const label = target === "browser" && !ref && typeof step.label === "string" && step.label ? step.label : null;
       if (step.select === true) {
         if (!ref && !label) return { error: `${where}: a type_login with select picks from a dropdown on a web page; name it by ref or label in the browser tool.` };
-        steps.push({ type: "select", ...(ref ? { ref } : { label: label!, ...(typeof step.role === "string" ? { role: step.role } : {}) }), option: selectOptions(name, value), secret: true });
+        steps.push({ type: "select", ...(ref ? { ref } : { label: label!, ...(typeof step.role === "string" ? { role: step.role } : {}) }), option: selectOptions(name, value), secret: true, ...bound });
         continue;
       }
-      if (ref) steps.push({ type: "fill", ref, text: value, secret: true });
-      else if (label) steps.push({ type: "fill", label, ...(typeof step.role === "string" ? { role: step.role } : {}), text: value, secret: true });
-      else steps.push({ type: "type", text: value, secret: true });
+      if (ref) steps.push({ type: "fill", ref, text: value, secret: true, ...bound });
+      else if (label) steps.push({ type: "fill", label, ...(typeof step.role === "string" ? { role: step.role } : {}), text: value, secret: true, ...bound });
+      else steps.push({ type: "type", text: value, secret: true, ...bound });
       if (step.submit === true) steps.push({ type: "key", key: "Enter" });
       continue;
     }
@@ -228,6 +232,7 @@ export function screenSteps(input: Record<string, unknown>, target: ScreenTarget
       }
     }
     delete step.secret;
+    delete step.site;
     steps.push(step as ScreenStep);
   }
   if (steps.length > MAX_SCREEN_STEPS) return { error: `At most ${MAX_SCREEN_STEPS} actions at a time, counting a type_login with submit as two.` };
@@ -320,7 +325,10 @@ export function computerTool(context: Context): { computer: DriverTool; browser:
       scale = scaleOf(result) ?? scale;
       if (scale) knownScales.set(bot.id, scale);
     }
-    if (result.url) lastUrl = result.url;
+    if (result.url) {
+      lastUrl = result.url;
+      notePage(bot.id, result.url);
+    }
     return result;
   };
 
@@ -518,7 +526,7 @@ export function computerTool(context: Context): { computer: DriverTool; browser:
           const card = approvedCard(checkout);
           return card ? cardFieldValue(card, name) || null : null;
         }
-        return heldLogin(thread.id, name);
+        return heldLoginFor(thread.id, name);
       });
       if ("error" in parsed) return parsed.error;
       const { steps } = parsed;

@@ -40,7 +40,7 @@ export function plainMarkdown(text: string): string {
       const words = /\btext="([^"]*)"/.exec(attrs)?.[1]?.trim() || fallback;
       return label && words ? `${label}: ${words}` : label || words;
     })
-    .replace(/^[ \t]*::choices\[([^\]\n]*)\][ \t]*$/gm, (_, options: string) => options.split("|").map((option) => option.trim()).filter(Boolean).join(" or ") + "?")
+    .replace(/^[ \t]*::choices\[([^\]\n]*)\](?:\{[^}\n]*\})?[ \t]*$/gm, (_, options: string) => options.split("|").map((option) => option.trim()).filter(Boolean).join(" or ") + "?")
     .replace(/^[ \t]*:::[^\n]*$/gm, "")
     // A code fence and its language go; the code stays.
     .replace(/^[ \t]*(?:```|~~~)[^\n]*$/gm, "")

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Blockquote, Code, Link, List, Table } from "mdast";
-import { badgeOf, calloutOf, choicesOf, copyText, meterOf, parseInline, parseMarkdown, plainText, safeHref, sourceOf } from "../lib/markdown";
+import { badgeOf, calloutOf, choiceRowOf, choicesOf, copyText, questionsOf, meterOf, parseInline, parseMarkdown, plainText, safeHref, sourceOf } from "../lib/markdown";
 
 const types = (nodes: { type: string }[]) => nodes.map((n) => n.type);
 
@@ -202,5 +202,28 @@ describe("copying a message", () => {
     expect(copyText("Pick one ::choices[A | B] and I'll go.")).toBe("Pick one and I'll go.");
     expect(copyText("```md\n::choices[A | B]\n```")).toBe("```md\n::choices[A | B]\n```");
     expect(copyText("No choices here.")).toBe("No choices here.");
+  });
+});
+
+describe("richer choices", () => {
+  test("a row can take several picks, or an answer of their own, and keeps its options either way", () => {
+    const row = (source: string) => choiceRowOf(parseMarkdown(source).children.at(-1)!);
+    expect(row("::choices[Eggs | Milk | Bread]{multi}")).toEqual({ options: ["Eggs", "Milk", "Bread"], multi: true, other: false });
+    expect(row("::choices[Monday | Tuesday]{multi other}")).toEqual({ options: ["Monday", "Tuesday"], multi: true, other: true });
+    expect(row("Which day? ::choices[Monday | Tuesday]{other}")).toEqual({ options: ["Monday", "Tuesday"], multi: false, other: true });
+    expect(choicesOf(parseMarkdown("::choices[A | B]{multi}").children[0]!)).toEqual(["A", "B"]);
+  });
+
+  test("a card of questions pairs each question's words with its row, and anything else stays as written", () => {
+    const card = (source: string) => questionsOf(parseMarkdown(source).children[0]!);
+    const questions = card(":::questions\nWhich size? ::choices[Small | Large]\n\nWhich colours?\n::choices[Red | Blue]{multi}\n:::");
+    expect(questions?.map((q) => [q.text, q.row.options, q.row.multi])).toEqual([
+      ["Which size?", ["Small", "Large"], false],
+      ["Which colours?", ["Red", "Blue"], true],
+    ]);
+    expect(card(":::questions\n::choices[A | B]\n:::")).toBeNull();
+    expect(card(":::questions\nSize? ::choices[S | L]\n\nAnd then this.\n:::")).toBeNull();
+    expect(plainText(parseMarkdown(":::questions\nSize? ::choices[S | L]\n\nColour? ::choices[Red | Blue]\n:::"))).toBe("Size?\nS or L?\nColour?\nRed or Blue?");
+    expect(copyText("Two things:\n\n:::questions\nSize? ::choices[S | L]{other}\n\nColour? ::choices[Red | Blue]{multi}\n:::")).toBe("Two things:\n\nSize?\n\nColour?");
   });
 });

@@ -13,6 +13,10 @@ const TOKEN_PATTERNS = [
 
 const LONG_SECRET = 8;
 
+// Characters that draw nothing: a value split by them still reads as itself on a page or a screen.
+const INVISIBLE = /[\p{Cf}\u115f\u1160\u3164\uffa0]/gu;
+const HAS_INVISIBLE = /[\p{Cf}\u115f\u1160\u3164\uffa0]/u;
+
 /**
  * `short` also hides values from that length up to `LONG_SECRET`, as whole tokens only, so a
  * four-digit PIN never blanks part of a longer number. Off by default: a short value matches
@@ -23,11 +27,22 @@ export function createRedactor(secrets: readonly (string | null | undefined)[], 
   const known = values.filter((secret) => secret.length >= LONG_SECRET);
   const floor = options.short;
   const short = floor === undefined ? [] : values.filter((secret) => secret.length >= floor && secret.length < LONG_SECRET).map((secret) => new RegExp(`(?<![\\p{L}\\p{N}])${escape(secret)}(?![\\p{L}\\p{N}])`, "gu"));
-  return (line: string) => {
-    let out = line;
+  const hide = (text: string) => {
+    let out = text;
     for (const secret of known) out = out.split(secret).join("***");
     for (const pattern of short) out = out.replace(pattern, "***");
     for (const pattern of TOKEN_PATTERNS) out = out.replace(pattern, "***");
+    return out;
+  };
+  return (line: string) => {
+    let out = hide(line);
+    // A value with invisible characters between its digits is read once more without them; the text
+    // keeps them otherwise, since an emoji is built with them too.
+    if (HAS_INVISIBLE.test(out)) {
+      const bare = out.replace(INVISIBLE, "");
+      const hidden = hide(bare);
+      if (hidden !== bare) out = hidden;
+    }
     return out.length > maxLength ? `${out.slice(0, maxLength)}…` : out;
   };
 }

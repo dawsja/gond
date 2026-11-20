@@ -2,7 +2,7 @@ import { AI_SETUP_CARD, ATTACHMENT_TYPES, joinNames, MAX_ATTACHMENTS, MAX_ATTACH
 import { Hono } from "hono";
 import { ownThread, ownsThread, userId } from "../access.ts";
 import type { Env } from "../app.ts";
-import { BoxError, boxConfig, jpegFromHeic } from "../box.ts";
+import { jpegFromHeic } from "../image-work.ts";
 import { getBot, listBots } from "../data/bots.ts";
 import { leaveSpace, mayJoinSpaces } from "../spaces.ts";
 import { spaceOfThread } from "../data/spaces.ts";
@@ -167,9 +167,10 @@ export function threadsRoutes() {
         const data = new Uint8Array(await file.arrayBuffer());
         // An iPhone's photo: no browser but Safari shows HEIC, so it is kept as the JPEG every page and model reads.
         if (isHeic(data)) {
-          const box = boxConfig(userId(c));
-          const jpeg = box ? await jpegFromHeic(box, data).catch((error: unknown) => (error instanceof BoxError && error.status === 503 ? "away" : null)) : null;
-          if (jpeg === "away") return c.json({ error: `The computer is updating, so ${file.name} can't be opened right now. Try again in a few minutes, or send it as a JPEG.` }, 503);
+          const jpeg = await jpegFromHeic(data).catch((error: unknown) => {
+            console.warn(`[gond] couldn't turn ${file.name} into a JPEG: ${error instanceof Error ? error.message : error}`);
+            return null;
+          });
           if (!jpeg) return c.json({ error: `Couldn't open ${file.name}. Try again, or send it as a JPEG.` }, 422);
           attachments.push(storeAttachment({ name: `${file.name.replace(/\.(heic|heif)$/i, "").slice(0, 195)}.jpg`, mediaType: "image/jpeg", data: jpeg }));
           continue;

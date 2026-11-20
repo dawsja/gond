@@ -3,7 +3,7 @@ import { askApproval, ENGINE_FILES_TEXT, expiredText, SCRIPTED_SCREEN_TEXT, scri
 import { execOnBox, previewBoxImage, readBoxFile, writeBoxFile, type BoxConfig } from "./box.ts";
 import type { DriverTool, ToolPart } from "./driver.ts";
 import { hideSecrets, readSecret } from "./data/secrets.ts";
-import { botHome } from "./memory.ts";
+import { botHome, isMemoryFile, MEMORY_FILES_TEXT } from "./memory.ts";
 
 const COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
 
@@ -81,6 +81,7 @@ export function computerTools(context: Context): Record<string, DriverTool> {
       execute: async (input): Promise<string | ToolPart[]> => {
         const file_path = resolvePath(bot.id, String(input.file_path ?? ""));
         if (touchesEngine("Read", { file_path: fromHome(file_path) })) return ENGINE_FILES_TEXT;
+        if (isMemoryFile(fromHome(file_path), bot.id)) return MEMORY_FILES_TEXT;
         const type = mediaTypeFor(file_path);
         if (PICTURES.has(type)) {
           const shown = await previewBoxImage(box, file_path, type, context.signal).catch(() => null);
@@ -113,6 +114,7 @@ export function computerTools(context: Context): Record<string, DriverTool> {
         const file_path = resolvePath(bot.id, String(input.file_path ?? ""));
         const content = String(input.content ?? "");
         if (scriptsTheScreen("Write", { content })) return SCRIPTED_SCREEN_TEXT;
+        if (isMemoryFile(fromHome(file_path), bot.id)) return MEMORY_FILES_TEXT;
         const denied = await allowed(context, "Write", { file_path: fromHome(file_path) });
         if (denied) return denied;
         await writeBoxFile(box, file_path, content);
@@ -136,6 +138,7 @@ export function computerTools(context: Context): Record<string, DriverTool> {
         const new_text = String(input.new_text ?? "");
         if (!old_text) return "Give the text to replace.";
         if (scriptsTheScreen("Edit", { new_string: new_text })) return SCRIPTED_SCREEN_TEXT;
+        if (isMemoryFile(fromHome(file_path), bot.id)) return MEMORY_FILES_TEXT;
         const denied = await allowed(context, "Edit", { file_path: fromHome(file_path) });
         if (denied) return denied;
         const file = await readBoxFile(box, file_path);

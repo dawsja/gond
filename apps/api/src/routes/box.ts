@@ -1,4 +1,5 @@
 import { CLI_ENGINES, type Bot, type CliEngine } from "@gond/shared";
+import { forgetAgentSessions } from "../data/sessions.ts";
 import { Hono, type Context } from "hono";
 import type { Env } from "../app.ts";
 import {
@@ -141,6 +142,7 @@ export function boxRoutes() {
       await stopAll(person).catch(() => undefined);
       const result = await resetBoxHome(box);
       forgetSouls();
+      forgetAgentSessions(person);
       void emitDesktop(person);
       return c.json(result);
     }),

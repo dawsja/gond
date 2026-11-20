@@ -1,13 +1,13 @@
-import { BOT_LIMITS, CHECK_IN_HOURS, isCheckInHours, type CheckIns, isNoteKind, NOTE_KINDS, type NoteKind, AVATAR_MAX_BYTES, CARD_FIELDS, cardLabel, IMAGE_ASPECTS, IMAGE_MODELS, MAX_IMAGE_REFERENCES, isImageAspect, ROOM_MAX_BOTS, draftIdOf, emailDraftOf, emailName, sendDraftAction, QUIET_REPLY, REACTIONS, isReaction, BOT_COLORS, BOT_EXPRESSIONS, BOT_SHAPES, LOGIN_FIELD_KINDS, MAX_SENT_FILE_BYTES, SKILL_LIMITS, botInputSchema, botModelFor, composioCard, handleOf, joinCommandLine, mentionsIn, mediaTypeFor, mcpServerInputSchema, hasKeyHeader, pickBotName, plainMarkdown, skillFilePath, type Bot, type BotExpression, type BotShape, type McpServer, type McpServerInput, type Message, type SkillInput, type Thread } from "@gond/shared";
+import { BOT_LIMITS, CHECK_IN_HOURS, isCheckInHours, type CheckIns, isNoteKind, NOTE_KINDS, type NoteKind, CARD_FIELDS, cardLabel, IMAGE_ASPECTS, IMAGE_MODELS, MAX_IMAGE_REFERENCES, isImageAspect, ROOM_MAX_BOTS, draftIdOf, emailDraftOf, emailName, sendDraftAction, QUIET_REPLY, REACTIONS, isReaction, BOT_COLORS, BOT_EXPRESSIONS, BOT_SHAPES, LOGIN_FIELD_KINDS, MAX_SENT_FILE_BYTES, SKILL_LIMITS, botInputSchema, botModelFor, composioCard, handleOf, joinCommandLine, mentionsIn, mediaTypeFor, mcpServerInputSchema, hasKeyHeader, pickBotName, plainMarkdown, skillFilePath, type Bot, type BotExpression, type BotShape, type McpServer, type McpServerInput, type Message, type SkillInput, type Thread } from "@gond/shared";
 import { getAi } from "./data/ai.ts";
 import { currentModel } from "./engines.ts";
 import { matchModel, modelsInUse } from "./models.ts";
 import { askApproval, ENGINE_FILES_TEXT, expiredText, requestApproval, SCRIPTED_SCREEN_TEXT, scriptsTheScreen, setAsideText, summarize, touchesEngine } from "./approvals.ts";
-import { boxHome, previewBoxImage, readBoxFileBytes, uploadBoxFile, writeBoxFile, type BoxConfig } from "./box.ts";
+import { boxHome, previewBoxImage, readBoxFileBytes, uploadBoxFile, type BoxConfig } from "./box.ts";
+import { MAIN_TOPIC, memoryOnComputer, memoryTopics, readMemory, writeMemory, type MemoryOwner } from "./data/memories.ts";
 import { exactApp, searchIndex } from "./catalog.ts";
 import { catalogIndex, composioConfigured, executeAction, isReadOnlyAction, toolsFor, type ComposioTool } from "./composio.ts";
-import { clearBotAvatar, createBot, findBot, getBot, listBots, setBotAvatar, updateBot } from "./data/bots.ts";
-import { pictureType } from "./images.ts";
+import { createBot, findBot, getBot, listBots, updateBot } from "./data/bots.ts";
 import { emit } from "./events.ts";
 import { createImage, imageAccess, keepPreview, type ImageReference } from "./pictures.ts";
 import { sendPush } from "./push.ts";
@@ -23,14 +23,14 @@ import { createSkill, getSkill, getSkillBySlug, listSkills, skillFiles, updateSk
 import { createRoutine, deleteRoutine, listRoutines, previewRuns, recordRoutineRun, routinePrompt, updateRoutine } from "./data/routines.ts";
 import { botLinesSincePerson, createRoom, listMessages, markAnswered, postMessage, recentMessages, searchMessages, setReaction, storeAttachment, threadRefs } from "./data/threads.ts";
 import { clipToolResult as clip, type DriverTool } from "./driver.ts";
-import { forgetHeldLogin, holdLogin, loginFields, loginPrefix, savedLoginFor } from "./logins.ts";
+import { boundSite, forgetHeldLogin, holdLogin, loginFields, loginPrefix, pageHost, savedLoginFor, siteOnPage } from "./logins.ts";
 import { checkMcpHeaders, secretNamesIn } from "./mcp.ts";
 import { probeMcpServer } from "./mcp-oauth.ts";
-import { botHome, kb, memoryPath, MAX_MEMORY_BYTES, MAX_TEAM_MEMORY_BYTES, NEARLY_FULL, teamDir, teamMemoryPath } from "./memory.ts";
+import { botHome, isMemoryFile, kb, MAX_MEMORY_BYTES, MAX_TEAM_MEMORY_BYTES, MAX_TOPIC_BYTES, MEMORY_FILES_TEXT, NEARLY_FULL, topicName, UNREADABLE, type LoadedMemory } from "./memory.ts";
 import { requestSecret } from "./secret-requests.ts";
 import { looksExecutable, nameFromFolder, parseSkillMd, type BundleFile } from "./skill-bundle.ts";
 import { readSkillFromBox, skillBrief, skillsReady, syncSkills } from "./skills.ts";
-import { relaySpaces } from "./spaces.ts";
+import { isSpace, memoryAllowed, relaySpaces } from "./spaces.ts";
 import { offerTeaching, proposeDraft } from "./teach.ts";
 import { teachingsIn } from "./data/teachings.ts";
 import { recordUsage } from "./data/usage.ts";
@@ -85,11 +85,16 @@ export function plainText(value: string): string {
 
 const SIGNIN_CARD_FRESH_MS = 30 * 60_000;
 
-export const TOOL_NOTES = [
-  "set_profile changes your own name, job title, how you work (your SOUL), mascot colour, expression or shape, or your picture. When the person tells you who you are or what you do from now on, update your instructions (the description field; the app calls it Instructions) so your SOUL.md carries it. Use it too when the person gives you a lasting new job. Which bot is their primary one is set in the app, not here.",
-  `memory_update replaces MEMORY.md, the notes that load into every turn, up to ${kb(MAX_MEMORY_BYTES)} (its heading says how full it is). Keep it to stable preferences, how the person works and what you learned; detail goes in memory/<topic>.md. You can also edit it, and memory/<topic>.md, with your own file tools; they live in your home folder.`,
-  "send_file hands the person a file from the computer as a download in this conversation (a document, an HTML page, an image, a spreadsheet, up to 100 MB). When the person asks for a file, or a teammate made one for them, send it; don't only say where it is on the computer. To show them the screen (a cart before they buy, a confirmation, or whenever they ask to see it), call send_screenshot; never save a screenshot to a file.",
-  "create_image makes a picture with the person's own image model and posts it here: a drawing, poster, logo, illustration or photo-like scene, or a change to a picture they sent or you made (from, by path). Write the prompt as a brief to an illustrator: subject, style, colours, composition and any words on it. Use it whenever they ask for a picture; never draw one by writing code or with the screen. The person watches it being made and sees it, so your reply is a line at most, never a description of it. A profile picture (a pfp, an avatar, a new look) for you or a teammate is a square create_image, then picture: its images/… path on set_profile or update_bot; it shows in a circle, so keep the subject centred with room around it. picture: none puts the mascot back.",
+/** A note about a tool that only a Gond with a computer has. */
+function onComputer(note: string): { note: string; computer: true } {
+  return { note, computer: true };
+}
+
+const NOTES: (string | { note: string; computer: true })[] = [
+  "set_profile changes your own name, job title, how you work (your SOUL), or your mascot's colour, expression or shape. A bot always wears its mascot: there is no profile picture to set, so when the person asks for one, offer a colour, shape or expression instead. When the person tells you who you are or what you do from now on, update your instructions (the description field; the app calls it Instructions) so your SOUL.md carries it. Use it too when the person gives you a lasting new job. Which bot is their primary one is set in the app, not here.",
+  `Your memory lives in Gond, not on the computer, and only these change it, never file tools or the shell. memory_update replaces MEMORY.md, the notes that load into every turn, up to ${kb(MAX_MEMORY_BYTES)} (its heading says how full it is): keep it to stable preferences, how the person works and what you learned, with a pointer line to each topic. Detail goes in topics: memory_read lists them or reads one, and memory_write writes one whole (read it first; empty removes it).`,
+  onComputer("send_file hands the person a file from the computer as a download in this conversation (a document, an HTML page, an image, a spreadsheet, up to 100 MB). When the person asks for a file, or a teammate made one for them, send it; don't only say where it is on the computer. To show them the screen (a cart before they buy, a confirmation, or whenever they ask to see it), call send_screenshot; never save a screenshot to a file."),
+  "create_image makes a picture with the person's own image model and posts it here: a drawing, poster, logo, illustration or photo-like scene, or a change to a picture they sent or you made (from, by path). Write the prompt as a brief to an illustrator: subject, style, colours, composition and any words on it. Use it whenever they ask for a picture; never draw one by writing code or with the screen. The person watches it being made and sees it, so your reply is a line at most, never a description of it.",
   "Your reply is what you write after your last tool call. Make your calls first (handoffs included), then write the whole answer; don't end a turn on a tool call with the answer half written before it.",
   `react puts an emoji on the person's message you are answering, as a person taps one in a chat: 👍 or ❤️ when they thank you, agree or close ("thanks!", "perfect", "that will be all"), the others when they fit. When the reaction says it all, react and answer with exactly ${QUIET_REPLY}: nothing more is posted and nobody is notified. Otherwise react and reply as usual. Most messages need no reaction.`,
   "post_message adds a line to the conversation you are in before your final answer, e.g. to say what you are starting on. Your final answer is posted for you; don't repeat it. Both only ever reach the person: a teammate hears from you through message_bot, ask_bot or delegate_bot, or through your final answer when its own message woke you.",
@@ -102,7 +107,7 @@ export const TOOL_NOTES = [
   "ask_bot asks a teammate a short question and waits for the answer. Only for a consultation you need before you can reply; never for assigned work.",
   "create_room opens a group chat with teammates (and you and the person) when the person asks for one or a discussion needs several of you at once; its first message @mentions who should answer. For assigned work, delegate_bot is still the way: its result comes back to you, a room's talk doesn't.",
   "create_bot adds a new teammate when the person asks for one: a name, a job title, its instructions in the description field (what it owns, sources, boundaries, what it returns; the app shows them as Instructions and they become its SOUL), and optionally a mascot colour, expression, shape and connected apps. Then brief it with delegate_bot if there is work for it.",
-  "update_bot changes a teammate's profile when the person asks you to: its name, title, instructions (the description field, its SOUL), mascot colour, expression, shape or picture. 'Make @Web Designer a Coder' means title: Coder and matching instructions. It also sets the model a teammate runs on, only when the person asks: a lighter one for quick jobs like checking email, a stronger one for long work like coding, or default to follow Settings → AI.",
+  "update_bot changes a teammate's profile when the person asks you to: its name, title, instructions (the description field, its SOUL), mascot colour, expression or shape. 'Make @Web Designer a Coder' means title: Coder and matching instructions. It also sets the model a teammate runs on, only when the person asks: a lighter one for quick jobs like checking email, a stronger one for long work like coding, or default to follow Settings → AI.",
   "Those are every bot's, not only the primary bot's: who adds teammates and hands out work is a matter of the job, not of what you are allowed to call. Unless you are the primary bot, use them when the person asks you to, not on your own.",
   `Routines are yours to make and change: the person can only see them and switch them on or off, so when they want one made, changed, removed or run, you do it. create_routine schedules a prompt for yourself on a cron in the person's time zone, optionally with one of their skills, paused until they turn it on unless they asked for it in this conversation. list_routines shows yours; update_routine changes or pauses one, delete_routine removes it, run_routine runs it once now. When a routine fires (a message that starts [Routine: …] or [Watch: …]) and there is nothing new worth telling the person since its last run, answer with exactly ${QUIET_REPLY} and nothing else: the run then leaves no trace in the chat and nobody is notified. Anything they would want to know, say as usual.`,
   `Speak up before you're asked. A watch is a routine with watch: true that checks something for a change (a calendar clash, a flight, a price, a reply they're waiting on, a status page, a charge on an account) and speaks only when the change matters to the person; its run shows them "<your name> noticed". When the person asks about the same thing a second time, or about anything that will change later, offer once to keep an eye on it, in one line ending with ::choices (like "Want me to watch your calendar for clashes like this?" ::choices[Yes, always | Work only | No thanks]); on a yes, create_routine with watch: true and enabled: true, a cron no more often than the thing changes, and a prompt that says exactly what counts as worth telling. Don't offer again for something they turned down. When a watch speaks, lead with what changed and what it means for them, in a line or two, then the one thing you can do about it (draft the reply and ask_approval to send it, say). A morning briefing is a plain routine, not a watch. "Less like this" on something you noticed means it wasn't worth it: tighten that watch's prompt with update_routine so it won't come up again.`,
@@ -110,19 +115,25 @@ export const TOOL_NOTES = [
   `Something with a date and time is a reminder, not just a note: when the person mentions an appointment, a deadline, a bill, a flight or anything they mustn't miss ("I have the dentist tomorrow at 2"), create_routine with once: true and enabled: true at a sensible time before it (the morning of, or an hour ahead for something later today; earlier for what needs getting ready), a prompt that says what to tell them, and say in a line when you'll remind them. If you can't tell when it is, ask. When it runs, tell them plainly, in a line or two, with anything useful (when to leave, what to bring); it then removes itself. A run of a reminder is never ${QUIET_REPLY}.`,
   "ask_approval posts a decision card and waits for the person. Whenever you need a yes or no before you act, use it rather than asking in a sentence and ending your turn: the question as summary, where and what as why, the rows that matter as details (items and prices, with total; recipients; files), and buttons named for the act (allow \"Place order\", deny \"Not yet\"). Both buttons are about one act: allow does it, deny doesn't, and deny tells you to stop. It is never a way to pick between options (A or B, this host or every host): for that, end your reply with ::choices[A | B], wait for the pick, and only then ask_approval for the act it settled on, if it still needs a yes. On Auto, call it before anything you can't undo or that leaves the computer: sending a message or email as the person, deleting or overwriting files outside your home, a payment or purchase, a forced push, changing settings for other people, typing a password you weren't given, anything they would want to know first. On Always ask the broker already asks; on Always allow it answers at once.",
   "Connected-app tools (names starting with the app, like GMAIL_SEND_EMAIL) act on the person's real accounts. Reads go through; writes may wait for the person's approval. Say what you sent, created or changed.",
-  "team_memory_update replaces the team memory (its path is in the Team memory section), shared by every bot of the person. Keep it to what the whole team needs.",
-  "watch_me posts a Show me how card: the person does a task once on your screen while you watch, and you turn it into a skill they keep. Offer it once, in one line with ::choices, when they want something done again and again on a website or app and telling you every click would be long, or when you keep getting a site's steps wrong; call it when they say yes or say they'll show you. Don't use the screen while they show you. When they're done, a message brings you every step with pictures of the key moments; then call propose_skill with that teaching's id, as it says. propose_skill puts your draft on the card (a name, the steps in plain words with the step each picture shows, what changes each time, what it needs, the full instructions), and the card offers Try it now, Save as skill and Not right, so your reply never repeats the steps.",
+  "team_memory_update replaces the team memory's MEMORY.md, shared by every bot of the person; memory_read and memory_write with team: true reach the team's topics. Keep it to what the whole team needs.",
+  onComputer("watch_me posts a Show me how card: the person does a task once on your screen while you watch, and you turn it into a skill they keep. Offer it once, in one line with ::choices, when they want something done again and again on a website or app and telling you every click would be long, or when you keep getting a site's steps wrong; call it when they say yes or say they'll show you. Don't use the screen while they show you. When they're done, a message brings you every step with pictures of the key moments; then call propose_skill with that teaching's id, as it says. propose_skill puts your draft on the card (a name, the steps in plain words with the step each picture shows, what changes each time, what it needs, the full instructions), and the card offers Try it now, Save as skill and Not right, so your reply never repeats the steps."),
   "use_skill returns a skill's full instructions and its files by slug. save_skill adds one to the person's library: best from a folder you built in your home (SKILL.md with name and description frontmatter, then the Markdown instructions: steps, decision rules, expected output, what to check with the person first, and how to run each script; beside it scripts/, references/, assets/), or a .skill file, or instructions and text files in the call. update_skill changes one. Every one of the person's bots gets it at once, at ~/.skills/<slug>/.",
   "connect_app connects one of the person's own apps (in their Composio project): it checks whether Gond can connect it through Composio, asks for their Composio key with a masked card when there isn't one yet (set_composio_key does that on its own), and posts a Connect card they tap to sign in. When the app isn't there but has an MCP server, use add_mcp_server with its URL (from the person, or its official docs; never guess one): it asks the person to approve, adds the server for every one of their bots, and posts a Sign in card when the server needs one. A server that wants a key or bearer token instead takes it in headers as {{secret:NAME}}, once request_secret has it; never build a local server or wrapper to carry a key. A server that runs as a command on the computer (like `uv run -m some_mcp`) goes in with add_mcp_server too: install it first, check it starts, then give the command and its args with absolute paths or names on PATH (~/.local/bin is on it) and any environment it needs, never a secret. Every bot gets its tools from its next reply.",
   "request_secret asks the person for a secret by name (like STRIPE_API_KEY or ROOT_PASSWORD) with a reason; the value is stored and you never see it. When a stored one is wrong or rotated, ask again with replace: true rather than storing it under a new name, and delete one that is no longer used with forget_secret. Use a stored one with run_with_secrets (a command that gets it as $NAME, with the output scrubbed), with a type_login action (typed into a field on the screen, once the person allows it), or as {{secret:NAME}} in an MCP server's headers. list_secrets shows the names that exist. set_composio_key asks for their Composio API key the same way and turns connected apps on; never ask for either as plain text in the conversation.",
-  "use_card pays at a website's checkout: the person picks a saved card (one card works on every site) or types one in and says yes to that total, and you type it with type_login by CARD_NUMBER, CARD_EXPIRY, CARD_CVC and the rest. Never ask for a card's number, expiry or code with request_secret or in a sentence.",
-  "When the person is looking for something to buy (find, compare or pick a product, or anything under a price), answer with product cards from present_products, never a table or a list of links: open each product's page at a store in the browser and take its price, stock, options and rating there, and its photos with the browser's images step. Articles can help you choose, but cards come only from store pages you opened. Do not invent listings, ratings, availability or delivery dates. Choosing Buy now creates a checkout: read get_shopping_context, prepare the selected variant and quantity at the retailer, then prepare_checkout with its observed final quote. Every purchase waits for its own payment card, regardless of your approval level; submit only once with submit_checkout after approval. Unknown outcomes must be reconciled from merchant history or email, never retried. Record confirmed orders with record_order and shipment updates with record_shipment. Shopping cards and addresses stay in private conversations.",
-  "request_login posts a sign-in card for the site open on your screen when it asks for an email, username, phone, password or code; a type_login action then types each detail into the field you clicked, without you seeing it.",
-  "browser and computer are your hands on the screen: a list of JSON actions run in order by Gond, answered with the screen as it is after them. browser is a Chrome window that stays open between replies, for every website; its answer lists what is on screen with refs to act on (click, fill, select, check, read, wait_for and the rest, in its description). computer is the whole desktop, for everything else on it. Connected apps, MCP servers, APIs and the shell come first; never script the screen yourself.",
-].join("\n");
+  onComputer("use_card pays at a website's checkout: the person picks a saved card (one card works on every site) or types one in and says yes to that total, and you type it with type_login by CARD_NUMBER, CARD_EXPIRY, CARD_CVC and the rest. Never ask for a card's number, expiry or code with request_secret or in a sentence."),
+  onComputer("When the person is looking for something to buy (find, compare or pick a product, or anything under a price), answer with product cards from present_products, never a table or a list of links: open each product's page at a store in the browser and take its price, stock, options and rating there, and its photos with the browser's images step. Articles can help you choose, but cards come only from store pages you opened. Do not invent listings, ratings, availability or delivery dates. Choosing Buy now creates a checkout: read get_shopping_context, prepare the selected variant and quantity at the retailer, then prepare_checkout with its observed final quote. Every purchase waits for its own payment card, regardless of your approval level; submit only once with submit_checkout after approval. Unknown outcomes must be reconciled from merchant history or email, never retried. Record confirmed orders with record_order and shipment updates with record_shipment. Shopping cards and addresses stay in private conversations."),
+  onComputer("request_login posts a sign-in card for the site open on your screen when it asks for an email, username, phone, password or code; a type_login action then types each detail into the field you clicked, without you seeing it."),
+  onComputer("browser and computer are your hands on the screen: a list of JSON actions run in order by Gond, answered with the screen as it is after them. browser is a Chrome window that stays open between replies, for every website; its answer lists what is on screen with refs to act on (click, fill, select, check, read, wait_for and the rest, in its description). computer is the whole desktop, for everything else on it. Connected apps, MCP servers, APIs and the shell come first; never script the screen yourself."),
+];
+
+/** What the system prompt says about the tools, leaving out those that need a computer when there is none. */
+export function toolNotesFor(computer: boolean): string {
+  return NOTES.flatMap((note) => (typeof note === "string" ? [note] : computer ? [note.note] : [])).join("\n");
+}
 
 type Context = {
-  box: BoxConfig;
+  /** Null when this Gond has no computer: the tools that need one are left out. */
+  box: BoxConfig | null;
   bot: Bot;
   thread: Thread;
   message: Message;
@@ -142,7 +153,55 @@ type Context = {
   reportTo?: (bot: Bot, fromThreadId: string, asker: Bot, body: string, depth: number) => Message | null;
 
   signal?: AbortSignal;
+
+  /** The bot's memory and the team's as this turn last saw them, so a save can't drop what another turn wrote since. */
+  memoryRead?: MemoryRead;
 };
+
+/** What a turn has seen of its memory: the two main memories it loaded, and each topic it read, by `memoryKey`. */
+export type MemoryRead = { own: LoadedMemory; team: LoadedMemory; topics?: Map<string, string | null> };
+
+function memoryKey(owner: MemoryOwner, topic: string): string {
+  return `${"bot" in owner ? "bot" : "team"}:${topic}`;
+}
+
+/**
+ * Saves a whole memory topic unless it changed since this turn last saw it. Two bots saving at once would
+ * otherwise each write their own copy and the later would drop the other's notes; instead the later one
+ * hears the topic as it is now and merges into it. A topic this turn never saw, or a memory it couldn't
+ * load, counts as unseen: one with notes in it is handed back rather than written over. Memory still
+ * waiting on the computer can't be saved at all until it is moved in.
+ */
+export function saveMemory(owner: MemoryOwner, topic: string, content: string, read: MemoryRead | undefined): { saved: true } | { changed: string } | { waiting: true } {
+  if (memoryOnComputer(owner)) return { waiting: true };
+  const now = readMemory(owner, topic);
+  if (read) {
+    const main = topic === MAIN_TOPIC ? ("bot" in owner ? "own" : "team") : null;
+    const known = main ? read[main] : read.topics?.get(memoryKey(owner, topic));
+    const seen = known !== undefined && known !== UNREADABLE;
+    if (now !== null && (seen ? now.trimEnd() !== (known ?? "").trimEnd() : now.trim() !== "")) {
+      remember(read, owner, topic, now);
+      return { changed: now };
+    }
+  }
+  writeMemory(owner, topic, content);
+  if (read) remember(read, owner, topic, content);
+  return { saved: true };
+}
+
+function remember(read: MemoryRead, owner: MemoryOwner, topic: string, content: string | null) {
+  if (topic === MAIN_TOPIC) read["bot" in owner ? "own" : "team"] = content;
+  else (read.topics ??= new Map()).set(memoryKey(owner, topic), content);
+}
+
+const MEMORY_WAITING = "NOT saved: your memory is still on the computer from before it moved into Gond, and the computer isn't answering. It moves in the first time the computer answers; try again then.";
+const MEMORY_LEFT_OUT = "Your memory is left out in this space, so you can't read or change it here. If your person wants something kept, they can ask you in your own chat.";
+const MAX_MEMORY_READ = 32 * 1024;
+
+/** Whether this turn may use its memory: everywhere but a space whose owner left it out. */
+function memoryHere(context: Context): boolean {
+  return !isSpace(context.thread) || memoryAllowed(context.thread, context.bot);
+}
 
 const MAX_DECISION_ROWS = 12;
 const MAX_DECISION_ITEMS = 60;
@@ -313,40 +372,22 @@ function inlineSkillFiles(given: unknown): BundleFile[] | { error: string } {
   return files;
 }
 
-/**
- * Puts a picture from the person's home on a bot as its profile picture, or the mascot back for "none".
- * `from` is the bot whose home a relative path is in: the one calling, which may be dressing a teammate.
- */
-async function setBotPicture(box: BoxConfig, from: Bot, target: Bot, given: string, signal?: AbortSignal): Promise<{ ok: string } | { error: string }> {
-  if (/^(none|mascot|remove|clear)$/i.test(given)) {
-    clearBotAvatar(target.id);
-    return { ok: "picture (back to the mascot)" };
-  }
-  const relative = sharePath(given, from.id, boxHome(from.userId));
-  if (!relative) return { error: `NOT changed: the picture must be inside the person's home on the computer (~), like images/… from create_image.` };
-  let data: Uint8Array;
-  try {
-    data = await readBoxFileBytes(box, relative);
-  } catch (error) {
-    return { error: `NOT changed: ${given} couldn't be read (${error instanceof Error ? error.message : "no detail"}).` };
-  }
-  const type = pictureType(data);
-  if (!type) return { error: `NOT changed: ${given} isn't a PNG, JPEG, WebP or GIF.` };
-  // A GIF goes as it is so it keeps moving; anything else too big goes as the box's JPEG of it.
-  if (type !== "image/gif" && data.byteLength > AVATAR_MAX_BYTES) {
-    try {
-      data = new Uint8Array(Buffer.from((await previewBoxImage(box, relative, type, signal)).data, "base64"));
-    } catch {
-      return { error: `NOT changed: ${given} is over ${AVATAR_MAX_BYTES / 1024 / 1024} MB and couldn't be made smaller.` };
-    }
-  }
-  if (data.byteLength > AVATAR_MAX_BYTES) return { error: `NOT changed: the picture must be under ${AVATAR_MAX_BYTES / 1024 / 1024} MB.` };
-  try {
-    setBotAvatar(target.id, data);
-  } catch (error) {
-    return { error: `NOT changed: ${error instanceof Error ? error.message : "the picture couldn't be saved"}.` };
-  }
-  return { ok: "picture" };
+const NO_COMPUTER = "this Gond has no computer";
+
+// Bots once could wear a picture; one still asked for (an old habit, a skill, a note in memory) is answered plainly, never quietly ignored.
+const NO_PICTURES = "Bots wear their mascot now: there's no profile picture to set or take off. Offer the person a colour, shape or expression instead.";
+
+function askedForPicture(input: Record<string, unknown>): boolean {
+  return typeof input.picture === "string" && input.picture.trim() !== "";
+}
+
+/** The tools that use the computer, left out when this Gond has none. */
+const COMPUTER_TOOLS = ["send_file", "watch_me", "propose_skill", "request_login", "use_card"];
+
+function withoutComputer(box: BoxConfig | null, tools: Record<string, DriverTool>): Record<string, DriverTool> {
+  if (box) return tools;
+  for (const name of COMPUTER_TOOLS) delete tools[name];
+  return tools;
 }
 
 /** A file name from the first words of a picture's prompt. */
@@ -413,6 +454,7 @@ export function baseTools(context: Context): Record<string, DriverTool> {
     let files: BundleFile[] = [];
     let folderName: string | null = null;
     if (folder) {
+      if (!box) return { error: `${NO_COMPUTER} to read a folder from. Give the instructions, and any text files, in the call` };
       const relative = sharePath(folder, bot.id, boxHome(bot.userId));
       if (!relative) return { error: "the folder must be inside the person's home on the computer (~)" };
       const read = await readSkillFromBox(box, relative);
@@ -503,10 +545,10 @@ export function baseTools(context: Context): Record<string, DriverTool> {
     return `${verb} ${server.name}; it answered ${hasKeyHeader(fresh.headers) ? "with its key" : "without a sign-in"}. Every bot gets its tools from its next reply.`;
   };
 
-  return validateCoordination({
-    ...shoppingTools(bot, thread),
+  return withoutComputer(box, validateCoordination({
+    ...(box ? shoppingTools(bot, thread) : {}),
     set_profile: {
-      description: "Update your own profile: name, job title, how you work (your SOUL), your mascot's colour, expression and shape, or your profile picture.",
+      description: "Update your own profile: name, job title, how you work (your SOUL), or your mascot's colour, expression and shape.",
       inputSchema: schema({
         name: { type: "string", description: "A new name, when the person renames you." },
         title: { type: "string", description: "Your job, one line." },
@@ -514,37 +556,86 @@ export function baseTools(context: Context): Record<string, DriverTool> {
         color: { type: "string", description: `Mascot colour, one of: ${BOT_COLORS.join(", ")}.` },
         expression: { type: "string", description: `Mascot expression, one of: ${BOT_EXPRESSIONS.join(", ")}.` },
         shape: { type: "string", description: `Mascot shape, one of: ${BOT_SHAPES.join(", ")}. The cog is the Gond bot; change it only when the person asks.` },
-        picture: { type: "string", description: "A profile picture to wear instead of your mascot: a picture's path on the computer, like images/… from create_image. none puts the mascot back." },
       }),
       execute: async (input) => {
         const patch = profilePatch(input);
         if ("error" in patch) return patch.error;
-        const picture = typeof input.picture === "string" ? input.picture.trim() : "";
-        if (Object.keys(patch).length === 0 && !picture) return "Nothing to change.";
-        const changed: string[] = [];
-        if (picture) {
-          const worn = await setBotPicture(box, bot, bot, picture, context.signal);
-          if ("error" in worn) return worn.error;
-          changed.push(worn.ok);
-        }
-        if (Object.keys(patch).length) {
-          const updated = updateBot(bot.id, patch);
-          if (!updated) return "NOT changed: your profile is gone.";
-          await context.syncSoul(updated);
-          changed.push(...Object.keys(patch));
-        }
-        return `Profile updated (${changed.join(", ")}).`;
+        const picture = askedForPicture(input) ? ` ${NO_PICTURES}` : "";
+        if (Object.keys(patch).length === 0) return picture ? NO_PICTURES : "Nothing to change.";
+        const updated = updateBot(bot.id, patch);
+        if (!updated) return "NOT changed: your profile is gone.";
+        await context.syncSoul(updated);
+        return `Profile updated (${Object.keys(patch).join(", ")}).${picture}`;
       },
     },
     memory_update: {
       description: "Replace MEMORY.md, the notes that load into every one of your turns.",
-      inputSchema: schema({ content: { type: "string", description: "The whole new file." } }, ["content"]),
+      inputSchema: schema({ content: { type: "string", description: "The whole new MEMORY.md." } }, ["content"]),
       execute: async (input) => {
+        if (!memoryHere(context)) return MEMORY_LEFT_OUT;
         const content = String(input.content ?? "");
         const size = Buffer.byteLength(content.trim(), "utf8");
-        if (size > MAX_MEMORY_BYTES) return `NOT saved: that's ${kb(size)} and MEMORY.md loads only ${kb(MAX_MEMORY_BYTES)}. Move detail into memory/<topic>.md and keep this file to what every turn needs.`;
-        await writeBoxFile(box, memoryPath(bot.id), content);
-        return `MEMORY.md saved, ${kb(size)} of ${kb(MAX_MEMORY_BYTES)}.${size >= MAX_MEMORY_BYTES * NEARLY_FULL ? " It's nearly full: move detail into memory/<topic>.md." : ""}`;
+        if (size > MAX_MEMORY_BYTES) return `NOT saved: that's ${kb(size)} and MEMORY.md loads only ${kb(MAX_MEMORY_BYTES)}. Move detail into topics with memory_write and keep this to what every turn needs.`;
+        const result = saveMemory({ bot: bot.id }, MAIN_TOPIC, content, context.memoryRead);
+        if ("waiting" in result) return MEMORY_WAITING;
+        if ("changed" in result) return `NOT saved: MEMORY.md changed since this turn read it (you saved it from another conversation). This is it now; put your change into it and save the whole of it again:\n\n${result.changed}`;
+        return `MEMORY.md saved, ${kb(size)} of ${kb(MAX_MEMORY_BYTES)}.${size >= MAX_MEMORY_BYTES * NEARLY_FULL ? " It's nearly full: move detail into topics with memory_write." : ""}`;
+      },
+    },
+    memory_read: {
+      description: "Read a topic of your memory (or with team, the team's): the notes MEMORY.md points to, like memory/backups.md. Without a topic, lists them.",
+      inputSchema: schema({
+        topic: { type: "string", description: 'The topic, like "backups" (memory/backups.md works too). Leave it out to list every topic.' },
+        team: { type: "boolean", description: "The team memory's topic instead of yours." },
+        from: { type: "number", description: "For a long topic, where to go on reading, as the last read said." },
+      }),
+      execute: async (input) => {
+        if (!memoryHere(context)) return MEMORY_LEFT_OUT;
+        const team = input.team === true;
+        const owner: MemoryOwner = team ? { team: bot.userId } : { bot: bot.id };
+        const whose = team ? "The team memory" : "Your memory";
+        if (memoryOnComputer(owner)) return `${whose} is still on the computer from before it moved into Gond, and the computer isn't answering. It moves in the first time the computer answers; try again then.`;
+        const given = typeof input.topic === "string" ? input.topic.trim() : "";
+        const topics = memoryTopics(owner);
+        const list = topics.length ? topics.map((t) => `- ${t.topic} (${kb(t.bytes)})`).join("\n") : "(none yet)";
+        if (!given) return `${whose}'s topics, besides MEMORY.md:\n${list}`;
+        const topic = topicName(given);
+        if (topic === null) return `"${given}" isn't a topic name. ${whose}'s topics:\n${list}`;
+        const content = readMemory(owner, topic);
+        const from = typeof input.from === "number" && Number.isInteger(input.from) && input.from > 0 ? input.from : 0;
+        if (!from && context.memoryRead) remember(context.memoryRead, owner, topic, content);
+        if (content === null) return `There's no topic "${topic}" yet. ${whose}'s topics:\n${list}`;
+        const part = content.slice(from, from + MAX_MEMORY_READ);
+        const rest = content.length - from - part.length;
+        return rest > 0 ? `${part}\n\n[${kb(Buffer.byteLength(content.slice(from + part.length), "utf8"))} more: read on with from ${from + part.length}. A topic this long is easier to use split into smaller ones.]` : part || "(the end of it)";
+      },
+    },
+    memory_write: {
+      description: "Write a topic of your memory (or with team, the team's) whole, as memory_update writes MEMORY.md: read it first, then send all of it with your change. Empty content removes the topic.",
+      inputSchema: schema(
+        {
+          topic: { type: "string", description: 'The topic, like "backups". MEMORY.md itself is memory_update (team_memory_update for the team).' },
+          content: { type: "string", description: "The whole topic." },
+          team: { type: "boolean", description: "The team memory's topic instead of yours." },
+        },
+        ["topic", "content"],
+      ),
+      execute: async (input) => {
+        if (!memoryHere(context)) return MEMORY_LEFT_OUT;
+        const team = input.team === true;
+        const owner: MemoryOwner = team ? { team: bot.userId } : { bot: bot.id };
+        const given = String(input.topic ?? "").trim();
+        const topic = topicName(given);
+        if (topic === null) return `NOT saved: "${given}" isn't a topic name. Use a short name like "backups" or "clients/acme".`;
+        if (topic === MAIN_TOPIC) return `NOT saved: that's MEMORY.md itself. Use ${team ? "team_memory_update" : "memory_update"}.`;
+        const content = String(input.content ?? "");
+        const size = Buffer.byteLength(content.trim(), "utf8");
+        if (size > MAX_TOPIC_BYTES) return `NOT saved: that's ${kb(size)} and a topic holds ${kb(MAX_TOPIC_BYTES)}. Split it into smaller topics.`;
+        const result = saveMemory(owner, topic, content, context.memoryRead);
+        if ("waiting" in result) return MEMORY_WAITING;
+        if ("changed" in result) return `NOT saved: ${topic} has notes this turn hasn't seen (read it first, or it changed since you did). This is it now; put your change into it and save the whole topic again:\n\n${result.changed}`;
+        if (!content.trim()) return `Removed ${topic}. Take its pointer out of ${team ? "the team's" : "your"} MEMORY.md if it has one.`;
+        return `${topic} saved, ${kb(size)}. If ${team ? "the team's" : "your"} MEMORY.md doesn't point to it yet, add a line there saying what it holds.`;
       },
     },
     ask_approval: {
@@ -657,7 +748,7 @@ export function baseTools(context: Context): Record<string, DriverTool> {
         if (!relative) return "NOT sent: the file must be inside the person's home on the computer (~). To show them the screen, call send_screenshot instead.";
         let data: Uint8Array;
         try {
-          data = await readBoxFileBytes(box, relative);
+          data = await readBoxFileBytes(box!, relative);
         } catch (error) {
           return `NOT sent: ${error instanceof Error ? error.message : "the file couldn't be read"}.`;
         }
@@ -694,6 +785,7 @@ export function baseTools(context: Context): Record<string, DriverTool> {
         const access = await imageAccess(bot.userId);
         if (!access) return "NOT made: the person has no way to make pictures yet. Tell them to sign in to Grok with SuperGrok, or add an OpenAI or xAI key as the OpenAI-compatible API, in Settings → AI. A ChatGPT plan can't make pictures here.";
 
+        if (given.length && !box) return `NOT made: ${NO_COMPUTER}, so there are no pictures to work from. Describe the picture instead.`;
         const references: ImageReference[] = [];
         for (const path of given) {
           const relative = sharePath(path, bot.id, boxHome(bot.userId));
@@ -702,7 +794,7 @@ export function baseTools(context: Context): Record<string, DriverTool> {
           const type = mediaTypeFor(name);
           if (!type.startsWith("image/") || type === "image/svg+xml") return `NOT made: ${path} isn't a picture.`;
           try {
-            const shrunk = await previewBoxImage(box, relative, type, context.signal);
+            const shrunk = await previewBoxImage(box!, relative, type, context.signal);
             references.push({ name: `${name.replace(/\.[^.]+$/, "")}.jpg`, mediaType: shrunk.mediaType, data: new Uint8Array(Buffer.from(shrunk.data, "base64")) });
           } catch (error) {
             return `NOT made: ${path} couldn't be read (${error instanceof Error ? error.message : "no detail"}).`;
@@ -729,10 +821,12 @@ export function baseTools(context: Context): Record<string, DriverTool> {
           const extension = picture.mediaType === "image/png" ? "png" : picture.mediaType === "image/webp" ? "webp" : "jpg";
           const name = pictureName(prompt);
           const saved = `images/${name}-${Date.now().toString(36)}.${extension}`;
-          const kept = await uploadBoxFile(box, `${botHome(bot.id)}/${saved}`, picture.data, context.signal).then(
-            () => true,
-            () => false,
-          );
+          const kept = box
+            ? await uploadBoxFile(box, `${botHome(bot.id)}/${saved}`, picture.data, context.signal).then(
+                () => true,
+                () => false,
+              )
+            : false;
           const file = storeAttachment({ name: `${name}.${extension}`, mediaType: picture.mediaType, data: picture.data });
           postMessage({ threadId: thread.id, author: bot.id, body: hideSecrets(String(input.note ?? "").trim().slice(0, 4000)), attachments: [file], depth, answered: true });
           tell("done", null, file.id);
@@ -803,14 +897,17 @@ export function baseTools(context: Context): Record<string, DriverTool> {
     },
     ...sayInSpaceTool(context),
     team_memory_update: {
-      description: `Replace ~/${teamMemoryPath(bot.userId)}, the memory shared by every bot on your person's team.`,
-      inputSchema: schema({ content: { type: "string", description: "The whole new file." } }, ["content"]),
+      description: "Replace the team memory's MEMORY.md, shared by every bot on your person's team.",
+      inputSchema: schema({ content: { type: "string", description: "The whole new team MEMORY.md." } }, ["content"]),
       execute: async (input) => {
+        if (!memoryHere(context)) return MEMORY_LEFT_OUT;
         const content = String(input.content ?? "");
         const size = Buffer.byteLength(content.trim(), "utf8");
-        if (size > MAX_TEAM_MEMORY_BYTES) return `NOT saved: that's ${kb(size)} and the team memory loads only ${kb(MAX_TEAM_MEMORY_BYTES)}. Keep it to what everyone needs; longer notes go in ~/${teamDir(bot.userId)}/<topic>.md.`;
-        await writeBoxFile(box, teamMemoryPath(bot.userId), content);
-        return `${teamMemoryPath(bot.userId)} saved for the whole team, ${kb(size)} of ${kb(MAX_TEAM_MEMORY_BYTES)}.${size >= MAX_TEAM_MEMORY_BYTES * NEARLY_FULL ? ` It's nearly full: move detail into ~/${teamDir(bot.userId)}/<topic>.md.` : ""}`;
+        if (size > MAX_TEAM_MEMORY_BYTES) return `NOT saved: that's ${kb(size)} and the team memory loads only ${kb(MAX_TEAM_MEMORY_BYTES)}. Keep it to what everyone needs; longer notes go in team topics with memory_write and team: true.`;
+        const result = saveMemory({ team: bot.userId }, MAIN_TOPIC, content, context.memoryRead);
+        if ("waiting" in result) return MEMORY_WAITING;
+        if ("changed" in result) return `NOT saved: a teammate changed the team memory since this turn read it. This is it now; put your change into it and save the whole of it again:\n\n${result.changed}`;
+        return `The team memory is saved for the whole team, ${kb(size)} of ${kb(MAX_TEAM_MEMORY_BYTES)}.${size >= MAX_TEAM_MEMORY_BYTES * NEARLY_FULL ? " It's nearly full: move detail into team topics with memory_write." : ""}`;
       },
     },
     use_skill: {
@@ -921,7 +1018,7 @@ export function baseTools(context: Context): Record<string, DriverTool> {
     },
     request_login: {
       description:
-        "Sign in to a website you have open on the computer. Call it when the page asks for an email, username, phone number, password or a code: it posts one card with those fields, the person fills it in, and you never see what they typed. Then click into each field and send a type_login action (to the browser or computer tool) with the name this returns. When the person saved their details for the site, they're used without a card once the person allows it: name the site as it is in your saved sign-ins. Set fresh only when the saved details just failed on the page.",
+        "Sign in to a website you have open on the computer. Call it when the page asks for an email, username, phone number, password or a code: it posts one card with those fields, the person fills it in, and you never see what they typed. Then click into each field and send a type_login action (to the browser or computer tool) with the name this returns. Call it on the sign-in page itself: the card names that page's site, and the details are typed only there. When the person saved their details for the site, they're used without a card once the person allows it: name the site as it is in your saved sign-ins. Set fresh only when the saved details just failed on the page.",
       inputSchema: schema(
         {
           site: { type: "string", description: "The site as the person knows it, like Uber Eats or amazon.com." },
@@ -943,18 +1040,20 @@ export function baseTools(context: Context): Record<string, DriverTool> {
         if ("error" in fields) return `NOT asked: ${fields.error}.`;
         const next = `Click into each field and send a type_login action with its name: ${fields.map((f) => f.name).join(", ")}. Never read what you typed back off the screen.`;
         const saved = input.fresh === true ? null : savedLoginFor(site, fields, listSecrets(bot.userId).flatMap((s) => (s.site ? [{ name: s.name, site: s.site, updatedAt: s.updatedAt }] : [])));
+        // The card names the page the bot has open, and the details are held to it.
+        const shown = siteOnPage(site, pageHost(bot.id));
         if (saved) {
-          const decision = await requestApproval({ bot, threadId: thread.id, tool: "request_login", input: { site }, summary: `Sign in to ${site} with your saved details`, signal: context.signal });
+          const decision = await requestApproval({ bot, threadId: thread.id, tool: "request_login", input: { site: shown }, summary: `Sign in to ${shown} with your saved details`, signal: context.signal });
           if (decision === "allow" || decision === "always") {
             for (const f of fields) {
               const value = readLogin(bot.userId, saved.get(f.name)!);
-              if (value !== null) holdLogin(thread.id, f.name, value);
+              if (value !== null) holdLogin(thread.id, f.name, value, { site: boundSite(shown) });
             }
             return `The saved details for ${site} are ready. ${next} If the page turns them down, call request_login again with fresh: true.`;
           }
           if (decision === "expired") return expiredText(`to sign in to ${site}`);
         }
-        const status = await requestSecret({ bot, threadId: thread.id, name: prefix, reason: String(input.reason ?? "").trim().slice(0, 200) || `to sign you in to ${site}`, target: "login", site, fields, signal: context.signal });
+        const status = await requestSecret({ bot, threadId: thread.id, name: prefix, reason: String(input.reason ?? "").trim().slice(0, 200) || `to sign you in to ${site}`, target: "login", site: shown, fields, signal: context.signal });
         if (status === "given" || status === "exists") return `The person filled it in. ${next}`;
         if (status === "declined") return `The person chose not to sign in to ${site}. Say what you can do without it.`;
         return expiredText(`to sign in to ${site}`);
@@ -1321,7 +1420,7 @@ export function baseTools(context: Context): Record<string, DriverTool> {
         );
       },
     },
-  });
+  }));
 
   function ownRoutine(ref: string) {
     const mine = listRoutines(bot.id);
@@ -1518,7 +1617,7 @@ export function teamTools(context: Context): Record<string, DriverTool> {
       },
     },
     update_bot: {
-      description: "Change a teammate's profile when the person asks: name, job title, how it works (its SOUL), mascot colour, expression, shape, profile picture or the model it runs on.",
+      description: "Change a teammate's profile when the person asks: name, job title, how it works (its SOUL), mascot colour, expression, shape or the model it runs on.",
       inputSchema: schema({
         bot: { type: "string", description: "The teammate's id, name or @handle." },
         name: { type: "string" },
@@ -1527,7 +1626,6 @@ export function teamTools(context: Context): Record<string, DriverTool> {
         color: { type: "string", description: `One of: ${BOT_COLORS.join(", ")}.` },
         expression: { type: "string", description: `One of: ${BOT_EXPRESSIONS.join(", ")}.` },
         shape: { type: "string", description: `One of: ${BOT_SHAPES.join(", ")}; cog unless the person asks for another.` },
-        picture: { type: "string", description: "A profile picture for it to wear instead of its mascot: a picture's path in your home, like images/… from create_image. none puts the mascot back." },
         model: { type: "string", description: "The model it runs on, only when the person asks: an id or name from the models their AI offers, like haiku or sonnet. default follows Settings → AI again." },
       }, ["bot"]),
       execute: async (input) => {
@@ -1539,20 +1637,13 @@ export function teamTools(context: Context): Record<string, DriverTool> {
         const runsOn = typeof input.model === "string" && input.model.trim() ? await botModelPatch(bot.userId, input.model) : null;
         if (typeof runsOn === "string") return runsOn;
         const patch = { ...fields, ...runsOn };
-        const picture = typeof input.picture === "string" ? input.picture.trim() : "";
-        if (Object.keys(patch).length === 0 && !picture) return "Nothing to change.";
-        const changed: string[] = [];
-        if (picture) {
-          const worn = await setBotPicture(context.box, bot, target, picture, context.signal);
-          if ("error" in worn) return worn.error;
-          changed.push(worn.ok);
-        }
-        if (Object.keys(patch).length === 0) return `${target.name}'s profile updated (${changed.join(", ")}).`;
+        const picture = askedForPicture(input) ? ` ${NO_PICTURES}` : "";
+        if (Object.keys(patch).length === 0) return picture ? NO_PICTURES : "Nothing to change.";
         const updated = updateBot(target.id, patch);
         if (!updated) return "NOT changed: that bot is gone.";
         await context.syncSoul(updated);
-        const said = [...changed, ...Object.keys(fields), ...(runsOn ? [runsOn.model ? `model ${runsOn.model}` : "model back to the default"] : [])];
-        return `${updated.name}'s profile updated (${said.join(", ")}). It reads its new SOUL${runsOn ? " and runs on that model" : ""} from its next turn.`;
+        const said = [...Object.keys(fields), ...(runsOn ? [runsOn.model ? `model ${runsOn.model}` : "model back to the default"] : [])];
+        return `${updated.name}'s profile updated (${said.join(", ")}). It reads its new SOUL${runsOn ? " and runs on that model" : ""} from its next turn.${picture}`;
       },
     },
     ask_bot: {
@@ -1572,6 +1663,8 @@ export function teamTools(context: Context): Record<string, DriverTool> {
   });
 }
 
+const FILE_CHANGES = new Set(["Write", "Edit", "MultiEdit"]);
+
 export function permissionTool(context: Context): DriverTool {
   const { bot, thread } = context;
   return {
@@ -1584,6 +1677,7 @@ export function permissionTool(context: Context): DriverTool {
       const input = (raw.input && typeof raw.input === "object" ? raw.input : {}) as Record<string, unknown>;
       if (scriptsTheScreen(tool, input)) return JSON.stringify({ behavior: "deny", message: SCRIPTED_SCREEN_TEXT });
       if (touchesEngine(tool, input, bot)) return JSON.stringify({ behavior: "deny", message: ENGINE_FILES_TEXT });
+      if (FILE_CHANGES.has(tool) && typeof input.file_path === "string" && isMemoryFile(input.file_path, bot.id)) return JSON.stringify({ behavior: "deny", message: MEMORY_FILES_TEXT });
       const { decision, note, aside } = await askApproval({ bot, threadId: thread.id, signal: context.signal, tool, input });
       if (decision === "allow" || decision === "always") return JSON.stringify({ behavior: "allow", updatedInput: input });
       const message = aside ? setAsideText(`for "${summarize(tool, input)}"`) : decision === "expired" ? expiredText(`for "${summarize(tool, input)}"`) : note ? `The person wants changes to "${summarize(tool, input)}" first: "${note}". Make them and try again.` : `The person denied "${summarize(tool, input)}". Do something else, or say what you would need.`;

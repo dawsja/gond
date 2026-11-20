@@ -69,7 +69,7 @@ export function PersonalizationCard() {
           </Field>
           <FieldSeparator />
           <Field>
-            <FieldTitle id="emoji-label">Emoji</FieldTitle>
+            <FieldTitle id="emoji-label">Emojis</FieldTitle>
             <FieldDescription>How many they use. Reactions to your messages stay either way.</FieldDescription>
             <ToggleGroup aria-labelledby="emoji-label" variant="outline" value={[me.emoji]} onValueChange={(v) => isEmojiLevel(v[0]) && v[0] !== me.emoji && save({ emoji: v[0] })}>
               {EMOJI_LEVELS.map((value) => (

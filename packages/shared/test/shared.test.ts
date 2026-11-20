@@ -1,10 +1,17 @@
 import { describe, expect, test } from "bun:test";
-import { cardBrand, cardFieldValue, checkCard, looseCards, luhnValid, parseExpiry, MODEL_ID_PATTERN, addressedIn, newerVersion, BOT_TEMPLATES, draftIdOf, editedEmailInput, emailDraftOf, emailEditable, emailName, emailText, sendDraftAction, wordDiff, MOBILE_SIGN_IN_CALLBACK, SIGN_IN_APPS, approvalLine, botInputSchema, composioCard, composioCardToolkit, fromNativeAction, gerund, handleOf, isClosing, isQuietReply, isQuietTool, withoutQuietReply, isStopRequest, routineName, joinCommandLine, mentionsIn, isXaiUrl, pickBotName, plainMarkdown, roomAnswerer, roomNameFor, roomTargets, ruleLabel, splitCommandLine, toolLabel, toolLine, withoutPaths } from "../src/index.ts";
+import { BOT_TEMPLATE_FORMAT, botTemplateSchema, cardBrand, cardFieldValue, checkCard, looseCards, luhnValid, parseExpiry, MODEL_ID_PATTERN, addressedIn, newerVersion, BOT_TEMPLATES, draftIdOf, editedEmailInput, emailDraftOf, emailEditable, emailName, emailText, sendDraftAction, wordDiff, MOBILE_SIGN_IN_CALLBACK, SIGN_IN_APPS, approvalLine, botInputSchema, composioCard, composioCardToolkit, fromNativeAction, gerund, handleOf, isClosing, isQuietReply, isQuietTool, withoutQuietReply, isStopRequest, routineName, joinCommandLine, mentionsIn, isXaiUrl, pickBotName, plainMarkdown, roomAnswerer, roomNameFor, roomTargets, ruleLabel, splitCommandLine, toolLabel, toolLine, withoutPaths } from "../src/index.ts";
 
 describe("shared", () => {
   test("a model id may end in Claude Code's [1m] mark, and nothing else in brackets", () => {
     for (const id of ["", "opus", "k3.1-pro", "k3.1-pro[1m]", "claude-sonnet-5-5", "moonshot/kimi-k3"]) expect(MODEL_ID_PATTERN.test(id)).toBe(true);
     for (const id of ["[1m]", "k3.1-pro[2m]", "k3 pro", "k3.1-pro[1m][1m]", "x".repeat(121)]) expect(MODEL_ID_PATTERN.test(id)).toBe(false);
+  });
+
+  test("a template naming a retired shape, or none, comes in wearing the cog", () => {
+    const shapeOf = (shape?: string) => botTemplateSchema.parse({ format: BOT_TEMPLATE_FORMAT, name: "Scout", shape }).shape;
+    expect(shapeOf("gumdrop")).toBe("cog");
+    expect(shapeOf(undefined)).toBe("cog");
+    expect(shapeOf("star")).toBe("star");
   });
 
   test("pickBotName avoids taken names and numbers when exhausted", () => {
@@ -68,6 +75,8 @@ describe("plain markdown", () => {
   test("a meter without words says its percentage, and a plain badge is its label", () => {
     expect(plainMarkdown("::meter{value=3 max=8 label=\"Seats\"}")).toBe("Seats: 38%");
     expect(plainMarkdown("::meter{value=40}")).toBe("40%");
+    expect(plainMarkdown("Pick any:\n\n::choices[Eggs | Milk]{multi other}")).toBe("Pick any: Eggs or Milk?");
+    expect(plainMarkdown(":::questions\nSize?\n::choices[S | L]\n:::")).toBe("Size? S or L?");
     expect(plainMarkdown("Which one?\n::choices[Pickup | Delivery]")).toBe("Which one? Pickup or Delivery?");
     expect(plainMarkdown("Status :badge[Plain] today")).toBe("Status Plain today");
   });

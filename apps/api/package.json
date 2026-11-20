@@ -17,10 +17,11 @@
     "@composio/core": "^0.27.0",
     "@gond/relay": "workspace:*",
     "@gond/shared": "workspace:*",
+    "@imagemagick/magick-wasm": "0.0.45",
     "better-auth": "1.7.12",
     "croner": "^9.1.0",
     "fflate": "^0.8.3",
-    "hono": "^4.10.0",
+    "hono": "^4.13.19",
     "web-push": "^3.6.7"
   },
   "devDependencies": {

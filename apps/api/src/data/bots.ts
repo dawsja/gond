@@ -1,9 +1,8 @@
-import { APPROVAL_LEVELS, AVATAR_MAX_BYTES, BOT_EXPRESSIONS, BOT_SHAPES, type ApprovalLevel, type Bot, type BotExpression, type BotInput, type BotShape } from "@gond/shared";
+import { APPROVAL_LEVELS, BOT_EXPRESSIONS, BOT_SHAPES, type ApprovalLevel, type Bot, type BotExpression, type BotInput, type BotShape } from "@gond/shared";
 import type { Database } from "bun:sqlite";
 import { ensureDatabase, transaction } from "../db/init.ts";
 import { botsChanged } from "../events.ts";
 import { newId, now } from "../ids.ts";
-import { pictureType } from "../images.ts";
 
 type Row = {
   id: string;
@@ -27,7 +26,6 @@ type Row = {
   user_id: string | null;
   created_at: string;
   updated_at: string;
-  avatar_at: string | null;
 };
 
 function toBot(row: Row): Bot {
@@ -38,7 +36,6 @@ function toBot(row: Row): Bot {
     title: row.title,
     description: row.description,
     color: row.color,
-    avatar: row.avatar_at ? `/api/bots/${row.id}/avatar?v=${encodeURIComponent(row.avatar_at)}` : null,
     expression: (BOT_EXPRESSIONS as readonly string[]).includes(row.expression) ? (row.expression as BotExpression) : "happy",
     shape: (BOT_SHAPES as readonly string[]).includes(row.shape) ? (row.shape as BotShape) : "cog",
     approval: (APPROVAL_LEVELS as readonly string[]).includes(row.approval) ? (row.approval as ApprovalLevel) : "ask",
@@ -55,7 +52,7 @@ function toBot(row: Row): Bot {
   };
 }
 
-const SELECT = "SELECT *, (SELECT updated_at FROM gond_bot_avatars WHERE bot_id = gond_bots.id) AS avatar_at FROM gond_bots";
+const SELECT = "SELECT * FROM gond_bots";
 
 export function listBots(options: { includeHidden?: boolean; userId?: string } = {}): Bot[] {
   const db = ensureDatabase();
@@ -190,7 +187,6 @@ export function deleteBot(id: string): Bot | null {
     db.query("DELETE FROM gond_approval_rules WHERE bot_id = ?").run(id);
     db.query("DELETE FROM gond_routines WHERE bot_id = ?").run(id);
     db.query("DELETE FROM gond_follow_ups WHERE bot_id = ?").run(id);
-    db.query("DELETE FROM gond_bot_avatars WHERE bot_id = ?").run(id);
     db.query("DELETE FROM gond_bots WHERE id = ?").run(id);
     keepOnePrimary(db, bot.userId);
   });
@@ -203,28 +199,4 @@ export function findBot(ref: string, bots = listBots({ includeHidden: true })): 
   if (!wanted) return null;
   const squash = (s: string) => s.toLowerCase().replace(/[^a-z0-9_-]+/g, "");
   return bots.find((b) => b.id === ref) ?? bots.find((b) => b.name.toLowerCase() === wanted) ?? bots.find((b) => squash(b.name) === squash(wanted)) ?? null;
-}
-
-export function getBotAvatar(botId: string): { mediaType: string; data: Uint8Array } | null {
-  const row = ensureDatabase().query("SELECT media_type, data FROM gond_bot_avatars WHERE bot_id = ?").get(botId) as { media_type: string; data: Uint8Array } | null;
-  return row ? { mediaType: row.media_type, data: row.data } : null;
-}
-
-export function setBotAvatar(botId: string, data: Uint8Array): Bot | null {
-  const mediaType = pictureType(data);
-  if (!mediaType) throw new Error("Use a PNG, JPEG, WebP or GIF");
-  if (data.byteLength > AVATAR_MAX_BYTES) throw new Error("The picture must be under 2 MB");
-  const bot = getBot(botId);
-  if (!bot) return null;
-  ensureDatabase()
-    .query("INSERT INTO gond_bot_avatars (bot_id, media_type, data, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(bot_id) DO UPDATE SET media_type = excluded.media_type, data = excluded.data, updated_at = excluded.updated_at")
-    .run(botId, mediaType, data, now());
-  botsChanged(bot.userId);
-  return getBot(botId);
-}
-
-export function clearBotAvatar(botId: string): boolean {
-  const changed = ensureDatabase().query("DELETE FROM gond_bot_avatars WHERE bot_id = ?").run(botId).changes > 0;
-  if (changed) botsChanged(getBot(botId)?.userId);
-  return changed;
 }

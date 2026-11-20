@@ -308,6 +308,29 @@ export function parseRegion(value, area) {
 
 
 /**
+ * Where a sign-in detail may be typed: the site the person gave it for, a registrable domain the API
+ * names. Only the browser can see a page's address, so a detail held to a site never goes to the desktop.
+ */
+function siteOf(step, target) {
+  if (step.site === undefined) return {};
+  if (step.secret !== true || typeof step.site !== "string" || !/^[a-z0-9.-]{1,253}$/.test(step.site)) throw new ComputerActionError("site goes only with a sign-in detail");
+  if (target !== "browser") throw new ComputerActionError(`that sign-in detail is for ${step.site}; type it with the browser`);
+  return { site: step.site };
+}
+
+/** Whether a page's address is on a site or under it: auth.uber.com is on uber.com, evil.com and uber.com.evil.com aren't. */
+export function onSite(url, site) {
+  let page;
+  try {
+    page = new URL(url);
+  } catch {
+    return false;
+  }
+  const host = page.hostname.toLowerCase().replace(/\.$/, "");
+  return (page.protocol === "https:" || page.protocol === "http:") && (host === site || host.endsWith(`.${site}`));
+}
+
+/**
  * Checks and normalizes one batch. `area` is what coordinates are in: the
  * screen for the desktop, the page's viewport for the browser. A `type` step
  * may carry `secret: true` from the API (a sign-in detail it filled in); the
@@ -410,15 +433,15 @@ function parseStep(step, target, area) {
       return { type, from: point(step, "x", "y", area), to: point(step, "to_x", "to_y", area), hold: holdOf(step) };
     }
     case "type":
-      return { type, ...where, text: textOf(step), secret: step.secret === true };
+      return { type, ...where, text: textOf(step), secret: step.secret === true, ...siteOf(step, target) };
     case "fill":
-      return { type, ...where, text: textOf(step, "text", { optional: true }) ?? "", secret: step.secret === true };
+      return { type, ...where, text: textOf(step, "text", { optional: true }) ?? "", secret: step.secret === true, ...siteOf(step, target) };
     case "select": {
       const given = Array.isArray(step.option) ? step.option : [step.option];
       if (given.length === 0 || given.length > MAX_OPTIONS || !given.every((option) => typeof option === "string" && option.length > 0 && option.length <= 500)) {
         throw new ComputerActionError("select needs option: the option's label or value, or a list of them");
       }
-      return { type, ...where, options: given, ...(step.secret === true ? { secret: true } : {}) };
+      return { type, ...where, options: given, ...(step.secret === true ? { secret: true } : {}), ...siteOf(step, target) };
     }
     case "check":
       return { type, ...where, checked: step.checked !== false };

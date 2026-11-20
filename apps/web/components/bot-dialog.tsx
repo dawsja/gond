@@ -2,13 +2,12 @@
 
 import { APPROVAL_LEVELS, APPROVAL_LEVEL_LABELS, BOT_COLORS, BOT_EXPRESSIONS, BOT_LIMITS, BOT_SHAPES, BOT_SHAPE_LABELS, botModelFor, type Bot, type BotExpression, type BotShape } from "@gond/shared";
 import { useRouter } from "next/navigation";
-import { Bell, BellOff, ImagePlus, Upload } from "lucide-react";
+import { Bell, BellOff, Upload } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import { BotModelField, useBotModels } from "@/components/bot-model-field";
 import { CheckInsFields, useCheckIns } from "@/components/check-ins-fields";
 import { useDiscardChanges } from "@/components/discard-changes";
 import { GondBot } from "@/components/hq/gond-bot";
-import { usePicturePicker } from "@/components/picture-crop-dialog";
 import { SavedRulesField, useSavedRules } from "@/components/saved-rules";
 import { useStore } from "@/components/store";
 import { Button } from "@/components/ui/button";
@@ -23,7 +22,7 @@ import { Toggle } from "@/components/ui/toggle";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useDeviceNotices } from "@/hooks/use-device-notices";
 import { cn } from "@/lib/utils";
-import { api, del, patch, post } from "@/lib/api";
+import { api, patch, post } from "@/lib/api";
 
 type Form = {
   name: string;
@@ -48,11 +47,6 @@ export function BotDialog({ botId, onClose }: { botId: string | null; onClose: (
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const set = <K extends keyof Form>(key: K, value: Form[K]) => setForm((f) => ({ ...f, [key]: value }));
-  // A new picture waits for Save, like every other change here; null means back to the mascot.
-  const [photo, setPhoto] = useState<{ blob: Blob; url: string } | null | undefined>(undefined);
-  const shown = photo === undefined ? (existing?.avatar ?? null) : (photo?.url ?? null);
-  const picture = usePicturePicker("The bot's picture", async (blob) => setPhoto({ blob, url: URL.createObjectURL(blob) }));
-  useEffect(() => () => void (photo && URL.revokeObjectURL(photo.url)), [photo]);
   // Whether this device hears the bot is the device's, kept apart from the bot and saved with it.
   const device = useDeviceNotices();
   const mutedHere = Boolean(existing && device.notices?.mutedBots.includes(existing.id));
@@ -68,7 +62,7 @@ export function BotDialog({ botId, onClose }: { botId: string | null; onClose: (
   const ownModel = models ? botModelFor(existing, models.current.source) : "";
   const [model, setModel] = useState<string | null>(null);
   const modelChanged = model !== null && model !== ownModel;
-  const dirty = photo !== undefined || hereChanged || checkIns.changed || rules.changed || modelChanged || (existing ? JSON.stringify(form) !== JSON.stringify(pick(existing)) : Boolean(form.title.trim() || form.description.trim()));
+  const dirty = hereChanged || checkIns.changed || rules.changed || modelChanged || (existing ? JSON.stringify(form) !== JSON.stringify(pick(existing)) : Boolean(form.title.trim() || form.description.trim()));
   const discard = useDiscardChanges(dirty && !busy, onClose);
 
   useEffect(() => {
@@ -84,13 +78,6 @@ export function BotDialog({ botId, onClose }: { botId: string | null; onClose: (
     try {
       const body = modelChanged ? { ...form, model } : form;
       const bot = existing ? (await patch<{ bot: Bot }>(`/api/bots/${existing.id}`, body)).bot : (await post<{ bot: Bot }>("/api/bots", body)).bot;
-      if (photo) {
-        const upload = new FormData();
-        upload.append("file", photo.blob, photo.blob.type === "image/gif" ? "picture.gif" : "picture.png");
-        await api(`/api/bots/${bot.id}/avatar`, { method: "PUT", body: upload });
-      } else if (photo === null && existing?.avatar) {
-        await del(`/api/bots/${bot.id}/avatar`);
-      }
       if (hereChanged && device.notices) {
         const others = device.notices.mutedBots.filter((id) => id !== bot.id);
         await device.save({ ...device.notices, mutedBots: hereOn ? others : [...others, bot.id] }).catch(() => {
@@ -144,48 +131,26 @@ export function BotDialog({ botId, onClose }: { botId: string | null; onClose: (
           <FieldGroup className="gap-5">
 
             <div className="flex flex-col items-center gap-4">
-              {shown ? (
-                // eslint-disable-next-line @next/next/no-img-element -- a stored or local picture, already square
-                <img src={shown} alt="" className="size-26 rounded-full border border-primary-edge object-cover" />
-              ) : (
-                <GondBot color={form.color} size={104} expression={form.expression} shape={form.shape} />
-              )}
-              <div className="flex flex-wrap justify-center gap-2">
-                <Button type="button" variant="outline" size="lg" onClick={picture.choose} disabled={picture.busy}>
-                  <ImagePlus data-icon="inline-start" aria-hidden="true" />
-                  {shown ? "Change the picture" : "Upload a picture"}
-                </Button>
-                {shown ? (
-                  <Button type="button" variant="ghost" size="lg" onClick={() => setPhoto(null)}>
-                    Use the mascot
-                  </Button>
-                ) : null}
-              </div>
-              {picture.elements}
-              {shown ? null : (
-                <>
-
-                  <RadioGroup aria-label="Color" value={form.color} onValueChange={(value) => typeof value === "string" && set("color", value)} className="flex w-auto flex-wrap justify-center gap-2.5">
-                    {BOT_COLORS.map((c) => (
-                      <RadioGroupItem key={c} value={c} aria-label={c} className="size-8 border-2 border-transparent bg-(--swatch) ring-control ring-offset-2 ring-offset-card data-checked:border-transparent data-checked:bg-(--swatch) data-checked:ring-2 dark:bg-(--swatch) dark:data-checked:bg-(--swatch) [&>span]:hidden" style={{ "--swatch": c } as React.CSSProperties} />
-                    ))}
-                  </RadioGroup>
-                  <ToggleGroup aria-label="Shape" variant="pill" value={[form.shape]} onValueChange={(v) => v[0] && set("shape", v[0] as BotShape)} spacing={1.5} className="flex-wrap justify-center">
-                    {BOT_SHAPES.map((shape) => (
-                      <ToggleGroupItem key={shape} value={shape} aria-label={BOT_SHAPE_LABELS[shape]} title={BOT_SHAPE_LABELS[shape]} className="size-12 p-0">
-                        <GondBot color={form.color} size={30} expression="happy" shape={shape} greet={false} label={BOT_SHAPE_LABELS[shape]} />
-                      </ToggleGroupItem>
-                    ))}
-                  </ToggleGroup>
-                  <ToggleGroup aria-label="Expression" variant="pill" value={[form.expression]} onValueChange={(v) => v[0] && set("expression", v[0] as BotExpression)} spacing={1.5} className="flex-wrap justify-center">
-                    {BOT_EXPRESSIONS.map((e) => (
-                      <ToggleGroupItem key={e} value={e} className="px-3.5">
-                        {e}
-                      </ToggleGroupItem>
-                    ))}
-                  </ToggleGroup>
-                </>
-              )}
+              <GondBot color={form.color} size={104} expression={form.expression} shape={form.shape} />
+              <RadioGroup aria-label="Color" value={form.color} onValueChange={(value) => typeof value === "string" && set("color", value)} className="flex w-auto flex-wrap justify-center gap-2.5">
+                {BOT_COLORS.map((c) => (
+                  <RadioGroupItem key={c} value={c} aria-label={c} className="size-8 border-2 border-transparent bg-(--swatch) ring-control ring-offset-2 ring-offset-card data-checked:border-transparent data-checked:bg-(--swatch) data-checked:ring-2 dark:bg-(--swatch) dark:data-checked:bg-(--swatch) [&>span]:hidden" style={{ "--swatch": c } as React.CSSProperties} />
+                ))}
+              </RadioGroup>
+              <ToggleGroup aria-label="Shape" variant="pill" value={[form.shape]} onValueChange={(v) => v[0] && set("shape", v[0] as BotShape)} spacing={1.5} className="flex-wrap justify-center">
+                {BOT_SHAPES.map((shape) => (
+                  <ToggleGroupItem key={shape} value={shape} aria-label={BOT_SHAPE_LABELS[shape]} title={BOT_SHAPE_LABELS[shape]} className="size-12 p-0">
+                    <GondBot color={form.color} size={30} expression="happy" shape={shape} greet={false} label={BOT_SHAPE_LABELS[shape]} />
+                  </ToggleGroupItem>
+                ))}
+              </ToggleGroup>
+              <ToggleGroup aria-label="Expression" variant="pill" value={[form.expression]} onValueChange={(v) => v[0] && set("expression", v[0] as BotExpression)} spacing={1.5} className="flex-wrap justify-center">
+                {BOT_EXPRESSIONS.map((e) => (
+                  <ToggleGroupItem key={e} value={e} className="px-3.5">
+                    {e}
+                  </ToggleGroupItem>
+                ))}
+              </ToggleGroup>
             </div>
 
             <FieldGroup className="gap-3">

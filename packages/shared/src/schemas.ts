@@ -80,7 +80,8 @@ export const botTemplateSchema = z.object({
   description: botFields.shape.description.default(""),
   color: botFields.shape.color.default(BOT_COLORS[0]),
   expression: botFields.shape.expression.default("happy"),
-  shape: botFields.shape.shape.default("cog"),
+  // A template from an older Gond may name a shape since retired; it comes in wearing the cog rather than being refused.
+  shape: botFields.shape.shape.catch("cog"),
   approval: botFields.shape.approval.default("auto"),
   routines: z
     .array(z.object({ name: routineFields.shape.name, cron: routineFields.shape.cron, prompt: routineFields.shape.prompt, watch: z.boolean().default(false), skill: z.string().trim().max(80).nullable().default(null) }))

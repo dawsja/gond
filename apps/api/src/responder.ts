@@ -1,4 +1,4 @@
-import { AI_SETUP_CARD, joinNames, withoutPaths, ENGINE_LABELS, QUIET_REPLY, addressedIn, handleOf, isClosing, isStopRequest, mentionsIn, plainMarkdown, replyLine, roomTargets, withoutQuietReply, type Bot, type ChatAttachment, type DesktopDriver, type Message, type Thread, type ToolLabelContext } from "@gond/shared";
+import { AI_SETUP_CARD, isCliEngine, joinNames, withoutPaths, ENGINE_LABELS, QUIET_REPLY, addressedIn, handleOf, isClosing, isStopRequest, mentionsIn, plainMarkdown, replyLine, roomTargets, withoutQuietReply, type Bot, type ChatAttachment, type DesktopDriver, type Message, type Thread, type ToolLabelContext } from "@gond/shared";
 import { createHash } from "node:crypto";
 import { BoxError, boxConfig, boxHome, closeAgent, ensureBotHome, health, interruptAgent, steerAgent, writeBoxFile, type BoxConfig } from "./box.ts";
 import { isUpdating } from "./updater.ts";
@@ -8,6 +8,7 @@ import { getBot, getPrimary, listBots } from "./data/bots.ts";
 import { type Delegation, finishDelegation, handoffWorkedOn, isDelegationResult, openChildren, openDelegationsFrom, openDelegationsTo } from "./data/delegations.ts";
 import { cancelFollowUpsIn } from "./data/follow-ups.ts";
 import { finishRoutineRun } from "./data/routines.ts";
+import { agentSession, saveAgentSession } from "./data/sessions.ts";
 import { allSecretValues, listSecrets } from "./data/secrets.ts";
 import { stopCheckoutsIn } from "./data/shopping.ts";
 import { userTalk, userTimezone } from "./data/prefs.ts";
@@ -40,22 +41,17 @@ import { boxPermission, endTurnOnExpiry, hasPausedCards, pauseOnExpiry, pausedOn
 import { noteInterrupted, takeInterrupted, wasInterrupted } from "./resume.ts";
 import { turnTiming } from "./config.ts";
 import { MAX_CHAIN, MAX_ROOM_LINES, resultDepth } from "./limits.ts";
-import { appTools, baseTools, permissionTool, teamTools, TOOL_NOTES } from "./tools.ts";
+import { appTools, baseTools, permissionTool, teamTools, toolNotesFor, type MemoryRead } from "./tools.ts";
 import { guestWorkers, hasGuestWork, isSpace, keepHere, memoryAllowed, postInSpace, SPACE_TURN, spaceNote, spaceTargets, stopGuestWork } from "./spaces.ts";
 import { saveClaudeLimits, usageRecorder } from "./usage.ts";
-import { loadMemory, loadTeamMemory, transcript } from "./transcript.ts";
+import { transcript } from "./transcript.ts";
+import { memoryForTurn } from "./memory-moves.ts";
 
 const CONTEXT_LINES = 30;
 const ROOM_LOOKBACK = 30;
 
 /** What an agent's last turn ran on (`runKey`), and the last message its CLI session was given, if one was. */
 type Seen = { run: string; at: string | null };
-
-const seenHolder = globalThis as typeof globalThis & { __gondSeen?: Map<string, Seen> };
-/** Per agent, what its last turn ran on and saw: the next turn on the same run sends only what is newer. */
-export function seenBy(): Map<string, Seen> {
-  return (seenHolder.__gondSeen ??= new Map());
-}
 
 /** The engine and account a turn runs on, as far as a CLI session's history goes: a model change within one keeps it. */
 export function runKey(run: Pick<EngineRun, "engine" | "access" | "native">): string {
@@ -599,14 +595,14 @@ export function promptFor(bot: Bot, thread: Thread, message: Message, bots: Bot[
     .join("\n\n");
 }
 
+/** Whether this person's bots run on the computer (a CLI engine there), and so wait while it is away. */
+export function needsComputer(userId: string): boolean {
+  return isCliEngine(getAi(userId).engine);
+}
+
 export async function botTurn(bot: Bot, thread: Thread, message: Message, parent?: AbortSignal): Promise<string> {
+  // Null when this Gond has no computer: the API's own engines answer without one.
   const box = boxConfig(thread.userId);
-  if (!box) {
-    postMessage({ threadId: thread.id, author: "system", kind: "event", body: "Gond isn't connected to its computer, so no bot can answer. Whoever runs this Gond can fix it.", answered: true });
-    if (message.author === "routine") finishRoutineRun(message.id, false);
-    closeCallTurn(message.id, "failed");
-    return "";
-  }
   if (isUpdating()) throw new TurnNotStarted("The computer is updating; the bots answer when it's back.");
   const agentId = agentIdFor(bot, thread);
   if (activeTurns().has(agentId)) throw new TurnNotStarted("already answering");
@@ -637,6 +633,9 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
   let summaryRun: EngineRun | null = null;
   let ranOn: string | null = null;
   let engineName: string = ENGINE_LABELS.claude.name;
+  // A CLI turn runs on the computer, so it waits for it; the API's own engines don't.
+  let cli = false;
+  let session: string | null = null;
 
   let broke: string | null = null;
   // Why a turn ended without an answer, for a Show me how card that waited on it.
@@ -657,7 +656,7 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
     unanswered = detail;
     const cause = stopCauseOf(controller.signal);
     stopped = cause === "stopped";
-    if (cause === "updating" || (!cause && box && !(await computerAnswers(box)))) {
+    if (cause === "updating" || (!cause && box && cli && !(await computerAnswers(box)))) {
       if (Date.now() - Date.parse(message.createdAt) < AWAY_GIVE_UP_MS) {
         again = true;
         return;
@@ -721,30 +720,37 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
     const skills = listSkills(bot.userId);
     const run = engineRun(getAi(thread.userId), thread.userId, bot);
     engineName = ENGINE_LABELS[run.engine].name;
+    cli = !run.native;
+    if (cli && !box) throw new EngineSetupError(`${engineName} runs on the computer, and this Gond doesn't have one. Use an API key, or a ChatGPT or Grok plan, under Settings → AI.`);
     const record = usageRecorder(thread.userId, bot.id, thread.id, run);
     const onUsage: typeof record = (usage) => {
       clock.used(usage.tokens);
       record(usage);
     };
 
-    active.steer = run.native ? async (text) => steers.push(text) : async (text) => (await steerAgent(box, agentId, text).catch(() => ({ steered: false }))).steered;
+    active.steer = run.native ? async (text) => steers.push(text) : async (text) => (await steerAgent(box!, agentId, text).catch(() => ({ steered: false }))).steered;
 
-    // None of these wait on another, and each is a round trip to the computer or a service.
+    // None of these wait on another, and each is a round trip to the computer or a service. SOUL.md and the
+    // skills' folders are on the computer for a CLI session to read; the API's own engines carry both in
+    // the prompt and its tools, so they don't wait on a computer that may be away.
+    const computerCopies = Promise.all([syncSoul(bot), skillsReady(bot.userId)]).catch((error: unknown) => console.warn(`[gond] couldn't bring ${bot.name}'s files up to date on the computer: ${error instanceof Error ? error.message : error}`));
     const [memory, teamMemory, nativeMcp, apps] = await Promise.all([
-      clock.part("memory", syncSoul(bot).then(() => loadMemory(box, bot.id))),
-      clock.part("team memory", loadTeamMemory(box, bot.userId)),
+      clock.part("memory", memoryForTurn(box, { bot: bot.id })),
+      clock.part("team memory", memoryForTurn(box, { team: bot.userId })),
       run.native ? clock.part("mcp", nativeMcpTools({ bot: bot, thread, signal: controller.signal })) : null,
       clock.part("apps", appTools(context)),
-      clock.part("skills", skillsReady(bot.userId)),
+      cli ? clock.part("skills", computerCopies) : null,
     ]);
     // Gond's own tools first and the person's apps and servers last: providers cache the tool list as a
     // prefix, so a change in an app's tools then leaves Gond's cached.
+    // Both memory tools keep this up to date as they save, so a later save in this turn compares with that.
+    const memoryRead: MemoryRead = { own: memory, team: teamMemory };
     const tools = {
-      ...baseTools(context),
-      ...teamTools(context),
-      ...(run.native ? computerTools(context) : { permission: permissionTool(context) }),
-      ...computerTool(context),
-      ...secretCommandTool(context),
+      ...baseTools({ ...context, memoryRead }),
+      ...teamTools({ ...context, memoryRead }),
+      ...(box ? (run.native ? computerTools({ ...context, box }) : { permission: permissionTool(context) }) : {}),
+      ...(box ? computerTool({ ...context, box }) : {}),
+      ...(box ? secretCommandTool({ ...context, box }) : {}),
       ...apps,
       ...(nativeMcp?.tools ?? {}),
     };
@@ -755,12 +761,13 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
       memory,
       teamMemory,
       connections: listConnections(bot.userId),
-      toolNotes: TOOL_NOTES,
+      toolNotes: toolNotesFor(box !== null),
       timezone: userTimezone(thread.userId),
       skillsIndex: skillsIndex(skills),
       talk: userTalk(thread.userId),
       logins: [...new Set(listSecrets(bot.userId).flatMap((s) => (s.site ? [s.site] : [])))],
       space: inSpace ? { note: inSpace, memoryLeftOut: !memoryAllowed(thread, bot) } : null,
+      computer: box !== null,
       mcpServers: nativeMcp?.servers ?? mcpServersFor(bot).map((m) => ({ name: m.name, note: m.authStatus === "needed" ? `not attached yet: it waits for the person to sign in, from its card or Settings → Apps → MCP servers → ${m.name} → Sign in, and its tools arrive on your next reply after that` : m.authStatus === "error" ? `sign-in problem (${m.authError ?? "unknown"}); its tools may fail` : undefined })),
     });
 
@@ -770,9 +777,12 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
     const turnNotes = `${inUse ? `\n\n${inUse}` : ""}${resumed ? `\n\n${resumed}` : ""}`;
     const prompt = promptFor(bot, thread, message, bots, delivered.files, { summary: getSummary(thread.id)?.summary }) + turnNotes;
     ranOn = runKey(run);
-    const pick = run.native ? { fresh: false, since: null } : pickUp(seenBy().get(agentId), ranOn, recentMessages(thread.id, CONTEXT_LINES), CONTEXT_LINES);
+    const seen = agentSession(agentId);
+    const pick = run.native ? { fresh: false, since: null } : pickUp(seen ? { run: seen.run, at: seen.seenAt } : undefined, ranOn, recentMessages(thread.id, CONTEXT_LINES), CONTEXT_LINES);
     // Forgets the session on the computer, so it starts over instead of resuming history from before the switch.
-    if (pick.fresh) await closeAgent(box, agentId).catch(() => undefined);
+    if (pick.fresh) await closeAgent(box!, agentId).catch(() => undefined);
+    // The CLI session to resume: this agent's own on this run. Without one the box resumes what it kept itself.
+    session = !run.native && !pick.fresh && seen?.run === ranOn ? seen.sessionId : null;
     const since = pick.since;
     const followUp = since ? promptFor(bot, thread, message, bots, delivered.files, { since }) + turnNotes : undefined;
     summaryRun = run;
@@ -792,9 +802,9 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
           cacheKey: agentId,
           onText,
           onUsage,
-        }).then((native) => ({ ...native, recovered: false, launch: undefined }))
+        }).then((native) => ({ ...native, recovered: false, launch: undefined, sessionId: null }))
       : await cliTurn({
-      box,
+      box: box!,
       agentId,
       botId: bot.id,
       engine: run.engine,
@@ -804,6 +814,7 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
       instructions,
       prompt,
       followUp,
+      ...(session ? { session } : {}),
       attachments: delivered.inline,
       tools,
       mcpServers,
@@ -817,7 +828,7 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
       onLimits: (limits) => saveClaudeLimits(thread.userId, limits),
     });
     if (result.launch) clock.launched(result.launch);
-    seenBy().set(agentId, { run: ranOn, at: result.ok && !run.native ? message.createdAt : null });
+    saveAgentSession({ agentId, botId: bot.id, threadId: thread.id }, { run: ranOn, sessionId: run.native ? null : (result.sessionId ?? session), seenAt: result.ok && !run.native ? message.createdAt : null });
     const said = result.ok ? withoutQuietReply(result.text) : "";
     const silent = result.ok && !said && Boolean(result.text.trim());
     if (silent && message.author === "routine") {
@@ -840,8 +851,8 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
       await endUnanswered(`${bot.name} couldn't finish: ${detail.slice(0, 500)}`, detail, setupProblem(result, engineName));
     }
   } catch (error) {
-    if (ranOn) seenBy().set(agentId, { run: ranOn, at: null });
-    if (error instanceof BoxError && error.status === 409 && Date.now() - Date.parse(message.createdAt) < AWAY_GIVE_UP_MS) {
+    if (ranOn) saveAgentSession({ agentId, botId: bot.id, threadId: thread.id }, { run: ranOn, sessionId: session, seenAt: null });
+    if (cli && error instanceof BoxError && error.status === 409 && Date.now() - Date.parse(message.createdAt) < AWAY_GIVE_UP_MS) {
       // The computer is still ending a turn of this bot's that Gond lost (it restarted just now): try again shortly.
       again = true;
     } else {
@@ -1036,13 +1047,13 @@ async function raiseIncident(bot: Bot, thread: Thread, message: Message, detail:
 }
 
 export async function answerMessage(message: Message): Promise<void> {
-  if (isUpdating() || computerAway()) {
-    releaseClaim(message.id);
-    return;
-  }
   const thread = getThread(message.threadId);
   if (!thread) {
     markAnswered(message.id);
+    return;
+  }
+  if (isUpdating() || (computerAway() && needsComputer(thread.userId))) {
+    releaseClaim(message.id);
     return;
   }
   const bots = listBots({ includeHidden: true, userId: thread.userId });

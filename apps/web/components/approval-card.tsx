@@ -1,6 +1,6 @@
 "use client";
 
-import { bareToolName, emailDraftOf, isPaused, ruleLabel, type Approval, type ApprovalAnswer, type Bot, type Message } from "@gond/shared";
+import { bareToolName, emailDraftOf, isPaused, physicalAccess, ruleLabel, type Approval, type ApprovalAnswer, type Bot, type Message } from "@gond/shared";
 import { CreditCard, FilePen, Globe, KeyRound, LogIn, Monitor, Plug, Send, ShieldQuestion, SquareTerminal, Trash2 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { ActionCard, ActionCardDone, ActionCode, ActionRows, cheerOnFold, pausedLine, type ActionItem, type ActionRow, NOBODY_ANSWERED, SET_ASIDE } from "@/components/action-card";
@@ -86,7 +86,7 @@ function shapeOf(message: Message, approval: Approval | null, name: string): Sha
     case "add_mcp_server":
       return { ...base, icon: <Plug aria-hidden="true" />, title: "Add an MCP server?", by: `${name} · for all your bots`, body: <ActionCode>{text(input.url) ?? message.body}</ActionCode>, always: false };
     default:
-      return { ...base, icon: /^[A-Z0-9]+_|^mcp__/.test(tool) ? <Plug aria-hidden="true" /> : <ShieldQuestion aria-hidden="true" />, title: sentence(message.body), by: name, body: null };
+      return { ...base, icon: /^[A-Z0-9]+_|^mcp__/.test(tool) ? <Plug aria-hidden="true" /> : <ShieldQuestion aria-hidden="true" />, title: sentence(message.body), by: name, body: null, always: !physicalAccess(tool, input) };
   }
 }
 

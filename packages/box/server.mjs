@@ -9,7 +9,7 @@ import { pipeline } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { Accounts, USER_ID, handOver, openedPath } from "./accounts.mjs";
 import { CLAUDE_BIN, checkClaude } from "./claude.mjs";
-import { AgentSession, GUEST_MODES, PERMISSION_MODES, authStatus, forgetClaudeVersion, parseAccess } from "./agents.mjs";
+import { AgentSession, GUEST_MODES, PERMISSION_MODES, authStatus, backendOf, forgetClaudeVersion, parseAccess } from "./agents.mjs";
 import { toolResultContent } from "./bridge.mjs";
 import { BrowserError, createBrowsers } from "./browser.mjs";
 import { homeUrl, lookOf } from "./home.mjs";
@@ -18,8 +18,8 @@ import { createRecordings, RECORDING_ID } from "./recordings.mjs";
 import { clipText, readXclip, VIEWPORT, writeXclip } from "./browser-host.mjs";
 import { PERSON_HAS_CONTROL, ComputerActionError, buttonLeftDown, controlTransition, describeStep, parseRegion, parseSteps, pngSize, settleMs, STEP_TIMEOUT_MS, stepTimeoutMs, thumbSize, usesInput, xdotoolArgv, xdotoolStdin } from "./computer.mjs";
 import { runFileJob } from "./file-job.mjs";
-import { JPEG_FROM_HEIC, MAX_UPLOAD_BYTES, previewArgv } from "./preview.mjs";
-import { createSessionStore, turnPrompt } from "./sessions.mjs";
+import { MAX_UPLOAD_BYTES, previewArgv } from "./preview.mjs";
+import { createSessionStore, sessionToStart, turnPrompt, validSessionId } from "./sessions.mjs";
 import { createHomeSizes, diskOf, memoryByUid, memoryNow } from "./stats.mjs";
 import { createModelLists } from "./models.mjs";
 import { SIGN_IN_COLS, SIGN_IN_KEEP_MS, SIGN_IN_ROWS, SignInJob, needsCode, signInArgv } from "./sign-in.mjs";
@@ -597,40 +597,6 @@ async function imagePreview(account, relative, mediaType) {
   } finally {
     fs.rmSync(out, { force: true });
   }
-}
-
-const CONVERT_MS = 60_000;
-
-/** A HEIC or HEIF photo as a JPEG, by ImageMagick as the person, through pipes so no file is written anywhere. */
-async function jpegFromHeic(request, account) {
-  refuseWhileUpdating();
-  const data = await readBytes(request, MAX_UPLOAD_BYTES);
-  const jpeg = await new Promise((resolve, reject) => {
-    const child = spawn(JPEG_FROM_HEIC[0], JPEG_FROM_HEIC.slice(1), { cwd: account.home, env: agentEnv(account), ...asUser(account), stdio: ["pipe", "pipe", "pipe"] });
-    const out = [];
-    let size = 0;
-    let said = "";
-    const timer = setTimeout(() => child.kill("SIGKILL"), CONVERT_MS);
-    child.stdin.on("error", () => undefined);
-    child.stdout.on("data", (chunk) => {
-      size += chunk.length;
-      if (size > MAX_UPLOAD_BYTES) child.kill("SIGKILL");
-      else out.push(chunk);
-    });
-    child.stderr.on("data", (chunk) => (said = (said + chunk).slice(-400)));
-    child.on("error", (error) => {
-      clearTimeout(timer);
-      reject(new HttpError(500, error.message));
-    });
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      const made = Buffer.concat(out);
-      if (code === 0 && made.length && size <= MAX_UPLOAD_BYTES) resolve(made);
-      else reject(new HttpError(422, `The photo couldn't be read: ${said.trim().split("\n").pop() || `convert exited ${code}`}`));
-    });
-    child.stdin.end(data);
-  });
-  return { ok: true, data: jpeg.toString("base64"), size: jpeg.length };
 }
 
 function writeFile(account, relative, content) {
@@ -1858,7 +1824,7 @@ function dropAgent(agent) {
   if (agent.guestDir) fs.rmSync(agent.guestDir, { recursive: true, force: true });
 }
 
-async function agentFor(account, id, bot, engine = "claude", guest = null) {
+async function agentFor(account, id, bot, engine = "claude", guest = null, start = {}) {
   if (!ID.test(id)) throw new HttpError(400, "Bad agent id");
   let agent = agents.get(id);
   if (agent && agent.user !== account.id) throw new HttpError(404, "No such agent");
@@ -1883,8 +1849,9 @@ async function agentFor(account, id, bot, engine = "claude", guest = null) {
     agent.user = account.id;
     agent.guest = guest;
     if (guest) agent.guestDir = cwd;
-    agent.sessionId = guest ? null : sessions.get(id, account.id, engine);
-    agent.backend = sessions.backendOf(id);
+    const resume = sessionToStart(start.session, sessions, { id, user: account.id, engine, backend: backendOf(start.access) });
+    agent.sessionId = guest ? null : resume.sessionId;
+    agent.backend = resume.backend;
     agents.set(id, agent);
   }
   return agent;
@@ -1927,6 +1894,7 @@ async function agentTurnRoute(request, response, id, account) {
   if (typeof body.model !== "string" || !MODEL_ID.test(body.model) || (engine === "claude" && !body.model)) throw new HttpError(400, "Bad model id");
   if (typeof body.prompt !== "string" || !body.prompt.trim()) throw new HttpError(400, "Missing prompt");
   if (body.followUp !== undefined && typeof body.followUp !== "string") throw new HttpError(400, "Bad follow-up");
+  if (!validSessionId(body.session)) throw new HttpError(400, "Bad session");
   if (typeof body.bot !== "string" || !ID.test(body.bot)) throw new HttpError(400, "Bad bot id");
   const systemPrompt = typeof body.systemPrompt === "string" ? body.systemPrompt : "";
   const tools = Array.isArray(body.tools) ? body.tools.filter((tool) => tool && typeof tool.name === "string") : [];
@@ -1938,7 +1906,8 @@ async function agentTurnRoute(request, response, id, account) {
   if (guest === undefined) throw new HttpError(400, "Bad guest mode");
   if (guest && engine !== "claude") throw new HttpError(400, "Only Claude Code runs as a guest");
   if (ownAgent(account, id)?.turn) throw new HttpError(409, "This bot is already answering");
-  const agent = await agentFor(account, id, body.bot, engine, guest);
+  const access = parseAccess(body.access);
+  const agent = await agentFor(account, id, body.bot, engine, guest, { session: body.session, access });
   if (!guest) await foldClaudeMemory(account, body.bot);
 
   response.writeHead(200, {
@@ -1951,7 +1920,7 @@ async function agentTurnRoute(request, response, id, account) {
   const sendEvent = (event) => response.write(`data: ${JSON.stringify(event)}\n\n`);
   const keepalive = setInterval(() => response.write(": ping\n\n"), SSE_KEEPALIVE_MS);
   try {
-    const settings = { model: body.model, maxTurns, systemPrompt, tools, permission, mcpServers: Array.isArray(body.mcpServers) ? body.mcpServers : [], access: parseAccess(body.access), guest };
+    const settings = { model: body.model, maxTurns, systemPrompt, tools, permission, mcpServers: Array.isArray(body.mcpServers) ? body.mcpServers : [], access, guest };
     let launch = await agent.ensure(settings);
     const turn = (prompt) =>
       agent.turnWith({ prompt, images, timeoutMs, systemPrompt, onEvent: sendEvent, signal: stop.signal }).catch((error) => {
@@ -2138,7 +2107,6 @@ async function route(request, response, url) {
   }
   if (request.method === "GET" && parts.length === 2 && parts[0] === "files" && parts[1] === "raw") return sendRawFile(response, account, url.searchParams.get("path"));
   if (request.method === "PUT" && parts.length === 2 && parts[0] === "files" && parts[1] === "raw") return uploadFile(request, account, url.searchParams.get("path"));
-  if (request.method === "POST" && parts.length === 2 && parts[0] === "images" && parts[1] === "jpeg") return jpegFromHeic(request, account);
   if (request.method === "GET" && parts.length === 2 && parts[0] === "files" && parts[1] === "preview") return imagePreview(account, url.searchParams.get("path"), url.searchParams.get("type"));
   if (parts.length === 1 && parts[0] === "files") {
     if (request.method === "GET") return readFile(account, url.searchParams.get("path"));

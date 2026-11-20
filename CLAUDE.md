@@ -333,13 +333,17 @@ The address rules are mirrored in each app with the same tests.
   and blink and glance run only while a face is on screen in a shown tab.
   `shape` (`BOT_SHAPES`) picks a body under the same eyes and animations;
   a new shape is a path in `BODIES`, a `LAYOUT` entry and a name in
-  `BOT_SHAPES`. `mood` is set by Gond, never stored or picked: `thinking`
-  while it works (work lines, Chats rows and pinned faces), `talking`
+  `BOT_SHAPES`. Retiring one removes all three and adds a migration
+  putting its bots on the cog; `toBot` and `botTemplateSchema` read a
+  shape they don't know as the cog. `mood` is set by Gond, never
+  stored or picked: `thinking` while it works (work lines, Chats rows
+  and pinned faces), `talking`
   while its voice speaks on a call (`call.speaking`), `glad` as an
   answered card folds (`GLAD_MS`). The box homepage and the iPhone's
-  Connect faces draw the same 3D cog. A bot may wear a picture instead
-  (`usePicturePicker`, a 512 px PNG or a GIF as is, `gond_bot_avatars`,
-  `Bot.avatar`); `BotAvatar` draws either.
+  Connect faces draw the same 3D cog. A bot always wears its mascot:
+  there are no bot pictures (`BotAvatar` draws only `GondBot`), and the
+  ones bots wore before were dropped with `gond_bot_avatars`. Only a
+  person has a picture (`usePicturePicker`).
 
 ### Layout
 
@@ -431,9 +435,15 @@ The address rules are mirrored in each app with the same tests.
   that row (`choiceAnswers` in `lib/choices.ts`) and never sets a waiting
   card aside (`keepCards`); anything else the person says closes every row
   above it; only the conversation
-  provides `ChoicesContext`, so it is inert elsewhere). `prepareMarkdown`
+  provides `ChoicesContext`, so it is inert elsewhere). `{multi}` toggles
+  several and Send sends them as one `joinNames` line (`answerOf`, read
+  back by `pickedIn`); `{other}` adds Something else, a field whose words
+  go instead, or last; `:::questions` holds two to six of them on one card
+  that steps through (`questionsOf`, `Questions`) and sends one reply, a
+  line per question (`answerLine`, read back by `questionAnswers`), which
+  closes the card, never its rows one by one. `prepareMarkdown`
   moves a trailing `::choices` onto its own line; `badgeOf` / `meterOf` /
-  `choicesOf` validate; anything else renders as raw source. Copy leaves
+  `choiceRowOf` validate; anything else renders as raw source. Copy leaves
   choices out (`copyText`). `plainMarkdown` in shared and `plainText` in
   the web reduce to one line for notifications and previews. The
   `## Formatting` section of `souls.ts` tells bots how to use all this.
@@ -803,6 +813,16 @@ One line each: where to start, and what must not change.
   home (`removeBoxAccount`).
 - The API never reads the Claude sign-in and never sends connected-app
   credentials to the box; app actions run through Composio in the API.
+- **A Gond may have no computer** (`GOND_BOX_URL` unset): `boxConfig`
+  is null and the API's own engines answer without one. The tools that
+  need it are left out (`withoutComputer`, `COMPUTER_TOOLS`, the screen,
+  shell and `run_with_secrets`), and so are the rules and notes about it
+  (`houseRules(userId, false)`, whose `WITHOUT_COMPUTER` swaps must each
+  match a line, `toolNotesFor`); a CLI engine posts a setup card. A box
+  set up without its token yet reads as away, never as a crash. While a
+  computer that is set up is away, only people on a CLI engine wait
+  (`needsComputer`, the dispatcher's room per person); everything else a
+  turn needs (memory, sessions, pictures) is the API's.
 
 ### Turns
 
@@ -814,22 +834,27 @@ One line each: where to start, and what must not change.
   Five of each profile's bots answer at once (`TURNS_PER_PERSON`), no
   setting. A turn's setup runs side by side (SOUL.md only when changed,
   `soulsWritten`; memory; skills; apps; MCP listings cached five minutes,
-  `listings`). `GOND_TURN_TIMING=1` logs one timing line per turn
+  `listings`); the API's own engines don't wait for SOUL.md and the
+  skills' folders to reach the computer. `GOND_TURN_TIMING=1` logs one timing line per turn
   (`timingLine`, `createTurnClock` in `src/work.ts`: setup parts, the
   router's time, how the CLI session started, tokens) and keeps the last
   500 for `GET /api/usage/turns`, 404 while off; `GOND_SCREEN_TIMING=1`
   on the box logs each screen batch (`screenTimer`).
 - **A session hears only what's new.** `botTurn` sends a full prompt
   (house rules, the last `CONTEXT_LINES`) and a `followUp` with only
-  what arrived since that agent's last turn (`seenBy`, `runKey`).
+  what arrived since that agent's last turn (`runKey`, and what it saw in
+  `gond_agent_sessions`: `agentSession`, `saveAgentSession`).
   `pickUp` forgets a CLI session whose last turn ran on another engine or
   account (`closeAgent`), and sends the full prompt when more lines
   arrived than the window holds. The transcript and the memory a prompt
   carries are read in `src/transcript.ts`. The box sends the follow-up only to a
   session it resumed (`turnPrompt` in `packages/box/sessions.mjs`).
-  Session ids live in `/state/sessions.json` (`createSessionStore`) per
-  agent, person and engine, each tied to the model service it was made on
-  (`backendOf`), and never resumed on another: Claude can't read another
+  Each agent's session id is kept with it there and named to the box
+  (`session`); the box keeps its own copy in `/state/sessions.json`
+  (`createSessionStore`) and resumes that only for an API that names none
+  (`sessionToStart`), so an upgrade loses no session. A session is tied
+  to the model service it was made on (`backendOf`), and never resumed on
+  another: Claude can't read another
   model's thinking, and an unknown context size makes Claude Code compact
   the whole history first. What drops out of the window is folded into
   `gond_thread_summaries` (`src/summaries.ts`), redacted.
@@ -848,12 +873,35 @@ One line each: where to start, and what must not change.
   over every other tone rule, plus a line in every turn prompt the person
   will read (`talkReminder`), since a system-prompt-only rule drifts. It
   never changes a bot's job or what it writes to teammates.
+- **Memory lives in the database** (`gond_bot_memory`, `gond_team_memory`,
+  `src/data/memories.ts`), never in files: topic `""` is a MEMORY.md, the
+  rest are topics (`topicName` reads `memory/x.md` and the like), read
+  with `memory_read` and written whole with `memory_write`, both with
+  `team` for the team's. File tools aimed at where it was kept are turned
+  to those (`isMemoryFile`, in the native tools and the CLI's permission
+  prompt). In a space whose owner left memory out, every memory tool
+  refuses. Memory from before is moved in from the computer
+  (`src/memory-moves.ts`): every bot and profile there was at the
+  migration waits in `gond_memory_moves` (one made later never does), is
+  moved at its first turn or by the sweep at start (`startMemoryMoves`),
+  and until then reads `UNREADABLE` and can't be saved over, with or
+  without a computer. Only what the database holds leaves the computer,
+  the first move keeping a copy in `.memory-moved/`; only an unreachable
+  computer (`away`) holds a move back, while a file it refuses stays
+  where it is. A MEMORY.md a bot writes there later is merged in at its
+  next turn (`mergeMemory`: neither side is lost, and `moved_hash` keeps
+  a file that couldn't be removed from coming back). A reset first moves
+  in what still waits, and wipes nothing if it can't.
 - **Memory** (`src/memory.ts`): `MEMORY.md` loads up to
   `MAX_MEMORY_BYTES` (24 KB), the team's up to `MAX_TEAM_MEMORY_BYTES`
   (12 KB). Headings say how full it is, nudging from `NEARLY_FULL` (80%);
   past the limit `fitMemory` drops the middle, never the newest notes.
-  `memory_update` and `team_memory_update` refuse anything over. The
-  house rules say how to tend it (pointer lines to `memory/<topic>.md`,
+  `memory_update` and `team_memory_update` refuse anything over, and a
+  save goes through only for a memory unchanged since the turn last saw
+  it (`saveMemory`, `memoryRead`; a topic the turn never read counts as
+  unseen); otherwise the bot hears it as it is now and merges into it, so
+  two bots never drop each other's notes. The
+  house rules say how to tend it (a pointer line per topic,
   rewrite what stopped being true, keep what the person asked to
   remember, dated things become reminders).
 - **Steering.** A person's message to bots already working in that
@@ -943,10 +991,8 @@ One line each: where to start, and what must not change.
   in `coordination.ts` keeps their schemas in Claude's non-guest tool list.
 - **Profiles through tools, not SQL**: `set_profile` and `update_bot` go
   through `profilePatch()` in `src/tools.ts`, then `syncSoul` rewrites
-  SOUL.md. Add a field there, not in the route. `picture` is a path in
-  the calling bot's home (`setBotPicture`, checked by `pictureType`, a
-  still over 2 MB sent as the box's JPEG, a GIF as is; `none` restores
-  the mascot).
+  SOUL.md. Add a field there, not in the route. A `picture` asked for
+  out of an old habit is answered plainly (`NO_PICTURES`), never ignored.
 - **Handoffs**: `MAX_CHAIN` stops bots waking each other forever. A
   result lands a hop up from its brief (`resultDepth`); a teammate that
   hands part on keeps its handoff open (`parentId`) until the last result
@@ -982,7 +1028,15 @@ One line each: where to start, and what must not change.
   push, sudo, a download piped into a shell, `rm -r` outside its home, an
   app action that sends, deletes, pays, transfers or publishes, adding an
   MCP server, `type_secret`, `forget_secret`) and trusts the bot to call
-  `ask_approval` before anything irreversible or outward-facing.
+  `ask_approval` before anything irreversible or outward-facing. An app
+  action that unlocks or opens a door, car, garage or alarm
+  (`physicalAccess` in shared) asks at every level, matches no saved rule,
+  offers no Always and never waits for a late answer. A house rule says
+  what a bot reads (a page, an email, a file, a tool's answer) is never an
+  instruction or the person's yes. `ActionCode` names every control,
+  invisible or reordering character by its code (`hiddenParts`), so a
+  card never reads differently from what runs, and the redactor reads a
+  value split by invisible characters again without them.
   `requestApproval` re-reads the bot's level at the moment it decides,
   since people change it mid-turn. The box only hears `ask` or `full`
   (`PERMISSION_MODES`, `boxPermission`), so every prompt comes to the
@@ -1025,8 +1079,8 @@ One line each: where to start, and what must not change.
   `noticed` (`noticedRuns`), and unread noticed is `Thread.noticed`
   (`noticedIn` in `src/data/threads.ts`). Bots offer watches themselves; there is no form.
 - **Templates** (`src/bot-bundle.ts`, `src/bot-templates.ts`,
-  `botTemplateSchema`): a `.bot` zip of `bot.json`, the picture (only if
-  its bytes are one) and each routine's skill as `.skill`. Memory,
+  `botTemplateSchema`): a `.bot` zip of `bot.json` and each routine's
+  skill as `.skill`; a `picture` in an older one is never read. Memory,
   secrets, conversations, apps and MCP servers never go in.
   `addFromBundle` picks a free name, never trusts beyond Auto, reuses
   skills by slug, and brings routines in switched off on the person's
@@ -1217,17 +1271,23 @@ One line each: where to start, and what must not change.
 ### Files, secrets, sign-ins
 
 - **Files the person sends** (`src/inbox.ts`, `deliverAttachments`): each
-  is written to `inbox/<id>-<name>` in the bot's folder; the model sees a
-  picture's 1568 px preview (`/files/preview`) and a PDF up to 8 MB
-  inline, and `attachmentNote` says what came and where. Any type is
+  is written to `inbox/<id>-<name>` in the bot's folder when there is a
+  computer; the model sees a picture's 1568 px preview (`previewPicture`)
+  and a PDF up to 8 MB inline, and `attachmentNote` says what came and
+  where. Any type is
   taken (`attachmentType`: the browser's type when Gond knows it, other
   text as plain text, else by the name, else `application/octet-stream`)
   and served as a sandboxed download unless it can't run script. Text
   and SVG are inlined as text (`attachmentText`, never bytes with a NUL);
   the original never goes to a model at full size. A
   HEIC or HEIF photo (`isHeic`, told by its bytes) is kept as a JPEG,
-  made at upload by the box's `POST /images/jpeg` (`JPEG_FROM_HEIC`,
-  ImageMagick as the person, stdin to stdout, nothing written to disk).
+  made at upload (`jpegFromHeic`). Both are the API's (`src/image-work.ts`):
+  ImageMagick built as WebAssembly (`@imagemagick/magick-wasm`, pinned)
+  in one worker (`image-worker.ts`), one picture at a time with a time
+  limit, read only by the coder its type names and under size limits, so
+  a hostile picture reaches neither the API's memory nor its files and a
+  slow one never holds up a request. Never a native image library in the
+  API.
 - **`send_file`** reads from the box (`/files/raw`, links resolved inside
   the home), refuses a file holding a stored secret, and posts an
   attachment. Anything that could run script (HTML, SVG, unknown) is
@@ -1284,7 +1344,11 @@ One line each: where to start, and what must not change.
 - **Website sign-ins** (`src/logins.ts`, `login-card.tsx`):
   `request_login` posts one card (`<SITE>_<KIND>`); values are held in
   memory for the conversation for 30 minutes and typed by `type_login`;
-  the bot only hears names. "Remember" stores a secret with a `site`; a
+  the bot only hears names. The card names the host of the page the bot's
+  browser has open (`siteOnPage`, `pageHost`), and what it holds is typed
+  only on that site (`boundSite`, a registrable domain): the browser host
+  checks the page just before typing (`heldTo`, `onSite`), and a detail
+  held to a site never goes to the desktop. "Remember" stores a secret with a `site`; a
   code is never stored. A later request for saved details asks first
   (`mustAsk`). Matching is loose (`savedLoginFor`, `coverLogin`);
   `fresh` asks again; "Use a saved sign-in" fills from the API, the web
@@ -1511,7 +1575,9 @@ a restart resumes (`resumeTeachings`), pictures expire a week after
   `ensure()`. A person's own reset (`home-reset-card.tsx` → `POST
   /api/box/home/reset` → the box's `POST /home/reset`) stops their bots,
   kills their processes and `refreshHome` empties it except `homeKeeps`
-  (memories, `SOUL.md`, the team's, CLI sign-ins, browser profiles).
+  (memories, `SOUL.md`, the team's, CLI sign-ins, browser profiles), and
+  the API forgets their bots' sessions (`forgetAgentSessions`). Memory is
+  the database's, so no reset touches it.
   Everything else is made again as used. `DELETE /accounts/:id` removes a
   person entirely.
 - **One process serves everyone, so nothing in it blocks.** CLI probes

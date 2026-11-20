@@ -1,11 +1,12 @@
 "use client";
 
 import type { Bot } from "@gond/shared";
-import { Check, ChevronDown, Lock, Pause, X } from "lucide-react";
+import { Check, ChevronDown, Lock, Pause, TriangleAlert, X } from "lucide-react";
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { BotAvatar } from "@/components/bot-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { codePoint, hiddenParts } from "@/lib/hidden-text";
 import { cn } from "@/lib/utils";
 
 // Cards the person answered on this page, so the one they just said yes to celebrates as it folds and
@@ -189,6 +190,30 @@ export function ActionRows({ rows, total }: { rows: ActionRow[]; total?: { label
   );
 }
 
+/** What the card asks about, exactly: a character it can't show as itself is named by its code instead, in red, so what the person reads is what runs. */
 export function ActionCode({ children }: { children: ReactNode }) {
-  return <pre data-select-all className="max-h-48 overflow-auto rounded-2xl border border-primary-edge bg-background/50 px-3.5 py-2.5 font-mono text-[12.5px] leading-5 break-words whitespace-pre-wrap">{children}</pre>;
+  const parts = typeof children === "string" ? hiddenParts(children) : null;
+  return (
+    <>
+      <pre data-select-all className="max-h-48 overflow-auto rounded-2xl border border-primary-edge bg-background/50 px-3.5 py-2.5 font-mono text-[12.5px] leading-5 break-words whitespace-pre-wrap">
+        {parts
+          ? parts.map((part, index) =>
+              part.hidden ? (
+                <span key={index} className="mx-px rounded-sm bg-destructive/20 px-1 text-[11px] text-destructive">
+                  {codePoint(part.text)}
+                </span>
+              ) : (
+                part.text
+              ),
+            )
+          : children}
+      </pre>
+      {parts?.some((part) => part.hidden) ? (
+        <p className="flex items-start gap-1.5 text-[12px] leading-4 text-destructive">
+          <TriangleAlert className="mt-px size-3.5 shrink-0" aria-hidden="true" />
+          <span>This has hidden characters, shown in red by their codes. They can make it read differently from what it does, so check it before you allow it.</span>
+        </p>
+      ) : null}
+    </>
+  );
 }

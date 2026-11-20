@@ -52,9 +52,12 @@ const HUB = circle(52, 54, 31);
 const LAYOUT: Record<GondBotShape, { visor: string; at: [number, number]; scale: number; face: { x: number; y: number; scale: number } }> = {
   cog: { visor: circle(52, 54, 24), at: [52, 54], scale: 1, face: { x: 0, y: -1, scale: 0.92 } },
   circle: { visor: circle(52, 54, 25.5), at: [52, 54], scale: 1, face: { x: 0, y: -1, scale: 0.95 } },
-  gumdrop: { visor: BODIES.gumdrop, at: [52, 61], scale: 0.7, face: { x: 0, y: 2.5, scale: 0.95 } },
   cloud: { visor: BODIES.cloud, at: [51, 60], scale: 0.7, face: { x: -0.5, y: 2.5, scale: 0.86 } },
   triangle: { visor: BODIES.triangle, at: [52, 67], scale: 0.66, face: { x: 0, y: 9, scale: 0.76 } },
+  tile: { visor: BODIES.tile, at: [52, 55], scale: 0.72, face: { x: 0, y: -1, scale: 0.95 } },
+  gem: { visor: BODIES.gem, at: [52, 47], scale: 0.66, face: { x: 0, y: -8, scale: 0.8 } },
+  star: { visor: circle(52, 57, 18.5), at: [52, 57], scale: 1, face: { x: 0, y: -1, scale: 0.7 } },
+  drop: { visor: BODIES.drop, at: [52, 63], scale: 0.68, face: { x: 0, y: 3, scale: 0.88 } },
 };
 
 const FACE_AT = { x: 52.25, y: 58 };

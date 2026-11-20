@@ -1,5 +1,5 @@
 import { posix } from "node:path";
-import { QUIET_REPLY, appAction, approvalLine, editedEmailInput, emailDraftOf, emailEditable, emailMode, handleOf, isPaused, plainMarkdown, routineName, sendDraftAction, type Approval, type ApprovalAnswer, type ApprovalLevel, type Bot, type Message } from "@gond/shared";
+import { QUIET_REPLY, appAction, approvalLine, physicalAccess, editedEmailInput, emailDraftOf, emailEditable, emailMode, handleOf, isPaused, plainMarkdown, routineName, sendDraftAction, type Approval, type ApprovalAnswer, type ApprovalLevel, type Bot, type Message } from "@gond/shared";
 import { boxHome } from "./box.ts";
 import { approvalTimeoutMs } from "./config.ts";
 import { addRule, cardWork, createApproval, getApproval, lapsePausedApprovals, listApprovals, listRules, pauseApproval, pausedApprovals, resolveApproval, resolvePaused, unpauseApprovals } from "./data/approvals.ts";
@@ -148,7 +148,7 @@ const MONEY_ACTION = /(^|_)(PAY|PAYS|PAYMENT|PAYMENTS|PAYOUT|TRANSFER|PURCHASE|B
 
 /** Whether a card may wait for a late answer: never a sign-in, a secret, a server's keys or money. */
 export function answerableLate(tool: string, input: Record<string, unknown>): boolean {
-  if (STRICT_TOOLS.has(tool)) return false;
+  if (STRICT_TOOLS.has(tool) || physicalAccess(tool, input)) return false;
   if (tool === "ask_approval") return input.kind !== "purchase" && !input.total;
   if (tool === "add_mcp_server") return !input.headers && !(input.env && typeof input.env === "object" && Object.keys(input.env).length);
   return !MONEY_ACTION.test(appAction(tool).action);
@@ -240,6 +240,7 @@ const SEGMENTS = /\s*(?:\|\||&&|[;|\n\r`()]|\$\()\s*/;
 export function mustAsk(tool: string, input: Record<string, unknown>, bot: Pick<Bot, "id" | "userId">): boolean {
   if (tool === "ask_approval" || tool === "add_mcp_server" || tool === "request_login" || tool === "type_secret" || tool === "forget_secret") return true;
   if (tool === "Bash") return typeof input.command === "string" && riskyCommand(input.command, bot);
+  if (physicalAccess(tool, input)) return true;
   // A draft goes nowhere, but the letter card is how the person sees what was written, so it asks too.
   return OUTWARD_ACTION.test(appAction(tool).action) || emailDraftOf(tool, input)?.mode === "draft";
 }
@@ -340,6 +341,9 @@ export async function askApproval(input: { bot: Bot; threadId: string; tool: str
    * exactly when a person does it.
    */
   const bot = getBot(input.bot.id) ?? input.bot;
+  // Unlocking a door, a car or an alarm asks every time, whatever the level or a saved rule says, and only while it's current.
+  const physical = physicalAccess(tool, input.input);
+  if (physical) return postCard({ ...input, bot, strict: true });
   // An email that goes out can't be called back, so even Always allow shows the letter first.
   if (bot.approval === "full" && !sendsEmail(tool)) return answer("allow");
   if (READ_ONLY.has(tool)) return answer("allow");

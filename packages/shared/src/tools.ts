@@ -36,6 +36,18 @@ export function appAction(tool: string): { action: string; server: string | null
   return mcp ? { action: asSlug(mcp[2]!), server: asSlug(mcp[1]!) } : { action: bare, server: null };
 }
 
+// Opens the person's door, car, garage or alarm to someone: by the time they read about it, it's too late.
+const PHYSICAL_ACTION = /(^|_)(UNLOCK|UNLOCKS|UNLATCH|DISARM|DISARMS|REMOTE_START|OPEN_(?:DOOR|DOORS|GARAGE|GATE|TRUNK|FRUNK|COVER))(_|$)/;
+// A smart home's catch-all runs whatever command its input names, so the input says whether it unlocks.
+const DEVICE_ACTION = /(^|_)(COMMAND|COMMANDS|SERVICE|EXECUTE|CALL|CONTROL)(_|$)/;
+const PHYSICAL_COMMAND = /\b(?:unlock|unlatch|disarm|alarm_disarm|open_cover|remote_start|actuate_trunk)\b/i;
+
+/** Whether an app's action unlocks or opens something in the physical world: it asks every time, and never as a saved rule. */
+export function physicalAccess(tool: string, input: Record<string, unknown>): boolean {
+  const { action } = appAction(tool);
+  return PHYSICAL_ACTION.test(action) || (DEVICE_ACTION.test(action) && PHYSICAL_COMMAND.test(JSON.stringify(input)));
+}
+
 function short(value: unknown, max = LABEL_MAX): string | null {
   if (typeof value !== "string") return null;
   const line = value.trim().split(/\r?\n/)[0]?.replace(/\s+/g, " ").trim() ?? "";
@@ -324,6 +336,10 @@ export function describeTool(name: string, input: Record<string, unknown> = {}, 
       return { verb: "Updating its memory", detail: null };
     case "team_memory_update":
       return { verb: "Updating the team memory", detail: null };
+    case "memory_read":
+      return { verb: input.team === true ? "Reading the team memory" : "Reading its memory", detail: null };
+    case "memory_write":
+      return { verb: input.team === true ? "Updating the team memory" : "Updating its memory", detail: null };
     case "set_profile":
       return { verb: "Updating its profile", detail: null };
     case "post_message":
@@ -517,7 +533,7 @@ export function ruleLabel(rule: string, context: ToolLabelContext = {}): string 
 
 export function isQuietTool(name: string, input: Record<string, unknown> = {}): boolean {
   const tool = bareToolName(name);
-  if (tool === "memory_update" || tool === "team_memory_update") return true;
+  if (tool === "memory_update" || tool === "team_memory_update" || tool === "memory_read" || tool === "memory_write") return true;
   if (tool !== "Read" && tool !== "Edit" && tool !== "Write" && tool !== "MultiEdit" && tool !== "NotebookEdit") return false;
   const file = fileOf(input);
   if (!file) return false;

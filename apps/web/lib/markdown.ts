@@ -33,9 +33,11 @@ export type Definitions = Map<string, { url: string; title: string | null }>;
 const extensions = [gfm({ singleTilde: false }), directive()];
 const mdastExtensions = [gfmFromMarkdown(), directiveFromMarkdown()];
 
-const TRAILING_CHOICES = /^(.*\S)[ \t]+(::choices\[[^\]\n]+\])[ \t]*$/;
+const TRAILING_CHOICES = /^(.*\S)[ \t]+(::choices\[[^\]\n]+\](?:\{[^}\n]*\})?)[ \t]*$/;
 const FENCE = /^ {0,3}(`{3,}|~{3,})/;
-const CHOICES = /[ \t]*::choices\[[^\]\n]*\][ \t]*/g;
+const CHOICES = /[ \t]*::choices\[[^\]\n]*\](?:\{[^}\n]*\})?[ \t]*/g;
+const QUESTIONS_OPEN = /^[ \t]*:::questions\b/;
+const CONTAINER_CLOSE = /^[ \t]*:::[ \t]*$/;
 
 /**
  * The text as it is parsed. A bot sometimes ends its question with the
@@ -63,6 +65,7 @@ export function prepareMarkdown(source: string): string {
  */
 export function copyText(source: string): string {
   let fence: string | null = null;
+  let questions = false;
   return source
     .replace(/\r\n?/g, "\n")
     .split("\n")
@@ -72,7 +75,11 @@ export function copyText(source: string): string {
         fence = fence ? null : open[0]!.repeat(3);
         return line;
       }
-      if (fence || !line.includes("::choices[")) return line;
+      if (fence) return line;
+      // A card of questions is copied as its questions.
+      if (QUESTIONS_OPEN.test(line)) return ((questions = true), "");
+      if (questions && CONTAINER_CLOSE.test(line)) return ((questions = false), "");
+      if (!line.includes("::choices[")) return line;
       const indent = /^[ \t]*/.exec(line)![0];
       return indent + line.replace(CHOICES, " ").trim();
     })
@@ -130,16 +137,56 @@ function numberOf(value: unknown): number | null {
 
 const MAX_CHOICES = 6;
 const MAX_CHOICE_LENGTH = 60;
+const MAX_QUESTIONS = 6;
 
-/** `::choices[Pickup | Delivery]`: two to six short answers the person can tap instead of typing. */
-export function choicesOf(node: Nodes): string[] | null {
+/** A row of choices: its options, whether several can be picked (`multi`), and whether the person may answer in their own words (`other`). */
+export type ChoiceRow = { options: string[]; multi: boolean; other: boolean };
+
+/**
+ * `::choices[Pickup | Delivery]`: two to six short answers the person can tap instead of typing.
+ * `{multi}` lets them pick several and send them together; `{other}` adds "Something else", for an
+ * answer of their own.
+ */
+export function choiceRowOf(node: Nodes): ChoiceRow | null {
   if (node.type !== "leafDirective" || node.name !== "choices") return null;
   const options = plainText(node.children)
     .split("|")
     .map((option) => option.trim())
     .filter(Boolean);
   if (options.length < 2 || options.length > MAX_CHOICES || options.some((option) => option.length > MAX_CHOICE_LENGTH)) return null;
-  return [...new Set(options)];
+  const attributes = node.attributes ?? {};
+  return { options: [...new Set(options)], multi: "multi" in attributes, other: "other" in attributes };
+}
+
+export function choicesOf(node: Nodes): string[] | null {
+  return choiceRowOf(node)?.options ?? null;
+}
+
+/** One question of a card: what it asks (as written, and as one plain line) and its choices. */
+export type Question = { asks: RootContent[]; text: string; row: ChoiceRow };
+
+/**
+ * `:::questions`: several questions on one card, each its words and then its `::choices` row. The
+ * card steps through them and sends every answer at once. Null for anything else: a question with no
+ * words, words after the last row, or more than six.
+ */
+export function questionsOf(node: Nodes): Question[] | null {
+  if (node.type !== "containerDirective" || node.name !== "questions") return null;
+  const questions: Question[] = [];
+  let asks: RootContent[] = [];
+  for (const child of node.children) {
+    const row = choiceRowOf(child);
+    if (!row) {
+      asks.push(child);
+      continue;
+    }
+    const text = plainText(asks).replace(/\s+/g, " ").trim();
+    if (!text) return null;
+    questions.push({ asks, text, row });
+    asks = [];
+  }
+  if (asks.length || questions.length === 0 || questions.length > MAX_QUESTIONS) return null;
+  return questions;
 }
 
 export function meterOf(node: Nodes): Meter | null {
@@ -199,6 +246,8 @@ function textOf(node: Nodes, source: string | undefined): string {
   if (meter) return `${plainText(meter.label, source)}: ${meter.text}\n`;
   const choices = choicesOf(node);
   if (choices) return `${choices.join(" or ")}?\n`;
+  const questions = questionsOf(node);
+  if (questions) return questions.map((question) => `${question.text}\n${question.row.options.join(" or ")}?\n`).join("");
   switch (node.type) {
     case "text":
     case "inlineCode":

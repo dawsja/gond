@@ -13,7 +13,6 @@ import { ruleLabel, type AppCatalogEntry, type Bot, type Thread } from "@gond/sh
 
 const bot: Bot = {
   id: "bot-1",
-  avatar: null,
   userId: "u-admin",
   name: "Scout",
   title: "Assistant",
@@ -101,6 +100,11 @@ describe("approvals", () => {
     // An MCP server's tools come lowercase, camelCase or dashed, and still ask.
     for (const tool of ["mcp__gmail__send_email", "mcp__toad__delete_app", "mcp__vercel__deleteProject", "mcp__mail__reply-to-thread", "mcp__shop__cancel_order", "GMAIL_MOVE_TO_TRASH", "mcp__files__purge_bucket"]) expect(mustAsk(tool, {}, bot)).toBe(true);
     for (const tool of ["mcp__gmail__list_messages", "mcp__toad__poll_process", "mcp__vercel__getDeployment", "mcp__notes__sender_stats"]) expect(mustAsk(tool, {}, bot)).toBe(false);
+    // Unlocking a door, a car or an alarm always asks; a smart home's catch-all asks when its input unlocks.
+    for (const tool of ["TESLA_UNLOCK_DOORS", "mcp__home__unlock_front_door", "SMARTTHINGS_DISARM_ALARM", "mcp__car__remote_start", "MYQ_OPEN_GARAGE_DOOR"]) expect(mustAsk(tool, {}, bot)).toBe(true);
+    expect(mustAsk("mcp__homeassistant__call_service", { domain: "lock", service: "unlock", entity_id: "lock.front" }, bot)).toBe(true);
+    expect(mustAsk("mcp__homeassistant__call_service", { domain: "light", service: "turn_on", entity_id: "light.porch" }, bot)).toBe(false);
+    expect(mustAsk("TESLA_GET_VEHICLE_DATA", {}, bot)).toBe(false);
     // Gond's own tools are never an app's action, whatever their names say.
     for (const tool of ["send_file", "delete_routine", "mcp__gond__send_screenshot", "mcp__gond__delete_routine"]) expect(mustAsk(tool, {}, bot)).toBe(false);
     expect(mustAsk("add_mcp_server", { name: "x" }, bot)).toBe(true);
@@ -1208,7 +1212,7 @@ describe("a reply as it is written", () => {
 
     const small = systemPromptFor(bot, { ...base, memory: "- Likes short answers." });
     expect(small).toContain("## Memory (MEMORY.md, 0.1 KB of 24 KB)\n- Likes short answers.");
-    expect(small).toContain("memory/<topic>.md, which you read when its subject comes up");
+    expect(small).toContain("topics, which you read with `memory_read` when their subject comes up");
 
     const near = notes(Math.ceil((MAX_MEMORY_BYTES * 0.85) / 100), "- Backups now follow Notion.");
     expect(systemPromptFor(bot, { ...base, memory: near })).toContain("It's nearly full");
@@ -1230,7 +1234,7 @@ describe("a reply as it is written", () => {
     expect(team).toContain("- The office moved.");
     expect(fitMemory("x".repeat(100), 40).text).toContain("x".repeat(40));
 
-    // A memory the computer couldn't hand over isn't empty: the bot hears not to write over it.
+    // A memory still waiting on a computer that couldn't hand it over isn't empty: the bot hears not to write over it.
     const unread = systemPromptFor(bot, { ...base, memory: memory.UNREADABLE, teamMemory: memory.UNREADABLE });
     expect(unread).not.toContain("Empty so far");
     expect(unread).toContain("Don't call memory_update this turn");
@@ -1358,8 +1362,39 @@ describe("the computer tool", () => {
     expect(String((screenSteps({ actions: [{ type: "click", label: "Checkout" }] }, "desktop", scale, none) as { error: string }).error)).toContain("x and y");
     expect(screenSteps({ actions: [{ type: "type_login", label: "Password", role: "textbox", name: "site_password" }] }, "browser", null, login)).toEqual({ steps: [{ type: "fill", label: "Password", role: "textbox", text: "pw-1234", secret: true }] });
 
+    // A detail held to a site carries it to the box, which types it only on that site's pages; never on the desktop.
+    const bound = (name: string) => (name === "UBER_EATS_PASSWORD" ? { value: "pw-9", site: "uber.com" } : null);
+    expect(screenSteps({ actions: [{ type: "type_login", ref: "e3", name: "UBER_EATS_PASSWORD" }] }, "browser", null, bound)).toEqual({ steps: [{ type: "fill", ref: "e3", text: "pw-9", secret: true, site: "uber.com" }] });
+    expect(String((screenSteps({ actions: [{ type: "type_login", name: "UBER_EATS_PASSWORD" }] }, "desktop", scale, bound) as { error: string }).error)).toContain("browser tool");
+    // Only a held detail names a site: one the model writes itself is dropped.
+    expect(screenSteps({ actions: [{ type: "type", text: "hi", site: "evil.com" }] }, "browser", null, none)).toEqual({ steps: [{ type: "type", text: "hi" }] });
+
     expect(screenSteps({ action: "left_click", coordinate: [10, 20] }, "desktop", scale, none)).toEqual({ steps: [{ type: "click", x: 20, y: 40, button: "left", count: 1 }] });
     expect(screenSteps({ action: "cursor_position" }, "desktop", scale, none)).toHaveProperty("error");
+  });
+
+  test("a sign-in card names the page it will be typed on, and is held to that site", async () => {
+    const { boundSite, registrableDomain, siteOnPage } = await import("../src/logins.ts");
+    expect(registrableDomain("auth.uber.com")).toBe("uber.com");
+    expect(registrableDomain("www.amazon.co.uk")).toBe("amazon.co.uk");
+    expect(registrableDomain("192.168.6.128")).toBe("192.168.6.128");
+    expect(siteOnPage("Uber Eats", "auth.uber.com")).toBe("Uber Eats (auth.uber.com)");
+    expect(siteOnPage("amazon.com", "amazon.com")).toBe("amazon.com");
+    // The bot's own note never stands in for the page it actually has open.
+    expect(siteOnPage("Uber Eats (ubereats.com)", "evil.com")).toBe("Uber Eats (evil.com)");
+    expect(siteOnPage("Uber Eats", null)).toBe("Uber Eats");
+    expect(boundSite("Uber Eats (auth.uber.com)")).toBe("uber.com");
+    expect(boundSite("Nginx Proxy Manager (192.168.6.128:81)")).toBe("192.168.6.128");
+    expect(boundSite("amazon.com")).toBe("amazon.com");
+    expect(boundSite("Uber Eats")).toBeNull();
+    expect(boundSite("Work email (the new one)")).toBeNull();
+  });
+
+  test("a secret split by invisible characters is still hidden, and an emoji keeps its joiners", async () => {
+    const { createRedactor } = await import("../src/redact.ts");
+    const redact = createRedactor(["4111111111111111"]);
+    expect(redact("card 4111\u200b1111\u200b1111\u20601111 on file")).toBe("card *** on file");
+    expect(redact("family 👨\u200d👩\u200d👧 trip")).toBe("family 👨\u200d👩\u200d👧 trip");
   });
 
   test("the words with a screenshot say what ran, what failed, and where the browser is", async () => {
@@ -1863,6 +1898,101 @@ describe("message indexes", () => {
     expect(plan("SELECT * FROM gond_routines WHERE enabled = 1 AND next_run_at IS NOT NULL AND next_run_at <= ?")).toContain("gond_routines_due");
     expect(plan("SELECT * FROM gond_delegations WHERE status = 'open' AND from_thread_id = ? ORDER BY created_at")).toContain("gond_delegations_open");
     expect(plan("SELECT * FROM gond_teachings WHERE thread_id = ? AND status IN (?, ?)")).toContain("gond_teachings_thread");
+  });
+});
+
+describe("memory in the database", () => {
+  test("an upgrade marks every bot and profile there was as having its memory on the computer, and a new install none", async () => {
+    const { Database } = await import("bun:sqlite");
+    const { runMigrations, MEMORY_MOVES_VERSION } = await import("../src/db/migrations.ts");
+    const db = new Database(":memory:", { strict: true });
+    runMigrations(db, MEMORY_MOVES_VERSION - 2);
+    const at = "2026-11-01T00:00:00Z";
+    db.exec(`CREATE TABLE "user" (id TEXT PRIMARY KEY, name TEXT)`);
+    db.exec(`INSERT INTO "user" (id, name) VALUES ('u1', 'Dana'), ('u2', 'Dana Work')`);
+    const bot = (id: string, user: string | null) => db.query("INSERT INTO gond_bots (id, name, color, model, thread_id, user_id, created_at, updated_at) VALUES (?, ?, 'blue', 'opus', ?, ?, ?, ?)").run(id, id, `t-${id}`, user, at, at);
+    bot("b1", "u1");
+    // A bot from before people, not adopted yet, has memory on the computer too.
+    bot("b2", null);
+    runMigrations(db);
+    const waiting = () => db.query("SELECT bot_id, user_id FROM gond_memory_moves ORDER BY bot_id, user_id").all();
+    expect(waiting()).toEqual([
+      { bot_id: null, user_id: "u1" },
+      { bot_id: null, user_id: "u2" },
+      { bot_id: "b1", user_id: null },
+      { bot_id: "b2", user_id: null },
+    ]);
+    bot("b3", "u1");
+    expect(waiting()).toHaveLength(4);
+    db.exec("PRAGMA foreign_keys = ON");
+    db.query("DELETE FROM gond_bots WHERE id = 'b1'").run();
+    expect(waiting()).toHaveLength(3);
+
+    const fresh = new Database(":memory:", { strict: true });
+    runMigrations(fresh);
+    expect(fresh.query("SELECT COUNT(*) AS n FROM gond_memory_moves").get()).toEqual({ n: 0 });
+  });
+
+  test("a topic is named however a bot writes it, and never climbs out", async () => {
+    const { fileTopic, topicName } = await import("../src/memory.ts");
+    for (const given of ["backups", "backups.md", "memory/backups.md", "~/.bots/bot-x/memory/backups.md", "/home/agent/.bots/bot-x/memory/backups.md", " backups "]) expect(topicName(given)).toBe("backups");
+    expect(topicName("~/.team/u1/clients.md")).toBe("clients");
+    expect(topicName("memory/trips/2026.md")).toBe("trips/2026");
+    expect(topicName("MEMORY.md")).toBe("");
+    expect(topicName("~/.bots/bot-x/MEMORY.md")).toBe("");
+    for (const bad of ["", "../secrets", "memory/../../x", ".hidden", "a/\u0007b"]) expect(topicName(bad)).toBeNull();
+    // A note under memory/ called MEMORY.md is a topic of its own, never merged into the main memory.
+    expect(fileTopic("MEMORY.md")).toBe("MEMORY-notes");
+    expect(fileTopic("trips/2026.md")).toBe("trips/2026");
+  });
+
+  test("merging two versions of a memory keeps everything either holds, once", async () => {
+    const { mergeMemory } = await import("../src/memory.ts");
+    expect(mergeMemory(null, "- Likes tea.")).toBe("- Likes tea.");
+    expect(mergeMemory("- Likes tea.\n- Lives in Leeds.", "- Likes tea.")).toBe("- Likes tea.\n- Lives in Leeds.");
+    expect(mergeMemory("- Likes tea.", "- Likes tea.\n- Lives in Leeds.")).toBe("- Likes tea.\n- Lives in Leeds.");
+    const both = mergeMemory("- Likes tea.", "- Likes coffee now.");
+    expect(both).toContain("- Likes tea.");
+    expect(both).toContain("- Likes coffee now.");
+    expect(mergeMemory(both, "- Likes coffee now.")).toBe(both);
+  });
+
+  test("a file tool aimed at where memory used to be kept is turned to the memory tools", async () => {
+    const { isMemoryFile } = await import("../src/memory.ts");
+    for (const path of ["MEMORY.md", "./MEMORY.md", "memory/backups.md", "memory", "/home/agent/.bots/b1/MEMORY.md", "~/.bots/b1/memory/x/y.md", "~/.team/u1/MEMORY.md", "../../.team/u1/MEMORY.md", ".team/MEMORY.md"]) expect([path, isMemoryFile(path, "b1")]).toEqual([path, true]);
+    for (const path of ["notes.md", "memory.txt", "SOUL.md", "~/.team/u1/report.md", "/home/agent/.bots/b1/inbox/MEMORY.md.bak", ""]) expect([path, isMemoryFile(path, "b1")]).toEqual([path, false]);
+  });
+
+  test("without a computer, the house rules promise none and keep what still applies", async () => {
+    const { houseRules } = await import("../src/souls.ts");
+    const { toolNotesFor } = await import("../src/tools.ts");
+    const on = houseRules("u1", true);
+    const off = houseRules("u1", false);
+    // Each line about the computer is swapped out; a line that drifted would leave its old words behind.
+    for (const gone of ["with your own computer", "a forced push", "Your own folder on the computer", "including the browser", "Nothing they mention lives on this computer", "then an API or the shell", "You have a screen of your own", "~/.skills/", "Your working directory"]) {
+      expect(on).toContain(gone);
+      expect(off).not.toContain(gone);
+    }
+    expect(off).toContain("This Gond has no computer");
+    for (const kept of ["memory_update", "memory_write", "team_memory_update", "ask_approval", "Speak as yourself"]) expect(off).toContain(kept);
+    expect(toolNotesFor(false)).not.toContain("send_file");
+    expect(toolNotesFor(false)).toContain("memory_read");
+    expect(toolNotesFor(true)).toContain("send_file");
+  });
+});
+
+describe("bot pictures", () => {
+  test("an upgrade drops the pictures bots wore, and a bot that wore one falls back to its own mascot", async () => {
+    const { Database } = await import("bun:sqlite");
+    const { runMigrations, LATEST_VERSION } = await import("../src/db/migrations.ts");
+    const db = new Database(":memory:", { strict: true });
+    runMigrations(db, LATEST_VERSION - 1);
+    const at = "2026-11-01T00:00:00Z";
+    db.query("INSERT INTO gond_bots (id, name, color, expression, shape, model, thread_id, user_id, created_at, updated_at) VALUES ('b1', 'Patch', '#11998A', 'wink', 'cloud', 'opus', 't-b1', 'u1', ?, ?)").run(at, at);
+    db.query("INSERT INTO gond_bot_avatars (bot_id, media_type, data, updated_at) VALUES ('b1', 'image/png', ?, ?)").run(new Uint8Array([137, 80, 78, 71]), at);
+    runMigrations(db);
+    expect(db.query("SELECT name FROM sqlite_master WHERE name = 'gond_bot_avatars'").get()).toBeNull();
+    expect(db.query("SELECT name, color, expression, shape FROM gond_bots WHERE id = 'b1'").get()).toEqual({ name: "Patch", color: "#11998A", expression: "wink", shape: "cloud" });
   });
 });
 

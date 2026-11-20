@@ -48,9 +48,24 @@ function freshBoxToken(): string | null {
   }
 }
 
+let saidNoToken = false;
+
+/**
+ * How to reach the box for one person, or null when this Gond has no computer. A box set up without a
+ * token yet (it writes its own on first start, which may come after this API's) is reached with none
+ * and answers as away until the token is there.
+ */
 export function boxConfig(userId: string | null = null): BoxConfig | null {
   const url = boxUrl();
-  return url ? { url, token: boxToken(), user: userId } : null;
+  if (!url) return null;
+  let token = "";
+  try {
+    token = boxToken();
+  } catch (error) {
+    if (!saidNoToken) console.warn(`[gond] ${error instanceof Error ? error.message : error}`);
+    saidNoToken = true;
+  }
+  return { url, token, user: userId };
 }
 
 export class BoxError extends Error {
@@ -230,21 +245,41 @@ export async function uploadBoxFile(config: BoxConfig, filePath: string, data: U
   return { ok: true, size: body.size ?? data.byteLength };
 }
 
-/** A HEIC or HEIF photo as a JPEG, made on the computer as the person. */
-export async function jpegFromHeic(config: BoxConfig, data: Uint8Array): Promise<Uint8Array> {
-  const res = await request(config, "/images/jpeg", { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: new Uint8Array(data), signal: AbortSignal.timeout(90_000) });
-  const body = (await res.json().catch(() => ({}))) as { error?: string; code?: string; data?: string };
-  if (!res.ok || typeof body.data !== "string") throw new BoxError(body.error ?? `Converting the photo failed (${res.status})`, res.status, typeof body.code === "string" ? body.code : null);
-  return Buffer.from(body.data, "base64");
-}
-
 /** A JPEG of a picture in the home, its long edge at most 1568 px, for a model to look at. */
 export function previewBoxImage(config: BoxConfig, filePath: string, mediaType: string, signal?: AbortSignal): Promise<{ ok: true; mediaType: string; data: string; size: number }> {
   return call(config, "GET", `/files/preview?path=${encodeURIComponent(filePath)}&type=${encodeURIComponent(mediaType)}`, undefined, 60_000, signal);
 }
 
-export async function deleteBoxFile(config: BoxConfig, filePath: string): Promise<void> {
-  await call(config, "DELETE", `/files?path=${encodeURIComponent(filePath)}`);
+export async function deleteBoxFile(config: BoxConfig, filePath: string, signal?: AbortSignal): Promise<void> {
+  await call(config, "DELETE", `/files?path=${encodeURIComponent(filePath)}`, undefined, 60_000, signal);
+}
+
+type BoxFile = { content?: string; directory?: string[]; entries?: BotFileEntry[]; binary?: boolean; size?: number };
+
+/**
+ * A file or folder in the person's home as it is, without making their account on the computer: a
+ * person who has none has no files, so both that and a missing file are null.
+ */
+export async function peekBoxFile(config: BoxConfig, filePath: string, signal: AbortSignal): Promise<BoxFile | null> {
+  const res = await request(config, `/files?path=${encodeURIComponent(filePath)}`, { method: "GET", signal }, true);
+  const data = (await res.json().catch(() => ({}))) as { error?: string; code?: string } & BoxFile;
+  if (res.status === 404) return null;
+  if (!res.ok) throw new BoxError(data.error ?? `Box request failed (${res.status})`, res.status, typeof data.code === "string" ? data.code : null);
+  return data;
+}
+
+/** A file's bytes as `peekBoxFile` reads a file: null when it, or the person's account, isn't there. */
+export async function peekBoxFileBytes(config: BoxConfig, filePath: string, signal: AbortSignal): Promise<Uint8Array | null> {
+  const res = await request(config, `/files/raw?path=${encodeURIComponent(filePath)}`, { method: "GET", signal }, true);
+  if (res.status === 404) {
+    await res.body?.cancel().catch(() => undefined);
+    return null;
+  }
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new BoxError(data.error ?? `Box request failed (${res.status})`, res.status);
+  }
+  return new Uint8Array(await res.arrayBuffer());
 }
 
 export function ensureBotHome(config: BoxConfig, botId: string): Promise<{ ok: true; dir: string }> {
@@ -338,6 +373,8 @@ type AgentTurnInput = {
   systemPrompt: string;
   prompt: string;
   followUp?: string;
+  /** The CLI session to resume, as this API last heard it; without one the box resumes what it kept itself. */
+  session?: string;
   attachments?: { name: string; mediaType: string; data: string }[];
   tools: AgentTool[];
   timeoutMs: number;

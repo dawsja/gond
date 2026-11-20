@@ -5,7 +5,7 @@ import { runDueCheckIns } from "./check-ins.ts";
 import { TURNS_PER_PERSON } from "./config.ts";
 import { claimPendingMessages, postMessage, releaseClaim } from "./data/threads.ts";
 import { randomString } from "./ids.ts";
-import { activeTurns, answerMessage, computerAway } from "./responder.ts";
+import { activeTurns, answerMessage, computerAway, needsComputer } from "./responder.ts";
 import { chaseStalledDelegations } from "./nudges.ts";
 import { expireTeachingFrames } from "./data/teachings.ts";
 import { isUpdating } from "./updater.ts";
@@ -83,10 +83,12 @@ async function tick() {
       if (!isUpdating() && !computerAway()) runDueCheckIns();
     }
 
-    if (isUpdating() || computerAway()) return;
+    if (isUpdating()) return;
+    // While the computer is away only bots that run on it wait; the API's own engines answer without it.
+    const away = computerAway();
     const busy = new Map<string, number>();
     for (const turn of activeTurns().values()) busy.set(turn.userId, (busy.get(turn.userId) ?? 0) + 1);
-    const messages = claimPendingMessages(current.owner, (userId) => TURNS_PER_PERSON - (busy.get(userId) ?? 0));
+    const messages = claimPendingMessages(current.owner, (userId) => (away && needsComputer(userId) ? 0 : TURNS_PER_PERSON - (busy.get(userId) ?? 0)));
     for (const message of messages) {
       void answerMessage(message).catch((error: unknown) => {
         console.error(`[gond] answering ${message.id} failed:`, error);

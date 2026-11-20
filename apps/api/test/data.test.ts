@@ -1,5 +1,6 @@
 import type { ProviderKind } from "@gond/shared";
 import { afterAll, beforeAll, describe, expect, jest, test } from "bun:test";
+import { unzipSync, zipSync } from "fflate";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -57,6 +58,66 @@ function routeHost(host: string, port: number | undefined): () => void {
   };
 }
 
+function text(value: string): Uint8Array {
+  return new TextEncoder().encode(value);
+}
+
+/** A person's home on the computer as its files API answers it: listings, raw reads and writes, deletes; 503 while `down`. */
+async function fakeHome(request: Request, files: Map<string, Uint8Array>, down: () => boolean): Promise<Response> {
+  if (down()) return Response.json({ error: "The computer is updating" }, { status: 503 });
+  const url = new URL(request.url);
+  const path = url.searchParams.get("path") ?? "";
+  if (url.pathname === "/files/raw" && request.method === "PUT") {
+    files.set(path, new Uint8Array(await request.arrayBuffer()));
+    return Response.json({ ok: true });
+  }
+  if (url.pathname === "/files/raw") {
+    const file = files.get(path);
+    return file ? new Response(new Uint8Array(file)) : Response.json({ error: "No such file" }, { status: 404 });
+  }
+  if (url.pathname === "/files" && request.method === "DELETE") {
+    for (const key of [...files.keys()]) if (key === path || key.startsWith(`${path}/`)) files.delete(key);
+    return Response.json({ ok: true });
+  }
+  if (url.pathname === "/files") {
+    const file = files.get(path);
+    if (file) return Response.json({ content: new TextDecoder().decode(file), size: file.length });
+    const names = [...new Set([...files.keys()].filter((key) => key.startsWith(`${path}/`)).map((key) => key.slice(path.length + 1).split("/")[0]!))].sort();
+    if (!names.length) return Response.json({ error: "No such file" }, { status: 404 });
+    return Response.json({ directory: names, entries: names.map((name) => ({ name, dir: !files.has(`${path}/${name}`), size: files.get(`${path}/${name}`)?.length ?? 0, modified: null })) });
+  }
+  return Response.json({ error: "No such route" }, { status: 404 });
+}
+
+let magickReady: Promise<typeof import("@imagemagick/magick-wasm")> | null = null;
+
+/** ImageMagick in this process, to make test pictures and read back what Gond made. */
+function magick() {
+  return (magickReady ??= (async () => {
+    const wasm = await import("@imagemagick/magick-wasm");
+    await wasm.initializeImageMagick(await Bun.file(Bun.fileURLToPath(import.meta.resolve("@imagemagick/magick-wasm/magick.wasm"))).bytes());
+    return wasm;
+  })());
+}
+
+/** A small HEIF photo made here: an AVIF, which libheif reads the same way, under a brand iPhones' photos carry. */
+async function madeHeif(): Promise<Uint8Array> {
+  const { MagickColors, MagickFormat, MagickImage } = await magick();
+  const avif = MagickImage.create(MagickColors.Orange, 64, 48).write(MagickFormat.Avif, (data) => new Uint8Array(data));
+  avif.set(text("mif1"), 8);
+  return avif;
+}
+
+async function madeJpeg(width: number, height: number): Promise<Uint8Array> {
+  const { MagickColors, MagickFormat, MagickImage } = await magick();
+  return MagickImage.create(MagickColors.SkyBlue, width, height).write(MagickFormat.Jpeg, (data) => new Uint8Array(data));
+}
+
+async function sizeOf(jpeg: Uint8Array): Promise<number[]> {
+  const { ImageMagick, MagickFormat } = await magick();
+  return ImageMagick.read(jpeg, MagickFormat.Jpeg, (image) => [image.width, image.height]);
+}
+
 describe("data", () => {
   test("creates a bot with its thread, posts and claims messages", async () => {
     const { createBot, listBots } = await import("../src/data/bots.ts");
@@ -104,22 +165,99 @@ describe("data", () => {
     expect(claimPendingMessages("test", () => 1000).map((m) => m.id)).toEqual([prompt.id]);
   });
 
-  test("a memory that isn't there is none, and one the computer couldn't hand over is unreadable", async () => {
-    const { loadMemory, loadTeamMemory } = await import("../src/transcript.ts");
+  test("memory on the computer from before moves into the database once, whole, and only then leaves the computer", async () => {
+    const { createBot } = await import("../src/data/bots.ts");
+    const { ensureDatabase } = await import("../src/db/init.ts");
+    const { memoryForTurn } = await import("../src/memory-moves.ts");
+    const { memoryOnComputer, memoryTopics, readMemory } = await import("../src/data/memories.ts");
+    const { saveMemory } = await import("../src/tools.ts");
     const memory = await import("../src/memory.ts");
-    let status = 404;
-    const server = Bun.serve({ port: 0, fetch: () => Response.json(status === 200 ? { content: "- Likes tea." } : { error: "No such file" }, { status }) });
-    const box = { url: `http://127.0.0.1:${server.port}`, token: "t", user: null };
+    const { botInputSchema } = await import("@gond/shared");
+    const bot = createBot(botInputSchema.parse({ name: "Old Timer" }), "u-mem");
+    // As the migration leaves a bot and a profile that were there before memory moved.
+    ensureDatabase().query("INSERT INTO gond_memory_moves (bot_id) VALUES (?)").run(bot.id);
+    ensureDatabase().query("INSERT INTO gond_memory_moves (user_id) VALUES (?)").run("u-mem");
+    const home = `.bots/${bot.id}`;
+    const files = new Map<string, Uint8Array>([
+      [`${home}/MEMORY.md`, text("- Likes tea.\n- memory/garden.md: the garden")],
+      [`${home}/memory/garden.md`, text("Roses in May.")],
+      [`${home}/memory/trips/2026.md`, text("Lisbon in June.")],
+      [`${home}/memory/scan.png`, new Uint8Array([0x89, 0x50, 0, 0, 1])],
+      [`${home}/notes.txt`, text("not memory")],
+      [".team/u-mem/MEMORY.md", text("Office in Leeds.")],
+      [".team/u-mem/clients.md", text("Acme, since 2024.")],
+    ]);
+    let down = true;
+    const server = Bun.serve({ port: 0, fetch: (request) => fakeHome(request, files, () => down) });
+    const box = { url: `http://127.0.0.1:${server.port}`, token: "t", user: "u-mem" };
     try {
-      expect(await loadMemory(box, "b1")).toBeNull();
-      status = 503;
-      expect(await loadMemory(box, "b1")).toBe(memory.UNREADABLE);
-      expect(await loadTeamMemory(box, "u-nobody")).toBe(memory.UNREADABLE);
-      status = 200;
-      expect(await loadMemory(box, "b1")).toBe("- Likes tea.");
+      // The computer is down: the memory waits there, can't be read or written over, and nothing on it is touched.
+      expect(await memoryForTurn(box, { bot: bot.id })).toBe(memory.UNREADABLE);
+      expect(await memoryForTurn(box, { team: "u-mem" })).toBe(memory.UNREADABLE);
+      expect(saveMemory({ bot: bot.id }, "", "- Fresh start.", { own: memory.UNREADABLE, team: memory.UNREADABLE })).toEqual({ waiting: true });
+      expect(files.size).toBe(7);
+      // Without a computer at all it waits too, rather than the bot starting over with none.
+      expect(await memoryForTurn(null, { bot: bot.id })).toBe(memory.UNREADABLE);
+
+      down = false;
+      expect(await memoryForTurn(box, { bot: bot.id })).toBe("- Likes tea.\n- memory/garden.md: the garden");
+      expect(memoryOnComputer({ bot: bot.id })).toBe(false);
+      expect(memoryTopics({ bot: bot.id }).map((t) => t.topic)).toEqual(["garden", "trips/2026"]);
+      expect(readMemory({ bot: bot.id }, memory.topicName("memory/garden.md")!)).toBe("Roses in May.");
+      // What moved leaves the computer, with a copy set aside; what isn't notes stays where it was.
+      expect(files.has(`${home}/MEMORY.md`)).toBe(false);
+      expect(files.has(`${home}/memory/trips/2026.md`)).toBe(false);
+      expect(new TextDecoder().decode(files.get(`${home}/.memory-moved/memory/garden.md`))).toBe("Roses in May.");
+      expect(files.has(`${home}/memory/scan.png`)).toBe(true);
+      expect(files.has(`${home}/notes.txt`)).toBe(true);
+
+      // The team's MEMORY.md moves; its other notes are copied, since the team folder holds shared files too.
+      expect(await memoryForTurn(box, { team: "u-mem" })).toBe("Office in Leeds.");
+      expect(readMemory({ team: "u-mem" }, "clients")).toBe("Acme, since 2024.");
+      expect(files.has(".team/u-mem/MEMORY.md")).toBe(false);
+      expect(files.has(".team/u-mem/clients.md")).toBe(true);
+
+      // Moved, the memory is the database's, with or without a computer.
+      expect(await memoryForTurn(null, { bot: bot.id })).toBe("- Likes tea.\n- memory/garden.md: the garden");
+
+      // A MEMORY.md a bot writes on the computer afterwards, out of habit, is merged in at its next turn, losing neither side.
+      files.set(`${home}/MEMORY.md`, text("- Likes coffee now."));
+      const merged = await memoryForTurn(box, { bot: bot.id });
+      expect(merged).toContain("- Likes tea.");
+      expect(merged).toContain("- Likes coffee now.");
+      expect(files.has(`${home}/MEMORY.md`)).toBe(false);
+      // The bot tidies it; the same file turning up again (one that couldn't be removed) doesn't bring the old line back.
+      expect(saveMemory({ bot: bot.id }, "", "- Likes tea.", undefined)).toEqual({ saved: true });
+      files.set(`${home}/MEMORY.md`, text("- Likes coffee now."));
+      expect(await memoryForTurn(box, { bot: bot.id })).toBe("- Likes tea.");
     } finally {
       server.stop(true);
     }
+  });
+
+  test("a memory save never drops what another turn saved since this one read it", async () => {
+    const { createBot } = await import("../src/data/bots.ts");
+    const { saveMemory } = await import("../src/tools.ts");
+    const { readMemory, writeMemory } = await import("../src/data/memories.ts");
+    const { botInputSchema } = await import("@gond/shared");
+    const team = { team: "u-cas" };
+    writeMemory(team, "", "- Office is in Leeds.");
+    // Two turns load the same memory, and both save.
+    const first = { own: null, team: "- Office is in Leeds." };
+    const second = { own: null, team: "- Office is in Leeds." };
+    expect(saveMemory(team, "", "- Office is in Leeds.\n- Dana runs payroll.", first)).toEqual({ saved: true });
+    expect(saveMemory(team, "", "- Office is in Leeds.\n- Fridays are remote.", second)).toEqual({ changed: "- Office is in Leeds.\n- Dana runs payroll." });
+    expect(readMemory(team)).toBe("- Office is in Leeds.\n- Dana runs payroll.");
+    // Having heard it as it is now, the second turn's merged save goes through, and so do its next ones.
+    expect(saveMemory(team, "", "- Office is in Leeds.\n- Dana runs payroll.\n- Fridays are remote.", second)).toEqual({ saved: true });
+    expect(saveMemory(team, "", "- Office is in Leeds.\n- Dana runs payroll.\n- Fridays are remote.\n- Coffee at 10.", second)).toEqual({ saved: true });
+    // A topic the turn hasn't read isn't written over; a memory nobody wrote yet takes the first save.
+    writeMemory(team, "clients", "Acme.");
+    const third = { own: null, team: null };
+    expect(saveMemory(team, "clients", "Globex.", third)).toEqual({ changed: "Acme." });
+    expect(saveMemory(team, "clients", "Acme.\nGlobex.", third)).toEqual({ saved: true });
+    const bot = createBot(botInputSchema.parse({ name: "Careful" }), "u-cas");
+    expect(saveMemory({ bot: bot.id }, "", "- Likes tea.", { own: null, team: null })).toEqual({ saved: true });
   });
 
   test("an approval reads the bot's level now, not as the turn started", async () => {
@@ -2162,38 +2300,32 @@ describe("data", () => {
     }
   });
 
-  test("a bot's picture is its owner's to set, see and remove", async () => {
+  test("a bot wears only its mascot: there's no picture to set or fetch", async () => {
     const { Hono } = await import("hono");
     const { botsRoutes } = await import("../src/routes/bots.ts");
-    const { createBot, deleteBot, getBot, getBotAvatar } = await import("../src/data/bots.ts");
+    const { createBot, getBot } = await import("../src/data/bots.ts");
     const { botInputSchema } = await import("@gond/shared");
-    const bot = createBot(botInputSchema.parse({ name: "Pictured" }), "u-pic");
-    expect(bot.avatar).toBeNull();
+    const bot = createBot(botInputSchema.parse({ name: "Plain" }), "u-pic");
+    expect(Object.keys(getBot(bot.id)!)).not.toContain("avatar");
     const mine = asPerson(new Hono(), "u-pic").route("/api", botsRoutes());
-    const theirs = asPerson(new Hono(), "u-pic-other").route("/api", botsRoutes());
-    const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3]);
-    const upload = (app: typeof mine, type = "image/png", bytes = png) => {
-      const form = new FormData();
-      form.append("file", new Blob([bytes], { type }), "bot.png");
-      return app.request(`/api/bots/${bot.id}/avatar`, { method: "PUT", body: form });
-    };
+    const form = new FormData();
+    form.append("file", new Blob([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 1])], { type: "image/png" }), "bot.png");
+    expect((await mine.request(`/api/bots/${bot.id}/avatar`, { method: "PUT", body: form })).status).toBe(404);
+    expect((await mine.request(`/api/bots/${bot.id}/avatar`)).status).toBe(404);
 
-    expect((await upload(theirs)).status).toBe(404);
-    expect((await upload(mine, "image/svg+xml", new TextEncoder().encode("<svg onload=alert(1)>"))).status).toBe(400);
-    const saved = await upload(mine);
-    expect(saved.status).toBe(200);
-    const url = getBot(bot.id)!.avatar!;
-    expect(url).toStartWith(`/api/bots/${bot.id}/avatar?v=`);
-    const served = await mine.request(url);
-    expect(served.headers.get("Content-Type")).toBe("image/png");
-    expect(new Uint8Array(await served.arrayBuffer())).toEqual(png);
-    expect((await theirs.request(url)).status).toBe(404);
-
-    expect((await mine.request(`/api/bots/${bot.id}/avatar`, { method: "DELETE" })).status).toBe(204);
-    expect(getBot(bot.id)!.avatar).toBeNull();
-    await upload(mine);
-    deleteBot(bot.id);
-    expect(getBotAvatar(bot.id)).toBeNull();
+    // A bot that wore a picture may still reach for one (a habit, a skill, a note): it hears why not, and the rest still changes.
+    const { baseTools, teamTools } = await import("../src/tools.ts");
+    const { getThread } = await import("../src/data/threads.ts");
+    const { BOT_COLORS } = await import("@gond/shared");
+    const teammate = createBot(botInputSchema.parse({ name: "Mate" }), "u-pic");
+    const context = { box: null, bot, thread: getThread(bot.threadId)!, message: { depth: 0 } as never, askBot: async () => "", syncSoul: async () => undefined, stopWork: async () => false, isWorking: () => false };
+    expect(String(await baseTools(context).set_profile!.execute({ picture: "images/me.png" }, "c1"))).toBe("Bots wear their mascot now: there's no profile picture to set or take off. Offer the person a colour, shape or expression instead.");
+    const both = String(await baseTools(context).set_profile!.execute({ picture: "images/me.png", color: BOT_COLORS[2] }, "c2"));
+    expect(both).toStartWith("Profile updated (color).");
+    expect(both).toContain("no profile picture");
+    expect(getBot(bot.id)!.color).toBe(BOT_COLORS[2]);
+    expect(String(await teamTools(context).update_bot!.execute({ bot: teammate.id, picture: "none" }, "c3"))).toContain("Bots wear their mascot now");
+    expect(String(await baseTools(context).set_profile!.execute({}, "c4"))).toBe("Nothing to change.");
   });
 
   test("a saved Always allow is its owner's to see and forget, and once forgotten the bot asks again", async () => {
@@ -2508,30 +2640,17 @@ describe("data", () => {
     }
   });
 
-  test("a HEIC photo is sent on as a JPEG the computer made, and says so when it can't be", async () => {
+  test("a HEIC photo is sent on as a JPEG Gond made, with no computer, and says so when it can't be", async () => {
     const { createBot } = await import("../src/data/bots.ts");
     const { getAttachment } = await import("../src/data/threads.ts");
     const { threadsRoutes } = await import("../src/routes/threads.ts");
+    const { pictureType } = await import("../src/images.ts");
     const { Hono } = await import("hono");
     const { botInputSchema } = await import("@gond/shared");
-    const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]);
-    const heic = new Uint8Array([...new TextEncoder().encode("\0\0\0\x18ftypheic\0\0\0\0mif1heic"), 9, 9, 9]);
-    let answer: "jpeg" | "updating" | "unreadable" = "jpeg";
-    const got: { path: string; user: string | null; bytes: number }[] = [];
-    const fake = Bun.serve({
-      port: 0,
-      async fetch(request: Request): Promise<Response> {
-        const url = new URL(request.url);
-        got.push({ path: url.pathname, user: request.headers.get("x-gond-user"), bytes: (await request.arrayBuffer()).byteLength });
-        if (answer === "updating") return Response.json({ error: "The computer is updating; try again in a few minutes." }, { status: 503 });
-        if (answer === "unreadable") return Response.json({ error: "The photo couldn't be read: no images defined" }, { status: 422 });
-        return Response.json({ ok: true, data: Buffer.from(jpeg).toString("base64"), size: jpeg.length });
-      },
-    });
+    const photo = await madeHeif();
+    const broken = new Uint8Array([...text("\0\0\0\x18ftypheic\0\0\0\0mif1heic"), 9, 9, 9]);
     const boxUrl = process.env.GOND_BOX_URL;
-    const boxToken = process.env.GOND_BOX_TOKEN;
-    process.env.GOND_BOX_URL = `http://127.0.0.1:${fake.port}`;
-    process.env.GOND_BOX_TOKEN = "box-token";
+    delete process.env.GOND_BOX_URL;
     try {
       const bot = createBot(botInputSchema.parse({ name: "Photos" }), "u-admin");
       const app = new Hono<{ Variables: { session: { user: { id: string } } } }>();
@@ -2540,37 +2659,29 @@ describe("data", () => {
         await next();
       });
       app.route("/api", threadsRoutes());
-      const send = (type = "image/heic") => {
+      const send = (data: Uint8Array, type = "image/heic") => {
         const form = new FormData();
-        form.append("files", new File([heic], "IMG_4021.HEIC", { type }));
+        form.append("files", new File([new Uint8Array(data)], "IMG_4021.HEIC", { type }));
         form.append("after", "1");
         return app.request(`/api/threads/${bot.threadId}/messages`, { method: "POST", body: form });
       };
 
       // Whatever type the browser gave it, the bytes say HEIC.
       for (const type of ["image/heic", "", "application/octet-stream"]) {
-        const sent = await send(type);
+        const sent = await send(photo, type);
         expect(sent.status).toBe(201);
         const file = ((await sent.json()) as { message: { attachments: { id: string; name: string; mediaType: string }[] } }).message.attachments[0]!;
         expect(file).toMatchObject({ name: "IMG_4021.jpg", mediaType: "image/jpeg" });
-        expect(getAttachment(file.id)!.data).toEqual(jpeg);
+        const data = getAttachment(file.id)!.data;
+        expect(pictureType(data)).toBe("image/jpeg");
+        expect(await sizeOf(data)).toEqual([64, 48]);
       }
-      expect(got.at(-1)).toEqual({ path: "/images/jpeg", user: "u-admin", bytes: heic.length });
 
-      answer = "updating";
-      const away = await send();
-      expect(away.status).toBe(503);
-      expect(((await away.json()) as { error: string }).error).toBe("The computer is updating, so IMG_4021.HEIC can't be opened right now. Try again in a few minutes, or send it as a JPEG.");
-      answer = "unreadable";
-      const broken = await send();
-      expect(broken.status).toBe(422);
-      expect(((await broken.json()) as { error: string }).error).toBe("Couldn't open IMG_4021.HEIC. Try again, or send it as a JPEG.");
+      const unreadable = await send(broken);
+      expect(unreadable.status).toBe(422);
+      expect(((await unreadable.json()) as { error: string }).error).toBe("Couldn't open IMG_4021.HEIC. Try again, or send it as a JPEG.");
     } finally {
-      fake.stop(true);
-      if (boxUrl === undefined) delete process.env.GOND_BOX_URL;
-      else process.env.GOND_BOX_URL = boxUrl;
-      if (boxToken === undefined) delete process.env.GOND_BOX_TOKEN;
-      else process.env.GOND_BOX_TOKEN = boxToken;
+      if (boxUrl !== undefined) process.env.GOND_BOX_URL = boxUrl;
     }
   });
 
@@ -2588,7 +2699,7 @@ describe("data", () => {
     const { mcpProxyRoutes, mcpRoutes } = await import("../src/routes/mcp.ts");
     const { Hono } = await import("hono");
     const { baseTools } = await import("../src/tools.ts");
-    const { loadTeamMemory } = await import("../src/transcript.ts");
+    const { memoryForTurn } = await import("../src/memory-moves.ts");
     const { promptFor } = await import("../src/responder.ts");
     const { systemPromptFor } = await import("../src/souls.ts");
     const { boxMcpServers } = await import("../src/mcp.ts");
@@ -2599,16 +2710,19 @@ describe("data", () => {
       fetch(request: Request): Response {
         const path = new URL(request.url).searchParams.get("path") ?? "";
         read.push(path);
-        if (path === ".team/MEMORY.md") return Response.json({ content: "Dylan is the founder." });
+        if (path === ".team/MEMORY.md" && new URL(request.url).pathname === "/files/raw") return new Response("Dylan is the founder.");
         return Response.json({ error: "No such file" }, { status: 404 });
       },
     });
     try {
       const config = { url: `http://127.0.0.1:${box.port}`, token: "t", user: "u-admin" };
 
-      expect(await loadTeamMemory(config, "u-admin")).toBe("Dylan is the founder.");
-      expect(await loadTeamMemory(config, "u-other")).toBeNull();
-      expect(read).toContain(".team/u-other/MEMORY.md");
+      // The admin's team memory from before profiles moves in as theirs alone.
+      ensureDatabase().query("INSERT OR IGNORE INTO gond_memory_moves (user_id) VALUES (?), (?)").run("u-admin", "u-other");
+      expect(await memoryForTurn(config, { team: "u-admin" })).toBe("Dylan is the founder.");
+      expect(await memoryForTurn({ ...config, user: "u-other" }, { team: "u-other" })).toBeNull();
+      expect(read).toContain(".team/u-other");
+      expect(read.filter((path) => path === ".team/MEMORY.md")).toHaveLength(1);
 
       saveConnection("u-admin", { toolkit: "gmail", name: "Gmail", accountId: "acc-admin", status: "active" });
       const comet = createBot(botInputSchema.parse({ name: "Comet" }), "u-other");
@@ -2619,7 +2733,7 @@ describe("data", () => {
       const system = systemPromptFor(comet, { bots: listBots({ includeHidden: true, userId: "u-other" }), thread, memory: null, teamMemory: null, connections: listConnections("u-other"), toolNotes: "", timezone: "UTC", skillsIndex: "", mcpServers: [], logins: [], talk: { style: "default", emoji: "default" } });
       expect(system.startsWith("## What you are\nYou are a personal assistant, not a coding agent.")).toBe(true);
       expect(system).toContain("Nobody else yet");
-      expect(system).toContain("~/.team/u-other/MEMORY.md");
+      expect(system).toContain("~/.team/u-other/");
       expect(system).not.toContain("Dylan");
       expect(system).toContain("None connected to you yet");
       expect(system).not.toContain("- Gmail");
@@ -3079,14 +3193,15 @@ describe("stop", () => {
     const { createBot } = await import("../src/data/bots.ts");
     const { botInputSchema } = await import("@gond/shared");
     const { getThread, postMessage } = await import("../src/data/threads.ts");
-    const { botTurn, seenBy } = await import("../src/responder.ts");
+    const { botTurn } = await import("../src/responder.ts");
+    const { agentSession, saveAgentSession } = await import("../src/data/sessions.ts");
     const { getSummary } = await import("../src/data/summaries.ts");
     const { summarizeThread, SUMMARY_BATCH } = await import("../src/summaries.ts");
     const { boxConfig } = await import("../src/box.ts");
     const { engineRun } = await import("../src/engines.ts");
     const { getAi } = await import("../src/data/ai.ts");
 
-    const turns: { path: string; prompt: string; followUp?: string }[] = [];
+    const turns: { path: string; prompt: string; followUp?: string; session?: string }[] = [];
     const deleted: string[] = [];
     const fake = Bun.serve({
       port: 0,
@@ -3094,10 +3209,10 @@ describe("stop", () => {
         const path = new URL(request.url).pathname;
         if (request.method === "DELETE") deleted.push(path);
         if (!path.endsWith("/turn")) return Response.json({});
-        const body = (await request.json()) as { prompt: string; followUp?: string };
-        turns.push({ path, prompt: body.prompt, followUp: body.followUp });
+        const body = (await request.json()) as { prompt: string; followUp?: string; session?: string };
+        turns.push({ path, prompt: body.prompt, followUp: body.followUp, session: body.session });
         const text = path.includes("--sum-") ? "- Decisions: the person wants Sonic on Fridays" : `Reply ${turns.length}`;
-        return new Response(`data: ${JSON.stringify({ type: "result", ok: true, text, stopReason: null, recovered: false })}\n\n`, { headers: { "Content-Type": "text/event-stream" } });
+        return new Response(`data: ${JSON.stringify({ type: "result", ok: true, text, stopReason: null, recovered: false, sessionId: body.session ?? `s-${turns.length}` })}\n\n`, { headers: { "Content-Type": "text/event-stream" } });
       },
     });
     const boxUrl = process.env.GOND_BOX_URL;
@@ -3110,12 +3225,15 @@ describe("stop", () => {
       const first = postMessage({ threadId: thread.id, author: "you", body: "Remember the order" });
       await botTurn(bot, thread, first);
       expect(turns[0]!.followUp).toBeUndefined();
-      expect(seenBy().get(`${bot.id}--${thread.id}`)).toEqual({ run: "claude:plan", at: first.createdAt });
+      expect(turns[0]!.session).toBeUndefined();
+      // Kept in the database, so a restart of either side still resumes it and sends only what's new.
+      expect(agentSession(`${bot.id}--${thread.id}`)).toEqual({ run: "claude:plan", sessionId: "s-1", seenAt: first.createdAt });
 
       await new Promise((resolve) => setTimeout(resolve, 5));
       const second = postMessage({ threadId: thread.id, author: "you", body: "And the drink" });
       await botTurn(bot, thread, second);
       const resumed = turns[1]!;
+      expect(resumed.session).toBe("s-1");
       expect(resumed.prompt).toContain("Remember the order");
       expect(resumed.followUp).toContain("New in the conversation since your last turn");
       expect(resumed.followUp).toContain("And the drink");
@@ -3143,13 +3261,14 @@ describe("stop", () => {
 
       // Back on Claude Code after turns on a ChatGPT plan: the old session missed them, so it is forgotten and starts over.
       const agent = `${bot.id}--${thread.id}`;
-      seenBy().set(agent, { run: "native:chatgpt", at: null });
+      saveAgentSession({ agentId: agent, botId: bot.id, threadId: thread.id }, { run: "native:chatgpt", sessionId: null, seenAt: null });
       const before = deleted.length;
       const fourth = postMessage({ threadId: thread.id, author: "you", body: "Where were we?" });
       await botTurn(bot, thread, fourth);
       expect(deleted.slice(before)).toEqual([`/agents/${agent}`]);
       expect(turns.at(-1)!.followUp).toBeUndefined();
-      expect(seenBy().get(agent)).toEqual({ run: "claude:plan", at: fourth.createdAt });
+      expect(turns.at(-1)!.session).toBeUndefined();
+      expect(agentSession(agent)).toEqual({ run: "claude:plan", sessionId: `s-${turns.length}`, seenAt: fourth.createdAt });
     } finally {
       fake.stop(true);
       if (boxUrl === undefined) delete process.env.GOND_BOX_URL;
@@ -4194,6 +4313,8 @@ describe("the computer", () => {
       const picked = baseTools({ ...context, bot: other, thread: otherThread }).request_login!.execute({ site: "Grubhub", fields: ["username", "password", "code"] }, "c3");
       await until(() => listMessages(otherThread.id).at(-1)?.kind === "secret");
       const pickCard = listMessages(otherThread.id).at(-1)!;
+      // Its browser has a page open by now, so the card says where the details will go.
+      expect(pickCard.body).toStartWith("Sign in to Grubhub (example.com):");
       const pick = (body: object) => routes.request(`/api/secret-requests/${pickCard.approvalId}`, { method: "POST", body: JSON.stringify(body) });
       expect((await pick({ saved: "Doordash", values: { GRUBHUB_CODE: "1111" } })).status).toBe(404);
       expect((await pick({ saved: "Uber Eats", values: {} })).status).toBe(400);
@@ -4201,7 +4322,7 @@ describe("the computer", () => {
       expect(String(await picked)).toContain("GRUBHUB_USERNAME");
       expect(listSecrets("u-admin").some((s) => s.name.startsWith("GRUBHUB"))).toBe(false);
       await computerTool({ box, bot: other, thread: otherThread }).browser.execute({ actions: [{ type: "type_login", name: "GRUBHUB_USERNAME" }, { type: "type_login", name: "GRUBHUB_PASSWORD" }] }, "t4");
-      expect(state.batches.at(-1)?.steps).toEqual([{ type: "type", text: "me@example.com", secret: true }, { type: "type", text: "pw-plain-1234", secret: true }]);
+      expect(state.batches.at(-1)?.steps).toEqual([{ type: "type", text: "me@example.com", secret: true, site: "example.com" }, { type: "type", text: "pw-plain-1234", secret: true, site: "example.com" }]);
 
       expect((await routes.request("/api/secrets/UBER_EATS_PASSWORD", { method: "DELETE" })).status).toBe(200);
       expect(readLogin("u-admin", "UBER_EATS_PASSWORD")).toBeNull();
@@ -4548,30 +4669,41 @@ describe("the computer", () => {
       const { botInputSchema } = await import("@gond/shared");
       const bot = createBot(botInputSchema.parse({ name: "Looker" }), "u-admin");
       const thread = getThread(bot.threadId)!;
-      const photo = storeAttachment({ name: "20261019_144246.jpg", mediaType: "image/jpeg", data: new Uint8Array(6 * 1024 * 1024).fill(7) });
+      const big = await madeJpeg(4032, 3024);
+      const photo = storeAttachment({ name: "20261019_144246.jpg", mediaType: "image/jpeg", data: big });
       const pdf = storeAttachment({ name: "menu.pdf", mediaType: "application/pdf", data: new TextEncoder().encode("%PDF-1.4") });
       const zip = storeAttachment({ name: "../site.zip", mediaType: "application/zip", data: new Uint8Array([1, 2, 3]) });
       const message = postMessage({ threadId: thread.id, author: "you", body: "", attachments: [photo, pdf, zip] });
 
       const { files, inline } = await deliverAttachments(boxConfig("u-admin")!, bot, message);
       const photoPath = `.bots/${bot.id}/inbox/${photo.id.replace(/^f-/, "").slice(0, 8)}-20261019_144246.jpg`;
-      expect(state.uploads.get(photoPath)?.byteLength).toBe(6 * 1024 * 1024);
+      expect(state.uploads.get(photoPath)?.byteLength).toBe(big.byteLength);
       expect([...state.uploads.keys()].some((path) => path.endsWith("-site.zip") && !path.includes(".."))).toBe(true);
-      expect(state.previews).toEqual([{ path: photoPath, type: "image/jpeg" }]);
-      expect(inline).toEqual([
-        { name: "20261019_144246.jpg", mediaType: "image/jpeg", data: "c21hbGw=" },
-        { name: "menu.pdf", mediaType: "application/pdf", data: Buffer.from("%PDF-1.4").toString("base64") },
+      // The small copy is Gond's own; the computer isn't asked for it.
+      expect(state.previews).toEqual([]);
+      expect(inline.map(({ name, mediaType }) => ({ name, mediaType }))).toEqual([
+        { name: "20261019_144246.jpg", mediaType: "image/jpeg" },
+        { name: "menu.pdf", mediaType: "application/pdf" },
       ]);
+      expect(await sizeOf(Buffer.from(inline[0]!.data, "base64"))).toEqual([1568, 1176]);
+      expect(inline[1]!.data).toBe(Buffer.from("%PDF-1.4").toString("base64"));
       expect(files.map((f) => f.shown)).toEqual([true, true, false]);
 
       const prompt = promptFor(bot, thread, message, listBots({ userId: "u-admin" }), files);
       expect(prompt).toContain("The message came with 3 files");
-      expect(prompt).toContain("-20261019_144246.jpg (image/jpeg, 6.0 MB): the picture is shown to you with this message");
+      expect(prompt).toMatch(/-20261019_144246\.jpg \(image\/jpeg, \d+ KB\): the picture is shown to you with this message/);
       expect(prompt).toContain("-site.zip (application/zip, 1 KB): open it with your tools");
 
       const elsewhere = await deliverAttachments(boxConfig("u-admin")!, bot, message, undefined, { pdf: false });
       expect(elsewhere.inline.map((file) => file.name)).toEqual(["20261019_144246.jpg"]);
       expect(elsewhere.files.map((f) => f.shown)).toEqual([true, false, false]);
+
+      // With no computer the bot is still shown the picture, and told plainly what it can't open.
+      const without = await deliverAttachments(null, bot, message);
+      expect(without.files.map((f) => [f.path, f.shown])).toEqual([[null, true], [null, true], [null, false]]);
+      const note = promptFor(bot, thread, message, listBots({ userId: "u-admin" }), without.files);
+      expect(note).toContain("site.zip (application/zip, 1 KB): it can't be shown to you, and this Gond has no computer to open it on");
+      expect(note).not.toContain("open it with your tools");
       deleteBot(bot.id);
     });
   });
@@ -4761,6 +4893,73 @@ describe("cards that expire", () => {
     expect(getMessage(asked.id)).toBeTruthy();
     expect(takeInterrupted(asked.id)).toContain("you were cut off");
     expect(takeInterrupted(asked.id)).toBeNull();
+  });
+
+  test("without a computer, a bot on the API's own engine answers from its memory, and one on Claude Code says what to change", async () => {
+    const { createBot } = await import("../src/data/bots.ts");
+    const { getThread, listMessages, postMessage } = await import("../src/data/threads.ts");
+    const { saveProvider } = await import("../src/data/providers.ts");
+    const { updateAi } = await import("../src/data/ai.ts");
+    const { writeMemory } = await import("../src/data/memories.ts");
+    const { ensureDatabase } = await import("../src/db/init.ts");
+    const { answerMessage, botTurn } = await import("../src/responder.ts");
+    const { AI_SETUP_CARD, botInputSchema } = await import("@gond/shared");
+    type Asked = { messages: { role: string; content: unknown }[]; tools?: { function?: { name: string } }[] };
+    const asked: Asked[] = [];
+    const fake = Bun.serve({
+      port: 0,
+      async fetch(request: Request) {
+        asked.push((await request.json()) as Asked);
+        return Response.json({ choices: [{ message: { role: "assistant", content: "Tea, as always." }, finish_reason: "stop" }] });
+      },
+    });
+    const boxUrl = process.env.GOND_BOX_URL;
+    const internal = process.env.GOND_API_INTERNAL_URL;
+    delete process.env.GOND_BOX_URL;
+    process.env.GOND_API_INTERNAL_URL = `http://127.0.0.1:${fake.port}`;
+    try {
+      saveProvider("u-solo", "openai", { baseUrl: "https://api.openai.com/v1", apiKey: "sk-solo-1234567890" });
+      updateAi("u-solo", { engine: "api", enabled: ["api"], engines: { api: { access: "api", model: "small-model", provider: "openai" } } });
+      const bot = createBot(botInputSchema.parse({ name: "Solo" }), "u-solo");
+      const thread = getThread(bot.threadId)!;
+      writeMemory({ bot: bot.id }, "", "- Drinks tea, never coffee.");
+      const question = postMessage({ threadId: thread.id, author: "you", body: "What do I drink?" });
+      expect(await botTurn(bot, thread, question)).toBe("Tea, as always.");
+      const system = JSON.stringify(asked.at(-1)!.messages[0]);
+      expect(system).toContain("Drinks tea, never coffee.");
+      expect(system).toContain("This Gond has no computer");
+      expect(system).not.toContain("You have a screen of your own");
+      const tools = (asked.at(-1)!.tools ?? []).map((tool) => tool.function?.name);
+      expect(tools).toContain("memory_write");
+      for (const name of ["Bash", "Read", "browser", "computer", "send_file", "run_with_secrets", "request_login"]) expect(tools).not.toContain(name);
+
+      // A computer that is set up but away holds only the bots that run on it.
+      process.env.GOND_BOX_URL = "http://127.0.0.1:9";
+      const away = globalThis as { __gondComputerAway?: number };
+      away.__gondComputerAway = Date.now() + 60_000;
+      try {
+        const meanwhile = postMessage({ threadId: thread.id, author: "you", body: "And after dinner?" });
+        await answerMessage(meanwhile);
+        expect((ensureDatabase().query("SELECT answered_at FROM gond_messages WHERE id = ?").get(meanwhile.id) as { answered_at: string | null }).answered_at).not.toBeNull();
+        expect(listMessages(thread.id).at(-1)!.body).toBe("Tea, as always.");
+      } finally {
+        away.__gondComputerAway = 0;
+        delete process.env.GOND_BOX_URL;
+      }
+
+      // Claude Code runs on the computer, so a bot on it says what to change rather than failing quietly.
+      updateAi("u-solo", { engine: "claude", enabled: ["claude", "api"] });
+      const lunch = postMessage({ threadId: thread.id, author: "you", body: "And for lunch?" });
+      expect(await botTurn(bot, thread, lunch)).toBe("");
+      const card = listMessages(thread.id).find((m) => m.kind === "signin" && m.approvalId === AI_SETUP_CARD);
+      expect(card?.body).toBe("Claude Code runs on the computer, and this Gond doesn't have one. Use an API key, or a ChatGPT or Grok plan, under Settings → AI.");
+    } finally {
+      fake.stop(true);
+      if (boxUrl === undefined) delete process.env.GOND_BOX_URL;
+      else process.env.GOND_BOX_URL = boxUrl;
+      if (internal === undefined) delete process.env.GOND_API_INTERNAL_URL;
+      else process.env.GOND_API_INTERNAL_URL = internal;
+    }
   });
 
   test("a turn the computer cut off waits and is answered again once it's back, told what already ran", async () => {
@@ -4953,15 +5152,13 @@ describe("bot templates", () => {
   test("a bot goes out as a .bot file or a link with its job, look, routines and their skills, and comes back no more trusting than Auto", async () => {
     await seedUsers(["u-tpl-a", "user"], ["u-tpl-b", "user"]);
     const { Hono } = await import("hono");
-    const { createBot, listBots, setBotAvatar, getBotAvatar } = await import("../src/data/bots.ts");
+    const { createBot, listBots } = await import("../src/data/bots.ts");
     const { createSkill, listSkills } = await import("../src/data/skills.ts");
     const { createRoutine, listRoutines } = await import("../src/data/routines.ts");
     const { botsRoutes } = await import("../src/routes/bots.ts");
     const { unpackBot } = await import("../src/bot-bundle.ts");
     const { botInputSchema } = await import("@gond/shared");
-    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
     const patch = createBot(botInputSchema.parse({ name: "Patch", title: "Servers", description: "Keeps the Proxmox cluster healthy.", color: "#11998A", approval: "full" }), "u-tpl-a");
-    setBotAvatar(patch.id, png);
     const skill = createSkill("u-tpl-a", { name: "Proxmox health", description: "Checks every node", instructions: "Run pvesh get /nodes and read it." });
     createRoutine(patch.id, { name: "Nightly backup check", cron: "0 2 * * *", timezone: "UTC", prompt: "Check last night's backups.", enabled: true, watch: false, skillId: skill.id });
     createRoutine(patch.id, { name: "Dentist", cron: "0 8 24 10 *", timezone: "UTC", prompt: "Remind them: dentist at 2.", enabled: true, once: true });
@@ -4985,7 +5182,7 @@ describe("bot templates", () => {
     expect(added.status).toBe(201);
     const copy = ((await added.json()) as { bot: { id: string; name: string; approval: string; userId: string } }).bot;
     expect(copy).toMatchObject({ name: "Patch", approval: "auto", userId: "u-tpl-b" });
-    expect(getBotAvatar(copy.id)?.mediaType).toBe("image/png");
+    expect(unzipSync(bytes, { filter: (entry) => entry.name === "picture" })).toEqual({});
     const imported = listSkills("u-tpl-b").find((s) => s.slug === skill.slug)!;
     expect(imported.instructions).toBe("Run pvesh get /nodes and read it.");
     expect(listRoutines(copy.id)).toMatchObject([{ name: "Nightly backup check", enabled: false, skillId: imported.id }]);
@@ -4993,16 +5190,23 @@ describe("bot templates", () => {
     const link = ((await (await mine.request(`/api/bots/${patch.id}/share`, { method: "POST" })).json()) as { url: string }).url;
     const token = new URL(link).searchParams.get("template")!;
     expect(((await (await mine.request(`/api/bots/${patch.id}/share`, { method: "POST" })).json()) as { url: string }).url).toBe(link);
-    expect(((await (await theirs.request(`/api/templates/${token}`)).json()) as { template: unknown }).template).toEqual({ name: "Patch", title: "Servers", description: "Keeps the Proxmox cluster healthy.", color: "#11998A", expression: "happy", shape: "cog", picture: true, skills: [skill.slug], routines: ["Nightly backup check"] });
+    expect(((await (await theirs.request(`/api/templates/${token}`)).json()) as { template: unknown }).template).toEqual({ name: "Patch", title: "Servers", description: "Keeps the Proxmox cluster healthy.", color: "#11998A", expression: "happy", shape: "cog", skills: [skill.slug], routines: ["Nightly backup check"] });
     const again = await theirs.request(`/api/templates/${token}`, { method: "POST" });
     expect(((await again.json()) as { bot: { name: string } }).bot.name).toBe("Patch 2");
     expect(listSkills("u-tpl-b").filter((s) => s.slug.startsWith(skill.slug))).toHaveLength(1);
     expect((await theirs.request("/api/templates/not-a-real-token", { method: "POST" })).status).toBe(404);
 
+    // A .bot made while bots wore pictures still comes in, as its mascot.
+    const older = new FormData();
+    older.append("file", new File([zipSync({ "bot.json": unzipSync(bytes)["bot.json"]!, picture: new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0]) })], "older.bot"));
+    const olderAdded = await theirs.request("/api/bots/import", { method: "POST", body: older });
+    expect(olderAdded.status).toBe(201);
+    expect(((await olderAdded.json()) as { bot: Record<string, unknown> }).bot).not.toHaveProperty("avatar");
+
     const junk = new FormData();
     junk.append("file", new File([new Uint8Array([1, 2, 3])], "x.bot"));
     expect((await theirs.request("/api/bots/import", { method: "POST", body: junk })).status).toBe(400);
-    expect(listBots({ userId: "u-tpl-b" }).filter((b) => b.name.startsWith("Patch"))).toHaveLength(2);
+    expect(listBots({ userId: "u-tpl-b" }).filter((b) => b.name.startsWith("Patch"))).toHaveLength(3);
   });
 });
 

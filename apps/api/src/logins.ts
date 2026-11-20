@@ -7,8 +7,10 @@ const HELD_MS = 30 * 60 * 1000;
 // A card the person said yes to is for the checkout in front of the bot, not the rest of the afternoon.
 const CARD_HELD_MS = 10 * 60 * 1000;
 
-type Held = { value: string; until: number };
-const holder = globalThis as typeof globalThis & { __gondLogins?: Map<string, Held> };
+/** A held detail and where it may be typed: the registrable domain its card named, or null when it named none. */
+export type HeldLogin = { value: string; site: string | null };
+type Held = HeldLogin & { until: number };
+const holder = globalThis as typeof globalThis & { __gondLogins?: Map<string, Held>; __gondPages?: Map<string, string> };
 
 function held(): Map<string, Held> {
   return (holder.__gondLogins ??= new Map());
@@ -16,20 +18,20 @@ function held(): Map<string, Held> {
 
 const keyOf = (threadId: string, name: string) => `${threadId}\n${name}`;
 
-export function holdLogin(threadId: string, name: string, value: string, ms = HELD_MS) {
-  held().set(keyOf(threadId, name), { value, until: Date.now() + ms });
+export function holdLogin(threadId: string, name: string, value: string, { ms = HELD_MS, site = null }: { ms?: number; site?: string | null } = {}) {
+  held().set(keyOf(threadId, name), { value, site, until: Date.now() + ms });
 }
 
 /** The card the person picked, for this conversation, under the names a bot types it by. */
 export function holdCard(threadId: string, card: CardDetails) {
   for (const field of Object.keys(CARD_FIELDS) as CardField[]) {
     const value = cardFieldValue(card, field);
-    if (value) holdLogin(threadId, field, value, CARD_HELD_MS);
+    if (value) holdLogin(threadId, field, value, { ms: CARD_HELD_MS });
     else held().delete(keyOf(threadId, field));
   }
 }
 
-export function heldLogin(threadId: string, name: string): string | null {
+export function heldLoginFor(threadId: string, name: string): HeldLogin | null {
   const key = keyOf(threadId, name);
   const hit = held().get(key);
   if (!hit) return null;
@@ -37,7 +39,64 @@ export function heldLogin(threadId: string, name: string): string | null {
     held().delete(key);
     return null;
   }
-  return hit.value;
+  return { value: hit.value, site: hit.site };
+}
+
+export function heldLogin(threadId: string, name: string): string | null {
+  return heldLoginFor(threadId, name)?.value ?? null;
+}
+
+function pages(): Map<string, string> {
+  return (holder.__gondPages ??= new Map());
+}
+
+/** The page a bot's browser last showed. */
+export function notePage(botId: string, url: string) {
+  pages().set(botId, url);
+}
+
+/** The host of the page a bot's browser last showed, as a person reads it, or null when it shows no web page. */
+export function pageHost(botId: string): string | null {
+  const url = pages().get(botId);
+  if (!url || !/^https?:\/\//i.test(url)) return null;
+  try {
+    return new URL(url).host.replace(/^www\./, "") || null;
+  } catch {
+    return null;
+  }
+}
+
+// A short second level under a country's code is part of the name: example.co.uk, not co.uk.
+const SECOND_LEVEL = /^(?:co|com|net|org|gov|edu|ac|or|ne|go|gob|mil)$/;
+
+/** The part of a host one owner holds, so a sign-in that hops from www.uber.com to auth.uber.com still matches. */
+export function registrableDomain(host: string): string {
+  const name = host.toLowerCase().replace(/\.$/, "").replace(/^www\./, "");
+  if (/^[\d.]+$/.test(name) || !name.includes(".")) return name;
+  const labels = name.split(".");
+  const take = labels.length > 2 && labels.at(-1)!.length === 2 && SECOND_LEVEL.test(labels.at(-2)!) ? 3 : 2;
+  return labels.slice(-take).join(".");
+}
+
+const HOST = /^(?:[a-z0-9-]+\.)+[a-z0-9-]+$|^localhost$/;
+
+/**
+ * The site as its card shows it: the bot's name for it and, when its browser has a page open, that
+ * page's host in a "(host)" note. The note is what the details are then held to (`boundSite`), so the
+ * person sees where they will be typed and a page that sends the bot elsewhere can't receive them.
+ */
+export function siteOnPage(site: string, host: string | null): string {
+  if (!host) return site;
+  const bare = site.replace(/\([^)]*\)/g, " ").replace(/\s+/g, " ").trim();
+  const squash = (part: string) => part.toLowerCase().replace(/[^a-z0-9]+/g, "");
+  return !bare || squash(bare) === squash(host) ? host : `${bare} (${host})`;
+}
+
+/** Where a card's details may be typed: the registrable domain of the host it names, in its note or as its whole name. */
+export function boundSite(site: string | null | undefined): string | null {
+  const named = (/\(([^()]*)\)\s*$/.exec(site ?? "")?.[1] ?? site ?? "").trim().toLowerCase();
+  const host = named.replace(/^[a-z]+:\/\//, "").replace(/[/?#].*$/, "").replace(/:\d+$/, "");
+  return HOST.test(host) ? registrableDomain(host) : null;
 }
 
 export function heldLoginValues(): string[] {

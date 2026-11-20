@@ -317,7 +317,7 @@ export function Composer({
         // Under the app's composer the page keeps its own in place, unseen, so what sits above it (the
         // bots to mention, files, a quote, the / list) and the messages' padding stay where they were.
         style={nativeChrome ? { paddingBottom: "var(--native-composer-bottom, max(0.75rem, var(--safe-bottom)))" } : undefined}
-        className={cn("pointer-events-none absolute inset-x-0 bottom-0 z-20 px-3 pt-2.5 pb-[max(12px,var(--safe-bottom))] sm:px-4 sm:pt-3 wide:px-[max(1.5rem,calc((100%-46rem)/2))] wide:pb-5 [&>*]:pointer-events-auto", nativeChrome && "transition-[padding] duration-250 ease-out")}
+        className={cn("pointer-events-none absolute inset-x-0 bottom-0 z-20 px-3 pt-2.5 pb-[calc(var(--safe-bottom)+8px)] sm:px-4 sm:pt-3 wide:px-[max(1.5rem,calc((100%-46rem)/2))] wide:pb-5 [&>*]:pointer-events-auto", nativeChrome && "transition-[padding] duration-250 ease-out")}
       >
         {chips.length && !nativeChrome ? (
           // One row a thumb swipes along on a phone, however many bots; on a wide screen they wrap.

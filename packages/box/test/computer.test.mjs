@@ -13,6 +13,7 @@ import {
   dragPath,
   humanPath,
   normalizeUrl,
+  onSite,
   parseRegion,
   parseSteps,
   pngSize,
@@ -379,4 +380,16 @@ test("a press with no release, or one cut off partway, leaves the button down; a
   assert.equal(buttonLeftDown(["xdotool", "mouseup", "1"], true, true), false);
   assert.equal(buttonLeftDown(["xdotool", "key", "Return"], true, true), true);
   assert.equal(buttonLeftDown(["xdotool", "click", "1"], true, false), false);
+});
+
+test("a sign-in detail held to a site goes only into that site's pages, and never to the desktop", () => {
+  assert.deepEqual(browser({ type: "fill", ref: "e3", text: "pw", secret: true, site: "uber.com" })[0], { type: "fill", ref: "e3", text: "pw", secret: true, site: "uber.com" });
+  rejects([{ type: "type", text: "pw", secret: true, site: "uber.com" }], /browser/);
+  rejects([{ type: "type", text: "hi", site: "uber.com" }], /sign-in detail/, "browser");
+  assert.equal(onSite("https://auth.uber.com/login", "uber.com"), true);
+  assert.equal(onSite("https://uber.com/", "uber.com"), true);
+  assert.equal(onSite("https://uber.com.evil.com/", "uber.com"), false);
+  assert.equal(onSite("https://notuber.com/", "uber.com"), false);
+  assert.equal(onSite("file:///etc/uber.com", "uber.com"), false);
+  assert.equal(onSite("http://192.168.6.128:81/login", "192.168.6.128"), true);
 });

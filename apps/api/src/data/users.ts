@@ -177,6 +177,8 @@ export function deleteUserData(userId: string): { bots: string[] } {
     db.query("DELETE FROM gond_plan_limits WHERE user_id = ?").run(userId);
     db.query("DELETE FROM gond_peer_checks WHERE user_id = ?").run(userId);
     db.query("DELETE FROM gond_space_invites WHERE user_id = ?").run(userId);
+    db.query("DELETE FROM gond_team_memory WHERE user_id = ?").run(userId);
+    db.query("DELETE FROM gond_memory_moves WHERE user_id = ?").run(userId);
     return { bots };
   });
 }

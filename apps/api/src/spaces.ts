@@ -52,7 +52,8 @@ import { nativeTurn } from "./native.ts";
 import { createRedactor } from "./redact.ts";
 import { formatting } from "./souls.ts";
 import { MAX_ROOM_LINES } from "./limits.ts";
-import { loadMemory, transcriptLines } from "./transcript.ts";
+import { transcriptLines } from "./transcript.ts";
+import { memoryForTurn } from "./memory-moves.ts";
 import { keyWords } from "./words.ts";
 import { usageRecorder } from "./usage.ts";
 
@@ -725,9 +726,7 @@ async function guestReply(input: { bot: Bot; threadId: string; instructions: str
 }
 
 async function loadGuestMemory(bot: Bot): Promise<string | null> {
-  const box = boxConfig(bot.userId);
-  if (!box) return null;
-  const memory = await loadMemory(box, bot.id);
+  const memory = await memoryForTurn(boxConfig(bot.userId), { bot: bot.id });
   return typeof memory === "string" && memory ? memory : null;
 }
 

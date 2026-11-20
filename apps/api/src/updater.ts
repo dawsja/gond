@@ -5,6 +5,9 @@ import { emit } from "./events.ts";
 import { postMessage } from "./data/threads.ts";
 import { activeTurns, forgetSouls, type StopCause } from "./responder.ts";
 import { syncSkills } from "./skills.ts";
+import { memoriesOnComputer } from "./data/memories.ts";
+import { forgetAgentSessions } from "./data/sessions.ts";
+import { moveWaitingMemory } from "./memory-moves.ts";
 import { forgetClaudeCheck } from "./status.ts";
 
 const holder = globalThis as typeof globalThis & { __gondBoxUpdate?: BoxUpdate };
@@ -183,8 +186,16 @@ async function runReset(): Promise<void> {
   try {
     phase("pausing", "Pausing the computer…");
     const stopped = await pause();
+    if (memoriesOnComputer().length) {
+      log("Moving the bots' memory off the computer first…");
+      await moveWaitingMemory(true);
+      const left = memoriesOnComputer().length;
+      // Wiping it now would lose memory nobody has moved yet.
+      if (left) throw new Error(`The memory of ${left === 1 ? "a bot or team" : `${left} bots or teams`} couldn't be moved off the computer, so nothing was wiped. Try again in a minute.`);
+    }
     phase("resetting", "Wiping the computer (only the Claude Code sign-ins stay)…");
     const result = await resetBox(box);
+    forgetAgentSessions();
 
     forgetBoxAccounts();
     log(result.removed.length ? `Removed from the admin's home: ${result.removed.join(", ")}.` : "The admin's home was already empty.");

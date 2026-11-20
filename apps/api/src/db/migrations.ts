@@ -1095,7 +1095,61 @@ const MIGRATIONS: Array<string | ((db: Database) => void)> = [
   ALTER TABLE gond_commerce ADD COLUMN expires_at TEXT;
   CREATE INDEX gond_commerce_expiry ON gond_commerce (expires_at) WHERE kind = 'checkout' AND state IN ('review', 'approved');
   `,
+  // Gumdrop and hex were retired; a bot that wore one wears the cog, as `toBot` already reads any shape it doesn't know.
+  `UPDATE gond_bots SET shape = 'cog' WHERE shape IN ('gumdrop', 'hex')`,
+  // Memory lives here, not on the computer: a bot's own (topic '' is its MEMORY.md) and each profile's team
+  // memory. `moved_hash` is the last text moved in from a file on the computer, so a file that couldn't be
+  // removed there isn't merged in again. The CLI session each agent is on, and what it has seen, live here too.
+  `
+  CREATE TABLE gond_bot_memory (
+    bot_id TEXT NOT NULL REFERENCES gond_bots (id) ON DELETE CASCADE,
+    topic TEXT NOT NULL,
+    content TEXT NOT NULL,
+    moved_hash TEXT,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (bot_id, topic)
+  );
+  CREATE TABLE gond_team_memory (
+    user_id TEXT NOT NULL,
+    topic TEXT NOT NULL,
+    content TEXT NOT NULL,
+    moved_hash TEXT,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, topic)
+  );
+  CREATE TABLE gond_memory_moves (
+    bot_id TEXT REFERENCES gond_bots (id) ON DELETE CASCADE,
+    user_id TEXT,
+    CHECK ((bot_id IS NULL) != (user_id IS NULL))
+  );
+  CREATE UNIQUE INDEX gond_memory_moves_owner ON gond_memory_moves (COALESCE(bot_id, ''), COALESCE(user_id, ''));
+  CREATE TABLE gond_agent_sessions (
+    agent_id TEXT PRIMARY KEY,
+    bot_id TEXT NOT NULL REFERENCES gond_bots (id) ON DELETE CASCADE,
+    thread_id TEXT NOT NULL REFERENCES gond_threads (id) ON DELETE CASCADE,
+    run TEXT NOT NULL,
+    session_id TEXT,
+    seen_at TEXT,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX gond_agent_sessions_bot ON gond_agent_sessions (bot_id);
+  `,
+  markMemoryOnComputer,
+  // Bots no longer wear a picture of their own: each is its mascot, and the pictures people uploaded go.
+  `DROP TABLE IF EXISTS gond_bot_avatars`,
 ];
+
+/**
+ * Every bot and profile there was when memory moved into the database still has its memory on the
+ * computer; each waits there until it is moved in (`moveMemoryIn`). One made after this never had any.
+ * On a new install the sign-in tables aren't made yet, and nobody is waiting.
+ */
+function markMemoryOnComputer(db: Database) {
+  db.exec("INSERT OR IGNORE INTO gond_memory_moves (bot_id) SELECT id FROM gond_bots");
+  const users = db.query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'user'").get();
+  if (users) db.exec(`INSERT OR IGNORE INTO gond_memory_moves (user_id) SELECT id FROM "user"`);
+  else db.exec("INSERT OR IGNORE INTO gond_memory_moves (user_id) SELECT DISTINCT user_id FROM gond_bots WHERE user_id IS NOT NULL");
+}
 
 /**
  * A saved card never keeps its security code: it is typed at each payment. Cards saved while codes
@@ -1228,6 +1282,7 @@ export const CONTROL_CARDS_VERSION = MIGRATIONS.indexOf(allowControlMessages) + 
 export const SEARCH_INDEX_VERSION = MIGRATIONS.findIndex((step) => typeof step === "string" && step.includes("CREATE VIRTUAL TABLE gond_messages_fts")) + 1;
 export const XAI_KEYS_VERSION = MIGRATIONS.indexOf(foldXaiKeys) + 1;
 export const VOICE_KEYS_VERSION = MIGRATIONS.indexOf(VOICE_KEYS) + 1;
+export const MEMORY_MOVES_VERSION = MIGRATIONS.indexOf(markMemoryOnComputer) + 1;
 export const LATEST_VERSION = MIGRATIONS.length;
 
 type Named = { name: string; sql: string | null };

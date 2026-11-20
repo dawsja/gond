@@ -71,6 +71,21 @@ export function createSessionStore(file, { fs = nodeFs } = {}) {
   };
 }
 
+const SESSION_ID = /^[A-Za-z0-9-]{1,200}$/;
+
+/**
+ * The session an agent starts on: the one the API names (it keeps each agent's, made on the service the
+ * turn runs on), else the one kept here, which an API from before it kept them still relies on.
+ */
+export function sessionToStart(given, store, { id, user, engine, backend }) {
+  if (typeof given === "string" && SESSION_ID.test(given)) return { sessionId: given, backend };
+  return { sessionId: store.get(id, user, engine), backend: store.backendOf(id) };
+}
+
+export function validSessionId(value) {
+  return value === undefined || (typeof value === "string" && SESSION_ID.test(value));
+}
+
 function valid(entry) {
   return Boolean(entry) && typeof entry.user === "string" && typeof entry.engine === "string" && typeof entry.sessionId === "string" && entry.sessionId.length > 0 && entry.sessionId.length <= 200;
 }

@@ -10,7 +10,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { spawn } from "node:child_process";
-import { describeStep, DRAG_PRESS_MS, DRAG_STEP_MS, dragPath, humanPath, LOOK_STEPS, NAVIGATE_TIMEOUT_MS, POINTER_STEP_MS, pngSize, SETTLE_MS } from "./computer.mjs";
+import { describeStep, DRAG_PRESS_MS, DRAG_STEP_MS, dragPath, humanPath, LOOK_STEPS, NAVIGATE_TIMEOUT_MS, onSite, POINTER_STEP_MS, pngSize, SETTLE_MS } from "./computer.mjs";
 import { takeLines } from "./gond-mcp.mjs";
 import { isHomePage } from "./home.mjs";
 import { teachPage } from "./teach-script.mjs";
@@ -103,6 +103,16 @@ async function holdAt(current, at, ms) {
 
 /** An element's middle, after scrolling it into view, so a press-and-hold lands on it. */
 
+
+/** A sign-in detail held to a site goes only into a page of that site, checked again just before it is typed. */
+function heldTo(current, step) {
+  if (!step.site || onSite(current.url(), step.site)) return;
+  let host = "another site";
+  try {
+    host = new URL(current.url()).host || host;
+  } catch {}
+  throw new Error(`not typed: the person gave that sign-in detail for ${step.site}, and this page is on ${host}. If this really is that site's sign-in, call request_login here so the person sees where it goes`);
+}
 
 function refError(error, ref) {
   const line = errorLine(error);
@@ -540,14 +550,18 @@ export function createBrowser({ launch, fill = null, onTeach = () => undefined, 
         return null;
       }
       case "type":
+        heldTo(current, step);
         if (step.ref || step.find) await onElement(current, step, (el) => el.click(options));
+        heldTo(current, step);
         await current.keyboard.type(step.text, { delay: 12 });
         return null;
       case "fill":
-        await onElement(current, step, (el) => el.fill(step.text, options));
+        heldTo(current, step);
+        await onElement(current, step, (el) => (heldTo(current, step), el.fill(step.text, options)));
         return null;
       case "select":
-        await onElement(current, step, (el) => el.selectOption(step.options, options));
+        heldTo(current, step);
+        await onElement(current, step, (el) => (heldTo(current, step), el.selectOption(step.options, options)));
         return null;
       case "check":
         await onElement(current, step, (el) => el.setChecked(step.checked, options));

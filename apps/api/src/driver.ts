@@ -74,6 +74,8 @@ type CliTurn = {
   // Only what is new since this agent's last turn; the box sends it instead
   // of `prompt` when the CLI session already carries the conversation.
   followUp?: string;
+  /** The CLI session this agent was last on, kept by the API (`agentSession`). */
+  session?: string;
   attachments?: { name: string; mediaType: string; data: string }[];
   tools: Record<string, DriverTool>;
 
@@ -103,6 +105,8 @@ type CliTurnResult = {
   signedOut?: boolean;
   /** How the box found the session: running, resumed from its history, or new. */
   launch?: "warm" | "resumed" | "launched";
+  /** The CLI session the turn ran in, to resume next time. */
+  sessionId?: string | null;
 };
 
 type StreamEvent = { type?: string; message?: { content?: unknown }; parent_tool_use_id?: string | null };
@@ -200,6 +204,7 @@ export async function cliTurn(turn: CliTurn): Promise<CliTurnResult> {
       systemPrompt: turn.instructions,
       prompt: turn.prompt,
       ...(turn.followUp ? { followUp: turn.followUp } : {}),
+      ...(turn.session ? { session: turn.session } : {}),
       ...(turn.attachments?.length ? { attachments: turn.attachments } : {}),
       tools: agentToolsFor(turn.tools, turn.engine, turn.guest),
       ...(turn.mcpServers?.length ? { mcpServers: turn.mcpServers } : {}),
@@ -244,6 +249,7 @@ export async function cliTurn(turn: CliTurn): Promise<CliTurnResult> {
     error: result.error ?? null,
     recovered: result.recovered,
     launch: result.resumed ? "resumed" : result.launched ? "launched" : "warm",
+    sessionId: typeof result.sessionId === "string" ? result.sessionId : null,
     ...(result.signedOut ? { signedOut: true } : {}),
   };
 }

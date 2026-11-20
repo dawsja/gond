@@ -1,29 +1,7 @@
 import { isPaused, isRemoteAuthor, replyLine, type Bot, type Message, type Thread } from "@gond/shared";
-import { BoxError, readBoxFile, type BoxConfig } from "./box.ts";
 import { getApproval } from "./data/approvals.ts";
 import { memberOfAuthor } from "./data/spaces.ts";
 import { recentMessages } from "./data/threads.ts";
-import { LEGACY_TEAM_MEMORY_PATH, memoryPath, teamMemoryPath, UNREADABLE, type LoadedMemory } from "./memory.ts";
-import { ownerIsAdmin } from "./toolkits.ts";
-
-/** Only a file that isn't there is no memory; any other failure (the computer updating, a timeout) is UNREADABLE. */
-function readMemory(box: BoxConfig, path: string): Promise<LoadedMemory> {
-  return readBoxFile(box, path).then(
-    (file) => file.content ?? null,
-    (error) => (error instanceof BoxError && error.status === 404 ? null : UNREADABLE),
-  );
-}
-
-export function loadMemory(box: BoxConfig, botId: string): Promise<LoadedMemory> {
-  return readMemory(box, memoryPath(botId));
-}
-
-export async function loadTeamMemory(box: BoxConfig, userId: string): Promise<LoadedMemory> {
-  const read = (path: string) => readMemory(box, path);
-  const own = await read(teamMemoryPath(userId));
-  if (own !== null || !ownerIsAdmin(userId)) return own;
-  return read(LEGACY_TEAM_MEMORY_PATH);
-}
 
 /**
  * The last `count` lines of a conversation up to `upTo`. With `after`, only

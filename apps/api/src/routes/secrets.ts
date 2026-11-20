@@ -5,7 +5,7 @@ import { applyComposioKey } from "../composio.ts";
 import type { Env } from "../app.ts";
 import { changeSecret, deleteSecret, getSecretRequest, listSecrets, readCard, readLogin, readSecret, resolveSecretRequest, saveCard, setSecret } from "../data/secrets.ts";
 import { threadRefs } from "../data/threads.ts";
-import { forgetHeldLogin, holdCard, holdLogin, rememberable } from "../logins.ts";
+import { boundSite, forgetHeldLogin, holdCard, holdLogin, rememberable } from "../logins.ts";
 import { answerSecretRequest } from "../secret-requests.ts";
 import { readBody } from "./body.ts";
 import { shoppingPreviewOnly } from "../config.ts";
@@ -64,7 +64,7 @@ export function secretsRoutes() {
         if (given.some(({ value }) => !value)) return c.json({ error: "Fill in every field" }, 400);
         if (given.some(({ value }) => value.length > 1_000)) return c.json({ error: "That's too long" }, 400);
         for (const { field, value, saved } of given) {
-          holdLogin(request.threadId, field.name, value);
+          holdLogin(request.threadId, field.name, value, { site: boundSite(request.site) });
           if (!saved && body.remember === true && rememberable(field)) setSecret(userId(c), field.name, value, request.botId, request.site ?? request.name);
         }
       } else if (request.target === "composio") applyComposioKey(userId(c), String(body.value ?? ""));
