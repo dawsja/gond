@@ -180,7 +180,8 @@ The address rules are mirrored in each app with the same tests.
     layer with its eyes cut out over the ink fill, at `MARK_MASCOT`, derived by `brand:build`), a resource of its own in `project.yml`, never inside `Gond/`.
     The Xcode project is generated from `project.yml` with XcodeGen and
     never checked in.
-  - CI tests on `macos-26`; a push to main or a release tag archives with
+  - CI tests on `xcode-27` (App Store Connect takes only iOS 27 SDK
+    builds from April 2027); a push to main or a release tag archives with
     automatic signing through the App Store Connect API key
     (`APPLE_TEAM_ID`, `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8`) and
     uploads to TestFlight (the release's version, the run number as

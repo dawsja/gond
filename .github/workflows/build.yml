@@ -233,11 +233,13 @@ jobs:
   # Xcode's automatic signing with the App Store Connect API key in the secrets; without them (a fork,
   # a pull request) it only builds, unsigned. Its version is the release's, its build number this
   # run's, so every upload is newer than the last. The project is generated from project.yml.
+  # From April 2027 App Store Connect takes only builds made with the iOS 27 SDK or later, and only
+  # GitHub's xcode-27 image has Xcode 27; macos-26 stops at Xcode 26.
   ios:
     name: iPhone app
     needs: changes
     if: needs.changes.outputs.ios == 'true'
-    runs-on: macos-26
+    runs-on: xcode-27
     env:
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
       ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}

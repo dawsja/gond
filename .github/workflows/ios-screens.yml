@@ -22,7 +22,7 @@ permissions:
 jobs:
   screens:
     name: Screenshots
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 50
     env:
       SERVER: http://127.0.0.1:3005
