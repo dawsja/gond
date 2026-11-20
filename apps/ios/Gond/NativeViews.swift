@@ -644,7 +644,7 @@ struct ChromeView: View {
                     Button { ui.pickPhotos() } label: { Label("Photo Library", systemImage: "photo.on.rectangle") }
                     Button { ui.pickFiles() } label: { Label("Files", systemImage: "folder") }
                 } label: {
-                    Image(systemName: "plus")
+                    Image(systemName: "paperclip")
                         .font(.system(size: 20 * s, weight: .medium))
                         .frame(width: 44 * s, height: 44 * s)
                         .contentShape(Circle())

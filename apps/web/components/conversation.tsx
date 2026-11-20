@@ -2,7 +2,7 @@
 
 import { handleOf, isPaused, plainMarkdown, REACTIONS, roomTargets, type Approval, type ApprovalAnswer, type Bot, type ChatAttachment, type ImageAspect, type LiveEvent, type Message, type ReactionEmoji, type Thread, type ThreadSpace } from "@gond/shared";
 import { inertChoices, remoteMember, spaceMentionables, spaceSubtitle } from "@/lib/spaces";
-import { ArrowUp, ChevronLeft, Copy, CornerUpLeft, Download, Eye, ListEnd, EllipsisVertical, File as FileIcon, FileArchive, FileHeadphone, FilePlay, FileSpreadsheet, FileText, Lock, Monitor, PanelRight, Paperclip, Pencil, Phone, Plus, RotateCcw, TextSelect, Undo2, X } from "lucide-react";
+import { ArrowUp, ChevronLeft, Copy, CornerUpLeft, Download, Eye, ListEnd, EllipsisVertical, File as FileIcon, FileArchive, FileHeadphone, FilePlay, FileSpreadsheet, FileText, Lock, Monitor, PanelRight, Paperclip, Pencil, Phone, RotateCcw, TextSelect, Undo2, X } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -1299,7 +1299,7 @@ export function Conversation({ threadId }: { threadId: string }) {
   const attachButton = (
     <Tooltip>
       <TooltipTrigger render={<InputGroupButton variant="ghost" size="icon-sm" aria-label="Attach files" render={<label />} nativeButton={false} className={cn("cursor-pointer rounded-full", below && "mr-auto")} />}>
-        <Plus aria-hidden="true" className="size-5" />
+        <Paperclip aria-hidden="true" className="size-[18px]" />
         <input type="file" multiple className="sr-only" onChange={(e) => {
           attach([...(e.target.files ?? [])]);
           e.target.value = "";

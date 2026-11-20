@@ -410,8 +410,8 @@ final class NativeUI: ObservableObject {
     }
 
     func pickFiles() {
-        let types: [UTType] = [.image, .pdf, .plainText, .commaSeparatedText, .json, .text]
-        let picker = UIDocumentPickerViewController(forOpeningContentTypes: types, asCopy: true)
+        // Any file: Gond keeps every type, and the page and the API decide how each is shown.
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.item], asCopy: true)
         picker.allowsMultipleSelection = true
         let session = AttachPicker { [weak self] files in self?.attach(files) }
         attaching = session
@@ -434,7 +434,7 @@ final class NativeUI: ObservableObject {
     }
 }
 
-/// The photo library or Files, for the composer's +; what comes back goes to the page as its own files.
+/// The photo library or Files, for the composer's paperclip; what comes back goes to the page as its own files.
 private final class AttachPicker: NSObject, PHPickerViewControllerDelegate, UIDocumentPickerDelegate {
     struct File {
         let name: String
@@ -462,7 +462,8 @@ private final class AttachPicker: NSObject, PHPickerViewControllerDelegate, UIDo
 
     func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
         let files = urls.compactMap { url -> File? in
-            guard let data = try? Data(contentsOf: url) else { return nil }
+            // Mapped, not read: a file over the limit is only measured before it is left out.
+            guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { return nil }
             let type = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
             return File(name: url.lastPathComponent, type: type, data: data)
         }
