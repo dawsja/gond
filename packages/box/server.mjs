@@ -1470,6 +1470,8 @@ async function runBatch(body, response, account, timer) {
       throw error;
     }
   }
+  if (body.since !== undefined && body.since !== null && (typeof body.since !== "string" || body.since.length > 40)) throw new HttpError(400, "since must be the id of an element list");
+  if (body.marks !== undefined && typeof body.marks !== "boolean") throw new HttpError(400, "marks must be true or false");
   // An upload names a file in the person's home, never a sign-in folder or anything outside it.
   for (const step of steps) if (step.type === "upload") step.path = insideHome(step.path.replace(/^~\//, ""), account.home, forbiddenIn(account));
 
@@ -1491,7 +1493,7 @@ async function runBatch(body, response, account, timer) {
   if (target === "browser") {
     let result;
     try {
-      result = await browsers.run(account, steps, abort.signal, { view, format: saveTo || zoom ? "png" : "jpeg", bot: body.bot, zoom });
+      result = await browsers.run(account, steps, abort.signal, { view, format: saveTo || zoom ? "png" : "jpeg", bot: body.bot, zoom, since: body.since ?? null, marks: body.marks !== false });
       timer.mark("browser");
     } catch (error) {
       if (error instanceof BrowserError) throw new HttpError(error.status, error.message);

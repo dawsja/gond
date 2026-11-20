@@ -549,7 +549,7 @@ export type ScreenStep = { type: ScreenStepType } & Record<string, unknown>;
 
 export type ScreenView = "both" | "text" | "image";
 
-type ScreenBatch = {
+export type ScreenBatch = {
   bot: string;
   primary?: boolean;
   name?: string;
@@ -559,6 +559,10 @@ type ScreenBatch = {
   view?: ScreenView;
   zoom?: { x: number; y: number; width: number; height: number };
   saveTo?: string;
+  /** The browser's list the model last saw, so this answer's says only what changed since. */
+  since?: string;
+  /** False leaves the refs' labels off the screenshot, for one the person will see. */
+  marks?: boolean;
 };
 
 export type ScreenTab = { index: number; title: string; url: string; active: boolean };
@@ -579,7 +583,8 @@ export type ScreenResult = {
   url?: string;
   title?: string;
   tabs?: ScreenTab[];
-  elements?: { text: string; note: string } | null;
+  /** `changes` when `text` holds only what changed since the list `since` named: the refs gone, and how many are as they were. */
+  elements?: { id?: string | null; text: string; note: string; changes?: { gone: string[]; same: number } } | null;
   dialog?: { type: string; message: string } | null;
   downloads?: string[];
 };

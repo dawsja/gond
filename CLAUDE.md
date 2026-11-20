@@ -1239,7 +1239,15 @@ One line each: where to start, and what must not change.
   of `SCREEN_STEP_TYPES`, answered with one screenshot and a line
   (`screenSummary`). The browser also returns its controls with refs
   (`compactSnapshot` in the box's `snapshot.mjs`), outputs, dialogs and
-  downloads. Steps name elements by `ref` or `label` (waits up to 8 s,
+  downloads. After a turn's first list, each says only what changed since
+  the one the model last saw (`listChanges`; the API sends that list's id
+  as `since`, `lastList`, only within one turn and only for the model's own
+  batches; `full_list` asks for all of it), compared only on the same tab
+  and document, since a page loaded again numbers its refs anew. The
+  screenshot labels each listed element with its ref (`drawMarks`, in a
+  closed shadow root, taken away before anything else runs); a zoomed
+  picture and one shared with the person (`marks: false`) go without.
+  Steps name elements by `ref` or `label` (waits up to 8 s,
   exact then starts-with then contains), and the prompt prefers those over
   x, y, since a page shifts after a click. `view: "text"` skips the
   picture. The model never writes code for the screen.

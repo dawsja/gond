@@ -14,7 +14,7 @@ import { describeStep, DRAG_PRESS_MS, DRAG_STEP_MS, dragPath, humanPath, LOOK_ST
 import { takeLines } from "./gond-mcp.mjs";
 import { isHomePage } from "./home.mjs";
 import { teachPage } from "./teach-script.mjs";
-import { compactSnapshot, snapshotControls } from "./snapshot.mjs";
+import { compactSnapshot, listChanges, snapshotControls } from "./snapshot.mjs";
 
 export const VIEWPORT = { width: 1280, height: 800 };
 export const SCROLL_PIXELS = 100;
@@ -38,6 +38,8 @@ const SETTLE_MAX_MS = 1_500;
 const DOWNLOAD_WAIT_MS = 15_000;
 const MAX_READ_CHARS = 20_000;
 const JPEG_QUALITY = 75;
+// Lists kept for a later batch to compare with: a few per bot working in this browser.
+const MAX_LISTS = 24;
 
 /** The X clipboard of the person's display, which their Chrome and desktop share. */
 const xclipClipboard = { read: () => readXclip(), write: (text) => writeXclip(text) };
@@ -116,7 +118,7 @@ function heldTo(current, step) {
 
 function refError(error, ref) {
   const line = errorLine(error);
-  if (/aria-ref|no element|not attached|detached/i.test(line)) return new Error(`${ref} isn't on the page any more; use the refs from the newest element list`);
+  if (/aria-ref|no element|not attached|detached/i.test(line)) return new Error(`${ref} isn't on the page any more; use a ref from the latest list, or a label`);
   if (/Timeout \d+ms exceeded/.test(line)) return new Error(`${ref} didn't become ready to use (hidden, covered or disabled): ${line}`);
   return error;
 }
@@ -143,6 +145,55 @@ function clippedOf(boxes) {
       });
     })
     .map(({ ref }) => ref);
+}
+
+// The tag a listed element wears in the screenshot: one colour that reads on light pages and dark ones.
+const MARK_COLOR = "#d6007a";
+
+/**
+ * Runs in the page: each listed element outlined, its ref in a small tag at its corner, over everything
+ * and taking no clicks, for the screenshot alone (`clearMarks` takes it away). Its own closed shadow root
+ * keeps the page's styles out, and styles set one property at a time pass a strict content policy.
+ */
+function drawMarks({ marks, color }) {
+  const style = (element, properties) => {
+    for (const [name, value] of Object.entries(properties)) element.style.setProperty(name, value, "important");
+  };
+  const host = document.createElement("gond-marks");
+  style(host, { position: "fixed", inset: "0", "z-index": "2147483647", "pointer-events": "none", display: "block", margin: "0", padding: "0", border: "0", background: "transparent" });
+  const root = host.attachShadow({ mode: "closed" });
+  for (const { ref, x, y, width, height } of marks) {
+    const outline = document.createElement("div");
+    style(outline, { position: "absolute", left: `${x}px`, top: `${y}px`, width: `${width}px`, height: `${height}px`, "box-sizing": "border-box", border: `1.5px solid ${color}`, "border-radius": "3px", opacity: "0.8" });
+    const tag = document.createElement("div");
+    tag.textContent = ref;
+    style(tag, {
+      position: "absolute",
+      left: `${Math.max(0, x)}px`,
+      top: `${y >= 15 ? y - 15 : Math.max(0, y)}px`,
+      font: "600 11px/14px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+      "letter-spacing": "0",
+      color: "#ffffff",
+      background: color,
+      padding: "0 3px",
+      "border-radius": "3px",
+      "white-space": "nowrap",
+    });
+    root.append(outline, tag);
+  }
+  document.documentElement.append(host);
+}
+
+function clearMarks() {
+  for (const host of document.querySelectorAll("gond-marks")) host.remove();
+}
+
+/** The listed elements a screenshot labels: the page's own, as a frame's boxes are in that frame's page. */
+export function marksOf(entries, view) {
+  return entries
+    .filter(({ ref }) => !/^f\d/.test(ref))
+    .map(({ ref, box }) => ({ ref, x: Math.round(box.x), y: Math.round(box.y), width: Math.round(box.width), height: Math.round(box.height) }))
+    .filter(({ x, y, width, height }) => x < view.width && y < view.height && x + width > 0 && y + height > 0);
 }
 
 /**
@@ -239,6 +290,18 @@ export function createBrowser({ launch, fill = null, onTeach = () => undefined, 
   const downloads = new Map();
   const saving = [];
   const adopting = [];
+  // The last lists sent, by id, so the next batch can say only what changed since the one its bot saw.
+  const lists = new Map();
+  let listCount = 0;
+  const remember = (list) => {
+    const id = `l${++listCount}`;
+    lists.set(id, list);
+    for (const old of lists.keys()) {
+      if (lists.size <= MAX_LISTS) break;
+      lists.delete(old);
+    }
+    return id;
+  };
 
   // While someone shows a bot how, what they do in its browser is reported (`record`).
   let teaching = false;
@@ -680,6 +743,8 @@ export function createBrowser({ launch, fill = null, onTeach = () => undefined, 
   };
 
   const viewOf = async (current) => (current.evaluate ? await current.evaluate(() => ({ width: innerWidth, height: innerHeight })).catch(() => null) : null);
+  // Unique to each document a page loads, without leaving anything on the page.
+  const documentOf = async (current) => (current.evaluate ? await current.evaluate(() => performance.timeOrigin).catch(() => null) : null);
 
   const elementsOf = async (current, view) => {
     if (!current.ariaSnapshot || !view) return null;
@@ -696,8 +761,12 @@ export function createBrowser({ launch, fill = null, onTeach = () => undefined, 
     }
   };
 
-  /** `view`: "both" (screenshot and element list), "image" or "text"; `owner`: the bot whose tabs the batch runs in; `zoom`: a part of the page to answer with. */
-  const run = async (steps, { view = "both", format = "jpeg", owner = "", zoom = null } = {}) => {
+  /**
+   * `view`: "both" (screenshot and element list), "image" or "text"; `owner`: the bot whose tabs the batch
+   * runs in; `zoom`: a part of the page to answer with; `since`: the list the bot last saw, so this one
+   * says only what changed; `marks`: whether the screenshot labels the listed elements with their refs.
+   */
+  const run = async (steps, { view = "both", format = "jpeg", owner = "", zoom = null, since = null, marks = true } = {}) => {
     const done = [];
     const outputs = [];
     let error = null;
@@ -728,19 +797,33 @@ export function createBrowser({ launch, fill = null, onTeach = () => undefined, 
     if (saving.length) await Promise.race([Promise.all(saving.splice(0)), new Promise((resolve) => setTimeout(resolve, DOWNLOAD_WAIT_MS))]);
     const shown = await page();
     const size = (blocked() ? null : await viewOf(shown)) ?? VIEWPORT;
-    // The element list and the picture read the same settled page and don't wait on each other.
+    // The element list and the picture read the same settled page. A picture that labels the list waits
+    // for it; a zoomed one is for small details the labels would cover.
     const listing = view === "image" || blocked() ? null : elementsOf(shown, size);
+    const labelled = marks && view === "both" && !zoom;
     const picturing =
       view !== "text" && !blocked()
         ? (async () => {
-            const shotOptions = format === "png" ? { type: "png", timeout: SHOT_TIMEOUT_MS } : { type: "jpeg", quality: JPEG_QUALITY, timeout: SHOT_TIMEOUT_MS };
-            if (zoom) shotOptions.clip = zoom;
-            const image = await shown.screenshot(shotOptions);
-            const measured = pngSize(image) ?? (zoom ? { width: zoom.width, height: zoom.height } : size);
-            return { image: image.toString("base64"), mime: format === "png" ? "image/png" : "image/jpeg", width: measured.width, height: measured.height };
+            const listed = labelled ? await listing : null;
+            const labels = listed ? marksOf(listed.entries, size) : [];
+            const drawn = labels.length > 0 && (await shown.evaluate(drawMarks, { marks: labels, color: MARK_COLOR }).then(() => true, () => false));
+            try {
+              const shotOptions = format === "png" ? { type: "png", timeout: SHOT_TIMEOUT_MS } : { type: "jpeg", quality: JPEG_QUALITY, timeout: SHOT_TIMEOUT_MS };
+              if (zoom) shotOptions.clip = zoom;
+              const image = await shown.screenshot(shotOptions);
+              const measured = pngSize(image) ?? (zoom ? { width: zoom.width, height: zoom.height } : size);
+              return { image: image.toString("base64"), mime: format === "png" ? "image/png" : "image/jpeg", width: measured.width, height: measured.height };
+            } finally {
+              if (drawn) await shown.evaluate(clearMarks).catch(() => undefined);
+            }
           })()
         : null;
     const [elements, shot] = await Promise.all([listing, picturing]);
+    // A page that loaded again numbers its refs from the start, so only the same document can be compared.
+    const doc = elements ? await documentOf(shown) : null;
+    const before = since ? lists.get(since) : null;
+    const changes = elements && before && before.owner === bot && before.page === shown && doc !== null && before.doc === doc ? listChanges(before.entries, elements.entries) : null;
+    const listId = elements ? remember({ owner: bot, page: shown, doc, entries: elements.entries }) : null;
     const tabs = await Promise.all(ownPages().map(async (p, index) => ({ index, title: await p.title().catch(() => ""), url: p.url(), active: p === shown })));
     mice.set(bot, mouse);
     const dialog = dialogHere();
@@ -756,7 +839,7 @@ export function createBrowser({ launch, fill = null, onTeach = () => undefined, 
       done,
       error,
       outputs,
-      elements: elements ? { text: elements.text, note: elements.note } : null,
+      elements: elements ? { id: listId, text: changes ? changes.text : elements.text, note: elements.note, ...(changes ? { changes: { gone: changes.gone, same: changes.same } } : {}) } : null,
       dialog: dialog ? { type: dialog.type, message: dialog.message.slice(0, 500) } : null,
       downloads: fetched,
     };
@@ -767,7 +850,7 @@ export function createBrowser({ launch, fill = null, onTeach = () => undefined, 
     context = null;
     active = null;
     front = null;
-    for (const map of [owners, tabsOf, mice, dialogs, downloads]) map.clear();
+    for (const map of [owners, tabsOf, mice, dialogs, downloads, lists]) map.clear();
     await current?.close().catch(() => undefined);
   };
 
@@ -931,7 +1014,18 @@ function main() {
         try {
           if (message.op === "record") send({ id: message.id, result: await browser.record(message.on === true) });
           else if (message.op === "open") send({ id: message.id, result: await browser.show(String(message.home ?? "")) });
-          else if (message.op === "run") send({ id: message.id, result: await browser.run(message.steps, { view: message.view, format: message.format, owner: typeof message.bot === "string" ? message.bot : "", zoom: message.zoom ?? null }) });
+          else if (message.op === "run")
+            send({
+              id: message.id,
+              result: await browser.run(message.steps, {
+                view: message.view,
+                format: message.format,
+                owner: typeof message.bot === "string" ? message.bot : "",
+                zoom: message.zoom ?? null,
+                since: typeof message.since === "string" ? message.since : null,
+                marks: message.marks !== false,
+              }),
+            });
           else if (message.op === "close") {
             await browser.close();
             send({ id: message.id, result: { ok: true } });

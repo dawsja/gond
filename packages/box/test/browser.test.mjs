@@ -156,6 +156,53 @@ test("the browser runs a batch in order with the mouse and keyboard, and answers
   assert.equal(launches, 1);
 });
 
+test("the screenshot labels each listed element with its ref, and a later list says only what changed since the one the bot saw", async () => {
+  const { context, calls } = fakeContext();
+  let snapshot = ['- textbox "Search" [ref=e1] [box=300,20,400,40]', '- button "Cart (0)" [ref=e2] [box=1100,20,100,40]', ...Array.from({ length: 8 }, (_, i) => `- link "Shoe ${i}" [ref=e${i + 10}] [box=40,${100 + i * 40},300,30]`)];
+  let loaded = 1;
+  const newPage = context.newPage;
+  context.newPage = async () => {
+    const page = await newPage();
+    page.ariaSnapshot = async () => snapshot.join("\n");
+    page.evaluate = async (fn, arg) => {
+      const source = String(fn);
+      if (fn.name) calls.push(["evaluate", fn.name, arg?.marks?.map((mark) => mark.ref)]);
+      if (fn.name) return fn.name === "clippedOf" ? [] : undefined;
+      if (source.includes("innerWidth")) return { width: 1280, height: 800 };
+      return source.includes("timeOrigin") ? loaded : undefined;
+    };
+    const screenshot = page.screenshot;
+    page.screenshot = async (options) => (calls.push(["screenshot"]), screenshot(options));
+    return page;
+  };
+  const browser = createBrowser({ launch: async () => context });
+  const marked = () => calls.filter(([name]) => name === "evaluate" || name === "screenshot").map(([name, fn, refs]) => (name === "screenshot" ? "screenshot" : refs ? `${fn} ${refs.length}` : fn));
+
+  const first = await browser.run(steps({ type: "screenshot" }));
+  assert.deepEqual(marked().filter((call) => call !== "clippedOf"), ["drawMarks 10", "screenshot", "clearMarks"]);
+  assert.equal(first.elements.text.split("\n").length, 10);
+  assert.equal(first.elements.changes, undefined);
+
+  snapshot = [snapshot[0], '- button "Cart (1)" [ref=e2] [box=1100,20,100,40]', ...snapshot.slice(3)];
+  const second = await browser.run(steps({ type: "click", ref: "e10" }), { since: first.elements.id });
+  assert.equal(second.elements.text, 'e2 button "Cart (1)" @1150,40');
+  assert.deepEqual(second.elements.changes, { gone: ["e10"], same: 8 });
+
+  // A shared screenshot goes without labels, and one asked for in full, or of a page loaded again, is whole.
+  calls.length = 0;
+  const shared = await browser.run(steps({ type: "screenshot" }), { since: second.elements.id, marks: false });
+  assert.ok(!marked().includes("drawMarks 9"));
+  assert.equal(shared.elements.changes.same, 9);
+  loaded = 2;
+  const reloaded = await browser.run(steps({ type: "reload" }), { since: shared.elements.id });
+  assert.equal(reloaded.elements.changes, undefined);
+  assert.equal(reloaded.elements.text.split("\n").length, 9);
+  // A zoomed picture is for small details, which labels would cover.
+  calls.length = 0;
+  await browser.run(steps({ type: "screenshot" }), { zoom: { x: 0, y: 0, width: 200, height: 200 } });
+  assert.ok(!marked().some((call) => call.startsWith("drawMarks")));
+});
+
 test("a held click presses and keeps the button down, and a click's points click each place in order", async () => {
   const { context, calls } = fakeContext();
   const browser = createBrowser({ launch: async () => context });

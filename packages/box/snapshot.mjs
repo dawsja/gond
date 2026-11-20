@@ -88,9 +88,12 @@ export function snapshotControls(snapshot) {
 /**
  * The page's controls and headings within `view` (CSS pixels), with counts of those above and below it.
  * `unseen` holds refs inside the view that can't be seen there, clipped by a panel that scrolls.
+ * `entries` are the lines kept, each with its box and its `key`, the line without where it sits, which
+ * is what `listChanges` compares.
  */
 export function compactSnapshot(snapshot, view, unseen = new Set()) {
   const out = [];
+  const entries = [];
   let above = 0;
   let below = 0;
   let chars = 0;
@@ -111,19 +114,20 @@ export function compactSnapshot(snapshot, view, unseen = new Set()) {
       inside++;
       continue;
     }
-    const entry = [
+    const key = [
       `${ref} ${role}`,
       name ? ` "${clip(name, NAME_CHARS)}"` : "",
       states.length ? ` (${states.join(", ")})` : "",
       value ? ` = ${JSON.stringify(clip(value, VALUE_CHARS))}` : "",
       url ? ` -> ${clip(url, URL_CHARS)}` : "",
-      ` @${Math.round(x + width / 2)},${Math.round(y + height / 2)}`,
     ].join("");
+    const entry = `${key} @${Math.round(x + width / 2)},${Math.round(y + height / 2)}`;
     if (out.length >= MAX_LINES || chars + entry.length > MAX_CHARS) {
       cut++;
       continue;
     }
     out.push(entry);
+    entries.push({ ref, key, line: entry, box });
     chars += entry.length + 1;
   }
   const notes = [];
@@ -131,5 +135,25 @@ export function compactSnapshot(snapshot, view, unseen = new Set()) {
   if (below + cut) notes.push(`${below + cut} more below`);
   const scroll = notes.length ? `${notes.join(", ")}; scroll to reach them.` : "";
   const panel = inside ? `${inside} more scrolled out of sight inside a panel; scroll the panel, or name them by label.` : "";
-  return { text: out.join("\n"), count: out.length, above, below: below + cut, inside, note: [scroll, panel].filter(Boolean).join(" ") };
+  return { text: out.join("\n"), count: out.length, above, below: below + cut, inside, note: [scroll, panel].filter(Boolean).join(" "), entries };
+}
+
+// A change list this close to the whole one says little less, and the whole one reads more easily.
+const CHANGES_SHARE = 0.6;
+
+/**
+ * A page's list told as what changed since an earlier list of the same page that the bot has seen:
+ * the lines that are new or read differently, the refs no longer on screen, and how many are as they
+ * were. One that only moved (a scroll) is as it was, since its ref still finds it. Null when that would
+ * say about as much as the whole list.
+ */
+export function listChanges(before, after) {
+  const was = new Map(before.map((entry) => [entry.ref, entry.key]));
+  const here = new Set(after.map((entry) => entry.ref));
+  const changed = after.filter((entry) => was.get(entry.ref) !== entry.key);
+  const gone = before.filter((entry) => !here.has(entry.ref)).map((entry) => entry.ref);
+  const text = changed.map((entry) => entry.line).join("\n");
+  const whole = after.map((entry) => entry.line).join("\n").length;
+  if (text.length + gone.join(", ").length >= whole * CHANGES_SHARE) return null;
+  return { text, gone, same: after.length - changed.length };
 }

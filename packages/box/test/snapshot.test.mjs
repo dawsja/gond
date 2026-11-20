@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { compactSnapshot, MAX_LINES } from "../snapshot.mjs";
+import { compactSnapshot, listChanges, MAX_LINES } from "../snapshot.mjs";
 
 const view = { width: 1280, height: 800 };
 
@@ -68,4 +68,22 @@ test("a control scrolled out of sight inside a panel is counted, not offered whe
   assert.equal(list.text, 'e1 button "Add 1 to order" @640,704');
   assert.equal(list.inside, 1);
   assert.equal(list.note, "1 more scrolled out of sight inside a panel; scroll the panel, or name them by label.");
+});
+
+test("a later list says only what changed: new or different lines, refs gone, and how many stand as they were", () => {
+  const page = (lines) => compactSnapshot(lines.join("\n"), view).entries;
+  const rows = Array.from({ length: 12 }, (_, i) => `- link "Product ${i}" [ref=e${i + 10}] [box=40,${100 + i * 40},300,30]`);
+  const before = page(['- textbox "Search" [ref=e1] [box=300,20,400,40]', '- button "Cart (0)" [ref=e2] [box=1100,20,100,40]', ...rows]);
+  const after = page(['- textbox "Search" [ref=e1] [box=300,20,400,40]: shoes', '- button "Cart (1)" [ref=e2] [box=1100,20,100,40]', '- dialog "Added to cart" [ref=e40] [box=400,200,400,300]', '- button "Checkout" [ref=e41] [box=450,420,300,48]', ...rows.slice(2)]);
+  const changes = listChanges(before, after);
+  assert.deepEqual(changes, {
+    text: ['e1 textbox "Search" = "shoes" @500,40', 'e2 button "Cart (1)" @1150,40', 'e41 button "Checkout" @600,444'].join("\n"),
+    gone: ["e10", "e11"],
+    same: 10,
+  });
+  // A scroll moves every line but changes none of them: still the same elements under the same refs.
+  const scrolled = page(['- textbox "Search" [ref=e1] [box=300,-60,400,40]', '- button "Cart (0)" [ref=e2] [box=1100,-60,100,40]', ...rows.map((row) => row.replace(/box=40,(\d+)/, (_, y) => `box=40,${Number(y) - 40}`))]);
+  assert.deepEqual(listChanges(before, scrolled), { text: "", gone: ["e1", "e2"], same: 12 });
+  // A new screenful says as much as the whole list, which is sent instead.
+  assert.equal(listChanges(before, page(rows.map((row, i) => row.replace(`Product ${i}`, `Shoe ${i}`)))), null);
 });

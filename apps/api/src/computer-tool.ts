@@ -1,6 +1,6 @@
 import { BROWSER_ONLY_STEPS, fromNativeAction, isCardField, LOOK_STEPS, MAX_SCREEN_STEPS, SCREEN_STEP_TYPES, type Bot, type DesktopDriver, type Message, type ScreenStepType, type ScreenTarget, type Thread } from "@gond/shared";
 import { askApproval, expiredText, requestApproval, setAsideText, type Decision } from "./approvals.ts";
-import { BoxError, desktopControl, personHasControl, readBoxFileBytes, screenBatch, type BoxConfig, type ScreenResult, type ScreenStep, type ScreenView } from "./box.ts";
+import { BoxError, desktopControl, personHasControl, readBoxFileBytes, screenBatch, type BoxConfig, type ScreenBatch, type ScreenResult, type ScreenStep, type ScreenView } from "./box.ts";
 import { getBot } from "./data/bots.ts";
 import { storeAttachment, postMessage } from "./data/threads.ts";
 import { cardNumberForms, hideSecrets, readLogin, readSecret } from "./data/secrets.ts";
@@ -53,7 +53,7 @@ const CHALLENGE_HELP =
   "Anti-bot checks you can do yourself: press-and-hold (hold {x, y, ms: 3000}, or click with hold, and do not let go early); pick every picture with something such as a train (click each tile by x,y, or one click {points: [...]}, then Verify); pick the one icon that matches (zoom into the grid, then click it, then Verify); click icons in the order shown (one click {points: [...]}); a plain not-a-robot checkbox (click it and wait). A simple slider whose gap you can see: drag from the handle to the gap, then check it. For anything else — audio, a 3D rotation, an unfamiliar puzzle, a slider you can't place, or two failed attempts — call hand_over and end your turn: do not keep guessing. The person takes the mouse and keyboard, and you are woken when they hand it back. After a successful action wait_for the success text or look again; if it says try again, take a fresh screenshot and use the new picture.";
 
 const BROWSER_HELP =
-  "Every answer lists the page's controls and headings on screen, one per line: `e12 button \"Add to cart\" @640,410`. Name one by its ref instead of x and y and it is found exactly, even if the page moved (a page that shifts after one click sends the next x and y somewhere else, so use x and y only for what the list doesn't name): click {ref}; hover {ref}; zoom {x, y, width, height} on the call (with view both or image) answers with just that part of the page, larger, for a small picture grid or a challenge's words; type {ref, text}; drag {ref, to_ref}; scroll {ref} brings it into view, or with direction scrolls inside it. On a page you haven't seen yet (one this batch opens), name an element by label instead: its visible text or name, with role (button, link, textbox, checkbox, …) when the text alone is ambiguous; the step waits up to 8 seconds for it to appear. So one batch can carry an errand across pages: navigate to the store, click {label: \"#1 Whataburger\"}, select {label: \"Drink\", option: \"Dr Pepper\"}, click {label: \"Add to order\", role: \"button\"}, wait_for {text: \"Total\"}, read {label: \"Total\"}. If a label isn't found the batch stops there and says so. Browser-only actions (each takes ref or label): fill {ref, text} replaces a field's text at once (use it rather than type for forms); select {ref, option} picks a dropdown option by its label or value; check {ref, checked?: false to untick} sets a checkbox, radio or switch and leaves it that way whatever it was, so use it rather than click for a form's options (a site that draws its own boxes is listed by the row you would click); type_login {ref, name} fills a sign-in detail, or a card's after use_card (CARD_NUMBER, CARD_EXPIRY, CARD_CVC…; add select: true for a dropdown); read {ref?} gives the text of the page or of one element, without a picture (prices, totals, a list); images lists the page's photos as https addresses, the page's own first and then the largest (a product's photos for present_products); wait_for {text, gone?} or {url} waits until text appears or goes, or the address changes, instead of a guessed wait; upload {ref, path} sends a file from your home to a file field; dialog {accept, text?} answers an alert, confirm or prompt; navigate {url}; back; forward; reload; tab {index}; new_tab {url?}; close_tab {index?}. Refs only hold until the next answer, which brings a new list. Downloads go to ~/Downloads.";
+  "An answer lists the page's controls and headings on screen, one per line: `e12 button \"Add to cart\" @640,410`. Name one by its ref instead of x and y and it is found exactly, even if the page moved (a page that shifts after one click sends the next x and y somewhere else, so use x and y only for what the list doesn't name): click {ref}; hover {ref}; zoom {x, y, width, height} on the call (with view both or image) answers with just that part of the page, larger, for a small picture grid or a challenge's words; type {ref, text}; drag {ref, to_ref}; scroll {ref} brings it into view, or with direction scrolls inside it. On a page you haven't seen yet (one this batch opens), name an element by label instead: its visible text or name, with role (button, link, textbox, checkbox, …) when the text alone is ambiguous; the step waits up to 8 seconds for it to appear. So one batch can carry an errand across pages: navigate to the store, click {label: \"#1 Whataburger\"}, select {label: \"Drink\", option: \"Dr Pepper\"}, click {label: \"Add to order\", role: \"button\"}, wait_for {text: \"Total\"}, read {label: \"Total\"}. If a label isn't found the batch stops there and says so. Browser-only actions (each takes ref or label): fill {ref, text} replaces a field's text at once (use it rather than type for forms); select {ref, option} picks a dropdown option by its label or value; check {ref, checked?: false to untick} sets a checkbox, radio or switch and leaves it that way whatever it was, so use it rather than click for a form's options (a site that draws its own boxes is listed by the row you would click); type_login {ref, name} fills a sign-in detail, or a card's after use_card (CARD_NUMBER, CARD_EXPIRY, CARD_CVC…; add select: true for a dropdown); read {ref?} gives the text of the page or of one element, without a picture (prices, totals, a list); images lists the page's photos as https addresses, the page's own first and then the largest (a product's photos for present_products); wait_for {text, gone?} or {url} waits until text appears or goes, or the address changes, instead of a guessed wait; upload {ref, path} sends a file from your home to a file field; dialog {accept, text?} answers an alert, confirm or prompt; navigate {url}; back; forward; reload; tab {index}; new_tab {url?}; close_tab {index?}. After the first answer a list says only what changed since the last one you saw: the lines that are new or read differently, and the refs no longer on screen; the rest are as they were, and a ref works for as long as its element stays on the page. Set full_list to true to have the whole list again. In the screenshot each listed element is outlined, its ref in a small tag at its corner, so match what you see to its ref rather than guessing x and y. Downloads go to ~/Downloads.";
 
 const COMPUTER_DESCRIPTION = `Your whole desktop on the computer, for apps that aren't a web page (a file manager, a terminal window, a desktop program): send the actions to run, in order, and get back one fresh screenshot. Coordinates are pixels of the last screenshot. ${STEP_HELP} Batch what you're sure of (click a field, type, press Enter) and look before anything that depends on what appears. For a website use the browser tool instead. ${CHALLENGE_HELP} The person can take control of the mouse and keyboard; your actions are refused until they give it back.`;
 
@@ -127,6 +127,7 @@ function batchSchema(target: ScreenTarget) {
       ...(target === "browser"
         ? {
             view: { type: "string", enum: ["both", "text", "image"], description: "What comes back: both (default), text (the list and any reads, no picture: fastest) or image." },
+            full_list: { type: "boolean", description: "The whole list of what's on screen, instead of what changed since your last one." },
             zoom: {
               type: "object",
               properties: {
@@ -271,7 +272,16 @@ export function screenSummary(result: ScreenResult, steps: number): string {
   for (const output of result.outputs ?? []) lines.push(`Action ${output.index + 1} returned:\n${output.text}`);
   if (result.dialog) lines.push(`A ${result.dialog.type} dialog is open: "${result.dialog.message}". Answer it with dialog {accept: true or false}; nothing else runs until then.`);
   if (result.downloads?.length) lines.push(`Downloaded: ${result.downloads.join(", ")}`);
-  if (result.elements) lines.push(`On screen (ref role "name" @x,y):\n${result.elements.text || "(nothing to act on)"}${result.elements.note ? `\n${result.elements.note}` : ""}`);
+  const list = result.elements;
+  if (list?.changes) {
+    const { gone, same } = list.changes;
+    lines.push(`On screen, what changed since your last list (ref role "name" @x,y):\n${list.text || "(nothing new)"}`);
+    if (gone.length) lines.push(`No longer on screen: ${gone.join(", ")}`);
+    if (same) lines.push(`The other ${same} on screen are as listed before, though they may have moved.`);
+    if (list.note) lines.push(list.note);
+  } else if (list) {
+    lines.push(`On screen (ref role "name" @x,y):\n${list.text || "(nothing to act on)"}${list.note ? `\n${list.note}` : ""}`);
+  }
   return lines.join("\n");
 }
 
@@ -298,13 +308,22 @@ export function computerTool(context: Context): { computer: DriverTool; browser:
   let actions = 0;
   // The page the browser last showed, so a hand-off can say where.
   let lastUrl: string | null = null;
+  // The browser's list the model saw last in this turn: the next says only what changed since. A new turn
+  // starts from a whole list, since the model may not have the old one any more.
+  let lastList: string | null = null;
 
-  const send = async (target: ScreenTarget, steps: ScreenStep[], view?: ScreenView, zoom?: { x: number; y: number; width: number; height: number }): Promise<ScreenResult> => {
+  const send = async (
+    target: ScreenTarget,
+    steps: ScreenStep[],
+    view?: ScreenView,
+    zoom?: { x: number; y: number; width: number; height: number },
+    list: Pick<ScreenBatch, "since" | "marks"> = {},
+  ): Promise<ScreenResult> => {
     if (target === "browser" || usesInput(steps)) {
       const holder = await waitForScreen(thread.userId, { botId: bot.id, threadId: thread.id }, target, SCREEN_WAIT_MS, context.signal);
       if (holder) throw new ScreenBusy(holder);
     }
-    const batch = { bot: bot.id, primary: bot.primary, name: bot.name, color: bot.color, target, steps, ...(view ? { view } : {}), ...(zoom ? { zoom } : {}), ...(pictures || view === "text" ? {} : { saveTo: screenFile }) };
+    const batch = { bot: bot.id, primary: bot.primary, name: bot.name, color: bot.color, target, steps, ...(view ? { view } : {}), ...(zoom ? { zoom } : {}), ...(pictures || view === "text" ? {} : { saveTo: screenFile }), ...list };
     // A screen frees up when another bot's turn ends; until then the batch waits, as for its own screen.
     const deadline = Date.now() + SCREEN_WAIT_MS;
     let result: ScreenResult;
@@ -541,7 +560,10 @@ export function computerTool(context: Context): { computer: DriverTool; browser:
       const zoom = target === "browser" && raw.zoom && typeof raw.zoom === "object" ? (raw.zoom as { x: number; y: number; width: number; height: number }) : undefined;
       const view = checkout?.paymentLabel ? "text" : (caption && asked === "text") || (zoom && asked === "text") ? "both" : asked;
       try {
-        const result = await send(target, steps, view, zoom);
+        // A screenshot the person will see is shared without the refs' labels.
+        const since = target === "browser" && raw.full_list !== true && lastList ? lastList : undefined;
+        const result = await send(target, steps, view, zoom, { ...(since ? { since } : {}), ...(caption ? { marks: false } : {}) });
+        if (target === "browser" && result.elements?.id) lastList = result.elements.id;
         const shown = answer(usesInput(steps) ? sent(result) : result, steps.length, view);
         if (!caption) return shown;
         const note = await share(result, caption);

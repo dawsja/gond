@@ -1441,6 +1441,9 @@ describe("the computer tool", () => {
     expect(working).toContain("Downloaded: ~/Downloads/receipt.pdf");
     expect(working).toContain('On screen (ref role "name" @x,y):\ne12 button "Add to cart" @640,410');
     expect(working.endsWith("14 more below; scroll to reach them.")).toBe(true);
+    // A later list says only what changed since the one the bot saw.
+    const changed = screenSummary({ ...base, target: "browser", width: 1280, height: 800, url: "https://www.ubereats.com/store/whataburger", title: "Whataburger", done: ["clicked e12"], elements: { id: "l2", text: 'e14 button "Checkout" @1100,80', note: "", changes: { gone: ["e12"], same: 9 } } }, 1);
+    expect(changed).toContain('On screen, what changed since your last list (ref role "name" @x,y):\ne14 button "Checkout" @1100,80\nNo longer on screen: e12\nThe other 9 on screen are as listed before, though they may have moved.');
   });
 
   test("a command or file that would script the screen is refused, and ordinary work is not", async () => {
