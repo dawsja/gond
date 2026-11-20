@@ -26,15 +26,15 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0c0c0c;
+    --background: #000000;
     --foreground: #ededed;
-    --card: #151515;
+    --card: #0e0e0e;
     --muted-foreground: #a1a1a1;
     --destructive: #f97c7c;
-    --input: #313131;
-    --primary: #232323;
-    --primary-edge: #313131;
-    --primary-edge-focus: #494949;
+    --input: #2a2a2a;
+    --primary: #1a1a1a;
+    --primary-edge: #2a2a2a;
+    --primary-edge-focus: #424242;
     --tint-solid: #2b61b9;
     --shadow: 0 16px 40px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.04);
     color-scheme: dark;

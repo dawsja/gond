@@ -236,10 +236,10 @@
 
 .dark {
   --carbon: #ededed;
-  --paper-white: #151515;
-  --linen: #0c0c0c;
-  --mist: #1e1e1e;
-  --fog: #282828;
+  --paper-white: #0e0e0e;
+  --linen: #000000;
+  --mist: #171717;
+  --fog: #222222;
   --ash: #8a8a8a;
   --graphite: #a1a1a1;
   --mint: #81c995;
@@ -264,10 +264,10 @@
   --card-foreground: var(--carbon);
   --popover: var(--paper-white);
   --popover-foreground: var(--carbon);
-  --primary: #232323;
+  --primary: #1a1a1a;
   --primary-foreground: var(--carbon);
-  --primary-edge: #313131;
-  --primary-edge-focus: #494949;
+  --primary-edge: #2a2a2a;
+  --primary-edge-focus: #424242;
   --primary-shadow: none;
   --tint: #2F6FD6;
   --tint-solid: #2b61b9;
@@ -276,7 +276,7 @@
   --tint-ink: #8db0e8;
   --bubble-you: #102e4c;
   --bubble-you-foreground: var(--carbon);
-  --bubble-bot: #222222;
+  --bubble-bot: #1a1a1a;
   --bubble-inset: color-mix(in oklch, var(--foreground) 8%, transparent);
   --control: var(--carbon);
   --control-foreground: var(--linen);
@@ -284,25 +284,25 @@
   --secondary-foreground: var(--carbon);
   --muted: var(--mist);
   --muted-foreground: var(--graphite);
-  --accent: #232323;
+  --accent: #1a1a1a;
   --accent-foreground: var(--carbon);
   --destructive: #f97c7c;
   --border: var(--fog);
   /* Field edges: lighter than the card and the border, so an empty input reads as a box. */
-  --input: #313131;
+  --input: #2a2a2a;
   --ring: #b6b6b6;
   --chart-1: var(--carbon);
   --chart-2: var(--sky);
   --chart-3: var(--mint);
   --chart-4: var(--amber);
   --chart-5: var(--magenta);
-  --sidebar: #080808;
+  --sidebar: #000000;
   --sidebar-foreground: var(--carbon);
   --sidebar-primary: var(--carbon);
   --sidebar-primary-foreground: var(--paper-white);
-  --sidebar-accent: #171717;
+  --sidebar-accent: #111111;
   --sidebar-accent-foreground: var(--carbon);
-  --sidebar-border: #1c1c1c;
+  --sidebar-border: #161616;
   --sidebar-ring: var(--ring);
   --shadow-subtle: 0 1px 1px rgba(0, 0, 0, 0.55),
     0 0 0 1px rgba(255, 255, 255, 0.08);

@@ -26,7 +26,7 @@ pub const LOOPBACK_PORT: u16 = 47651;
 const PROBE_TIMEOUT: Duration = Duration::from_secs(8);
 const INIT_SCRIPT: &str = include_str!("init.js");
 const LIGHT: Color = Color(0xf6, 0xf7, 0xf9, 0xff);
-const DARK: Color = Color(0x0c, 0x0c, 0x0c, 0xff);
+const DARK: Color = Color(0x00, 0x00, 0x00, 0xff);
 const DOWNLOADS_KEPT: usize = 16;
 
 pub struct PendingSignIn {

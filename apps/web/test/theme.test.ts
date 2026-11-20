@@ -84,7 +84,7 @@ test("switching themes restores the correct browser bar color", () => {
   withBrowser(mock.globals, () => {
     applyTheme(resolveTheme("dark"), "dark");
     expect(mock.attributes.get("data-theme")).toBe("dark");
-    expect(mock.attributes.get("meta:content")).toBe("#0c0c0c");
+    expect(mock.attributes.get("meta:content")).toBe("#000000");
     applyTheme(resolveTheme("light"), "light");
     expect(mock.classes.has("dark")).toBe(false);
     expect(mock.attributes.get("meta:content")).toBe("#f6f7f9");

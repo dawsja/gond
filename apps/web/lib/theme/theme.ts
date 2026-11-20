@@ -52,7 +52,7 @@ export function resolveTheme(theme: Theme): ResolvedTheme {
   return window.matchMedia(DARK_QUERY).matches ? "dark" : "light";
 }
 
-export const THEME_BACKGROUNDS = { light: "#f6f7f9", dark: "#0c0c0c" } as const;
+export const THEME_BACKGROUNDS = { light: "#f6f7f9", dark: "#000000" } as const;
 
 export function applyTheme(resolved: ResolvedTheme, theme: Theme = resolved) {
   document.documentElement.classList.toggle("dark", resolved === "dark");

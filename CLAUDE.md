@@ -222,8 +222,8 @@ The address rules are mirrored in each app with the same tests.
   `bg-paper-white` outside `globals.css`. Use `text-muted-foreground`,
   `bg-card`, `bg-muted`, `border` and friends.
   - There is no brand colour: the neutrals are oah's, "cool paper" in
-    the light (page #f6f7f9, white cards, ink #16181d) and "soft black"
-    in the dark (page #0c0c0c, cards #151515, a darker sidebar #080808);
+    the light (page #f6f7f9, white cards, ink #16181d) and true black in
+    the dark (page and sidebar #000000, cards #0e0e0e);
     the bots are the only colour on a page, besides the person's own
     accent. oah's dark fills and edges are white at 4 to 12%; here each
     is a solid composite over the surface it sits on, since accent
