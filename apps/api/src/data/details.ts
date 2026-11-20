@@ -1,11 +1,14 @@
-import { DETAIL_LIMITS, sameDetailName, type DetailInput, type DetailKind, type DetailRecord } from "@gond/shared";
+import { CUSTOM_DETAIL, DETAIL_LIMITS, detailTypeFor, sameDetailName, type DetailInput, type DetailKind, type DetailRecord } from "@gond/shared";
 import { ensureDatabase, transaction } from "../db/init.ts";
 import { settingsChanged } from "../events.ts";
 import { newId, now } from "../ids.ts";
 import { decryptSecret, encryptSecret } from "../secrets.ts";
 
-/** A field as it is sealed in the row, with its value whatever it is. */
-export type SealedField = { id: string; label: string; private: boolean; value: string };
+/** A field as it is sealed in the row, with its value whatever it is; `type` is missing on one saved before there were types. */
+export type SealedField = { id: string; type?: string; label: string; private: boolean; value: string };
+
+/** A field's kind: as it was saved, or for one saved before there were kinds, the known detail its name stands for. */
+const typeOf = (field: SealedField) => field.type ?? detailTypeFor(field.label)?.id ?? CUSTOM_DETAIL;
 
 type Row = { id: string; user_id: string; kind: DetailKind; label: string; fields: string; expires_on: string | null; reminded: number | null; created_at: string; updated_at: string };
 
@@ -25,7 +28,7 @@ function toRecord(row: Row, fields = unseal(row)): DetailRecord {
     label: row.label,
     expiresOn: row.expires_on,
     // A private value stays here: what leaves is only that one is saved.
-    fields: fields.map((f) => ({ id: f.id, label: f.label, private: f.private, saved: f.value !== "", value: f.private ? null : f.value })),
+    fields: fields.map((f) => ({ id: f.id, type: typeOf(f), label: f.label, private: f.private, saved: f.value !== "", value: f.private ? null : f.value })),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -79,7 +82,7 @@ export function saveDetail(userId: string, input: DetailInput, id?: string): Det
     const fields: SealedField[] = input.fields.map((field) => {
       const was = field.id ? before.find((f) => f.id === field.id) : undefined;
       const value = field.private && !field.value && was?.private ? was.value : field.value;
-      return { id: was?.id ?? newId("df"), label: field.label, private: field.private, value };
+      return { id: was?.id ?? newId("df"), type: field.type, label: field.label, private: field.private, value };
     });
     const at = now();
     const sealed = encryptSecret(JSON.stringify(fields));
@@ -101,15 +104,15 @@ export function saveDetail(userId: string, input: DetailInput, id?: string): Det
  * name, made when there is none. A field already there takes the new value, unless it is private, which
  * only the person changes, in Settings.
  */
-export function addDetailFields(userId: string, label: string, kind: DetailKind, given: { label: string; value: string }[], expiresOn: string | null): DetailRecord | { error: string } {
+export function addDetailFields(userId: string, label: string, kind: DetailKind, given: { type: string; label: string; value: string }[], expiresOn: string | null): DetailRecord | { error: string } {
   const current = findDetail(userId, label);
   const before = current ? readDetailFields(userId, current.id) ?? [] : [];
-  const fields = before.map((f) => ({ id: f.id, label: f.label, private: f.private, value: f.value }));
+  const fields = before.map((f) => ({ id: f.id, type: typeOf(f), label: f.label, private: f.private, value: f.value }));
   for (const field of given) {
-    const at = fields.findIndex((f) => sameDetailName(f.label, field.label));
+    const at = fields.findIndex((f) => (field.type !== CUSTOM_DETAIL && f.type === field.type) || sameDetailName(f.label, field.label));
     if (at >= 0 && fields[at]!.private) return { error: `${field.label} is private: only the person changes it, in Settings → Your details` };
     if (at >= 0) fields[at] = { ...fields[at]!, value: field.value };
-    else fields.push({ id: "", label: field.label, private: false, value: field.value });
+    else fields.push({ id: "", type: field.type, label: field.label, private: false, value: field.value });
   }
   if (fields.length > DETAIL_LIMITS.fields) return { error: `a record holds up to ${DETAIL_LIMITS.fields} details` };
   // The person's own private values pass through as empty, which keeps them.
@@ -117,7 +120,7 @@ export function addDetailFields(userId: string, label: string, kind: DetailKind,
     kind: current?.kind ?? kind,
     label: current?.label ?? label,
     expiresOn: expiresOn ?? current?.expiresOn ?? null,
-    fields: fields.map((f) => ({ ...(f.id ? { id: f.id } : {}), label: f.label, private: f.private, value: f.private ? "" : f.value })),
+    fields: fields.map((f) => ({ ...(f.id ? { id: f.id } : {}), type: f.type, label: f.label, private: f.private, value: f.private ? "" : f.value })),
   };
   return saveDetail(userId, input, current?.id);
 }

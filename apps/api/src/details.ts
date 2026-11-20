@@ -1,4 +1,4 @@
-import { DETAIL_KIND_LABELS, DETAIL_KINDS, DETAIL_LIMITS, daysBetween, expiryStage, isCardField, isDay, isDetailKind, joinNames, sameDetailName, type Bot, type DetailRecord, type Thread } from "@gond/shared";
+import { CUSTOM_DETAIL, DETAIL_KIND_LABELS, DETAIL_KINDS, DETAIL_LIMITS, checkDetailValue, daysBetween, detailTypeFor, expiryStage, isCardField, isDay, isDetailKind, joinNames, sameDetailName, type Bot, type DetailRecord, type Thread } from "@gond/shared";
 import { askApproval, expiredText, setAsideText } from "./approvals.ts";
 import { hourIn } from "./check-ins.ts";
 import { getPrimary } from "./data/bots.ts";
@@ -66,7 +66,7 @@ export function detailsTools(context: { bot: Bot; thread: Thread; signal?: Abort
         {
           record: { type: "string", description: "Whose or what it is, as list_details names it, like Maya or Maya's passport; a new name makes a new record." },
           kind: { type: "string", enum: [...DETAIL_KINDS], description: "For a new record: what it is." },
-          fields: { type: "array", items: { type: "object", properties: { label: { type: "string" }, value: { type: "string" } }, required: ["label", "value"], additionalProperties: false }, description: "The details, like {label: 'Date of birth', value: '2018-03-03'}." },
+          fields: { type: "array", items: { type: "object", properties: { label: { type: "string" }, value: { type: "string" } }, required: ["label", "value"], additionalProperties: false }, description: "The details, like {label: 'Date of birth', value: '2018-03-03'}; a date as YYYY-MM-DD." },
           expires_on: { type: "string", description: "When it runs out, YYYY-MM-DD, for a document or a policy." },
         },
         ["record", "fields"],
@@ -78,14 +78,20 @@ export function detailsTools(context: { bot: Bot; thread: Thread; signal?: Abort
         const kind = isDetailKind(input.kind) ? input.kind : findDetail(bot.userId, record)?.kind ?? "other";
         const expiresOn = text(input.expires_on, 10) || null;
         if (expiresOn && !isDay(expiresOn)) return "NOT saved: expires_on is a day, YYYY-MM-DD.";
-        const fields = (Array.isArray(input.fields) ? input.fields : []).flatMap((item) => {
+        // A detail Gond knows (a date of birth, an email, a phone) goes in under its own name and is checked as one.
+        const fields: { type: string; label: string; value: string }[] = [];
+        for (const item of Array.isArray(input.fields) ? input.fields : []) {
           const entry = (item && typeof item === "object" ? item : {}) as Record<string, unknown>;
-          const label = text(entry.label, DETAIL_LIMITS.fieldLabel);
-          const value = text(entry.value, DETAIL_LIMITS.value + 1);
-          return label && value ? [{ label, value }] : [];
-        });
+          const named = text(entry.label, DETAIL_LIMITS.fieldLabel);
+          const given = text(entry.value, DETAIL_LIMITS.value + 1);
+          if (!named || !given) continue;
+          if (given.length > DETAIL_LIMITS.value) return `NOT saved: keep each value under ${DETAIL_LIMITS.value} characters.`;
+          const known = detailTypeFor(named);
+          const checked = checkDetailValue(known?.input ?? "text", given);
+          if ("error" in checked) return `NOT saved: ${named} "${given}" isn't right. ${checked.error}${known?.input === "date" ? " Give it as YYYY-MM-DD." : ""}`;
+          fields.push({ type: known?.id ?? CUSTOM_DETAIL, label: known?.label ?? named, value: checked.value });
+        }
         if (!fields.length && !expiresOn) return "NOT saved: give at least one detail, a label and its value.";
-        if (fields.some((f) => f.value.length > DETAIL_LIMITS.value)) return `NOT saved: keep each value under ${DETAIL_LIMITS.value} characters.`;
         const answer = await askApproval({
           bot,
           threadId: thread.id,

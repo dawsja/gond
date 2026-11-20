@@ -109,6 +109,16 @@ describe("your details", () => {
     expect(getDetail(OWNER, record.id)).not.toBeNull();
   });
 
+  test("what a bot saves goes in as the detail it names, checked as one", async () => {
+    const bot = createBot(botInputSchema.parse({ name: "Keeper", approval: "full" }), OWNER);
+    const tools = detailsTools({ bot, thread: getThread(bot.threadId)!, computer: false });
+    expect(String(await tools.save_details!.execute({ record: "Leo", kind: "person", fields: [{ label: "Phone", value: "call mom" }] }, "s1"))).toContain("isn't right");
+    expect(String(await tools.save_details!.execute({ record: "Leo", kind: "person", fields: [{ label: "DOB", value: "March 3, 2018" }, { label: "Favourite colour", value: "Green" }] }, "s2"))).toContain("Saved to Leo");
+    const leo = String(await tools.list_details!.execute({}, "s3"));
+    expect(leo).toContain("Date of birth: 2018-03-03");
+    expect(leo).toContain("Favourite colour: Green");
+  });
+
   test("a held detail is never called by a card's name", () => {
     const taken = new Set<string>();
     expect(detailTypeName("Card", "Number", taken)).toBe("DETAIL_CARD_NUMBER");

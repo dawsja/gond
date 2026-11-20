@@ -517,3 +517,31 @@ describe("rooms", () => {
     ]);
   });
 });
+
+describe("your details' fields", () => {
+  test("a known detail is typed and checked as what it is; one of the person's own takes any words", async () => {
+    const { checkDetail, checkDetailValue, detailTypeFor, toDay } = await import("../src/details.ts");
+    expect(detailTypeFor("DOB")?.id).toBe("date_of_birth");
+    expect(detailTypeFor("phone number")?.id).toBe("phone");
+    expect(detailTypeFor("Birth place")).toBeNull();
+
+    expect(checkDetailValue("email", "sam@example.com")).toEqual({ value: "sam@example.com" });
+    expect(checkDetailValue("email", "sam@example")).toHaveProperty("error");
+    expect(checkDetailValue("phone", "+1 (555) 014-2000")).toEqual({ value: "+1 (555) 014-2000" });
+    expect(checkDetailValue("phone", "call mom")).toHaveProperty("error");
+    expect(checkDetailValue("phone", "12345")).toHaveProperty("error");
+    expect(checkDetailValue("vin", "1hgcm82633a00435 2")).toEqual({ value: "1HGCM82633A004352" });
+    expect(checkDetailValue("vin", "1HGCM82633A00435O")).toHaveProperty("error");
+    expect(checkDetailValue("date", "March 3, 2018")).toEqual({ value: "2018-03-03" });
+    expect(checkDetailValue("text", "  peanuts,   tree nuts ")).toEqual({ value: "peanuts, tree nuts" });
+
+    // Dates are read in the local calendar, and a day that doesn't exist isn't one.
+    expect(toDay("09/21/2000")).toBe("2000-09-21");
+    expect(toDay("2018-02-31")).toBeNull();
+    expect(toDay("next Tuesday")).toBeNull();
+
+    const saved = checkDetail({ kind: "person", label: "Sam", fields: [{ type: "email", label: "anything", value: "sam@example.com" }, { type: "custom", label: "School", value: "Oakwood" }] });
+    expect(saved).toEqual({ detail: { kind: "person", label: "Sam", expiresOn: null, fields: [{ type: "email", label: "Email", private: false, value: "sam@example.com" }, { type: "custom", label: "School", private: false, value: "Oakwood" }] } });
+    expect(checkDetail({ kind: "person", label: "Sam", fields: [{ type: "phone", value: "call mom" }] })).toEqual({ error: "Phone: A phone number is 7 to 15 digits, like +1 555 014 2000." });
+  });
+});

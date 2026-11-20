@@ -211,7 +211,9 @@ The address rules are mirrored in each app with the same tests.
 - **Use shadcn, don't hand-roll.** The skill is in `.agents/skills/shadcn`
   and its rules apply: forms are `FieldGroup`/`Field`, option sets are
   `ToggleGroup`, callouts are `Alert`, empty states are `Empty`, confirms
-  are `AlertDialog` (never `window.confirm`), a plain yes or no is
+  are `AlertDialog` (never `window.confirm`), a date is `DatePicker`
+  (`ui/date-picker.tsx`, shadcn's `Calendar` on the control tokens, never a
+  native date input), a plain yes or no is
   `Confirm` (`confirm-dialog.tsx`, which the iPhone shows as its own),
   notices are `toast`, chat is `MessageScroller`/`Message`/`Bubble`/
   `Attachment`/`Marker`, the sidebar is the `Sidebar` block, menus are
@@ -1392,7 +1394,12 @@ One line each: where to start, and what must not change.
 - **Your details** (`src/details.ts`, `data/details.ts`,
   `routes/details.ts`, `gond_details`, `details-card.tsx` in Settings →
   Your details): a profile's household records (people, IDs, insurance,
-  vehicles; `DETAIL_KINDS`, `checkDetail`), every field sealed together. A
+  vehicles; `DETAIL_KINDS`, `checkDetail`), every field sealed together.
+  A field is a known detail (`DETAIL_FIELD_TYPES`: its name, input and
+  check, `checkDetailValue`: a day as YYYY-MM-DD, an email, a phone, a VIN)
+  picked from a list, or one the person names (`CUSTOM_DETAIL`, any words);
+  the route checks it again, and a field saved before types or named by a
+  bot is matched by its name (`detailTypeFor`). A
   private field's value never leaves the API: routes and `list_details`
   say only that it is saved, a private field left empty keeps its value,
   and one made readable must be typed again. Private values are secrets to

@@ -6330,7 +6330,7 @@ describe("profiles", () => {
     const { setCheckIns } = await import("../src/data/check-ins.ts");
     setCheckIns(work.id, { everyHours: 4 });
     const { saveDetail } = await import("../src/data/details.ts");
-    saveDetail(work.id, { kind: "person", label: "Sam", expiresOn: null, fields: [{ label: "Passport", private: true, value: "P1234567" }] });
+    saveDetail(work.id, { kind: "person", label: "Sam", expiresOn: null, fields: [{ type: "custom", label: "Passport", private: true, value: "P1234567" }] });
     const bots = [bot.id, other.id];
     const threads = [bot.threadId, other.threadId, room.id];
 

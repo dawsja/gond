@@ -1,8 +1,8 @@
 "use client";
 
-import { DETAIL_KIND_LABELS, DETAIL_KINDS, DETAIL_LIMITS, DETAIL_PRESETS, daysBetween, type DetailKind, type DetailRecord } from "@gond/shared";
+import { CUSTOM_DETAIL, DETAIL_FIELD_TYPES, DETAIL_KIND_LABELS, DETAIL_KINDS, DETAIL_LIMITS, DETAIL_PRESETS, checkDetailValue, daysBetween, detailFieldType, toDay, type DetailInputKind, type DetailKind, type DetailRecord } from "@gond/shared";
 import { BookUser, Car, HeartPulse, IdCard, Lock, LockOpen, Pencil, Plus, Trash2, UserRound, X, type LucideIcon } from "lucide-react";
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type ComponentProps, type FormEvent } from "react";
 import { Confirm } from "@/components/confirm-dialog";
 import { useDiscardChanges } from "@/components/discard-changes";
 import { useLiveEvents } from "@/components/hq/live-events";
@@ -10,11 +10,12 @@ import { LoadFailed } from "@/components/load-failed";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
 import { Toggle } from "@/components/ui/toggle";
@@ -23,17 +24,25 @@ import { api, del, post } from "@/lib/api";
 
 const KIND_ICONS: Record<DetailKind, LucideIcon> = { person: UserRound, document: IdCard, insurance: HeartPulse, vehicle: Car, other: BookUser };
 const KIND_ITEMS = DETAIL_KINDS.map((kind) => ({ value: kind, label: DETAIL_KIND_LABELS[kind] }));
+const SOMETHING_ELSE = "Something else";
+const FIELD_ITEMS = [...DETAIL_FIELD_TYPES.map((type) => ({ value: type.id, label: type.label })), { value: CUSTOM_DETAIL, label: SOMETHING_ELSE }];
 // A reminder comes 90 days ahead; inside a month, the list says so too.
 const SOON_DAYS = 30;
 
-type Row = { key: string; id?: string; label: string; value: string; private: boolean; saved: boolean };
+/** `type` is a known detail's id, `CUSTOM_DETAIL` for one the person names, or empty until they pick. */
+type Row = { key: string; id?: string; type: string; label: string; value: string; private: boolean; saved: boolean; checked: boolean };
 type Form = { kind: DetailKind; label: string; expiresOn: string; rows: Row[] };
 
 let rowKeys = 0;
 const rowKey = () => `row-${(rowKeys += 1)}`;
 
+const inputOf = (row: Pick<Row, "type">): DetailInputKind => detailFieldType(row.type)?.input ?? "text";
+
 function presetRows(kind: DetailKind): Row[] {
-  return DETAIL_PRESETS[kind].map((field) => ({ key: rowKey(), label: field.label, value: "", private: field.private, saved: false }));
+  return DETAIL_PRESETS[kind].map((field) => {
+    const known = detailFieldType(field.type);
+    return { key: rowKey(), type: field.type, label: known?.label ?? field.label ?? "", value: "", private: known?.private ?? false, saved: false, checked: false };
+  });
 }
 
 function formOf(record: DetailRecord | null, kind: DetailKind = "person"): Form {
@@ -42,8 +51,24 @@ function formOf(record: DetailRecord | null, kind: DetailKind = "person"): Form 
     kind: record.kind,
     label: record.label,
     expiresOn: record.expiresOn ?? "",
-    rows: record.fields.map((field) => ({ key: rowKey(), id: field.id, label: field.label, value: field.value ?? "", private: field.private, saved: field.saved })),
+    rows: record.fields.map((field) => {
+      // A date typed as text before there was a calendar ("09/21/2000") opens as the day it names.
+      const value = field.value ?? "";
+      const tidy = inputOf(field) === "date" ? (toDay(value) ?? value) : value;
+      return { key: rowKey(), id: field.id, type: field.type, label: field.label, value: tidy, private: field.private, saved: field.saved, checked: true };
+    }),
   };
+}
+
+/** A form as far as saving goes: whether a row was looked at changes nothing. */
+const comparable = (form: Form) => JSON.stringify({ ...form, rows: form.rows.map((row) => ({ ...row, checked: false })) });
+
+/** What's wrong with a row as typed, in a few words, or null. */
+function rowProblem(row: Row): string | null {
+  if (!row.type) return row.value ? "Pick what this detail is." : null;
+  if (row.type === CUSTOM_DETAIL && row.value && !row.label.trim()) return "Give this detail a name.";
+  const checked = checkDetailValue(inputOf(row), row.value);
+  return "error" in checked ? checked.error : null;
 }
 
 /** Today where the browser is, as YYYY-MM-DD. */
@@ -64,18 +89,63 @@ function Expiry({ day }: { day: string }) {
   return <span>Expires {dayText(day)}</span>;
 }
 
+/** What each kind of value is typed with: the keyboard a phone shows, and an example. */
+const TYPING: Record<Exclude<DetailInputKind, "date">, Pick<ComponentProps<typeof Input>, "type" | "inputMode" | "autoCapitalize" | "placeholder">> = {
+  text: { type: "text" },
+  email: { type: "email", inputMode: "email", autoCapitalize: "off", placeholder: "sam@example.com" },
+  phone: { type: "tel", inputMode: "tel", placeholder: "+1 555 014 2000" },
+  vin: { type: "text", autoCapitalize: "characters", placeholder: "17 letters and numbers" },
+};
+
+/** The list a row picks its detail from: the record's own kind first, then the rest, then one of the person's own. */
+function FieldPicker({ row, kind, used, onPick }: { row: Row; kind: DetailKind; used: Set<string>; onPick: (type: string) => void }) {
+  const kinds = DETAIL_KINDS.filter((k) => k !== "other").sort((a, b) => (a === kind ? -1 : b === kind ? 1 : 0));
+  return (
+    <Select items={FIELD_ITEMS} value={row.type || null} onValueChange={(value) => value && onPick(String(value))}>
+      <SelectTrigger aria-label="What this detail is" className="w-full" aria-invalid={row.checked && !row.type && Boolean(row.value) ? true : undefined}>
+        <SelectValue placeholder="Pick a detail" />
+      </SelectTrigger>
+      <SelectContent>
+        {kinds.map((group) => (
+          <SelectGroup key={group}>
+            <SelectLabel>{DETAIL_KIND_LABELS[group]}</SelectLabel>
+            {DETAIL_FIELD_TYPES.filter((type) => type.kind === group).map((type) => (
+              <SelectItem key={type.id} value={type.id} disabled={used.has(type.id) && type.id !== row.type}>
+                {type.label}
+              </SelectItem>
+            ))}
+          </SelectGroup>
+        ))}
+        <SelectGroup>
+          <SelectItem value={CUSTOM_DETAIL}>{SOMETHING_ELSE}</SelectItem>
+        </SelectGroup>
+      </SelectContent>
+    </Select>
+  );
+}
+
 /** One record's details, new or changed; a private one is never shown, and stays as it is while left empty. */
 function DetailDialog({ record, onClose, onSaved }: { record: DetailRecord | null; onClose: () => void; onSaved: () => void }) {
   const [initial] = useState<Form>(() => formOf(record));
-  const [start] = useState(() => JSON.stringify(initial));
+  const [start] = useState(() => comparable(initial));
   const [form, setForm] = useState<Form>(initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const dirty = JSON.stringify(form) !== start;
+  const [tried, setTried] = useState(false);
+  const [thisYear] = useState(() => new Date().getFullYear());
+  const dirty = comparable(form) !== start;
   const discard = useDiscardChanges(dirty && !busy, onClose);
   const touched = form.rows.some((row) => row.value) || form.label;
+  const used = new Set(form.rows.map((row) => row.type));
 
   const setRow = (key: string, change: Partial<Row>) => setForm((current) => ({ ...current, rows: current.rows.map((row) => (row.key === key ? { ...row, ...change } : row)) }));
+
+  /** A row changes what it is: a known detail takes its name and whether it starts private, and keeps a value only that fits. */
+  function pickField(row: Row, type: string) {
+    const known = detailFieldType(type);
+    const fits = known ? !("error" in checkDetailValue(known.input, row.value)) : true;
+    setRow(row.key, { type, label: known?.label ?? "", private: row.saved ? row.private : (known?.private ?? false), value: fits ? row.value : "", checked: false });
+  }
 
   function pickKind(kind: DetailKind) {
     // A new record's fields follow its kind until anything is typed into them.
@@ -85,13 +155,18 @@ function DetailDialog({ record, onClose, onSaved }: { record: DetailRecord | nul
   async function save(event: FormEvent) {
     event.preventDefault();
     if (busy) return;
-    setBusy(true);
     setError(null);
+    if (form.rows.some(rowProblem)) {
+      setTried(true);
+      setError("Fix the details marked above.");
+      return;
+    }
+    setBusy(true);
     const body = {
       kind: form.kind,
       label: form.label,
       expiresOn: form.expiresOn || null,
-      fields: form.rows.map((row) => ({ ...(row.id ? { id: row.id } : {}), label: row.label, private: row.private, value: row.value })),
+      fields: form.rows.filter((row) => row.type).map((row) => ({ ...(row.id ? { id: row.id } : {}), type: row.type, label: row.label, private: row.private, value: row.value })),
     };
     try {
       if (record) await api(`/api/details/${encodeURIComponent(record.id)}`, { method: "PUT", body: JSON.stringify(body) });
@@ -112,7 +187,7 @@ function DetailDialog({ record, onClose, onSaved }: { record: DetailRecord | nul
           <DialogTitle>{record ? `Edit ${record.label}` : "Add details"}</DialogTitle>
           <DialogDescription>Your bots use these to fill in forms. A private detail is typed in for you, only after you say yes, and is never shown again, not even to your bots.</DialogDescription>
         </DialogHeader>
-        <form onSubmit={save} className="contents">
+        <form onSubmit={save} noValidate className="contents">
           <FieldGroup className="gap-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <Field>
@@ -140,26 +215,52 @@ function DetailDialog({ record, onClose, onSaved }: { record: DetailRecord | nul
             <FieldSet className="gap-2">
               <FieldLegend variant="label">Details</FieldLegend>
               <ul className="flex flex-col gap-3 sm:gap-2">
-                {form.rows.map((row, index) => {
+                {form.rows.map((row) => {
                   const kept = row.private && row.saved && !row.value;
+                  const input = inputOf(row);
+                  // A row says what's wrong once it's been left or a save was tried, never mid-typing.
+                  const problem = row.checked || tried ? rowProblem(row) : null;
+                  const name = row.label || "this detail";
+                  const valueClass = "col-span-3 row-start-2 sm:col-span-1 sm:row-start-auto";
                   return (
                     <li key={row.key} className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-2 sm:grid-cols-[minmax(0,2fr)_minmax(0,3fr)_auto_auto]">
-                      <Input aria-label={`Detail ${index + 1}`} value={row.label} maxLength={DETAIL_LIMITS.fieldLabel} placeholder="Allergies" onChange={(event) => setRow(row.key, { label: event.target.value })} />
-                      <Input
-                        aria-label={row.label || `Detail ${index + 1}`}
-                        className="col-span-3 row-start-2 sm:col-span-1 sm:row-start-auto"
-                        type={row.private ? "password" : "text"}
-                        autoComplete={row.private ? "new-password" : "off"}
-                        spellCheck={false}
-                        value={row.value}
-                        maxLength={DETAIL_LIMITS.value}
-                        placeholder={kept ? "Saved. Type to replace it" : row.private ? "Private" : ""}
-                        onChange={(event) => setRow(row.key, { value: event.target.value })}
-                      />
+                      {row.type === CUSTOM_DETAIL ? (
+                        <Input aria-label="Name of this detail" autoFocus={!row.label && !row.saved} value={row.label} maxLength={DETAIL_LIMITS.fieldLabel} placeholder="Name it, like School" onChange={(event) => setRow(row.key, { label: event.target.value })} />
+                      ) : (
+                        <FieldPicker row={row} kind={form.kind} used={used} onPick={(type) => pickField(row, type)} />
+                      )}
+                      {!row.type ? (
+                        <Input aria-label="Value" className={valueClass} disabled placeholder="Pick what it is first" />
+                      ) : input === "date" ? (
+                        <DatePicker
+                          aria-label={name}
+                          className={valueClass}
+                          value={row.value}
+                          placeholder={kept ? "Saved. Pick to replace it" : "Pick a date"}
+                          fromYear={row.type === "date_of_birth" ? 1900 : thisYear - 60}
+                          toYear={row.type === "date_of_birth" ? thisYear : thisYear + 30}
+                          onChange={(day) => setRow(row.key, { value: day, checked: true })}
+                        />
+                      ) : (
+                        <Input
+                          aria-label={name}
+                          aria-invalid={problem ? true : undefined}
+                          className={valueClass}
+                          {...TYPING[input]}
+                          type={row.private ? "password" : TYPING[input].type}
+                          autoComplete={row.private ? "new-password" : "off"}
+                          spellCheck={false}
+                          value={row.value}
+                          maxLength={DETAIL_LIMITS.value}
+                          placeholder={kept ? "Saved. Type to replace it" : row.private ? "Private" : TYPING[input].placeholder}
+                          onChange={(event) => setRow(row.key, { value: input === "vin" ? event.target.value.toUpperCase() : event.target.value })}
+                          onBlur={() => setRow(row.key, { checked: true })}
+                        />
+                      )}
                       <Toggle
                         variant="pill"
                         size="icon"
-                        aria-label={`Keep ${row.label || "this detail"} private`}
+                        aria-label={`Keep ${name} private`}
                         title={row.private ? "Private: typed in for you, never shown" : "Readable by your bots"}
                         pressed={row.private}
                         // Made readable, a saved private value must be typed again: it is never sent back to show.
@@ -167,22 +268,23 @@ function DetailDialog({ record, onClose, onSaved }: { record: DetailRecord | nul
                       >
                         {row.private ? <Lock aria-hidden="true" /> : <LockOpen aria-hidden="true" />}
                       </Toggle>
-                      <Button type="button" variant="ghost" size="icon-lg" className="pointer-coarse:size-11" aria-label={`Remove ${row.label || "this detail"}`} onClick={() => setForm((current) => ({ ...current, rows: current.rows.filter((r) => r.key !== row.key) }))}>
+                      <Button type="button" variant="ghost" size="icon-lg" className="pointer-coarse:size-11" aria-label={`Remove ${name}`} onClick={() => setForm((current) => ({ ...current, rows: current.rows.filter((r) => r.key !== row.key) }))}>
                         <X aria-hidden="true" />
                       </Button>
+                      {problem ? <FieldError className="col-span-full -mt-1">{problem}</FieldError> : null}
                     </li>
                   );
                 })}
               </ul>
-              <Button type="button" variant="outline" className="self-start" disabled={form.rows.length >= DETAIL_LIMITS.fields} onClick={() => setForm((current) => ({ ...current, rows: [...current.rows, { key: rowKey(), label: "", value: "", private: false, saved: false }] }))}>
+              <Button type="button" variant="outline" className="self-start" disabled={form.rows.length >= DETAIL_LIMITS.fields} onClick={() => setForm((current) => ({ ...current, rows: [...current.rows, { key: rowKey(), type: "", label: "", value: "", private: false, saved: false, checked: false }] }))}>
                 <Plus data-icon="inline-start" aria-hidden="true" />
                 Add a detail
               </Button>
-              <FieldDescription>The lock keeps a detail private: an ID or passport number, an insurance member ID. Your bots see only that it&apos;s there.</FieldDescription>
+              <FieldDescription>Pick a detail from the list and it&apos;s checked as you type: a date from a calendar, an email with its @, a phone number. Something else takes any name and words. The lock keeps a detail private, like an ID or passport number; your bots see only that it&apos;s there.</FieldDescription>
             </FieldSet>
             <Field>
               <FieldLabel htmlFor="detail-expires">Expires</FieldLabel>
-              <Input id="detail-expires" type="date" className="sm:max-w-56" value={form.expiresOn} onChange={(event) => setForm((current) => ({ ...current, expiresOn: event.target.value }))} />
+              <DatePicker id="detail-expires" className="sm:max-w-56" value={form.expiresOn} placeholder="Doesn't expire" clearable fromYear={thisYear - 10} toYear={thisYear + 30} onChange={(day) => setForm((current) => ({ ...current, expiresOn: day }))} />
               <FieldDescription>For a passport, a licence or a policy. Your main bot tells you three months before, a month before and a week before.</FieldDescription>
             </Field>
             {error ? <FieldError>{error}</FieldError> : null}
