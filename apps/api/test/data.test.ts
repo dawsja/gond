@@ -406,6 +406,108 @@ describe("data", () => {
     expect(getThread(atlas.threadId)).toMatchObject({ unread: 0, unreadTeam: false });
   });
 
+  test("a conversation's pages are its own lines and what it sent, newest first, ties by when they were written", async () => {
+    const { createBot } = await import("../src/data/bots.ts");
+    const { listMessages } = await import("../src/data/threads.ts");
+    const { ensureDatabase } = await import("../src/db/init.ts");
+    const { botInputSchema } = await import("@gond/shared");
+    const a = createBot(botInputSchema.parse({ name: "Pages A" }), "u-admin");
+    const b = createBot(botInputSchema.parse({ name: "Pages B" }), "u-admin");
+    const db = ensureDatabase();
+    const line = db.query("INSERT INTO gond_messages (id, thread_id, author, kind, body, from_thread_id, answered_at, spoken, created_at) VALUES (?, ?, ?, ?, 'x', ?, 'x', ?, ?)");
+    for (let i = 0; i < 40; i++) {
+      const at = `2026-03-01T00:00:${String(Math.floor(i / 3)).padStart(2, "0")}.000Z`;
+      const [thread, from] = i % 5 === 0 ? [b.threadId, a.threadId] : i % 7 === 0 ? [a.threadId, a.threadId] : i % 9 === 0 ? [b.threadId, null] : [a.threadId, null];
+      line.run(`pg-${i}`, thread, i % 2 ? a.id : "you", i % 11 === 0 ? "prompt" : "message", from, i % 13 === 0 ? 1 : 0, at);
+    }
+    const all = db.query("SELECT rowid AS r, id, kind, created_at FROM gond_messages WHERE id LIKE 'pg-%' AND (thread_id = ? OR from_thread_id = ?) AND spoken = 0 ORDER BY created_at, rowid").all(a.threadId, a.threadId) as { id: string; kind: string; created_at: string }[];
+    const ids = (rows: { id: string }[]) => rows.map((row) => row.id);
+    const page = (options: Parameters<typeof listMessages>[1]) => ids(listMessages(a.threadId, { includeSent: true, shown: true, limit: 7, ...options }));
+    expect(page({})).toEqual(ids(all.slice(-7)));
+    const cut = all[20]!.created_at;
+    expect(page({ before: cut })).toEqual(ids(all.filter((m) => m.created_at < cut).slice(-7)));
+    expect(page({ after: cut })).toEqual(ids(all.filter((m) => m.created_at > cut).slice(0, 7)));
+    expect(page({ from: cut })).toEqual(ids(all.filter((m) => m.created_at >= cut).slice(0, 7)));
+    expect(page({ prompts: false, limit: 100 })).toEqual(ids(all.filter((m) => m.kind !== "prompt")));
+    expect(new Set(page({ limit: 100 })).size).toBe(all.length);
+    // An empty cursor from a hand-made request reads as no cursor, not as a broken query.
+    expect(page({ before: "", from: "", after: "" })).toEqual(page({}));
+  });
+
+  test("reading a conversation clears its dot, what a watch noticed and the profile badge, and does nothing once read", async () => {
+    const { createBot } = await import("../src/data/bots.ts");
+    const { getThread, markThreadRead, postMessage } = await import("../src/data/threads.ts");
+    const { listProfiles } = await import("../src/profiles.ts");
+    const { subscribe } = await import("../src/events.ts");
+    const { ensureDatabase } = await import("../src/db/init.ts");
+    const { botInputSchema } = await import("@gond/shared");
+    await seedUsers(["u-reader", "user"]);
+    const bot = createBot(botInputSchema.parse({ name: "Reader" }), "u-reader");
+    postMessage({ threadId: bot.threadId, author: "routine", body: "[Watch: Inbox]\nLook for anything urgent.", answered: true });
+    await Bun.sleep(2);
+    postMessage({ threadId: bot.threadId, author: bot.id, body: "The landlord wrote back.", answered: true });
+    expect(getThread(bot.threadId)).toMatchObject({ unread: 2, noticed: { watch: "Inbox" } });
+    expect(listProfiles("u-reader")[0]!.unread).toBe(1);
+    const told: string[] = [];
+    const stop = subscribe((event) => {
+      if (event.topic === "bots" && event.userId === "u-reader") told.push(event.topic);
+    });
+    const readAt = () => (ensureDatabase().query("SELECT last_read_at FROM gond_threads WHERE id = ?").get(bot.threadId) as { last_read_at: string | null }).last_read_at;
+    try {
+      await Bun.sleep(2);
+      markThreadRead(bot.threadId);
+      expect(getThread(bot.threadId)).toMatchObject({ unread: 0, unreadTeam: false, noticed: null });
+      expect(listProfiles("u-reader")[0]!.unread).toBe(0);
+      expect(told).toHaveLength(1);
+      const marked = readAt();
+      await Bun.sleep(2);
+      markThreadRead(bot.threadId);
+      expect(told).toHaveLength(1);
+      expect(readAt()).toBe(marked);
+    } finally {
+      stop();
+    }
+  });
+
+  test("cards asked for by id come back only when they are the profile's own, a hundred at most", async () => {
+    await seedUsers(["u-cards-other", "user"]);
+    const { createBot } = await import("../src/data/bots.ts");
+    const { createApproval } = await import("../src/data/approvals.ts");
+    const { approvalsRoutes } = await import("../src/routes/approvals.ts");
+    const { botInputSchema } = await import("@gond/shared");
+    const { Hono } = await import("hono");
+    const mine = createBot(botInputSchema.parse({ name: "Card Mine" }), "u-admin");
+    const theirs = createBot(botInputSchema.parse({ name: "Card Theirs" }), "u-cards-other");
+    const card = (bot: typeof mine) => createApproval({ botId: bot.id, threadId: bot.threadId, tool: "Bash", summary: "Run: ls", input: { command: "ls" } }).id;
+    const [first, second, other] = [card(mine), card(mine), card(theirs)];
+    const app = asPerson(new Hono(), "u-admin").route("/api", approvalsRoutes());
+    const ask = async (query: string) => {
+      const res = await app.request(`/api/approvals?${query}`);
+      return { status: res.status, body: (await res.json()) as { approvals?: { id: string }[]; error?: string } };
+    };
+    expect((await ask(`ids=${second},${other},${first},missing`)).body.approvals!.map((a) => a.id)).toEqual([second, first]);
+    expect((await ask("ids=")).body.approvals).toEqual([]);
+    const tooMany = await ask(`ids=${Array.from({ length: 101 }, (_, i) => `ap-${i}`).join(",")}`);
+    expect(tooMany.status).toBe(400);
+    expect(tooMany.body.error).toBe("Ask for up to 100 cards at a time");
+    expect((await ask("status=pending")).body.approvals!.map((a) => a.id)).toEqual(expect.arrayContaining([first, second]));
+  });
+
+  test("a conversation's page leaves hidden prompts out, and only the page does", async () => {
+    const { createBot } = await import("../src/data/bots.ts");
+    const { listMessages, postMessage } = await import("../src/data/threads.ts");
+    const { threadsRoutes } = await import("../src/routes/threads.ts");
+    const { botInputSchema } = await import("@gond/shared");
+    const { Hono } = await import("hono");
+    const bot = createBot(botInputSchema.parse({ name: "Quiet Prompt" }), "u-admin");
+    postMessage({ threadId: bot.threadId, author: bot.id, body: "Hello.", answered: true });
+    postMessage({ threadId: bot.threadId, author: "system", kind: "prompt", body: "Check the calendar.", answered: true });
+    const app = asPerson(new Hono(), "u-admin").route("/api", threadsRoutes());
+    const { messages } = (await (await app.request(`/api/threads/${bot.threadId}/messages`)).json()) as { messages: { kind: string; body: string }[] };
+    expect(messages.map((m) => m.body)).toEqual(["Hello."]);
+    expect(listMessages(bot.threadId).map((m) => m.kind)).toEqual(["message", "prompt"]);
+  });
+
   test("each person's color is their own, blue until they pick one", async () => {
     const { setUserAccent, userAccent } = await import("../src/data/prefs.ts");
     expect(userAccent("u-color")).toBe("blue");
@@ -460,6 +562,24 @@ describe("data", () => {
     expect(listMessages(alex.threadId, { includeSent: true, after: hello.createdAt }).map((m) => m.id)).toEqual([back.id]);
     expect(listExchange(alex.threadId, newbie.threadId).map((m) => m.id)).toEqual([hello.id, back.id]);
     expect(listExchange(newbie.threadId, alex.threadId).map((m) => m.id)).toEqual([hello.id, back.id]);
+  });
+
+  test("a long exchange between two bots opens on its newest lines and pages back", async () => {
+    const { createBot } = await import("../src/data/bots.ts");
+    const { postMessage, listExchange } = await import("../src/data/threads.ts");
+    const { botInputSchema } = await import("@gond/shared");
+    const a = createBot(botInputSchema.parse({ name: "Pager A" }), "u-admin");
+    const b = createBot(botInputSchema.parse({ name: "Pager B" }), "u-admin");
+    const ids: string[] = [];
+    for (let i = 0; i < 7; i++) {
+      const [from, to] = i % 2 ? [b, a] : [a, b];
+      ids.push(postMessage({ threadId: to.threadId, author: from.id, body: `line ${i}`, fromThreadId: from.threadId, answered: true }).id);
+      await Bun.sleep(2);
+    }
+    const newest = listExchange(a.threadId, b.threadId, { limit: 3 });
+    expect(newest.map((m) => m.id)).toEqual(ids.slice(4));
+    expect(listExchange(a.threadId, b.threadId, { before: newest[0]!.createdAt, limit: 3 }).map((m) => m.id)).toEqual(ids.slice(1, 4));
+    expect(listExchange(a.threadId, b.threadId, { from: newest.at(-1)!.createdAt }).map((m) => m.id)).toEqual(ids.slice(6));
   });
 
   test("coordination tools explain missing and invalid required arguments", async () => {
@@ -3820,7 +3940,7 @@ describe("the rename", () => {
     expect(legacy).toEqual([]);
     expect((db.query("SELECT MAX(version) AS v FROM gond_schema").get() as { v: number }).v).toBe(LATEST_VERSION);
     const indexes = (db.query("SELECT name FROM sqlite_master WHERE type = 'index' AND name LIKE 'gond\\_%' ESCAPE '\\'").all() as { name: string }[]).map((r) => r.name);
-    for (const name of ["gond_messages_thread", "gond_messages_pending", "gond_approvals_pending", "gond_bots_user", "gond_threads_user", "gond_providers_user", "gond_follow_ups_due", "gond_skills_user", "gond_delegations_parent", "gond_delegations_result"]) {
+    for (const name of ["gond_messages_thread", "gond_messages_unread", "gond_approvals_pending", "gond_bots_user", "gond_threads_user", "gond_providers_user", "gond_follow_ups_due", "gond_skills_user", "gond_delegations_parent", "gond_delegations_result"]) {
       expect(indexes).toContain(name);
     }
   });
@@ -5835,6 +5955,57 @@ describe("profiles", () => {
     if ("error" in profile) throw new Error(profile.error);
     return profile;
   }
+
+  test("a card or a setting reaches only its profile's pages, and a server setting reaches everyone", async () => {
+    await seedUsers(["u-pf-events", "user"], ["u-pf-stranger", "user"]);
+    const { createBot } = await import("../src/data/bots.ts");
+    const { createApproval } = await import("../src/data/approvals.ts");
+    const { setSecret } = await import("../src/data/secrets.ts");
+    const { setUsageSharing, usageSharing } = await import("../src/data/settings.ts");
+    const { eventsRoutes } = await import("../src/routes/events.ts");
+    const { botInputSchema } = await import("@gond/shared");
+    const { Hono } = await import("hono");
+    const work = await made("u-pf-events", "Work");
+    const reader = async (person: string, profile: string) => {
+      const controller = new AbortController();
+      const res = await asProfile(new Hono(), person, profile).route("/api", eventsRoutes()).request("/api/events", { signal: controller.signal });
+      const read = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let text = "";
+      const pump = (async () => {
+        for (;;) {
+          const { value, done } = await read.read();
+          if (done) break;
+          text += decoder.decode(value);
+        }
+      })().catch(() => undefined);
+      return { text: () => text, close: () => (controller.abort(), pump) };
+    };
+    const sharing = usageSharing() !== null;
+    const owner = await reader("u-pf-events", work.id);
+    const samePerson = await reader("u-pf-events", "u-pf-events");
+    const stranger = await reader("u-pf-stranger", "u-pf-stranger");
+    try {
+      const bot = createBot(botInputSchema.parse({ name: "Scoped" }), work.id);
+      createApproval({ botId: bot.id, threadId: bot.threadId, tool: "Bash", summary: "Run: ls", input: { command: "ls" } });
+      setSecret(work.id, "SCOPED_TOKEN", "value");
+      await Bun.sleep(30);
+      for (const topic of ['"topic":"approvals"', '"topic":"settings"']) {
+        expect(owner.text()).toContain(topic);
+        expect(samePerson.text()).not.toContain(topic);
+        expect(stranger.text()).not.toContain(topic);
+      }
+      setUsageSharing(!sharing);
+      await Bun.sleep(30);
+      expect(stranger.text()).toContain('"topic":"settings"');
+      expect(samePerson.text()).toContain('"topic":"settings"');
+    } finally {
+      setUsageSharing(sharing);
+      await owner.close();
+      await samePerson.close();
+      await stranger.close();
+    }
+  });
 
   test("a profile is the person's, with their name and none of the admin's role", async () => {
     await seedUsers(["u-pf-admin", "admin"]);

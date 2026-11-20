@@ -1,6 +1,9 @@
 import { EXPORT_RANGES, isRemoteAuthor, isWatchRun, routineName, type Approval, type ApprovalStatus, type ExportRange, type Message, type MessageAuthor } from "@gond/shared";
 import { Zip, ZipDeflate, ZipPassThrough } from "fflate";
-import { getApproval } from "./data/approvals.ts";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { getApprovals } from "./data/approvals.ts";
 import { listBots } from "./data/bots.ts";
 import { exportProgress, exportWanted, failExport, finishExport, type ExportJob } from "./data/exports.ts";
 import { userTimezone } from "./data/prefs.ts";
@@ -182,9 +185,14 @@ function readme(input: { label: string; exportedAt: string; timeZone: string; ch
 
 class TooBig extends Error {}
 
-/** Collects a zip as it is written, a file at a time, so a long history never sits in memory twice. */
+/**
+ * Writes a zip to a temporary file as it is made, a file at a time, so a long history is held in memory
+ * only once, as the finished zip. `discard` removes the file, whether or not the zip was finished.
+ */
 function zipWriter() {
-  const chunks: Uint8Array[] = [];
+  const folder = mkdtempSync(join(tmpdir(), "gond-export-"));
+  const target = join(folder, "chats.zip");
+  const sink = Bun.file(target).writer();
   let size = 0;
   let failure: Error | null = null;
   let finished: () => void = () => {};
@@ -192,11 +200,17 @@ function zipWriter() {
   const zip = new Zip((error, data, final) => {
     if (error) failure = error;
     else {
-      chunks.push(data);
+      sink.write(data);
       size += data.byteLength;
     }
     if (error || final) finished();
   });
+  let open = true;
+  const endSink = async () => {
+    if (!open) return;
+    open = false;
+    await sink.end();
+  };
   return {
     add(name: string, data: Uint8Array, stored = false) {
       if (failure) throw failure;
@@ -209,13 +223,12 @@ function zipWriter() {
       zip.end();
       await done;
       if (failure) throw failure;
-      const out = new Uint8Array(size);
-      let at = 0;
-      for (const chunk of chunks) {
-        out.set(chunk, at);
-        at += chunk.byteLength;
-      }
-      return out;
+      await endSink();
+      return new Uint8Array(await Bun.file(target).arrayBuffer());
+    },
+    async discard() {
+      await endSink().catch(() => undefined);
+      rmSync(folder, { recursive: true, force: true });
     },
   };
 }
@@ -252,53 +265,58 @@ async function buildExport(job: ExportJob, label: string): Promise<Uint8Array | 
     author === "you" ? "You" : author === "system" ? "Gond" : author === "routine" ? "Routine" : isRemoteAuthor(author) ? (remoteName(author) ?? "Someone on another Gond") : (bots.get(author) ?? "A bot that was removed");
   const redact = createRedactor(allSecretValues(), Number.POSITIVE_INFINITY);
   const zip = zipWriter();
-  const folders = new Set<string>();
-  const listed: { folder: string; name: string; kind: "bot" | "room"; count: number }[] = [];
+  try {
+    const folders = new Set<string>();
+    const listed: { folder: string; name: string; kind: "bot" | "room"; count: number }[] = [];
 
-  for (const [index, ref] of refs.entries()) {
-    if (!exportWanted(job.id)) return null;
-    const thread = getThread(ref.id);
-    if (thread) {
-      const chat: ExportChat = { id: thread.id, kind: thread.kind, name: thread.name, members: thread.members.map((id) => ({ id, name: bots.get(id) ?? "A bot that was removed" })) };
-      const folder = uniqueName(safeName(thread.name, "Chat"), folders);
-      const messages: Message[] = [];
-      for (let after = 0; ; ) {
-        const page = messagesInOrder(thread.id, { afterRowid: after, since: job.since });
-        // What was said on a call stays the bot's, as in Gond itself.
-        messages.push(...page.messages.filter((m) => !m.spoken));
-        if (page.messages.length < 500) break;
-        after = page.last;
-        await breathe();
+    for (const [index, ref] of refs.entries()) {
+      if (!exportWanted(job.id)) return null;
+      const thread = getThread(ref.id);
+      if (thread) {
+        const chat: ExportChat = { id: thread.id, kind: thread.kind, name: thread.name, members: thread.members.map((id) => ({ id, name: bots.get(id) ?? "A bot that was removed" })) };
+        const folder = uniqueName(safeName(thread.name, "Chat"), folders);
+        const messages: Message[] = [];
+        for (let after = 0; ; ) {
+          const page = messagesInOrder(thread.id, { afterRowid: after, since: job.since });
+          // What was said on a call stays the bot's, as in Gond itself.
+          messages.push(...page.messages.filter((m) => !m.spoken));
+          if (page.messages.length < 500) break;
+          after = page.last;
+          await breathe();
+        }
+        const files = new Map<string, string>();
+        const taken = new Set<string>();
+        for (const file of messages.flatMap((m) => m.attachments)) {
+          if (files.has(file.id)) continue;
+          const stored = getAttachment(file.id);
+          if (!stored) continue;
+          const path = `files/${uniqueName(safeName(stored.meta.name), taken)}`;
+          zip.add(`${root}/${folder}/${path}`, stored.data, STORED.test(stored.meta.mediaType));
+          files.set(file.id, path);
+          await breathe();
+        }
+        const cards = new Map(getApprovals([...new Set(messages.flatMap((m) => (m.kind === "approval" && m.approvalId ? [m.approvalId] : [])))]).map((card) => [card.id, card]));
+        const context: ExportContext = {
+          nameOf,
+          chatName: (id) => chatNames.get(id) ?? null,
+          fileOf: (id) => files.get(id) ?? null,
+          cardOf: (m) => (m.kind === "approval" && m.approvalId ? (cards.get(m.approvalId) ?? null) : null),
+          redact,
+          timeZone,
+        };
+        const encoder = new TextEncoder();
+        zip.add(`${root}/${folder}/chat.md`, encoder.encode(chatMarkdown(chat, messages, context)));
+        zip.add(`${root}/${folder}/chat.json`, encoder.encode(chatJson(chat, messages, context, exportedAt)));
+        listed.push({ folder, name: thread.name, kind: thread.kind, count: messages.length });
       }
-      const files = new Map<string, string>();
-      const taken = new Set<string>();
-      for (const file of messages.flatMap((m) => m.attachments)) {
-        if (files.has(file.id)) continue;
-        const stored = getAttachment(file.id);
-        if (!stored) continue;
-        const path = `files/${uniqueName(safeName(stored.meta.name), taken)}`;
-        zip.add(`${root}/${folder}/${path}`, stored.data, STORED.test(stored.meta.mediaType));
-        files.set(file.id, path);
-        await breathe();
-      }
-      const context: ExportContext = {
-        nameOf,
-        chatName: (id) => chatNames.get(id) ?? null,
-        fileOf: (id) => files.get(id) ?? null,
-        cardOf: (m) => (m.kind === "approval" && m.approvalId ? getApproval(m.approvalId) : null),
-        redact,
-        timeZone,
-      };
-      const encoder = new TextEncoder();
-      zip.add(`${root}/${folder}/chat.md`, encoder.encode(chatMarkdown(chat, messages, context)));
-      zip.add(`${root}/${folder}/chat.json`, encoder.encode(chatJson(chat, messages, context, exportedAt)));
-      listed.push({ folder, name: thread.name, kind: thread.kind, count: messages.length });
+      exportProgress(job, index + 1);
+      await breathe();
     }
-    exportProgress(job, index + 1);
-    await breathe();
+    zip.add(`${root}/README.md`, new TextEncoder().encode(readme({ label, exportedAt, timeZone, chats: listed })));
+    return await zip.close();
+  } finally {
+    await zip.discard();
   }
-  zip.add(`${root}/README.md`, new TextEncoder().encode(readme({ label, exportedAt, timeZone, chats: listed })));
-  return zip.close();
 }
 
 /** Runs an export to the end in the background: the zip kept to download, or a line saying why not. */

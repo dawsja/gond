@@ -6,6 +6,7 @@ import { pollInterval, useLiveEvents } from "@/components/hq/live-events";
 import { useStableCallback } from "@/hooks/use-stable-callback";
 import { singleFlight } from "@/lib/single-flight";
 import { api, post } from "@/lib/api";
+import { keep } from "@/lib/keep";
 import { applyAccent } from "@/lib/theme/theme";
 
 export type ThreadRow = Thread & { busy?: boolean };
@@ -37,6 +38,10 @@ const StoreContext = createContext<Store | null>(null);
 // Tool lines change many times a turn; only what shows them listens.
 const ActivityContext = createContext<Activity>({});
 const POLL_MS = 15_000;
+// A reply's thread and bots events, and the read marker's bots event a moment later, make one reload,
+// held back at most so long that the list never lags far behind.
+const LISTS_QUIET_MS = 350;
+const LISTS_MAX_WAIT_MS = 1_000;
 
 const UPDATING = new Set(["pausing", "pulling", "restarting", "patching", "resuming"]);
 
@@ -76,8 +81,8 @@ export function StoreProvider({ user, children }: { user: Me; children: ReactNod
 
   const loadBotsNow = useCallback(async () => {
     const [b, t] = await Promise.all([api<{ bots: Bot[] }>("/api/bots"), api<{ threads: ThreadRow[] }>("/api/threads")]);
-    setBots(b.bots);
-    setThreads(t.threads);
+    setBots((current) => keep(current, b.bots));
+    setThreads((current) => keep(current, t.threads));
 
     const idle = new Set(t.threads.filter((row) => row.busy === false).map((row) => row.id));
     setActivity((current) => (Object.keys(current).some((id) => idle.has(id)) ? Object.fromEntries(Object.entries(current).filter(([id]) => !idle.has(id))) : current));
@@ -85,11 +90,14 @@ export function StoreProvider({ user, children }: { user: Me; children: ReactNod
   const loadBots = useMemo(() => singleFlight(loadBotsNow), [loadBotsNow]);
   const loadApprovals = useCallback(async () => {
     const a = await api<{ approvals: Approval[] }>("/api/approvals?status=pending");
-    setApprovals(a.approvals);
+    setApprovals((current) => keep(current, a.approvals));
   }, []);
+  // The chat list shows once bots and conversations are in; the computer's state and the rest follow on their own.
   const refresh = useCallback(async () => {
-    await Promise.all([loadBots(), loadApprovals(), loadBoxUpdate().catch(() => undefined), loadDesktop(), loadProfiles().catch(() => undefined)]).catch(() => undefined);
-    setLoaded(true);
+    const lists = loadBots()
+      .catch(() => undefined)
+      .then(() => setLoaded(true));
+    await Promise.all([lists, loadApprovals(), loadBoxUpdate(), loadDesktop(), loadProfiles()].map((load) => load.catch(() => undefined)));
   }, [loadBots, loadApprovals, loadBoxUpdate, loadDesktop, loadProfiles]);
 
   // A notice from another profile opens with `?profile=`: open that profile here first.
@@ -117,18 +125,30 @@ export function StoreProvider({ user, children }: { user: Me; children: ReactNod
     void Promise.resolve().then(refresh);
   }, [refresh]);
 
-  // A reply sends both a thread and a bots event: one load answers them.
-  const botsTimer = useRef<number | null>(null);
+  const listsTimer = useRef<number | null>(null);
+  const listsAskedAt = useRef(0);
   const loadBotsSoon = () => {
-    if (botsTimer.current !== null) return;
-    botsTimer.current = window.setTimeout(() => {
-      botsTimer.current = null;
+    const now = Date.now();
+    if (listsTimer.current === null) listsAskedAt.current = now;
+    else window.clearTimeout(listsTimer.current);
+    const wait = Math.min(LISTS_QUIET_MS, Math.max(0, listsAskedAt.current + LISTS_MAX_WAIT_MS - now));
+    listsTimer.current = window.setTimeout(() => {
+      listsTimer.current = null;
       void loadBots().catch(() => undefined);
-    }, 50);
+    }, wait);
   };
+  useEffect(
+    () => () => {
+      if (listsTimer.current !== null) window.clearTimeout(listsTimer.current);
+    },
+    [],
+  );
 
   const live = useLiveEvents((message) => {
-    if (message.topic === "open") void refreshRef.current();
+    if (message.topic === "open" && message.first) {
+      loadBotsSoon();
+      void loadApprovals().catch(() => undefined);
+    } else if (message.topic === "open") void refreshRef.current();
     else if (message.topic === "bots" || message.topic === "thread") loadBotsSoon();
     else if (message.topic === "approvals") void loadApprovals().catch(() => undefined);
     else if (message.topic === "me") void loadMe().catch(() => undefined);

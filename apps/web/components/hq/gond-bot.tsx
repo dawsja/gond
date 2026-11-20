@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useState, type CSSProperties } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties, type RefObject } from "react";
 import { BODIES, BODY_STROKE, COG, EYE, EYES, type GondBotShape } from "@/components/hq/gond-bot-shapes";
 import { rem } from "@/lib/utils";
 
@@ -58,6 +58,62 @@ const LAYOUT: Record<GondBotShape, { visor: string; at: [number, number]; scale:
 };
 
 const FACE_AT = { x: 52.25, y: 58 };
+const AHEAD = { x: 0, y: 0 };
+
+/** Timeouts that all go at once: a face's loop and the step inside each turn of it. */
+function timeouts() {
+  const pending = new Set<ReturnType<typeof setTimeout>>();
+  return {
+    after(ms: number, run: () => void) {
+      const id = setTimeout(() => {
+        pending.delete(id);
+        run();
+      }, ms);
+      pending.add(id);
+    },
+    clear() {
+      for (const id of pending) clearTimeout(id);
+      pending.clear();
+    },
+  };
+}
+
+// One observer for every face. A face hidden by CSS or scrolled out of view never intersects.
+const watched = new Map<Element, (onScreen: boolean) => void>();
+let observer: IntersectionObserver | null = null;
+
+function watchOnScreen(element: Element, onChange: (onScreen: boolean) => void): () => void {
+  observer ??= new IntersectionObserver((entries) => {
+    for (const entry of entries) watched.get(entry.target)?.(entry.isIntersecting);
+  });
+  watched.set(element, onChange);
+  observer.observe(element);
+  return () => {
+    watched.delete(element);
+    observer?.unobserve(element);
+  };
+}
+
+/** Whether anyone could see the face blink or glance: on screen, in a page that's shown. */
+function useSeen(ref: RefObject<Element | null>): boolean {
+  const [seen, setSeen] = useState(false);
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    let onScreen = false;
+    const update = () => setSeen(onScreen && !document.hidden);
+    const stop = watchOnScreen(element, (visible) => {
+      onScreen = visible;
+      update();
+    });
+    document.addEventListener("visibilitychange", update);
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", update);
+    };
+  }, [ref]);
+  return seen;
+}
 
 export function GondBot({
   color = "#189C47",
@@ -72,41 +128,47 @@ export function GondBot({
 }: GondBotProps) {
   const [blink, setBlink] = useState(false);
   const [hello, setHello] = useState<"bounce" | "spin" | null>(greet && !asleep ? "bounce" : null);
-  const [look, setLook] = useState({ x: 0, y: 0 });
+  const [look, setLook] = useState(AHEAD);
   const id = useId().replace(/[^a-zA-Z0-9_-]/g, "");
   const ref = (name: string) => `gb${id}-${name}`;
   const url = (name: string) => `url(#${ref(name)})`;
   const now = asleep ? undefined : mood;
   // The glow, sheen and catch-lights blur into mud below this, and each glow is a filter.
   const fine = size >= 40;
+  const root = useRef<HTMLDivElement>(null);
+  const seen = useSeen(root);
 
   useEffect(() => {
-    if (asleep) return;
-    let t: ReturnType<typeof setTimeout>;
-    const loop = () => {
-      t = setTimeout(() => {
+    if (asleep || !seen) return;
+    const clock = timeouts();
+    const loop = () =>
+      clock.after(2400 + Math.random() * 2800, () => {
         setBlink(true);
-        setTimeout(() => setBlink(false), 150);
+        clock.after(150, () => setBlink(false));
         loop();
-      }, 2400 + Math.random() * 2800);
-    };
+      });
     loop();
-    return () => clearTimeout(t);
-  }, [asleep]);
+    return () => {
+      clock.clear();
+      setBlink(false);
+    };
+  }, [asleep, seen]);
 
   useEffect(() => {
-    if (asleep || now) return;
-    let t: ReturnType<typeof setTimeout>;
-    const loop = () => {
-      t = setTimeout(() => {
+    if (asleep || now || !seen) return;
+    const clock = timeouts();
+    const loop = () =>
+      clock.after(3500 + Math.random() * 4000, () => {
         setLook({ x: (Math.random() - 0.5) * 5, y: (Math.random() - 0.5) * 3.5 });
-        setTimeout(() => setLook({ x: 0, y: 0 }), 900);
+        clock.after(900, () => setLook(AHEAD));
         loop();
-      }, 3500 + Math.random() * 4000);
-    };
+      });
     loop();
-    return () => clearTimeout(t);
-  }, [asleep, now]);
+    return () => {
+      clock.clear();
+      setLook(AHEAD);
+    };
+  }, [asleep, now, seen]);
 
   useEffect(() => {
     if (!hello) return;
@@ -146,6 +208,7 @@ export function GondBot({
 
   return (
     <div
+      ref={root}
       className={`gb${hello ? ` gb-${hello}` : ""}${asleep ? " gb-asleep" : ""}${now ? ` gb-${now}` : ""}${shape === "cog" ? " gb-gear" : ""}`}
       style={{ width: rem(size), height: rem(size), "--tilt": `${tilt}deg` } as CSSProperties}
       onClick={sayHello}
@@ -250,52 +313,6 @@ export function GondBot({
           </g>
         ) : null}
       </svg>
-
-      <style>{`
-        .gb { display:inline-block; cursor:pointer; user-select:none; }
-        .gb-svg { width:100%; height:100%; overflow:visible; }
-        .gb-body { transform-box:fill-box; transform-origin:50% 90%; animation: gb-rock 2.6s ease-in-out infinite; }
-        .gb-shape { transform-box:fill-box; transform-origin:50% 90%; transform: rotate(var(--tilt)); }
-        .gb-turn { transform-box:fill-box; transform-origin:50% 50%; }
-        .gb-face { transition: transform .5s cubic-bezier(.2,.8,.2,1); }
-        .gb-eye { transform-box:fill-box; transform-origin:center; }
-        .gb-blink { animation: gb-blink .15s ease-in-out; }
-        .gb-mouth { transform-box:fill-box; transform-origin:center; }
-        .gb-dot { transform-box:fill-box; transform-origin:center; animation: gb-dot 1s ease-in-out infinite; }
-
-        .gb-thinking .gb-body { animation: gb-hover 2.8s ease-in-out infinite; }
-        .gb-thinking.gb-gear .gb-turn { animation: gb-spin 9s linear infinite; }
-        .gb-talking .gb-body { animation: gb-nod 1.1s ease-in-out infinite; }
-        .gb-talking .gb-mouth { animation: gb-talk .55s ease-in-out infinite; }
-        .gb-glad .gb-body { animation: gb-hop 1.4s cubic-bezier(.34,1.56,.64,1) infinite; }
-
-        .gb-bounce .gb-body { animation: gb-hello 1.3s cubic-bezier(.34,1.56,.64,1) 1; }
-        .gb-spin .gb-turn { animation: gb-spin 1.2s cubic-bezier(.3,.9,.2,1) 1; }
-
-        .gb-asleep .gb-body { animation: gb-breathe 4.8s ease-in-out infinite; }
-        .gb-z { opacity:0; animation: gb-z 3.6s ease-out infinite; }
-        .gb-z:nth-child(2) { animation-delay: 1.2s; }
-        .gb-z:nth-child(3) { animation-delay: 2.4s; }
-
-        @keyframes gb-breathe { 0%,100%{transform:scale(1,1) rotate(-3deg)} 50%{transform:scale(1.03,.97) rotate(-3deg) translateY(1px)} }
-        @keyframes gb-z { 0%{opacity:0; transform:translate(-4px,6px)} 25%{opacity:.9} 100%{opacity:0; transform:translate(4px,-6px)} }
-        @keyframes gb-rock { 0%,100%{transform:scale(1,1) rotate(0)} 30%{transform:scale(.99,1.02) rotate(-2deg)} 65%{transform:scale(1.02,.99) rotate(2deg)} }
-        @keyframes gb-hover { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-2.5px)} }
-        @keyframes gb-dot { 0%,60%,100%{transform:translateY(0) scale(1)} 30%{transform:translateY(-4px) scale(1.15)} }
-        @keyframes gb-nod { 0%,100%{transform:translateY(0) rotate(0)} 25%{transform:translateY(-2px) rotate(-1.5deg)} 60%{transform:translateY(-1px) rotate(1deg)} }
-        @keyframes gb-talk { 0%,100%{transform:scale(1,1)} 50%{transform:scale(1.5,2.6)} }
-        @keyframes gb-hop { 0%,60%,100%{transform:translateY(0) scale(1,1)} 12%{transform:translateY(1px) scale(1.08,.92)} 30%{transform:translateY(-7px) scale(.95,1.06)} 45%{transform:translateY(0) scale(1.04,.96)} }
-        @keyframes gb-hello {
-          0%{transform:scale(1) rotate(0)}
-          25%{transform:scale(1.12,.9) rotate(-8deg) translateY(2px)}
-          50%{transform:scale(.94,1.08) rotate(8deg) translateY(-6px)}
-          75%{transform:scale(1.04,.98) rotate(-3deg)}
-          100%{transform:scale(1) rotate(0)}
-        }
-        @keyframes gb-spin { 0%{transform:rotate(0)} 100%{transform:rotate(360deg)} }
-        @keyframes gb-blink { 0%,100%{transform:scaleY(1)} 50%{transform:scaleY(.08)} }
-        @media (prefers-reduced-motion: reduce) { .gb-body,.gb-turn,.gb-blink,.gb-z,.gb-dot,.gb-mouth{animation:none!important} .gb-z{opacity:.8} }
-      `}</style>
     </div>
   );
 }

@@ -1,10 +1,10 @@
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { BridgedSession, EXIT_GRACE_MS, IDLE_MS, MAX_STDERR, ReplyText, killTree, promptChangeReminder } from "./bridge.mjs";
-import { CLAUDE_BIN, NOT_SIGNED_IN, writeSystemPrompt } from "./claude.mjs";
+import { CLAUDE_BIN, NOT_SIGNED_IN, queryClaude, writeSystemPrompt } from "./claude.mjs";
 
 
 const MAX_LINE = 4 * 1024 * 1024;
@@ -43,21 +43,21 @@ function flagsFor(version) {
   return allowed;
 }
 
-let cachedVersion;
+const VERSION_TIMEOUT_MS = 15_000;
+
+let versionLookup;
 
 export function forgetClaudeVersion() {
-  cachedVersion = undefined;
+  versionLookup = undefined;
 }
 
-function claudeVersion({ bin = CLAUDE_BIN, env, uid, gid } = {}) {
-  if (cachedVersion !== undefined) return cachedVersion;
-  try {
-    const result = spawnSync(bin, ["--version"], { env, uid, gid, encoding: "utf8", timeout: 15_000 });
-    cachedVersion = parseVersion(`${result.stdout}\n${result.stderr}`);
-  } catch {
-    cachedVersion = null;
-  }
-  return cachedVersion;
+/** The CLI's version, null when it can't be read, asked once for every session until an update forgets it. */
+export function claudeVersion({ bin = CLAUDE_BIN, env, uid, gid, timeoutMs = VERSION_TIMEOUT_MS } = {}) {
+  versionLookup ??= queryClaude({ bin, args: ["--version"], env, uid, gid, timeoutMs }).then(
+    ({ stdout, stderr }) => parseVersion(`${stdout}\n${stderr}`),
+    () => null,
+  );
+  return versionLookup;
 }
 
 const CREDENTIAL_ENV = [
@@ -406,7 +406,7 @@ export class AgentSession extends BridgedSession {
     this.launchEnv = { ...this.env, ...SESSION_ENV, ...claudeAccessEnv(access) };
     this.access = access;
 
-    const version = claudeVersion({ bin: this.bin, env: this.env, uid: this.uid, gid: this.gid });
+    const version = await claudeVersion({ bin: this.bin, env: this.env, uid: this.uid, gid: this.gid });
     if (guest && !guestReady(version)) throw new Error(guestRefusal(version));
     const allowed = flagsFor(version);
     for (const flag of Object.keys(FLAG_FLOORS)) {
@@ -708,10 +708,31 @@ export class AgentSession extends BridgedSession {
   }
 }
 
-export function authStatus({ bin = CLAUDE_BIN, env, uid, gid } = {}) {
+const AUTH_TIMEOUT_MS = 10_000;
+
+const authLookups = new Map();
+
+/**
+ * Whether the CLI is signed in, asked as the person. Anyone asking while a look runs for the same `key`
+ * (the person) shares it, except `fresh`: a look started before a sign-in finished can't see it.
+ */
+export function authStatus({ bin = CLAUDE_BIN, env, uid, gid, key = null, fresh = false, timeoutMs = AUTH_TIMEOUT_MS } = {}) {
+  const running = key === null ? undefined : authLookups.get(key);
+  if (running && !fresh) return running;
+  const lookup = readAuthStatus({ bin, env, uid, gid, timeoutMs });
+  if (key !== null) {
+    authLookups.set(key, lookup);
+    void lookup.then(() => {
+      if (authLookups.get(key) === lookup) authLookups.delete(key);
+    });
+  }
+  return lookup;
+}
+
+async function readAuthStatus({ bin, env, uid, gid, timeoutMs }) {
   try {
-    const result = spawnSync(bin, ["auth", "status", "--json"], { env, uid, gid, encoding: "utf8", timeout: 10_000 });
-    const text = `${result.stdout ?? ""}`.trim();
+    const { stdout } = await queryClaude({ bin, args: ["auth", "status", "--json"], env, uid, gid, timeoutMs });
+    const text = stdout.trim();
     const start = text.indexOf("{");
     if (start === -1) return { known: false, loggedIn: null };
     const data = JSON.parse(text.slice(start));

@@ -242,18 +242,34 @@ export async function disconnect(userId: string, toolkit: string): Promise<boole
 }
 
 const toolCache = new Map<string, { at: number; tools: ComposioTool[] }>();
+const toolFetches = new Map<string, Promise<ComposioTool[]>>();
 const TOOL_CACHE_MS = 10 * 60 * 1000;
 
 export function forgetComposioCache(userId: string) {
   for (const key of toolCache.keys()) if (key.startsWith(`${userId}:`)) toolCache.delete(key);
+  for (const key of toolFetches.keys()) if (key.startsWith(`${userId}:`)) toolFetches.delete(key);
 }
 
+/** Every bot starting a turn at once asks here; they share one load from Composio. */
 export async function toolsFor(userId: string): Promise<ComposioTool[]> {
   const wanted = [...new Set(listConnections(userId).filter((c) => c.status === "active").map((c) => c.toolkit))].sort();
   if (wanted.length === 0 || !composioConfigured(userId)) return [];
   const key = `${userId}:${wanted.join(",")}`;
   const hit = toolCache.get(key);
   if (hit && Date.now() - hit.at < TOOL_CACHE_MS) return hit.tools;
+  const running = toolFetches.get(key);
+  if (running) return running;
+  const loading: Promise<ComposioTool[]> = loadTools(userId, wanted, hit, (tools) => {
+    // A load the cache was forgotten under (a new key, a disconnect) mustn't fill it with what it found.
+    if (toolFetches.get(key) === loading) toolCache.set(key, { at: Date.now(), tools });
+  }).finally(() => {
+    if (toolFetches.get(key) === loading) toolFetches.delete(key);
+  });
+  toolFetches.set(key, loading);
+  return loading;
+}
+
+async function loadTools(userId: string, wanted: string[], hit: { tools: ComposioTool[] } | undefined, keep: (tools: ComposioTool[]) => void): Promise<ComposioTool[]> {
   let client: Awaited<ReturnType<typeof sdk>>;
   try {
     client = await sdk(userId);
@@ -267,7 +283,7 @@ export async function toolsFor(userId: string): Promise<ComposioTool[]> {
     if (list.status === "fulfilled") tools.push(...list.value);
     else console.warn(`[gond] could not load ${wanted[i]} tools: ${list.reason instanceof Error ? list.reason.message : list.reason}`);
   });
-  if (lists.every((list) => list.status === "fulfilled")) toolCache.set(key, { at: Date.now(), tools });
+  if (lists.every((list) => list.status === "fulfilled")) keep(tools);
   // A miss keeps the last full list: a Claude Code session relaunches whenever its tools change, so a
   // moment's failure would cost a launch now and another once Composio answers again.
   else if (hit) return hit.tools;

@@ -214,8 +214,9 @@ export async function desktopState(userId: string): Promise<DesktopState> {
   return { screens: out, drivers: driversOf(userId) };
 }
 
-export async function emitDesktop(userId: string): Promise<void> {
-  const desktop = await desktopState(userId).catch((): DesktopState => ({ screens: [], drivers: driversOf(userId) }));
+/** Tells the person's pages how their screens stand: `known` when the caller just read it, else read now. */
+export async function emitDesktop(userId: string, known: DesktopState | null = null): Promise<void> {
+  const desktop = known ?? (await desktopState(userId).catch((): DesktopState => ({ screens: [], drivers: driversOf(userId) })));
   emit({ topic: "desktop", userId, desktop });
 }
 

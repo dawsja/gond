@@ -189,7 +189,7 @@ export function boxRoutes() {
       const body = await readBody(c);
       await startDesktop(box, bot.id, { ...screenSize(body), primary: bot.primary, name: bot.name, color: bot.color });
       const desktop = await desktopState(userId(c)).catch(() => null);
-      void emitDesktop(userId(c));
+      void emitDesktop(userId(c), desktop);
       return c.json({ desktop });
     }),
   );
@@ -212,7 +212,7 @@ export function boxRoutes() {
       if (body.holder === "person") tookControl(userId(c), bot.id);
       else void tellHandedBack(userId(c), bot.id);
       const desktop = await desktopState(userId(c)).catch(() => null);
-      void emitDesktop(userId(c));
+      void emitDesktop(userId(c), desktop);
       return c.json({ desktop });
     }),
   );

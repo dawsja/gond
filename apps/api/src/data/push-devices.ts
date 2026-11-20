@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { ensureDatabase } from "../db/init.ts";
 import { newId, now } from "../ids.ts";
 import { decryptSecret, encryptSecret } from "../secrets.ts";
+import { noticesOf } from "./push.ts";
 
 export type PushPlatform = "android" | "ios";
 
@@ -15,17 +16,8 @@ export type PushDevice = { id: string; userId: string; platform: PushPlatform; t
 
 type Row = { id: string; user_id: string; platform: string; token: string; seal_key: string; answer_key: string; muted_bots: string; other: number };
 
-function readMuted(json: string): string[] {
-  try {
-    const list: unknown = JSON.parse(json);
-    return Array.isArray(list) ? list.filter((id): id is string => typeof id === "string") : [];
-  } catch {
-    return [];
-  }
-}
-
 function toDevice(row: Row): PushDevice {
-  return { id: row.id, userId: row.user_id, platform: row.platform === "ios" ? "ios" : "android", token: row.token, sealKey: decryptSecret(row.seal_key), answerKey: decryptSecret(row.answer_key), notices: { mutedBots: readMuted(row.muted_bots), other: row.other !== 0 } };
+  return { id: row.id, userId: row.user_id, platform: row.platform === "ios" ? "ios" : "android", token: row.token, sealKey: decryptSecret(row.seal_key), answerKey: decryptSecret(row.answer_key), notices: noticesOf(row) };
 }
 
 export function listPushDevices(userId: string): PushDevice[] {

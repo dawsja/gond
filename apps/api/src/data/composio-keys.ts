@@ -23,12 +23,12 @@ export function setComposioKey(userId: string, apiKey: string): void {
   ensureDatabase()
     .query("INSERT INTO gond_composio_keys (user_id, api_key, updated_at) VALUES (?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET api_key = excluded.api_key, updated_at = excluded.updated_at")
     .run(userId, encryptSecret(key), now());
-  settingsChanged();
+  settingsChanged(userId);
 }
 
 export function clearComposioKey(userId: string): boolean {
   const changed = ensureDatabase().query("DELETE FROM gond_composio_keys WHERE user_id = ?").run(userId).changes;
-  if (changed) settingsChanged();
+  if (changed) settingsChanged(userId);
   return changed > 0;
 }
 

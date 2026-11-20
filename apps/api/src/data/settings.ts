@@ -1,6 +1,6 @@
 import { DEFAULT_ENGINES, ENGINE_ACCESS, ENGINES, MODEL_ID_PATTERN, PROVIDER_KINDS, type Connection, type Engine, type EngineSettings, type Onboarding, type Settings } from "@gond/shared";
 import { ensureDatabase } from "../db/init.ts";
-import { settingsChanged } from "../events.ts";
+import { serverSettingsChanged, settingsChanged } from "../events.ts";
 import { now } from "../ids.ts";
 
 const EMPTY_ONBOARDING: Onboarding = { done: false, templates: [] };
@@ -51,7 +51,7 @@ export function updateSettings(patch: Partial<Settings>): Settings {
   ensureDatabase()
     .query("UPDATE gond_settings SET onboarding = ?, timezone = ?, updated_at = ? WHERE id = 1")
     .run(JSON.stringify(next.onboarding), next.timezone, now());
-  settingsChanged();
+  serverSettingsChanged();
   return getSettings();
 }
 
@@ -72,7 +72,7 @@ export function setUsageSharing(on: boolean): UsageSharingState {
   if (on === (usageSharing() !== null)) return usageSharing();
   const next = on ? { epoch: `ep_${crypto.randomUUID().replaceAll("-", "")}`, since: now() } : null;
   ensureDatabase().query("UPDATE gond_settings SET usage_sharing = ?, updated_at = ? WHERE id = 1").run(next ? JSON.stringify(next) : null, now());
-  settingsChanged();
+  serverSettingsChanged();
   return next;
 }
 
@@ -96,17 +96,17 @@ export function saveConnection(userId: string, input: { toolkit: string; name: s
   ensureDatabase()
     .query("INSERT INTO gond_connections (user_id, toolkit, name, account_id, status, created_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(user_id, toolkit) DO UPDATE SET name = excluded.name, account_id = excluded.account_id, status = excluded.status")
     .run(userId, input.toolkit, input.name, input.accountId, input.status, now());
-  settingsChanged();
+  settingsChanged(userId);
   return getConnection(userId, input.toolkit)!;
 }
 
 export function removeConnection(userId: string, toolkit: string): boolean {
   const changed = ensureDatabase().query("DELETE FROM gond_connections WHERE user_id = ? AND toolkit = ?").run(userId, toolkit).changes;
-  if (changed) settingsChanged();
+  if (changed) settingsChanged(userId);
   return changed > 0;
 }
 
 export function removeConnections(userId: string): void {
   const changed = ensureDatabase().query("DELETE FROM gond_connections WHERE user_id = ?").run(userId).changes;
-  if (changed) settingsChanged();
+  if (changed) settingsChanged(userId);
 }

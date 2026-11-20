@@ -185,22 +185,22 @@ export { AVATAR_MAX_BYTES };
 
 type AvatarRow = { media_type: string; data: Uint8Array; updated_at: string };
 
-/** A profile without a picture of its own wears the person's. */
-function avatarRow(userId: string): AvatarRow | null {
-  const query = ensureDatabase().query("SELECT media_type, data, updated_at FROM gond_user_avatars WHERE user_id = ?");
-  const own = query.get(userId) as AvatarRow | null;
+/** A profile without a picture of its own wears the person's; `columns` reads only what the caller needs. */
+function avatarRow<T extends Partial<AvatarRow>>(userId: string, columns = "media_type, data, updated_at"): T | null {
+  const query = ensureDatabase().query(`SELECT ${columns} FROM gond_user_avatars WHERE user_id = ?`);
+  const own = query.get(userId) as T | null;
   if (own) return own;
   const person = personOf(userId);
-  return person === userId ? null : (query.get(person) as AvatarRow | null);
+  return person === userId ? null : (query.get(person) as T | null);
 }
 
 export function getAvatar(userId: string): { mediaType: string; data: Uint8Array; updatedAt: string } | null {
-  const row = avatarRow(userId);
+  const row = avatarRow<AvatarRow>(userId);
   return row ? { mediaType: row.media_type, data: row.data, updatedAt: row.updated_at } : null;
 }
 
 export function avatarUrl(userId: string): string | null {
-  const row = avatarRow(userId);
+  const row = avatarRow<Pick<AvatarRow, "updated_at">>(userId, "updated_at");
   return row ? `/api/me/avatar?v=${encodeURIComponent(row.updated_at)}` : null;
 }
 

@@ -39,37 +39,44 @@ export function parseDu(output) {
   return match ? Number(match[1]) : null;
 }
 
-const readText = (file) => {
-  try {
-    return fs.readFileSync(file, "utf8");
-  } catch {
-    return null;
-  }
-};
+const readText = (file) => fs.promises.readFile(file, "utf8").catch(() => null);
 
-export function memoryNow(cgroup = "/sys/fs/cgroup") {
+export async function memoryNow(cgroup = "/sys/fs/cgroup") {
   const total = os.totalmem();
-  return cgroupMemory(readText(`${cgroup}/memory.max`), readText(`${cgroup}/memory.current`), total) ?? { total, used: total - os.freemem() };
+  const [max, current] = await Promise.all([readText(`${cgroup}/memory.max`), readText(`${cgroup}/memory.current`)]);
+  return cgroupMemory(max, current, total) ?? { total, used: total - os.freemem() };
 }
 
-export function diskOf(dir) {
+export async function diskOf(dir) {
   try {
-    const stat = fs.statfsSync(dir);
+    const stat = await fs.promises.statfs(dir);
     return { total: stat.blocks * stat.bsize, free: stat.bavail * stat.bsize };
   } catch {
     return { total: 0, free: 0 };
   }
 }
 
+// A few reads at a time, so thousands of processes never queue thousands of reads ahead of the box's other file work.
+const PROC_READS = 8;
+
 /** Resident memory per uid from `/proc`, which only root can read for everyone. */
-export function memoryByUid(proc = "/proc") {
+export async function memoryByUid(proc = "/proc") {
   let pids = [];
   try {
-    pids = fs.readdirSync(proc).filter((name) => /^\d+$/.test(name));
+    pids = (await fs.promises.readdir(proc)).filter((name) => /^\d+$/.test(name));
   } catch {
     return new Map();
   }
-  return rssByUid(pids.map((pid) => readText(`${proc}/${pid}/status`)).filter(Boolean));
+  const statuses = [];
+  let next = 0;
+  const reader = async () => {
+    while (next < pids.length) {
+      const text = await readText(`${proc}/${pids[next++]}/status`);
+      if (text) statuses.push(text);
+    }
+  };
+  await Promise.all(Array.from({ length: PROC_READS }, reader));
+  return rssByUid(statuses);
 }
 
 const DU_TIMEOUT_MS = 2 * 60 * 1000;

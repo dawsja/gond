@@ -90,17 +90,27 @@ function shapeOf(message: Message, approval: Approval | null, name: string): Sha
   }
 }
 
-export function ApprovalCard({ message, approval, bot, noticed = false, onDecide }: { message: Message; approval: Approval | null; bot: Bot | undefined; noticed?: boolean; onDecide: (id: string, answer: ApprovalAnswer) => Promise<void> }) {
-  const email = approval ? emailDraftOf(approval.tool, approval.input) : null;
-  if (approval && email) return <EmailApprovalCard message={message} approval={approval} email={email} bot={bot} noticed={noticed} onDecide={onDecide} />;
+/** A card whose approval hasn't loaded yet (undefined) or no longer exists (null) shows what it asked, folded, and can't be answered. */
+export function ApprovalCard({ message, approval, bot, noticed = false, onDecide }: { message: Message; approval: Approval | null | undefined; bot: Bot | undefined; noticed?: boolean; onDecide: (id: string, answer: ApprovalAnswer) => Promise<void> }) {
+  if (!approval) {
+    const shape = shapeOf(message, null, bot?.name ?? "A bot");
+    const loading = approval === undefined;
+    return (
+      <div aria-busy={loading || undefined} className="w-full">
+        <ActionCardDone bot={bot} icon={shape.icon} title={shape.title} by={shape.by} status={loading ? "…" : "Closed"} tone="neutral" />
+      </div>
+    );
+  }
+  const email = emailDraftOf(approval.tool, approval.input);
+  if (email) return <EmailApprovalCard message={message} approval={approval} email={email} bot={bot} noticed={noticed} onDecide={onDecide} />;
   return <ToolApprovalCard message={message} approval={approval} bot={bot} noticed={noticed} onDecide={onDecide} />;
 }
 
-function ToolApprovalCard({ message, approval, bot, noticed, onDecide }: { message: Message; approval: Approval | null; bot: Bot | undefined; noticed: boolean; onDecide: (id: string, answer: ApprovalAnswer) => Promise<void> }) {
+function ToolApprovalCard({ message, approval, bot, noticed, onDecide }: { message: Message; approval: Approval; bot: Bot | undefined; noticed: boolean; onDecide: (id: string, answer: ApprovalAnswer) => Promise<void> }) {
   const [busy, setBusy] = useState<Decision | null>(null);
   // Undo is only for an Always allow given here a moment ago, never an old one.
   const [undo, setUndo] = useState<"offered" | "done" | null>(null);
-  const status = approval?.status ?? "pending";
+  const status = approval.status;
   // Nobody answered it in time, but it can still be answered: it stays open, marked paused.
   const paused = isPaused(approval);
   const shape = shapeOf(message, approval, bot?.name ?? "A bot");
@@ -116,18 +126,18 @@ function ToolApprovalCard({ message, approval, bot, noticed, onDecide }: { messa
     }
   };
   if (status !== "pending" && !paused) {
-    const custom = approval?.tool === "ask_approval";
-    const rule = undo === "done" ? null : (approval?.rule ?? null);
+    const custom = approval.tool === "ask_approval";
+    const rule = undo === "done" ? null : (approval.rule ?? null);
     const done =
       status === "allowed"
         ? { status: rule ? "Always" : (shape.allowed ?? (custom ? shape.allow : "Allowed")), tone: "ok" as const }
         : status === "denied"
           ? { status: shape.denied ?? (custom ? shape.deny : "Denied"), tone: shape.denied ? ("neutral" as const) : ("bad" as const) }
-          : { status: approval?.outcome === "aside" ? SET_ASIDE.status : "Expired", tone: "neutral" as const };
+          : { status: approval.outcome === "aside" ? SET_ASIDE.status : "Expired", tone: "neutral" as const };
     const title = shape.title;
-    const by = rule ? `From now on: ${ruleLabel(rule)}` : approval?.outcome === "aside" ? SET_ASIDE.by : status === "expired" ? NOBODY_ANSWERED : shape.by;
+    const by = rule ? `From now on: ${ruleLabel(rule)}` : approval.outcome === "aside" ? SET_ASIDE.by : status === "expired" ? NOBODY_ANSWERED : shape.by;
     const card = <ActionCardDone id={message.id} bot={bot} icon={shape.icon} title={title} by={by} status={done.status} tone={done.tone} />;
-    if (undo !== "offered" || !approval || !rule) return card;
+    if (undo !== "offered" || !rule) return card;
     return (
       <div className="flex w-full max-w-[440px] flex-col items-start gap-1">
         {card}
@@ -155,7 +165,7 @@ function ToolApprovalCard({ message, approval, bot, noticed, onDecide }: { messa
               Always allow
             </Button>
           ) : null}
-          <Button size="xl" variant="outline" className={cn("w-full", approval?.tool !== "ask_approval" && !shape.denied && "text-destructive")} disabled={Boolean(busy)} onClick={() => void decide("deny")}>
+          <Button size="xl" variant="outline" className={cn("w-full", approval.tool !== "ask_approval" && !shape.denied && "text-destructive")} disabled={Boolean(busy)} onClick={() => void decide("deny")}>
             {busy === "deny" ? <Spinner data-icon="inline-start" /> : null}
             {shape.deny}
           </Button>

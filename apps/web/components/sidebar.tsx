@@ -340,9 +340,11 @@ export function BotRows({ rows, hits, query, setQuery, lookAs, onOpen, onAsk }: 
           ) : null}
           {query.trim() ? null : <WorthALook as={lookAs} className={cn("mx-1 mb-2 w-[calc(100%-8px)]", !pinned.length && "mt-1")} />}
         <SidebarMenu className="gap-0.5" aria-label="Bots">
-          {(pinned.length ? rows.filter((t) => !pinned.some((p) => p.thread.id === t.id)) : rows).map((thread) => (
-            <Row key={thread.id} thread={thread} bot={thread.botId ? bots.find((b) => b.id === thread.botId) : undefined} active={pathname === `/app/t/${thread.id}`} bots={bots} activity={activity[thread.id] ?? IDLE} draft={drafts[thread.id]} onOpen={onOpen} onAsk={onAsk} />
-          ))}
+          {(pinned.length ? rows.filter((t) => !pinned.some((p) => p.thread.id === t.id)) : rows).map((thread) => {
+            const active = pathname === `/app/t/${thread.id}`;
+            // The open conversation's row never shows its draft, so typing there doesn't redraw it.
+            return <Row key={thread.id} thread={thread} bot={thread.botId ? bots.find((b) => b.id === thread.botId) : undefined} active={active} bots={bots} activity={activity[thread.id] ?? IDLE} draft={active ? undefined : drafts[thread.id]} onOpen={onOpen} onAsk={onAsk} />;
+          })}
         </SidebarMenu>
         </>
       )}

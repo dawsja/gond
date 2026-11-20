@@ -1,6 +1,6 @@
 "use client";
 
-import { coverLogin, LOGIN_FIELD_LABELS, type Bot, type LoginField, type SecretMeta, type SecretRequest } from "@gond/shared";
+import { coverLogin, joinNames, LOGIN_FIELD_LABELS, type Bot, type LoginField, type SecretMeta, type SecretRequest } from "@gond/shared";
 import { LogIn } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import { ActionCard, ActionCardDone, cheerOnFold, NOBODY_ANSWERED } from "@/components/action-card";
@@ -173,6 +173,5 @@ export function LoginCard({ request, bot, onAnswered }: { request: SecretRequest
 
 function fillsLine(fields: LoginField[]): string {
   const words = fields.map((field) => (field.label || LOGIN_FIELD_LABELS[field.kind]).toLowerCase());
-  const named = words.length > 1 ? `${words.slice(0, -1).join(", ")} and ${words.at(-1)}` : words[0];
-  return `the ${named}`;
+  return `the ${joinNames(words)}`;
 }

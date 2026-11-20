@@ -2,28 +2,56 @@
 
 import { handleOf, type Bot, type Skill } from "@gond/shared";
 import { BotAvatar, PersonAvatar } from "@/components/bot-avatar";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { useLiveEvents } from "@/components/hq/live-events";
 import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from "@/components/ui/command";
 import { Kbd } from "@/components/ui/kbd";
 import { api } from "@/lib/api";
+import { singleFlight } from "@/lib/single-flight";
+
+// One skills list for every composer, so opening another chat fetches nothing. `skills` events keep it
+// current while a composer listens, and a reconnect (`open`) loads it again. Once no composer has
+// listened for longer than a chat switch takes, an event could have gone by, so the next one loads it.
+const NO_SKILLS: Skill[] = [];
+let library = NO_SKILLS;
+let current = false;
+let composers = 0;
+let handled: unknown = null;
+const libraryWatchers = new Set<() => void>();
+const loadLibrary = singleFlight(async () => {
+  const data = await api<{ skills: Skill[] }>("/api/skills");
+  library = data.skills;
+  for (const notify of libraryWatchers) notify();
+});
+
+function watchLibrary(notify: () => void) {
+  libraryWatchers.add(notify);
+  return () => libraryWatchers.delete(notify);
+}
 
 export function useSkillsLibrary(): Skill[] {
-  const [skills, setSkills] = useState<Skill[]>([]);
-  const load = useCallback(
-    () =>
-      api<{ skills: Skill[] }>("/api/skills")
-        .then((d) => setSkills(d.skills))
-        .catch(() => undefined),
-    [],
-  );
   useEffect(() => {
-    void Promise.resolve().then(load);
-  }, [load]);
+    composers += 1;
+    if (!current) {
+      current = true;
+      void loadLibrary().catch(() => {
+        current = false;
+      });
+    }
+    return () => {
+      composers -= 1;
+      setTimeout(() => {
+        if (composers === 0) current = false;
+      }, 0);
+    };
+  }, []);
   useLiveEvents((event) => {
-    if (event.topic === "skills") void load();
+    // Every composer hears the same event; the first to see it loads for all of them.
+    if (event === handled || (event.topic !== "skills" && event.topic !== "open") || (event.topic === "open" && event.first)) return;
+    handled = event;
+    void loadLibrary().catch(() => undefined);
   });
-  return skills;
+  return useSyncExternalStore(watchLibrary, () => library, () => NO_SKILLS);
 }
 
 export function slashQuery(text: string, caret: number): { kind: "skill" | "bot"; query: string; start: number } | null {

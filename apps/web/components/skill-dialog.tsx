@@ -18,12 +18,7 @@ import { toast } from "@/components/ui/toast";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useHeld } from "@/hooks/use-held";
 import { api, del, patch } from "@/lib/api";
-
-function sizeOf(n: number) {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
-  return `${(n / 1024 / 1024).toFixed(1)} MB`;
-}
+import { formatBytes } from "@/lib/bytes";
 
 type Draft = { from: string | null; path: string; content: string; executable: boolean };
 
@@ -218,7 +213,7 @@ export function SkillDialog({ skill: initial, onClose, onSaved }: { skill: Skill
                             <span className="min-w-0 flex-1 truncate font-mono text-[12.5px]">{file.path}</span>
                           )}
                           {file.executable ? <Badge variant="outline">runs</Badge> : null}
-                          <span className="shrink-0 text-[11.5px] text-muted-foreground">{sizeOf(file.size)}</span>
+                          <span className="shrink-0 text-[11.5px] text-muted-foreground">{formatBytes(file.size)}</span>
                           <Tooltip>
                             <TooltipTrigger render={<Button variant="ghost" size="icon-xs" aria-label={`Download ${file.path}`} nativeButton={false} render={<a href={`/api/skills/${skill.id}/file?raw&path=${encodeURIComponent(file.path)}`} download />} />}>
                               <Download aria-hidden="true" />

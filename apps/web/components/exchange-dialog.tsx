@@ -2,10 +2,11 @@
 
 import type { Bot, Message, Thread } from "@gond/shared";
 import { ArrowLeftRight, Lock } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { BotAvatar, RoomAvatar, roomMembers } from "@/components/bot-avatar";
 import { useLiveEvents } from "@/components/hq/live-events";
 import { Markdown } from "@/components/markdown";
+import { LoadEarlier } from "@/components/load-earlier";
 import { NoteBadge } from "@/components/note-badge";
 import { shortTime } from "@/lib/time";
 import { useStore } from "@/components/store";
@@ -15,6 +16,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/u
 import { Message as MessageRow, MessageAvatar, MessageContent, MessageFooter, MessageHeader } from "@/components/ui/message";
 import { MessageScroller, MessageScrollerContent, MessageScrollerItem, MessageScrollerProvider, MessageScrollerViewport } from "@/components/ui/message-scroller";
 import { Spinner } from "@/components/ui/spinner";
+import { useMessageHistory, type PageQuery } from "@/hooks/use-message-history";
 import { api } from "@/lib/api";
 
 type Exchange = { thread: Thread; other: Thread; messages: Message[] };
@@ -29,25 +31,27 @@ function Party({ thread, bot, size = 22 }: { thread: Thread; bot: Bot | undefine
   );
 }
 
+// Bots write long to each other, so a page is small enough to draw at once.
+const PAGE = 50;
+
 export function ExchangeDialog({ threadId, withThreadId, onClose }: { threadId: string; withThreadId: string; onClose: () => void }) {
   const { botById } = useStore();
-  const [data, setData] = useState<Exchange | null>(null);
-  const [failed, setFailed] = useState(false);
+  const [parties, setParties] = useState<Pick<Exchange, "thread" | "other"> | null>(null);
+  const url = `/api/threads/${threadId}/exchange?with=${encodeURIComponent(withThreadId)}`;
 
-  const load = useCallback(async () => {
-    try {
-      setData(await api<Exchange>(`/api/threads/${threadId}/exchange?with=${encodeURIComponent(withThreadId)}`));
-    } catch {
-      setFailed(true);
-    }
-  }, [threadId, withThreadId]);
-
-  useEffect(() => {
-    void Promise.resolve().then(load);
-  }, [load]);
+  const fetchPage = useCallback(
+    async ({ before, from, limit }: PageQuery) => {
+      const page = await api<Exchange>(`${url}&limit=${limit}${before ? `&before=${encodeURIComponent(before)}` : from ? `&from=${encodeURIComponent(from)}` : ""}`);
+      setParties((current) => (current?.thread.id === page.thread.id && current.other.id === page.other.id ? current : { thread: page.thread, other: page.other }));
+      return page.messages;
+    },
+    [url],
+  );
+  const { messages, earlier, failed, catchUp, loadEarlier } = useMessageHistory(fetchPage, { page: PAGE });
+  const data = parties && earlier !== null ? { ...parties, messages } : null;
 
   useLiveEvents((event) => {
-    if (event.topic === "thread" && (event.threadId === threadId || event.threadId === withThreadId)) void load();
+    if (event.topic === "open" || (event.topic === "thread" && (event.threadId === threadId || event.threadId === withThreadId))) void catchUp();
   });
 
   const mine = data?.thread.botId ? botById(data.thread.botId) : undefined;
@@ -76,14 +80,19 @@ export function ExchangeDialog({ threadId, withThreadId, onClose }: { threadId: 
 
         <MessageScrollerProvider autoScroll>
           <MessageScroller className="h-full min-h-0">
-            <MessageScrollerViewport className="px-6">
+            <MessageScrollerViewport preserveScrollOnPrepend className="px-6">
               <MessageScrollerContent className="gap-3 py-4">
+                {earlier && data?.messages.length ? (
+                  <MessageScrollerItem>
+                    <LoadEarlier onLoad={loadEarlier} />
+                  </MessageScrollerItem>
+                ) : null}
                 {!data && !failed ? (
                   <MessageScrollerItem className="m-auto">
                     <Spinner />
                   </MessageScrollerItem>
                 ) : null}
-                {failed || (data && data.messages.length === 0) ? (
+                {(failed && !data) || (data && data.messages.length === 0) ? (
                   <MessageScrollerItem className="m-auto">
                     <Empty>
                       <EmptyHeader>

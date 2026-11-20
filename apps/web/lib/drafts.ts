@@ -1,59 +1,132 @@
 "use client";
 
-import { useMemo, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 
 // What the person was typing in each conversation, kept on this device so moving between chats loses nothing.
+// Typing changes the copy in memory; storage is written once typing pauses, when the page hides and when
+// the person leaves the conversation, and only then does the chat list hear of it.
 const KEY = "gond:drafts";
-const CHANGED = "gond:drafts";
 const MAX_DRAFT = 20_000;
+const WRITE_MS = 300;
 
-function raw(): string {
-  try {
-    return window.localStorage.getItem(KEY) ?? "{}";
-  } catch {
-    return "{}";
-  }
-}
+type Drafts = Readonly<Record<string, string>>;
+const NONE: Drafts = {};
 
-function parse(text: string): Record<string, string> {
+let drafts: Drafts | null = null;
+// What the chat list last saw.
+let published: Drafts = NONE;
+// Conversations whose draft changed here since storage was last written.
+const changed = new Set<string>();
+const listeners = new Set<() => void>();
+let timer: number | null = null;
+let hooked = false;
+
+function parse(text: string | null): Drafts {
   try {
-    const value = JSON.parse(text) as unknown;
-    return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, string>) : {};
+    const value = JSON.parse(text ?? "{}") as unknown;
+    if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+    return Object.fromEntries(Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
   } catch {
     return {};
   }
 }
 
+/** What storage holds, or null when it can't be read. */
+function stored(): Drafts | null {
+  try {
+    return parse(window.localStorage.getItem(KEY));
+  } catch {
+    return null;
+  }
+}
+
+function load(): Drafts {
+  hook();
+  if (drafts === null) {
+    drafts = stored() ?? {};
+    published = drafts;
+  }
+  return drafts;
+}
+
+/** Ours over theirs: another tab's drafts with what changed here since the last write. */
+function withChanges(base: Drafts): Drafts {
+  const next: Record<string, string> = { ...base };
+  for (const id of changed) {
+    const text = drafts?.[id];
+    if (text) next[id] = text;
+    else delete next[id];
+  }
+  return next;
+}
+
+function publish() {
+  if (drafts === null || published === drafts) return;
+  published = drafts;
+  for (const listener of [...listeners]) listener();
+}
+
+function hook() {
+  if (hooked || typeof window === "undefined") return;
+  hooked = true;
+  window.addEventListener("pagehide", flushDrafts);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") flushDrafts();
+  });
+  window.addEventListener("storage", (event) => {
+    if (event.key !== KEY) return;
+    drafts = withChanges(parse(event.newValue));
+    publish();
+  });
+}
+
+/** Writes what changed to storage now, and tells the chat list. */
+export function flushDrafts() {
+  if (timer !== null) window.clearTimeout(timer);
+  timer = null;
+  if (!changed.size) return;
+  // Storage that can't be read leaves memory as the only copy of the other conversations' drafts.
+  drafts = withChanges(stored() ?? drafts ?? {});
+  try {
+    window.localStorage.setItem(KEY, JSON.stringify(drafts));
+    changed.clear();
+  } catch {
+    // Kept in memory for this page all the same; the changes go out with the next write that saves.
+  }
+  publish();
+}
+
 export function readDraft(threadId: string): string {
-  const draft = parse(raw())[threadId];
-  return typeof draft === "string" ? draft : "";
+  return load()[threadId] ?? "";
 }
 
 export function saveDraft(threadId: string, text: string) {
-  const all = parse(raw());
-  if ((all[threadId] ?? "") === (text.trim() ? text : "")) return;
-  if (text.trim()) all[threadId] = text.slice(0, MAX_DRAFT);
-  else delete all[threadId];
-  try {
-    window.localStorage.setItem(KEY, JSON.stringify(all));
-  } catch {
-    return;
-  }
-  window.dispatchEvent(new Event(CHANGED));
+  const all = load();
+  const next = text.trim() ? text.slice(0, MAX_DRAFT) : "";
+  if ((all[threadId] ?? "") === next) return;
+  const copy: Record<string, string> = { ...all };
+  if (next) copy[threadId] = next;
+  else delete copy[threadId];
+  drafts = copy;
+  changed.add(threadId);
+  if (timer !== null) window.clearTimeout(timer);
+  timer = window.setTimeout(flushDrafts, WRITE_MS);
 }
 
 function subscribe(onChange: () => void) {
-  const onStorage = (event: StorageEvent) => event.key === KEY && onChange();
-  window.addEventListener(CHANGED, onChange);
-  window.addEventListener("storage", onStorage);
+  load();
+  listeners.add(onChange);
   return () => {
-    window.removeEventListener(CHANGED, onChange);
-    window.removeEventListener("storage", onStorage);
+    listeners.delete(onChange);
   };
 }
 
+function snapshot(): Drafts {
+  load();
+  return published;
+}
+
 /** Every saved draft by conversation; none on the server's render, so the list hydrates as it was sent. */
-export function useDrafts(): Record<string, string> {
-  const text = useSyncExternalStore(subscribe, raw, () => "{}");
-  return useMemo(() => parse(text), [text]);
+export function useDrafts(): Readonly<Record<string, string>> {
+  return useSyncExternalStore(subscribe, snapshot, () => NONE);
 }

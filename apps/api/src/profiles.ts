@@ -7,6 +7,7 @@ import { ensureDatabase } from "./db/init.ts";
 import { setUserAccent, userAccent } from "./data/prefs.ts";
 import { insertProfile, profileOf, profilesOf, removeProfileRows, updateProfile, type ProfileRow } from "./data/profiles.ts";
 import { listConnections } from "./data/settings.ts";
+import { UNREAD_LINES } from "./data/threads.ts";
 import { avatarUrl, deleteUserData } from "./data/users.ts";
 import { emit } from "./events.ts";
 import { signOutGrok } from "./grok.ts";
@@ -15,17 +16,15 @@ import { leaveAllSpaces } from "./spaces.ts";
 
 const ICON_ERROR = "Pick one of the icons on offer";
 
+/** A profile's conversations with something new from a bot, for the switcher's badge. */
+export const UNREAD_CONVERSATIONS = `SELECT COUNT(*) AS n FROM gond_threads t WHERE t.user_id = ?
+  AND NOT EXISTS (SELECT 1 FROM gond_bots b WHERE b.thread_id = t.id AND b.hidden = 1)
+  AND EXISTS (SELECT 1 FROM gond_messages m WHERE m.thread_id = t.id AND ${UNREAD_LINES} AND m.from_thread_id IS NULL AND m.created_at > COALESCE(t.last_read_at, ''))`;
+
 /** What waits in a profile: conversations with something new, and cards that need the person. */
 function waiting(userId: string): { unread: number; needsYou: number } {
   const db = ensureDatabase();
-  const unread = db
-    .query(
-      `SELECT COUNT(*) AS n FROM gond_threads t WHERE t.user_id = ?
-         AND NOT EXISTS (SELECT 1 FROM gond_bots b WHERE b.thread_id = t.id AND b.hidden = 1)
-         AND EXISTS (SELECT 1 FROM gond_messages m WHERE m.thread_id = t.id AND m.author != 'you' AND m.kind IN ('message', 'approval', 'signin', 'teach')
-           AND m.spoken = 0 AND m.from_thread_id IS NULL AND m.created_at > COALESCE(t.last_read_at, ''))`,
-    )
-    .get(userId) as { n: number };
+  const unread = db.query(UNREAD_CONVERSATIONS).get(userId) as { n: number };
   const needsYou = db.query("SELECT COUNT(*) AS n FROM gond_approvals a JOIN gond_bots b ON b.id = a.bot_id WHERE b.user_id = ? AND a.status = 'pending'").get(userId) as { n: number };
   return { unread: Number(unread.n), needsYou: Number(needsYou.n) };
 }

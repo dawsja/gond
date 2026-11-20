@@ -6,24 +6,26 @@ type StoredSubscription = PushSubscriptionInput & { userAgent: string; createdAt
 
 type Row = { endpoint: string; p256dh: string; auth: string; user_agent: string; created_at: string; muted_bots: string; other: number };
 
-function readMuted(json: string): string[] {
+/** What a browser or phone is told about, as its row keeps it. */
+export function noticesOf(row: { muted_bots: string; other: number }): DeviceNotices {
+  let muted: unknown;
   try {
-    const list: unknown = JSON.parse(json);
-    return Array.isArray(list) ? list.filter((id): id is string => typeof id === "string") : [];
+    muted = JSON.parse(row.muted_bots);
   } catch {
-    return [];
+    muted = [];
   }
+  return { mutedBots: Array.isArray(muted) ? muted.filter((id): id is string => typeof id === "string") : [], other: row.other !== 0 };
 }
 
 export function listSubscriptions(userId: string): StoredSubscription[] {
   const rows = ensureDatabase().query("SELECT * FROM gond_push_subscriptions WHERE user_id = ? ORDER BY created_at").all(userId) as Row[];
-  return rows.map((r) => ({ endpoint: r.endpoint, keys: { p256dh: r.p256dh, auth: r.auth }, userAgent: r.user_agent, createdAt: r.created_at, notices: { mutedBots: readMuted(r.muted_bots), other: r.other !== 0 } }));
+  return rows.map((r) => ({ endpoint: r.endpoint, keys: { p256dh: r.p256dh, auth: r.auth }, userAgent: r.user_agent, createdAt: r.created_at, notices: noticesOf(r) }));
 }
 
 /** What this subscription of the person's is told about; everything when it isn't theirs or isn't known. */
 export function subscriptionNotices(endpoint: string, userId: string): DeviceNotices | null {
   const row = ensureDatabase().query("SELECT muted_bots, other FROM gond_push_subscriptions WHERE endpoint = ? AND user_id = ?").get(endpoint, userId) as Pick<Row, "muted_bots" | "other"> | null;
-  return row ? { mutedBots: readMuted(row.muted_bots), other: row.other !== 0 } : null;
+  return row ? noticesOf(row) : null;
 }
 
 export function setSubscriptionNotices(endpoint: string, userId: string, notices: DeviceNotices = ALL_NOTICES): boolean {

@@ -1,6 +1,6 @@
 "use client";
 
-import { isRemoteAuthor, REACTIONS, type Bot, type Message, type ReactionEmoji } from "@gond/shared";
+import { isRemoteAuthor, joinNames, REACTIONS, type Bot, type Message, type ReactionEmoji } from "@gond/shared";
 import { ContextMenuGroup, ContextMenuItem } from "@/components/ui/context-menu";
 import { toast } from "@/components/ui/toast";
 import { api } from "@/lib/api";
@@ -42,10 +42,6 @@ export function ReactionPicker({ message, onReact }: { message: Message; onReact
   );
 }
 
-function who(list: string[]): string {
-  return list.length < 2 ? list.join("") : `${list.slice(0, -1).join(", ")} and ${list.at(-1)}`;
-}
-
 /**
  * The reactions on a bubble, pinned to its lower corner on the side away from the avatar: one chip
  * per emoji with how many gave it, the way a chat app shows them, so two bots' 👍 is "👍 2".
@@ -61,7 +57,7 @@ export function ReactionBadges({ message, bots, mine, onReact }: { message: Mess
     <span className={cn("absolute -bottom-3 z-10 flex gap-1 group-data-[lifting]/lift:invisible", mine ? "left-2" : "right-2")}>
       {[...groups].map(([emoji, names]) => {
         const yours = names.includes("You");
-        const label = `${who(names)} reacted ${emoji}`;
+        const label = `${joinNames(names)} reacted ${emoji}`;
         const chip = "inline-flex h-6 min-w-7 animate-pop items-center justify-center gap-1 rounded-full border border-primary-edge bg-card px-1.5 text-[13px] leading-none shadow-subtle motion-reduce:animate-none";
         const content = (
           <>
@@ -70,11 +66,11 @@ export function ReactionBadges({ message, bots, mine, onReact }: { message: Mess
           </>
         );
         return yours ? (
-          <button key={emoji} type="button" aria-label={`${label}. Remove yours`} title={`${who(names)} reacted. Tap to remove yours`} onClick={() => onReact(emoji)} className={cn(chip, "outline-none focus-visible:ring-3 focus-visible:ring-ring/50 pointer-coarse:h-7")}>
+          <button key={emoji} type="button" aria-label={`${label}. Remove yours`} title={`${joinNames(names)} reacted. Tap to remove yours`} onClick={() => onReact(emoji)} className={cn(chip, "outline-none focus-visible:ring-3 focus-visible:ring-ring/50 pointer-coarse:h-7")}>
             {content}
           </button>
         ) : (
-          <span key={emoji} role="img" aria-label={label} title={`${who(names)} reacted`} className={chip}>
+          <span key={emoji} role="img" aria-label={label} title={`${joinNames(names)} reacted`} className={chip}>
             {content}
           </span>
         );

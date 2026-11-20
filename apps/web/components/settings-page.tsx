@@ -34,10 +34,11 @@ import { useSwipeBack } from "@/hooks/use-swipe-back";
 import { useStableCallback } from "@/hooks/use-stable-callback";
 import { useCovered } from "@/components/conversation-chrome";
 import { useNativeChrome, useNativeUi } from "@/lib/native-ui";
-import { useStore } from "@/components/store";
+import { useSingleFlight, useStore } from "@/components/store";
 import { Button } from "@/components/ui/button";
 import { PersonAvatar } from "@/components/bot-avatar";
 import { useSignOut } from "@/components/profile-menu";
+import { failed } from "@/components/failed";
 import { LoadFailed } from "@/components/load-failed";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
@@ -66,24 +67,40 @@ export function SettingsPage({ user, section, index = false }: { user: SessionUs
     activeLink.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [current.id]);
 
+  // Only AI and Shared computer show these, so no other section fetches them.
+  const showsAi = current.id === "ai";
+  const showsStatus = current.id === "ai" || current.id === "shared-computer";
+  const connected = params.get("connected");
   const [aiFailed, setAiFailed] = useState(false);
-  const load = useCallback(async (fresh = false) => {
-    const [a, st] = await Promise.all([
-      api<{ ai: AiSettings }>("/api/ai").catch(() => null),
-      api<{ status: BoxStatus }>(`/api/status${fresh ? "?fresh=1" : ""}`).catch(() => null),
-    ]);
-    setAiFailed(!a);
-    if (a) setAi(a.ai);
-    if (st) setStatus(st.status);
-    return Boolean(a && st);
-  }, []);
+  const loadAi = useSingleFlight(async () => {
+    try {
+      const data = await api<{ ai: AiSettings }>("/api/ai");
+      setAi(data.ai);
+      setAiFailed(false);
+    } catch (error) {
+      setAiFailed(true);
+      throw error;
+    }
+  });
+  // A check the person asked for (or the return from connecting an app) reads past the server's cache.
+  const freshStatus = useRef(false);
+  const loadStatus = useSingleFlight(async () => {
+    const fresh = freshStatus.current;
+    freshStatus.current = false;
+    const data = await api<{ status: BoxStatus }>(`/api/status${fresh ? "?fresh=1" : ""}`);
+    setStatus(data.status);
+  });
+  const checkStatus = useCallback(() => {
+    freshStatus.current = true;
+    return loadStatus();
+  }, [loadStatus]);
 
   const refreshAi = useCallback(async () => {
-    if (!(await load(true))) throw new Error("Couldn't check the computer. Try again.");
-  }, [load]);
+    const [a, st] = await Promise.allSettled([loadAi(), checkStatus()]);
+    if (a.status === "rejected" || st.status === "rejected") throw new Error("Couldn't check the computer. Try again.");
+  }, [loadAi, checkStatus]);
 
   useEffect(() => {
-    const connected = params.get("connected");
     const mcp = params.get("mcp");
     const mcpError = params.get("mcp_error");
     const chatgptError = params.get("chatgpt_error");
@@ -91,13 +108,21 @@ export function SettingsPage({ user, section, index = false }: { user: SessionUs
       if (mcp) toast.add({ type: "success", title: `Signed in to ${mcp}.`, description: "Its tools work for every bot from their next reply." });
       if (mcpError) toast.add({ type: "error", title: "The sign-in to that tool server didn't finish.", description: "Try signing in again from its row under MCP servers." });
       if (chatgptError) toast.add({ type: "error", title: "The ChatGPT sign-in didn't finish.", description: "Try Continue with ChatGPT again." });
-      return load(Boolean(connected));
     });
-  }, [load, params]);
+  }, [params]);
+  useEffect(() => {
+    if (showsAi) void Promise.resolve().then(loadAi).catch(() => undefined);
+  }, [showsAi, loadAi]);
+  useEffect(() => {
+    if (!showsStatus) return;
+    void Promise.resolve()
+      .then(() => (connected ? checkStatus() : loadStatus()))
+      .catch(() => undefined);
+  }, [showsStatus, connected, loadStatus, checkStatus]);
   useLiveEvents((event) => {
-    if (event.topic === "settings" || event.topic === "ai") void load();
-
-    if (event.topic === "box") void load();
+    if (event.topic !== "settings" && event.topic !== "ai" && event.topic !== "box") return;
+    if (showsAi) void loadAi().catch(() => undefined);
+    if (showsStatus) void loadStatus().catch(() => undefined);
   });
 
   const list = (
@@ -189,11 +214,11 @@ export function SettingsPage({ user, section, index = false }: { user: SessionUs
       body = <PersonalizationCard />;
       break;
     case "shared-computer":
-      body = <ComputerCard status={status} admin={admin} onCheck={async () => void (await load(true))} />;
+      body = <ComputerCard status={status} admin={admin} onCheck={() => checkStatus().catch(failed("Couldn't check the computer. Try again."))} />;
       break;
     case "ai":
       body = (
-        ai ? <AiSteps ai={ai} status={status} onChange={setAi} onRefresh={refreshAi} /> : aiFailed ? <LoadFailed what="your AI settings" onRetry={() => void load()} /> : <Skeleton className="h-96 rounded-xl" />
+        ai ? <AiSteps ai={ai} status={status} onChange={setAi} onRefresh={refreshAi} /> : aiFailed ? <LoadFailed what="your AI settings" onRetry={() => void loadAi().catch(() => undefined)} /> : <Skeleton className="h-96 rounded-xl" />
       );
       break;
     case "usage":

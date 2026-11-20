@@ -2,6 +2,8 @@ import type { Approval, ApprovalOutcome, ApprovalStatus } from "@gond/shared";
 import { ensureDatabase } from "../db/init.ts";
 import { approvalsChanged } from "../events.ts";
 import { newId, now } from "../ids.ts";
+import { botOwner } from "./bots.ts";
+import { threadOwner } from "./threads.ts";
 
 type Row = {
   id: string;
@@ -64,6 +66,11 @@ function toApproval(row: Row): Approval {
   };
 }
 
+/** Tells the profiles whose cards these are; one emit each, however many cards. */
+function changedFor(rows: Pick<Row, "thread_id">[]) {
+  for (const threadId of new Set(rows.map((row) => row.thread_id))) approvalsChanged(threadOwner(threadId));
+}
+
 /**
  * What the turn that posted a card was answering and had done by then. Kept with a card that may be
  * answered late, so the turn that starts again on a late answer is told, even after a restart.
@@ -76,7 +83,7 @@ export function createApproval(input: { botId: string; threadId: string; tool: s
   ensureDatabase()
     .query("INSERT INTO gond_approvals (id, bot_id, thread_id, tool, summary, input, status, created_at, revises, note) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)")
     .run(id, input.botId, input.threadId, input.tool, input.summary, JSON.stringify(input.input), now(), input.revises ? JSON.stringify(input.revises) : null, input.work ? JSON.stringify(input.work) : null);
-  approvalsChanged();
+  approvalsChanged(threadOwner(input.threadId));
   return getApproval(id)!;
 }
 
@@ -89,9 +96,9 @@ export function cardWork(id: string): CardWork | null {
 
 /** A waiting card that keeps its work closes paused instead of expired: it can still be answered. */
 export function pauseApproval(id: string): boolean {
-  const changed = ensureDatabase().query("UPDATE gond_approvals SET status = 'expired', outcome = 'paused', resolved_at = ? WHERE id = ? AND status = 'pending' AND note IS NOT NULL").run(now(), id).changes;
-  if (changed) approvalsChanged();
-  return changed > 0;
+  const rows = ensureDatabase().query("UPDATE gond_approvals SET status = 'expired', outcome = 'paused', resolved_at = ? WHERE id = ? AND status = 'pending' AND note IS NOT NULL RETURNING thread_id").all(now(), id) as Pick<Row, "thread_id">[];
+  changedFor(rows);
+  return rows.length > 0;
 }
 
 /** The cards in a conversation that can still be answered late, newest first. */
@@ -110,7 +117,7 @@ export function unpauseApprovals(where: { id?: string; threadId?: string; botId?
     params.push(value);
   }
   const rows = ensureDatabase().query(`UPDATE gond_approvals SET outcome = NULL, note = NULL WHERE ${clauses.join(" AND ")} RETURNING *`).all(...params) as Row[];
-  if (rows.length) approvalsChanged();
+  changedFor(rows);
   return rows.map(toApproval);
 }
 
@@ -122,23 +129,37 @@ export function lapsePausedApprovals(at = Date.now()): Approval[] {
   const rows = ensureDatabase()
     .query("UPDATE gond_approvals SET outcome = NULL, note = NULL WHERE status = 'expired' AND created_at > ? AND created_at <= ? AND outcome = 'paused' RETURNING *")
     .all(answerableSince(at - 24 * 3_600_000), answerableSince(at)) as Row[];
-  if (rows.length) approvalsChanged();
+  changedFor(rows);
   return rows.map(toApproval);
 }
 
 /** A paused card answered late; null when it was already answered or stopped being answerable. */
 export function resolvePaused(id: string, status: "allowed" | "denied", rule: string | null, answer: { outcome?: ApprovalOutcome | null; note?: string | null; input?: Record<string, unknown> } = {}): Approval | null {
-  const changed = ensureDatabase()
-    .query("UPDATE gond_approvals SET status = ?, rule = ?, resolved_at = ?, outcome = ?, note = ?, edited = ?, input = COALESCE(?, input) WHERE id = ? AND status = 'expired' AND outcome = 'paused' AND created_at > ?")
-    .run(status, rule, now(), answer.outcome ?? null, answer.note ?? null, answer.input ? 1 : 0, answer.input ? JSON.stringify(answer.input) : null, id, answerableSince()).changes;
-  if (!changed) return null;
-  approvalsChanged();
-  return getApproval(id);
+  const row = ensureDatabase()
+    .query("UPDATE gond_approvals SET status = ?, rule = ?, resolved_at = ?, outcome = ?, note = ?, edited = ?, input = COALESCE(?, input) WHERE id = ? AND status = 'expired' AND outcome = 'paused' AND created_at > ? RETURNING *")
+    .get(status, rule, now(), answer.outcome ?? null, answer.note ?? null, answer.input ? 1 : 0, answer.input ? JSON.stringify(answer.input) : null, id, answerableSince()) as Row | null;
+  if (!row) return null;
+  changedFor([row]);
+  return toApproval(row);
 }
 
 export function getApproval(id: string): Approval | null {
   const row = ensureDatabase().query("SELECT * FROM gond_approvals WHERE id = ?").get(id) as Row | null;
   return row ? toApproval(row) : null;
+}
+
+/** These cards in one statement, in the order asked; with `userId`, only those in that profile's conversations. */
+export function getApprovals(ids: string[], userId?: string): Approval[] {
+  if (!ids.length) return [];
+  const owned = userId === undefined ? "" : "AND thread_id IN (SELECT id FROM gond_threads WHERE user_id = ?)";
+  const rows = ensureDatabase()
+    .query(`SELECT * FROM gond_approvals WHERE id IN (SELECT value FROM json_each(?)) ${owned}`)
+    .all(...(userId === undefined ? [JSON.stringify(ids)] : [JSON.stringify(ids), userId])) as Row[];
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  return ids.flatMap((id) => {
+    const row = byId.get(id);
+    return row ? [toApproval(row)] : [];
+  });
 }
 
 export function listApprovals(options: { status?: ApprovalStatus; threadId?: string; limit?: number } = {}): Approval[] {
@@ -160,12 +181,12 @@ export function listApprovals(options: { status?: ApprovalStatus; threadId?: str
 }
 
 export function resolveApproval(id: string, status: Exclude<ApprovalStatus, "pending">, rule: string | null = null, answer: { outcome?: ApprovalOutcome | null; note?: string | null; input?: Record<string, unknown> } = {}): Approval | null {
-  const db = ensureDatabase();
-  const changed = db
-    .query("UPDATE gond_approvals SET status = ?, rule = ?, resolved_at = ?, outcome = ?, note = ?, edited = ?, input = COALESCE(?, input) WHERE id = ? AND status = 'pending'")
-    .run(status, rule, now(), answer.outcome ?? null, answer.note ?? null, answer.input ? 1 : 0, answer.input ? JSON.stringify(answer.input) : null, id).changes;
-  if (changed) approvalsChanged();
-  return getApproval(id);
+  const row = ensureDatabase()
+    .query("UPDATE gond_approvals SET status = ?, rule = ?, resolved_at = ?, outcome = ?, note = ?, edited = ?, input = COALESCE(?, input) WHERE id = ? AND status = 'pending' RETURNING *")
+    .get(status, rule, now(), answer.outcome ?? null, answer.note ?? null, answer.input ? 1 : 0, answer.input ? JSON.stringify(answer.input) : null, id) as Row | null;
+  if (!row) return getApproval(id);
+  changedFor([row]);
+  return toApproval(row);
 }
 
 export function listRules(botId: string): string[] {
@@ -175,7 +196,7 @@ export function listRules(botId: string): string[] {
 
 export function addRule(botId: string, rule: string) {
   ensureDatabase().query("INSERT OR IGNORE INTO gond_approval_rules (id, bot_id, rule, created_at) VALUES (?, ?, ?, ?)").run(newId("rule"), botId, rule, now());
-  approvalsChanged();
+  approvalsChanged(botOwner(botId));
 }
 
 /** Forgets a saved rule, and the cards that saved it stop saying "From now on", since it no longer holds. */
@@ -183,5 +204,5 @@ export function removeRule(botId: string, rule: string) {
   const db = ensureDatabase();
   db.query("DELETE FROM gond_approval_rules WHERE bot_id = ? AND rule = ?").run(botId, rule);
   db.query("UPDATE gond_approvals SET rule = NULL WHERE bot_id = ? AND rule = ?").run(botId, rule);
-  approvalsChanged();
+  approvalsChanged(botOwner(botId));
 }

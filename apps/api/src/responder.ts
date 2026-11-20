@@ -1,4 +1,4 @@
-import { AI_SETUP_CARD, withoutPaths, ENGINE_LABELS, QUIET_REPLY, addressedIn, handleOf, isClosing, isStopRequest, mentionsIn, plainMarkdown, replyLine, roomTargets, withoutQuietReply, type Bot, type ChatAttachment, type DesktopDriver, type Message, type Thread, type ToolLabelContext } from "@gond/shared";
+import { AI_SETUP_CARD, joinNames, withoutPaths, ENGINE_LABELS, QUIET_REPLY, addressedIn, handleOf, isClosing, isStopRequest, mentionsIn, plainMarkdown, replyLine, roomTargets, withoutQuietReply, type Bot, type ChatAttachment, type DesktopDriver, type Message, type Thread, type ToolLabelContext } from "@gond/shared";
 import { createHash } from "node:crypto";
 import { BoxError, boxConfig, boxHome, closeAgent, ensureBotHome, health, interruptAgent, steerAgent, writeBoxFile, type BoxConfig } from "./box.ts";
 import { isUpdating } from "./updater.ts";
@@ -246,10 +246,6 @@ function plural(count: number, one: string, many = `${one}s`) {
   return `${count === 1 ? "one" : count} ${count === 1 ? one : many}`;
 }
 
-function names(list: string[]) {
-  return list.length <= 1 ? list.join("") : `${list.slice(0, -1).join(", ")} and ${list.at(-1)}`;
-}
-
 /** The bot's own account of a stop, written from the report so it is exact. */
 export function stoppedReply(report: StopReport): string {
   const lines: string[] = [];
@@ -258,7 +254,7 @@ export function stoppedReply(report: StopReport): string {
     const what = task ? `working on "${task.length > 80 ? `${task.slice(0, 79).trimEnd()}…` : task}"` : "what I was doing";
     lines.push(`I stopped ${what}${report.screen ? ", and what I was doing in the browser" : ""}.`);
   }
-  if (report.teammates.length) lines.push(`I called off what I handed to ${names(report.teammates)}.`);
+  if (report.teammates.length) lines.push(`I called off what I handed to ${joinNames(report.teammates)}.`);
   if (report.sent) lines.push(`I closed ${plural(report.sent, "message")} to teammates that ${report.sent === 1 ? "was" : "were"} still waiting.`);
   if (report.followUps) lines.push(`I cancelled ${plural(report.followUps, "follow-up")} I had planned.`);
   if (report.dropped) lines.push(`I dropped ${plural(report.dropped, "waiting message")}.`);

@@ -171,6 +171,8 @@ describe("shopping purchase lifecycle", () => {
   });
   test("Stop calls off a checkout not yet sent, and a purchase card nobody answers expires with Gond's line", () => {
     const waiting = review();
+    expireDueCheckouts();
+    expect(checkoutRecord(waiting.checkout.id, "shopping-owner").state).toBe("review");
     expireDueCheckouts(new Date(Date.now() + 2 * 3600_000).toISOString());
     expect(checkoutRecord(waiting.checkout.id, "shopping-owner").state).toBe("expired");
     expect(listMessages(waiting.bot.threadId).at(-1)).toMatchObject({ author: waiting.bot.id, body: CARD_EXPIRED_LINE });

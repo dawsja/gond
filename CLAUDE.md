@@ -26,7 +26,12 @@ functions to start from; the code holds the details.
   optional. Calls without arguments reach the API as an empty object; preserve
   schema-loading guidance in every bot's prompt.
 - `packages/shared`: types, zod schemas, constants, templates, the app
-  catalog. If web and api both need it, it goes here.
+  catalog. If web and api both need it, it goes here. One module per
+  topic, all re-exported from `index.ts`. Every zod schema lives in
+  `schemas.ts` or `shopping-schemas.ts` and the package is
+  `sideEffects: false`, so the browser never loads zod. A module the web
+  imports takes a schema only as a type (`import type`), never at runtime.
+  Names are joined with `joinNames`.
 - `packages/relay` (`gond-relay`): carries sealed envelopes between Gond
   servers for Spaces, so neither needs to be reachable from the internet.
   A server is its Ed25519 key, which names its mailbox; it holds one
@@ -324,6 +329,8 @@ The address rules are mirrored in each app with the same tests.
   the bot's one colour (`shadesOf`), so `BOT_COLORS` and what's stored stay
   a single hex. Below 40 px the glow, sheen and catch-lights go (`fine`).
   The cog keeps a still hub and only its teeth turn; only the cog spins.
+  Its keyframes live once in `globals.css`, never a `<style>` per face,
+  and blink and glance run only while a face is on screen in a shown tab.
   `shape` (`BOT_SHAPES`) picks a body under the same eyes and animations;
   a new shape is a path in `BODIES`, a `LAYOUT` entry and a name in
   `BOT_SHAPES`. `mood` is set by Gond, never stored or picked: `thinking`
@@ -396,7 +403,20 @@ The address rules are mirrored in each app with the same tests.
   callbacks (`useStableCallback`), so typing or streaming doesn't redraw
   the conversation; a GET several cards make at once goes through
   `apiShared`. Background polls skip a hidden page (`pollWhileShown` in
-  `lib/poll.ts`).
+  `lib/poll.ts`). The store keeps every unchanged item the same object
+  (`keep` in `lib/keep.ts`), so a reload redraws only what changed. It
+  merges a burst of events into one reload. `open` fires only on a
+  reconnect (`live-events.ts`), so anything that listens for it also loads
+  on mount.
+- **A conversation loads a page at a time** (`useMessageHistory` in
+  `hooks/use-message-history.ts`, also the exchange dialog): 60 first,
+  catch-up `from` the newest line shown (its millisecond included, lines
+  told apart by id), "Load earlier" and jumps before it, and one
+  `GET /api/approvals?ids=` per page for its cards. A card whose approval
+  isn't known yet is folded and can't be answered. The composer
+  (`conversation-composer.tsx`) and the live tail (`conversation-live.tsx`)
+  sit outside the memoized history, so typing and streaming never touch
+  it. Sizes read through `formatBytes` (`lib/bytes.ts`).
 - **A bot's message is GitHub Markdown** (`lib/markdown.ts`, mdast with
   GFM and directives; `components/markdown.tsx` walks the tree into
   React), so nothing a bot writes is ever injected as markup. Raw HTML
@@ -529,7 +549,9 @@ One line each: where to start, and what must not change.
   Send empties the field as it's tapped; a failed send puts its text back
   ahead of anything typed since (`unsentBack`).
 - **Drafts and history** (`lib/drafts.ts`, `lib/sent-history.ts`): a
-  draft is per conversation in `localStorage`, shown as "Draft: …". Up in
+  draft is per conversation in `localStorage`, shown as "Draft: …", kept
+  in memory while typed and written after a pause, on `pagehide`, on hide
+  and on leaving the conversation. Up in
   an empty composer recalls sent lines (`historyStep`), only on the first
   or last line with nothing selected, and never while the @ and / list is
   open.
@@ -703,7 +725,9 @@ One line each: where to start, and what must not change.
   through `src/events.ts` (`botsChanged`, `threadChanged`,
   `settingsChanged`, or `emit({ topic })`). `botsChanged` takes the owner
   when known (`threadChanged` always does), so one person's bot doesn't
-  make everyone reload.
+  make everyone reload. `approvalsChanged` and `settingsChanged` take the
+  owning profile; only `serverSettingsChanged` (OIDC, onboarding, usage
+  sharing) reaches everyone.
 - **Migrations are append-only**: add a SQL string to `MIGRATIONS` in
   `src/db/migrations.ts`; never edit an earlier one. A new enum value in a
   `CHECK` means rebuilding that table in a new migration (see the
@@ -719,7 +743,12 @@ One line each: where to start, and what must not change.
 - **Hot queries have an index.** The dispatcher's claim, `noticedIn`,
   `botLinesSincePerson` and a conversation's sent lines each read one
   (`gond_messages_open`, `_author`, `_from`), and a logic test reads their
-  query plans. A page of messages loads reactions and quotes in one query
+  query plans. A conversation's page is `messagePage`, which merges two
+  index-ordered, limited halves: its own lines and the ones it sent. An OR
+  there would sort the whole history. Unread counts and the profile badges read
+  `gond_messages_unread` through the one `UNREAD_LINES` fragment, since a
+  partial index only serves a query whose terms match its own exactly.
+  A page of messages loads reactions and quotes in one query
   each (`toMessages`); what needs only conversation ids reads
   `threadRefs`, not `listThreads`; a route that only checks ownership uses
   `ownsThread`, not `ownThread`.
@@ -847,7 +876,8 @@ One line each: where to start, and what must not change.
   answer goes to the person, never while it could still be `NOTHING_NEW`
   (`couldBeQuiet`), null when a tool call starts or the turn ends. A
   handoff (`message_bot`, `delegate_bot`; `isHandoff` in the box's
-  `agents.mjs` and in `native.ts`) ends nothing: what the bot wrote before
+  `agents.mjs` and in `native.ts`, which `test/handoff.test.ts` keeps in
+  agreement) ends nothing: what the bot wrote before
   it stays on screen and in the reply, since it was meant for the person;
   before any other tool it was narration and is dropped (`ReplyText`). Claude
   Code streams with `--include-partial-messages` (the box's `streamText`);
@@ -1484,6 +1514,11 @@ a restart resumes (`resumeTeachings`), pictures expire a week after
   (memories, `SOUL.md`, the team's, CLI sign-ins, browser profiles).
   Everything else is made again as used. `DELETE /accounts/:id` removes a
   person entirely.
+- **One process serves everyone, so nothing in it blocks.** CLI probes
+  (`claudeVersion`, `authStatus`) run through `queryClaude` with a
+  deadline, one lookup in flight; shared files stream from their checked
+  descriptor; a skill folder's writes run one change at a time; `/stats`
+  reads `/proc` asynchronously.
 - **Sessions** (`agents.mjs`): `AgentSession.spawn` resolves as soon as
   Claude Code runs and the prompt goes to stdin at once. A CLI too old
   for an optional flag (`OPTIONAL_FLAGS`, `FLAG_FLOORS`) exits before

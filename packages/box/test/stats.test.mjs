@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { cgroupMemory, createHomeSizes, parseDu, parseProcStatus, rssByUid } from "../stats.mjs";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { cgroupMemory, createHomeSizes, memoryByUid, parseDu, parseProcStatus, rssByUid } from "../stats.mjs";
 
 const status = (uid, rss) => `Name:\tnode\nState:\tS (sleeping)\nUid:\t${uid}\t${uid}\t${uid}\t${uid}\nGid:\t${uid}\t${uid}\t${uid}\t${uid}\n${rss === null ? "" : `VmRSS:\t   ${rss} kB\n`}Threads:\t1\n`;
 
@@ -16,6 +19,21 @@ test("resident memory adds up per uid", () => {
   assert.equal(sums.get(2001), 150 * 1024);
   assert.equal(sums.get(2002), 10 * 1024);
   assert.equal(sums.size, 2);
+});
+
+test("memory per uid is read from every process's status, skipping what isn't one or has gone", async (t) => {
+  const proc = fs.mkdtempSync(path.join(os.tmpdir(), "gond-proc-"));
+  t.after(() => fs.rmSync(proc, { recursive: true, force: true }));
+  for (let pid = 1; pid <= 40; pid += 1) {
+    fs.mkdirSync(path.join(proc, String(pid)));
+    fs.writeFileSync(path.join(proc, String(pid), "status"), status(pid % 2 ? 2001 : 2002, 10));
+  }
+  fs.mkdirSync(path.join(proc, "41"));
+  fs.mkdirSync(path.join(proc, "self"));
+  fs.writeFileSync(path.join(proc, "self", "status"), status(2003, 999));
+  const sums = await memoryByUid(proc);
+  assert.deepEqual([...sums].sort(), [[2001, 200 * 1024], [2002, 200 * 1024]]);
+  assert.equal((await memoryByUid(path.join(proc, "missing"))).size, 0);
 });
 
 test("cgroup memory reads the limit, or the machine's total when there is none", () => {
@@ -63,7 +81,7 @@ test("a home's size is measured in the background and kept until it's old", asyn
 
 test("the box's stats have the shape the API reads", async () => {
   const { stats } = await import("../server.mjs");
-  const out = stats();
+  const out = await stats();
   assert.deepEqual(Object.keys(out).sort(), ["cpus", "disk", "diskAt", "load", "memory", "people"]);
   assert.ok(out.disk.total > 0 && out.disk.free >= 0);
   assert.ok(out.memory.total > 0 && out.memory.used > 0);

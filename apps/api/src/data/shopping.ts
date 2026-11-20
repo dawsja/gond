@@ -61,16 +61,19 @@ export function shoppingRecord(id: string, userId: string): ShoppingRecord {
   return value;
 }
 
+/** A checkout's deadline, kept readable beside the sealed payload so the tick can find what is due. */
+const expiresOf = (record: ShoppingRecord) => (record.kind === "checkout" ? record.expiresAt : null);
+
 function insert(userId: string, record: ShoppingRecord, state: string, parent: string | null = null, actionKey: string | null = null) {
   ensureDatabase()
-    .query("INSERT INTO gond_commerce(id,user_id,thread_id,bot_id,kind,state,payload,parent_id,action_key,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)")
-    .run(record.id, userId, record.threadId, record.botId, record.kind, state, encryptSecret(JSON.stringify(record)), parent, actionKey, now(), now());
+    .query("INSERT INTO gond_commerce(id,user_id,thread_id,bot_id,kind,state,payload,parent_id,action_key,expires_at,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)")
+    .run(record.id, userId, record.threadId, record.botId, record.kind, state, encryptSecret(JSON.stringify(record)), parent, actionKey, expiresOf(record), now(), now());
 }
 
 function save(row: Row, value: ShoppingRecord, state = row.state) {
   ensureDatabase()
-    .query("UPDATE gond_commerce SET payload = ?, state = ?, revision = revision + 1, updated_at = ? WHERE id = ?")
-    .run(encryptSecret(JSON.stringify(value.kind === "checkout" ? { ...value, address: null } : value.kind === "order" ? { ...value, checkout: { ...value.checkout, address: null } } : value)), state, now(), row.id);
+    .query("UPDATE gond_commerce SET payload = ?, state = ?, expires_at = ?, revision = revision + 1, updated_at = ? WHERE id = ?")
+    .run(encryptSecret(JSON.stringify(value.kind === "checkout" ? { ...value, address: null } : value.kind === "order" ? { ...value, checkout: { ...value.checkout, address: null } } : value)), state, expiresOf(value), now(), row.id);
   threadChanged(row.thread_id);
 }
 
@@ -149,13 +152,12 @@ function expireCheckout(id: string, userId: string) {
   postMessage({ threadId: checkout.threadId, author: checkout.botId, body: CARD_EXPIRED_LINE, answered: true });
 }
 
-/** Every purchase card past its time, from the dispatcher's tick. */
+export const DUE_CHECKOUTS = "SELECT id, user_id FROM gond_commerce WHERE kind = 'checkout' AND state IN ('review', 'approved') AND expires_at <= ?";
+
+/** Every purchase card past its time, from the dispatcher's tick: only those due are opened. */
 export function expireDueCheckouts(at = now()) {
-  const rows = ensureDatabase().query("SELECT id, user_id FROM gond_commerce WHERE kind = 'checkout' AND state IN ('review','approved')").all() as { id: string; user_id: string }[];
-  for (const row of rows) {
-    const checkout = checkoutRecord(row.id, row.user_id);
-    if (checkout.expiresAt && checkout.expiresAt <= at) expireCheckout(row.id, row.user_id);
-  }
+  const rows = ensureDatabase().query(DUE_CHECKOUTS).all(at) as { id: string; user_id: string }[];
+  for (const row of rows) expireCheckout(row.id, row.user_id);
 }
 
 /** Stop calls off a conversation's checkouts that haven't been sent to the store; a submitted one can't be taken back. */

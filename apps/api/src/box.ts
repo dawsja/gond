@@ -1,5 +1,5 @@
 import type { BotFileEntry, DesktopControl, Engine, EngineSignIn, ModelChoice, ScreenStepType, ScreenTarget, TeachStep } from "@gond/shared";
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { env } from "./config.ts";
 import { getUser, isAdmin } from "./data/users.ts";
@@ -21,17 +21,31 @@ function boxUrl(): string | null {
   return url || null;
 }
 
-function boxToken(): string {
+let tokenFile: { file: string; mtimeMs: number; token: string } | null = null;
+
+/** The box's token, read from its state volume again only when the file changed or the box refused it (`fresh`). */
+function boxToken(fresh = false): string {
   const fromEnv = (env("BOX_TOKEN") ?? "").trim();
   if (fromEnv) return fromEnv;
   const file = path.join(env("BOX_STATE_DIR") || "/box-state", "token");
   try {
+    const mtimeMs = statSync(file).mtimeMs;
+    if (!fresh && tokenFile?.file === file && tokenFile.mtimeMs === mtimeMs) return tokenFile.token;
     const token = readFileSync(file, "utf8").trim();
+    tokenFile = token ? { file, mtimeMs, token } : null;
     if (token) return token;
   } catch {
-    /* fall through */
+    tokenFile = null;
   }
   throw new Error(`No box token: set GOND_BOX_TOKEN on the API and the box, or mount the box's state volume at ${path.dirname(file)}.`);
+}
+
+function freshBoxToken(): string | null {
+  try {
+    return boxToken(true);
+  } catch {
+    return null;
+  }
 }
 
 export function boxConfig(userId: string | null = null): BoxConfig | null {
@@ -65,6 +79,14 @@ async function request(config: BoxConfig, route: string, init: { method: string;
   } catch (error) {
     const detail = error instanceof Error ? error.message : "unknown error";
     throw new BoxError(`The box at ${config.url} isn't reachable (${detail}). Is the box service running?`, 0);
+  }
+  if (res.status === 401) {
+    // The box made a new token (its state volume was reset): only a token that changed is worth a retry.
+    const token = freshBoxToken();
+    if (token && token !== config.token) {
+      await res.body?.cancel().catch(() => undefined);
+      return request({ ...config, token }, route, init, retried);
+    }
   }
   if (res.status === 404 && config.user && !retried) {
     const peek = (await res.clone().json().catch(() => ({}))) as { code?: string };

@@ -43,6 +43,17 @@ const optionName = (product: ShoppingProduct, id: string) => Object.values(produ
 const stockLabel = (stock: string) => (stock === "in_stock" ? "In stock" : stock === "out_of_stock" ? "Out of stock" : "Check availability");
 const inStockFirst = <T,>(items: T[], inStock: (item: T) => boolean) => [...items].sort((a, b) => Number(inStock(b)) - Number(inStock(a)));
 
+/**
+ * A record that can't change any more: products never do, a checkout that ended stays as it is (its
+ * order is a card of its own), and so does an order whose tracking is complete until the person asks
+ * this card to check again.
+ */
+export function settled(record: ShoppingRecord): boolean {
+  if (record.kind === "products") return true;
+  if (record.kind === "checkout") return CHECKOUT_DONE[record.state] !== undefined;
+  return record.tracking === "complete";
+}
+
 export function ShoppingCard({ message, bot }: { message: Message; bot?: Bot }) {
   const [record, setRecord] = useState<ShoppingRecord | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -60,7 +71,7 @@ export function ShoppingCard({ message, bot }: { message: Message; bot?: Bot }) 
   }, [load]);
   // Every change to a checkout or order says so on its conversation; no card polls on its own.
   useLiveEvents((event) => {
-    if (event.topic === "thread" && event.threadId === message.threadId) void load();
+    if (event.topic === "thread" && event.threadId === message.threadId && !(record && settled(record))) void load();
   });
   if (!record) return error ? <LoadFailed what="this shopping card" onRetry={() => void load()} /> : <Skeleton className="h-64 w-72 rounded-3xl" />;
   return (

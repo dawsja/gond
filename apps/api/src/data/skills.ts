@@ -7,12 +7,14 @@ import { checkBundleFiles, isText, type BundleFile } from "../skill-bundle.ts";
 type Row = { id: string; user_id: string | null; slug: string; name: string; description: string; instructions: string; source: Skill["source"]; meta: string; created_at: string; updated_at: string };
 type FileRow = { path: string; size: number; executable: number; text: number };
 
+const toFile = (row: FileRow): SkillFile => ({ path: row.path, size: row.size, executable: Boolean(row.executable), text: Boolean(row.text) });
+
 function filesOf(skillId: string): SkillFile[] {
   const rows = ensureDatabase().query("SELECT path, length(data) AS size, executable, text FROM gond_skill_files WHERE skill_id = ? ORDER BY path").all(skillId) as FileRow[];
-  return rows.map((row) => ({ path: row.path, size: row.size, executable: Boolean(row.executable), text: Boolean(row.text) }));
+  return rows.map(toFile);
 }
 
-function toSkill(row: Row): Skill & { userId: string | null; meta: string } {
+function toSkill(row: Row, files = filesOf(row.id)): Skill & { userId: string | null; meta: string } {
   return {
     id: row.id,
     userId: row.user_id,
@@ -22,7 +24,7 @@ function toSkill(row: Row): Skill & { userId: string | null; meta: string } {
     instructions: row.instructions,
     source: row.source,
     meta: row.meta,
-    files: filesOf(row.id),
+    files,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -31,8 +33,18 @@ function toSkill(row: Row): Skill & { userId: string | null; meta: string } {
 export type StoredSkill = ReturnType<typeof toSkill>;
 
 export function listSkills(userId: string): StoredSkill[] {
-  const rows = ensureDatabase().query("SELECT * FROM gond_skills WHERE user_id = ? ORDER BY name COLLATE NOCASE").all(userId) as Row[];
-  return rows.map(toSkill);
+  const db = ensureDatabase();
+  const rows = db.query("SELECT * FROM gond_skills WHERE user_id = ? ORDER BY name COLLATE NOCASE").all(userId) as Row[];
+  const files = new Map<string, SkillFile[]>();
+  const fileRows = db
+    .query("SELECT f.skill_id, f.path, length(f.data) AS size, f.executable, f.text FROM gond_skill_files f JOIN gond_skills s ON s.id = f.skill_id WHERE s.user_id = ? ORDER BY f.skill_id, f.path")
+    .all(userId) as (FileRow & { skill_id: string })[];
+  for (const row of fileRows) {
+    const list = files.get(row.skill_id);
+    if (list) list.push(toFile(row));
+    else files.set(row.skill_id, [toFile(row)]);
+  }
+  return rows.map((row) => toSkill(row, files.get(row.id) ?? []));
 }
 
 export function skillOwners(): string[] {

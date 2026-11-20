@@ -3,7 +3,8 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import type { LiveEvent } from "@gond/shared";
 
-type LiveMessage = LiveEvent | { topic: "open" };
+// `first`: the page's first connection, which only has to cover what changed between its first loads and the stream.
+type LiveMessage = LiveEvent | { topic: "open"; first?: true };
 
 type Listener = (message: LiveMessage) => void;
 
@@ -18,6 +19,9 @@ let hiddenAt = 0;
 
 let refusals = 0;
 let watching = false;
+// Whether the stream has opened or failed since the first listener came. Until then every listener is
+// loading what it shows on mount, so the first open has nothing for them to catch up on.
+let started = false;
 
 const SILENT_MS = 60_000;
 
@@ -71,7 +75,8 @@ function connect() {
     lastSeen = Date.now();
     refusals = 0;
     setConnected(true);
-    dispatch({ topic: "open" });
+    dispatch(started ? { topic: "open" } : { topic: "open", first: true });
+    started = true;
   };
   stream.addEventListener("ping", () => {
     lastSeen = Date.now();
@@ -86,6 +91,7 @@ function connect() {
   };
   stream.onerror = () => {
     setConnected(false);
+    started = true;
 
     if (stream.readyState === EventSource.CLOSED) {
       stream.close();
@@ -102,6 +108,7 @@ function connect() {
 function disconnect() {
   source?.close();
   source = null;
+  started = false;
   setConnected(false);
 }
 

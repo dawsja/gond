@@ -1,6 +1,6 @@
 import { cardBrand, CARD_NICKNAME_MAX, luhnValid, SECRET_NAME, SECRET_REF, type CardDetails, type CardMeta, type LoginField, type SecretMeta, type SecretRequest } from "@gond/shared";
 import { ensureDatabase } from "../db/init.ts";
-import { emit, settingsChanged, threadChanged } from "../events.ts";
+import { approvalsChanged, settingsChanged, threadChanged } from "../events.ts";
 import { newId, now } from "../ids.ts";
 import { heldLoginValues } from "../logins.ts";
 import { createRedactor } from "../redact.ts";
@@ -9,6 +9,7 @@ import { allComposioKeys } from "./composio-keys.ts";
 import { allMcpProxyTokens } from "./mcp.ts";
 import { allProviderKeys, allProviderProxyTokens } from "./providers.ts";
 import { shoppingCardValues } from "./shopping.ts";
+import { threadOwner } from "./threads.ts";
 
 function cardMetaOf(raw: string | null): CardMeta | null {
   if (!raw) return null;
@@ -45,7 +46,7 @@ export function saveCard(userId: string, card: CardDetails, nickname: string, na
   ensureDatabase()
     .query("INSERT INTO gond_secrets (user_id, name, value, requested_by, site, card, created_at, updated_at) VALUES (?, ?, ?, NULL, NULL, ?, ?, ?) ON CONFLICT(user_id, name) DO UPDATE SET value = excluded.value, card = excluded.card, updated_at = excluded.updated_at")
     .run(userId, target, encryptSecret(JSON.stringify({ ...card, cvc: "" })), JSON.stringify(meta), at, at);
-  settingsChanged();
+  settingsChanged(userId);
   return target;
 }
 
@@ -63,7 +64,7 @@ export function readCard(userId: string, name: string): { card: CardDetails; met
 
 export function deleteSecret(userId: string, name: string): boolean {
   const changed = ensureDatabase().query("DELETE FROM gond_secrets WHERE user_id = ? AND name = ?").run(userId, name).changes > 0;
-  if (changed) settingsChanged();
+  if (changed) settingsChanged(userId);
   return changed;
 }
 
@@ -78,7 +79,7 @@ export function setSecret(userId: string, name: string, value: string, requested
   ensureDatabase()
     .query("INSERT INTO gond_secrets (user_id, name, value, requested_by, site, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(user_id, name) DO UPDATE SET value = excluded.value, requested_by = COALESCE(excluded.requested_by, gond_secrets.requested_by), site = excluded.site, card = NULL, updated_at = excluded.updated_at")
     .run(userId, name, encryptSecret(value), requestedBy, site, at, at);
-  settingsChanged();
+  settingsChanged(userId);
 }
 
 /**
@@ -185,6 +186,6 @@ export function resolveSecretRequest(id: string, status: Exclude<SecretRequest["
   ensureDatabase().query("UPDATE gond_secret_requests SET status = ?, card = ?, resolved_at = ? WHERE id = ?").run(status, card, now(), id);
   const next = getSecretRequest(id)!;
   threadChanged(next.threadId);
-  emit({ topic: "approvals" });
+  approvalsChanged(threadOwner(next.threadId));
   return next;
 }

@@ -67,7 +67,7 @@ export function setMcpOAuth(id: string, state: McpOAuthState | null): void {
 
 export function setMcpAuthStatus(id: string, status: McpAuthStatus, error: string | null = null): void {
   ensureDatabase().query("UPDATE gond_mcp_servers SET auth_status = ?, auth_error = ?, updated_at = ? WHERE id = ?").run(status, error, now(), id);
-  settingsChanged();
+  settingsChanged(mcpServerOwner(id));
 }
 
 export function markMcpRefreshed(id: string): void {
@@ -105,7 +105,7 @@ export function createMcpServer(input: McpServerInput, userId: string): McpServe
   ensureDatabase()
     .query("INSERT INTO gond_mcp_servers (id, user_id, name, transport, url, headers, command, args, env, enabled, oauth_redirect, proxy_token, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
     .run(id, userId, input.name, input.transport, input.url ?? null, JSON.stringify(input.headers), input.command ?? null, JSON.stringify(input.args), JSON.stringify(input.env), input.enabled ? 1 : 0, input.oauthRedirect ?? defaultOAuthRedirect(input.url), randomString(32), at, at);
-  settingsChanged();
+  settingsChanged(userId);
   return getMcpServer(id)!;
 }
 
@@ -116,16 +116,16 @@ export function updateMcpServer(id: string, patch: Partial<McpServerInput>): Mcp
   ensureDatabase()
     .query("UPDATE gond_mcp_servers SET name = ?, transport = ?, url = ?, headers = ?, command = ?, args = ?, env = ?, enabled = ?, oauth_redirect = ?, updated_at = ? WHERE id = ?")
     .run(next.name, next.transport, next.url ?? null, JSON.stringify(next.headers), next.command ?? null, JSON.stringify(next.args), JSON.stringify(next.env), next.enabled ? 1 : 0, next.oauthRedirect ?? "app", now(), id);
-  settingsChanged();
+  settingsChanged(mcpServerOwner(id));
   return getMcpServer(id);
 }
 
 export function deleteMcpServer(id: string): boolean {
-  const db = ensureDatabase();
-  const changed = db.query("DELETE FROM gond_mcp_servers WHERE id = ?").run(id).changes;
+  const owner = mcpServerOwner(id);
+  const changed = ensureDatabase().query("DELETE FROM gond_mcp_servers WHERE id = ?").run(id).changes;
   if (changed) {
-    settingsChanged();
-    botsChanged();
+    settingsChanged(owner);
+    botsChanged(owner);
   }
   return changed > 0;
 }

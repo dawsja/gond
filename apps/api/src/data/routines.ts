@@ -3,6 +3,7 @@ import { Cron } from "croner";
 import { ensureDatabase } from "../db/init.ts";
 import { settingsChanged } from "../events.ts";
 import { newId, now } from "../ids.ts";
+import { botOwner } from "./bots.ts";
 
 type Row = {
   id: string;
@@ -73,7 +74,7 @@ export function createRoutine(botId: string, input: Omit<RoutineInput, "skillId"
   ensureDatabase()
     .query("INSERT INTO gond_routines (id, bot_id, name, cron, timezone, prompt, enabled, watch, once, skill_id, next_run_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
     .run(id, botId, input.name, input.cron, input.timezone, input.prompt, input.enabled ? 1 : 0, input.watch ? 1 : 0, input.once ? 1 : 0, input.skillId ?? null, next, at, at);
-  settingsChanged();
+  settingsChanged(botOwner(botId));
   return getRoutine(id)!;
 }
 
@@ -85,13 +86,14 @@ export function updateRoutine(id: string, patch: Partial<RoutineInput>): Routine
   ensureDatabase()
     .query("UPDATE gond_routines SET name = ?, cron = ?, timezone = ?, prompt = ?, enabled = ?, watch = ?, skill_id = ?, next_run_at = ?, updated_at = ? WHERE id = ?")
     .run(next.name, next.cron, next.timezone, next.prompt, next.enabled ? 1 : 0, next.watch ? 1 : 0, next.skillId ?? null, nextRunAt, now(), id);
-  settingsChanged();
+  settingsChanged(routineOwner(id));
   return getRoutine(id);
 }
 
 export function deleteRoutine(id: string): boolean {
+  const owner = routineOwner(id);
   const changed = ensureDatabase().query("DELETE FROM gond_routines WHERE id = ?").run(id).changes;
-  if (changed) settingsChanged();
+  if (changed) settingsChanged(owner);
   return changed > 0;
 }
 
@@ -110,7 +112,7 @@ export function claimDueRoutines(at = new Date()): Routine[] {
     db.query("UPDATE gond_routines SET last_run_at = ?, next_run_at = ?, enabled = ? WHERE id = ?").run(at.toISOString(), next, enabled, row.id);
     due.push(toRoutine({ ...row, enabled, last_run_at: at.toISOString(), next_run_at: next }));
   }
-  if (due.length) settingsChanged();
+  for (const botId of new Set(due.map((routine) => routine.botId))) settingsChanged(botOwner(botId));
   return due;
 }
 
@@ -122,7 +124,9 @@ export function finishRoutineRun(messageId: string, ok: boolean) {
   const db = ensureDatabase();
   db.query("UPDATE gond_routine_runs SET status = ?, finished_at = ? WHERE message_id = ? AND status = 'started'").run(ok ? "done" : "failed", now(), messageId);
   // A reminder that has said its piece is done with; one that failed stays, switched off, for the person to see.
-  if (ok && db.query("DELETE FROM gond_routines WHERE once = 1 AND enabled = 0 AND id IN (SELECT routine_id FROM gond_routine_runs WHERE message_id = ?)").run(messageId).changes) settingsChanged();
+  if (!ok) return;
+  const done = db.query("DELETE FROM gond_routines WHERE once = 1 AND enabled = 0 AND id IN (SELECT routine_id FROM gond_routine_runs WHERE message_id = ?) RETURNING bot_id").all(messageId) as { bot_id: string }[];
+  for (const botId of new Set(done.map((row) => row.bot_id))) settingsChanged(botOwner(botId));
 }
 
 function routineOwner(routineId: string): string | null {

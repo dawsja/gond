@@ -108,6 +108,13 @@ function spawnClaude({
   });
 }
 
+/** What a short query of the CLI printed, stopped at its deadline, without holding up the box. */
+export async function queryClaude({ bin = CLAUDE_BIN, args, env, uid, gid, timeoutMs }) {
+  let stdout = "";
+  const result = await spawnClaude({ bin, args, env, uid, gid, timeoutMs, onLine: (line) => (stdout += `${line}\n`) });
+  return { stdout, stderr: result.stderr };
+}
+
 export const NOT_SIGNED_IN = /not logged in|please run \/login|invalid api key|authentication|unauthori[sz]ed|oauth token/i;
 
 function classifyCheck({ spawnError, exitCode, output }) {

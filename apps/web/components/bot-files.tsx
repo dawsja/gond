@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
 import { api, ApiError } from "@/lib/api";
+import { formatBytes } from "@/lib/bytes";
 
 const SHOWN = 8;
 const PICTURE = /\.(png|jpe?g|gif|webp)$/i;
@@ -16,12 +17,6 @@ const TEXT = /\.(md|markdown|txt|csv|json|jsonl|ya?ml|toml|log|html?|css|js|mjs|
 
 type Listing = { entries?: BotFileEntry[]; directory?: string[] };
 type Opened = { path: string; entry: BotFileEntry };
-
-function size(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-}
 
 function when(iso: string | null): string {
   return iso ? new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "";
@@ -104,7 +99,7 @@ export function BotFiles({ bot }: { bot: Bot }) {
                 <button type="button" onClick={() => (entry.dir ? go(path) : setOpened({ path, entry }))} className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-1 py-1.5 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 pointer-coarse:min-h-11">
                   <FileIcon entry={entry} />
                   <span className="min-w-0 flex-1 truncate text-[13px]">{entry.name}</span>
-                  <span className="shrink-0 text-[11.5px] text-muted-foreground">{entry.dir ? when(entry.modified) : size(entry.size)}</span>
+                  <span className="shrink-0 text-[11.5px] text-muted-foreground">{entry.dir ? when(entry.modified) : formatBytes(entry.size)}</span>
                 </button>
                 {entry.dir ? null : (
                   <Button variant="ghost" size="icon-sm" aria-label={`Download ${entry.name}`} render={<a href={rawUrl(bot, path)} download={entry.name} />} nativeButton={false} className="shrink-0 pointer-coarse:size-11">
@@ -144,7 +139,7 @@ function FileViewer({ bot, opened, onClose }: { bot: Bot; opened: Opened; onClos
         <DialogHeader>
           <DialogTitle>{entry.name}</DialogTitle>
           <DialogDescription>
-            {size(entry.size)}
+            {formatBytes(entry.size)}
             {entry.modified ? ` · changed ${new Date(entry.modified).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}` : ""}
           </DialogDescription>
         </DialogHeader>

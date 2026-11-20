@@ -31,8 +31,16 @@ export const threadChanged = (threadId: string, cleared?: true) => {
   emit(cleared ? { topic: "thread", threadId, cleared } : { topic: "thread", threadId });
   botsChanged(threadOwner(threadId));
 };
-export const approvalsChanged = () => emit({ topic: "approvals" });
-export const settingsChanged = () => emit({ topic: "settings" });
+/** A card or saved rule of this profile's changed; one with no owner left is nobody's to reload. */
+export const approvalsChanged = (userId: string | null | undefined) => {
+  if (userId) emit({ topic: "approvals", userId });
+};
+/** Something in one profile's settings changed (routines, secrets, apps, MCP servers). */
+export const settingsChanged = (userId: string | null | undefined) => {
+  if (userId) emit({ topic: "settings", userId });
+};
+/** A change to the whole server's settings, which every page reloads. */
+export const serverSettingsChanged = () => emit({ topic: "settings" });
 
 export const skillsChanged = (userId: string | null | undefined) => {
   if (userId) emit({ topic: "skills", userId });

@@ -70,6 +70,10 @@ export function listBots(options: { includeHidden?: boolean; userId?: string } =
   return rows.map(toBot);
 }
 
+export function botOwner(botId: string): string | null {
+  return (ensureDatabase().query("SELECT user_id FROM gond_bots WHERE id = ?").get(botId) as { user_id: string | null } | null)?.user_id ?? null;
+}
+
 export function getBot(id: string): Bot | null {
   const row = ensureDatabase().query(`${SELECT} WHERE id = ?`).get(id) as Row | null;
   return row ? toBot(row) : null;

@@ -185,6 +185,18 @@ type LineRow = { thread_id: string; author: string; body: string; created_at: st
 // previews, dates or sorts by, and only marks the conversation as quietly new.
 const SHOWN_KINDS = "kind IN ('message', 'approval', 'signin', 'teach') AND spoken = 0";
 
+/** The lines that make a conversation unread (`m` is gond_messages), word for word the WHERE of `gond_messages_unread`. */
+export const UNREAD_LINES = "m.author NOT IN ('you') AND m.kind IN ('message', 'approval', 'signin', 'teach') AND m.spoken = 0";
+
+const UNREAD_SINCE_READ = `FROM gond_messages m WHERE m.thread_id = t.id AND ${UNREAD_LINES} AND m.created_at > COALESCE(t.last_read_at, '')`;
+
+/**
+ * Each listed conversation's unread lines, and how many of them bots said to each other. Counted per
+ * conversation: as one join and GROUP BY, SQLite reads every row through the plain thread index instead.
+ */
+export const UNREAD_COUNTS = `SELECT t.id AS thread_id, (SELECT COUNT(*) ${UNREAD_SINCE_READ}) AS n, (SELECT COUNT(m.from_thread_id) ${UNREAD_SINCE_READ}) AS team
+  FROM gond_threads t WHERE t.id IN (SELECT value FROM json_each(?))`;
+
 /** What the list shows of each conversation, a few statements for the whole page whatever its size. */
 function toThreads(rows: ThreadRow[]): Thread[] {
   if (rows.length === 0) return [];
@@ -203,11 +215,7 @@ function toThreads(rows: ThreadRow[]): Thread[] {
     );
   const last = latest(`${SHOWN_KINDS} AND from_thread_id IS NULL`);
   const runs = latest("author = 'routine'");
-  const unreadRows = db
-    .query(
-      "SELECT m.thread_id, COUNT(*) AS n, COUNT(m.from_thread_id) AS team FROM gond_threads t JOIN gond_messages m ON m.thread_id = t.id WHERE t.id IN (SELECT value FROM json_each(?)) AND m.author NOT IN ('you') AND m.kind IN ('message', 'approval', 'signin', 'teach') AND m.spoken = 0 AND m.created_at > COALESCE(t.last_read_at, '') GROUP BY m.thread_id",
-    )
-    .all(ids) as { thread_id: string; n: number; team: number }[];
+  const unreadRows = db.query(UNREAD_COUNTS).all(ids) as { thread_id: string; n: number; team: number }[];
   const unread = new Map(unreadRows.map((row) => [row.thread_id, row]));
   let ownKey: string | null | undefined;
   return rows.map((row) => {
@@ -310,9 +318,15 @@ export function deleteRoom(id: string): boolean {
   return true;
 }
 
+/**
+ * Reading moves the marker only past an unread line: what a watch noticed is such a line too, so with
+ * none there is no dot, count or badge to clear, and nothing is written or told.
+ */
 export function markThreadRead(id: string) {
-  ensureDatabase().query("UPDATE gond_threads SET last_read_at = ? WHERE id = ?").run(now(), id);
-  botsChanged(threadOwner(id));
+  const changed = ensureDatabase()
+    .query(`UPDATE gond_threads SET last_read_at = ? WHERE id = ? AND EXISTS (SELECT 1 FROM gond_messages m WHERE m.thread_id = gond_threads.id AND ${UNREAD_LINES} AND m.created_at > COALESCE(gond_threads.last_read_at, ''))`)
+    .run(now(), id).changes;
+  if (changed) botsChanged(threadOwner(id));
 }
 
 type NewMessage = {
@@ -454,32 +468,53 @@ export function getMessage(id: string): Message | null {
  * millisecond, which may have been written after it was read: a cursor kept as a clock time reads
  * `from` and drops what it already read by id, since `after` would lose them.
  */
-export function listMessages(
-  threadId: string,
-  options: { after?: string | null; from?: string | null; before?: string | null; limit?: number; includeSent?: boolean; shown?: boolean } = {},
-): Message[] {
-  const limit = Math.min(Math.max(options.limit ?? 200, 1), 500);
-  const db = ensureDatabase();
-  const where = `${options.includeSent ? "(thread_id = ? OR from_thread_id = ?)" : "thread_id = ?"}${options.shown ? " AND spoken = 0" : ""}`;
-  const ids = options.includeSent ? [threadId, threadId] : [threadId];
-  const since = options.from ?? options.after;
-  if (since) {
-    const rows = db.query(`SELECT * FROM gond_messages WHERE ${where} AND created_at ${options.from ? ">=" : ">"} ? ORDER BY created_at ASC, rowid ASC LIMIT ?`).all(...ids, since, limit) as MessageRow[];
-    return toMessages(rows);
-  }
-  const rows = db
-    .query(`SELECT * FROM gond_messages WHERE ${where} ${options.before ? "AND created_at < ?" : ""} ORDER BY created_at DESC, rowid DESC LIMIT ?`)
-    .all(...(options.before ? [...ids, options.before, limit] : [...ids, limit])) as MessageRow[];
-  return toMessages(rows.reverse());
+export function listMessages(threadId: string, options: MessagePage = {}): Message[] {
+  const { sql, args } = messagePage(threadId, options);
+  const rows = ensureDatabase().query(sql).all(...args) as MessageRow[];
+  const oldestFirst = Boolean(options.from ?? options.after);
+  return toMessages(oldestFirst ? rows : rows.reverse());
 }
 
-export function listExchange(threadId: string, withThreadId: string, limit = 500): Message[] {
-  const rows = ensureDatabase()
-    .query(
-      `SELECT * FROM gond_messages WHERE kind = 'message' AND ((thread_id = ? AND from_thread_id = ?) OR (thread_id = ? AND from_thread_id = ?)) ORDER BY created_at ASC, rowid ASC LIMIT ?`,
-    )
-    .all(threadId, withThreadId, withThreadId, threadId, limit) as MessageRow[];
-  return toMessages(rows);
+type MessagePage = { after?: string | null; from?: string | null; before?: string | null; limit?: number; includeSent?: boolean; shown?: boolean; prompts?: boolean };
+
+/**
+ * The statement for a page of `listMessages`. With `includeSent` it reads the conversation's own lines
+ * and what it sent elsewhere as two index-ordered pages merged, since an OR of the two sorts the whole
+ * history before it can stop at the limit.
+ */
+export function messagePage(threadId: string, options: MessagePage = {}): { sql: string; args: (string | number)[] } {
+  const limit = Math.min(Math.max(options.limit ?? 200, 1), 500);
+  const since = options.from || options.after || null;
+  const filters = `${options.shown ? " AND spoken = 0" : ""}${options.prompts === false ? " AND kind != 'prompt'" : ""}`;
+  const bound = since ? ` AND created_at ${options.from ? ">=" : ">"} ?` : options.before ? " AND created_at < ?" : "";
+  const cursor = since || options.before || null;
+  const order = since ? "ASC" : "DESC";
+  const page = (where: string, ids: string[]) => ({
+    sql: `SELECT *, rowid AS rid FROM gond_messages WHERE ${where}${filters}${bound} ORDER BY created_at ${order}, rowid ${order} LIMIT ?`,
+    args: [...ids, ...(cursor === null ? [] : [cursor]), limit],
+  });
+  if (!options.includeSent) return page("thread_id = ?", [threadId]);
+  const own = page("thread_id = ?", [threadId]);
+  const sent = page("from_thread_id = ? AND thread_id != ?", [threadId, threadId]);
+  return {
+    sql: `SELECT * FROM (${own.sql}) UNION ALL SELECT * FROM (${sent.sql}) ORDER BY created_at ${order}, rid ${order} LIMIT ?`,
+    args: [...own.args, ...sent.args, limit],
+  };
+}
+
+/** What two bots said to each other, newest page first; `before` and `from` read as in `listMessages`. */
+export function listExchange(threadId: string, withThreadId: string, options: { before?: string | null; from?: string | null; limit?: number } = {}): Message[] {
+  const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
+  const pair = "kind = 'message' AND ((thread_id = ? AND from_thread_id = ?) OR (thread_id = ? AND from_thread_id = ?))";
+  const ids = [threadId, withThreadId, withThreadId, threadId];
+  const db = ensureDatabase();
+  if (options.from) {
+    return toMessages(db.query(`SELECT * FROM gond_messages WHERE ${pair} AND created_at >= ? ORDER BY created_at ASC, rowid ASC LIMIT ?`).all(...ids, options.from, limit) as MessageRow[]);
+  }
+  const rows = db
+    .query(`SELECT * FROM gond_messages WHERE ${pair} ${options.before ? "AND created_at < ?" : ""} ORDER BY created_at DESC, rowid DESC LIMIT ?`)
+    .all(...(options.before ? [...ids, options.before, limit] : [...ids, limit])) as MessageRow[];
+  return toMessages(rows.reverse());
 }
 
 export function recentMessages(threadId: string, count: number): Message[] {

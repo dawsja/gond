@@ -1,3 +1,5 @@
+import { joinNames } from "@gond/shared";
+
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 function clock(hour: number, minute: number): string {
@@ -8,10 +10,6 @@ function ordinal(n: number): string {
   const tens = n % 100;
   if (tens >= 11 && tens <= 13) return `${n}th`;
   return `${n}${["th", "st", "nd", "rd"][n % 10] ?? "th"}`;
-}
-
-function list(items: string[]): string {
-  return items.length < 2 ? (items[0] ?? "") : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
 }
 
 /** A cron field of plain numbers, ranges and lists ("1-5", "9,17"), expanded and sorted; null for anything else. */
@@ -36,7 +34,7 @@ function days(field: string): string | null {
   if (key === "1,2,3,4,5") return "Weekdays";
   if (key === "0,6") return "Weekends";
   if (key === "0,1,2,3,4,5,6") return "Every day";
-  return picked.length === 1 ? `Every ${DAYS[picked[0]!]}` : `${list(picked.map((d) => `${DAYS[d]}s`))}`;
+  return picked.length === 1 ? `Every ${DAYS[picked[0]!]}` : joinNames(picked.map((d) => `${DAYS[d]}s`));
 }
 
 /** A routine's five-field cron as words a person reads; never the cron itself. */
@@ -55,14 +53,14 @@ export function describeSchedule(cron: string): string {
   const minute = /^\d+$/.test(min) ? Number(min) : null;
   const hours = numbers(hour, 0, 23);
   if (minute === null || minute > 59 || !hours) return "On a custom schedule";
-  const at = `at ${list(hours.map((h) => clock(h, minute)))}`;
+  const at = `at ${joinNames(hours.map((h) => clock(h, minute)))}`;
 
   if (dom === "*") {
     const on = days(dow);
     return on ? `${on} ${at}` : "On a custom schedule";
   }
   const dates = numbers(dom, 1, 31);
-  if (dates && dow === "*") return `Monthly on the ${list(dates.map(ordinal))} ${at}`;
+  if (dates && dow === "*") return `Monthly on the ${joinNames(dates.map(ordinal))} ${at}`;
   return "On a custom schedule";
 }
 

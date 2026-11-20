@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
-import { checkedAgo, diskLow, formatBytes, percentOf } from "../lib/health";
+import { formatBytes } from "../lib/bytes";
+import { checkedAgo, diskLow, percentOf } from "../lib/health";
 
 const GB = 1024 ** 3;
 

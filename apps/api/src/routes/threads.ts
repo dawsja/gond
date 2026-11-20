@@ -1,4 +1,4 @@
-import { AI_SETUP_CARD, ATTACHMENT_TYPES, MAX_ATTACHMENTS, MAX_ATTACHMENT_BYTES, isReaction, mediaTypeFor, plainMarkdown, ROOM_MAX_BOTS, ROOM_MIN_BOTS, roomAnswerer, roomNameFor, type Bot, type ChatAttachment, type Thread } from "@gond/shared";
+import { AI_SETUP_CARD, ATTACHMENT_TYPES, joinNames, MAX_ATTACHMENTS, MAX_ATTACHMENT_BYTES, isReaction, mediaTypeFor, plainMarkdown, ROOM_MAX_BOTS, ROOM_MIN_BOTS, roomAnswerer, roomNameFor, type Bot, type ChatAttachment, type Thread } from "@gond/shared";
 import { Hono } from "hono";
 import { ownThread, ownsThread, userId } from "../access.ts";
 import type { Env } from "../app.ts";
@@ -10,7 +10,6 @@ import { attachmentOwner, createRoom, deleteRoom, dropMessage, editMessage, fail
 import { isHeic } from "../images.ts";
 import { previewOf } from "../pictures.ts";
 import { activeTurns, postFromPerson, stopThread } from "../responder.ts";
-import { workFor } from "../work.ts";
 import { readBody } from "./body.ts";
 
 const MAX_BODY = 20_000;
@@ -36,11 +35,10 @@ export function answererOf(members: string[], bots: Bot[]): string | null {
 export function roomChange(before: Pick<Thread, "name" | "members">, after: Pick<Thread, "name" | "members">, nameOf: (botId: string) => string, answerers: [string | null, string | null] = [null, null]): string | null {
   const lines: string[] = [];
   if (after.name !== before.name) lines.push(`Renamed to ${after.name}.`);
-  const list = (names: string[]) => (names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`);
   const joined = after.members.filter((id) => !before.members.includes(id)).map(nameOf);
   const left = before.members.filter((id) => !after.members.includes(id)).map(nameOf);
-  if (joined.length) lines.push(`${list(joined)} joined.`);
-  if (left.length) lines.push(`${list(left)} left.`);
+  if (joined.length) lines.push(`${joinNames(joined)} joined.`);
+  if (left.length) lines.push(`${joinNames(left)} left.`);
   if (answerers[1] && answerers[0] !== answerers[1]) lines.push(`${answerers[1]} answers now when nobody's named.`);
   return lines.length ? lines.join(" ") : null;
 }
@@ -62,16 +60,10 @@ export function threadsRoutes() {
     return c.json({ thread, bot, busy: turns.map((t) => t.botId), answering: turns.map((t) => t.messageId) });
   });
 
-  app.get("/threads/:id/work", (c) => {
-    const id = c.req.param("id");
-    if (!ownsThread(c, id)) return c.json({ error: "Couldn't find that conversation" }, 404);
-    return c.json({ work: workFor(id) });
-  });
-
   app.get("/threads/:id/messages", (c) => {
     const id = c.req.param("id");
     if (!ownsThread(c, id)) return c.json({ error: "Couldn't find that conversation" }, 404);
-    const messages = listMessages(id, { after: c.req.query("after") ?? null, before: c.req.query("before") ?? null, limit: Number(c.req.query("limit")) || 200, includeSent: true, shown: true });
+    const messages = listMessages(id, { after: c.req.query("after") ?? null, from: c.req.query("from") ?? null, before: c.req.query("before") ?? null, limit: Number(c.req.query("limit")) || 200, includeSent: true, shown: true, prompts: false });
     return c.json({ messages });
   });
 
@@ -150,7 +142,8 @@ export function threadsRoutes() {
     const thread = ownThread(c, c.req.param("id"));
     const other = ownThread(c, c.req.query("with") ?? "");
     if (!thread || !other) return c.json({ error: "Couldn't find that conversation" }, 404);
-    return c.json({ thread, other, messages: listExchange(thread.id, other.id) });
+    const messages = listExchange(thread.id, other.id, { before: c.req.query("before") ?? null, from: c.req.query("from") ?? null, limit: Number(c.req.query("limit")) || undefined });
+    return c.json({ thread, other, messages });
   });
 
   app.post("/threads/:id/messages", async (c) => {

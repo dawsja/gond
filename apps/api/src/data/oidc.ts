@@ -1,6 +1,6 @@
 import { OIDC_DEFAULT_SCOPES, type OidcPatch, type OidcSettings } from "@gond/shared";
 import { ensureDatabase } from "../db/init.ts";
-import { settingsChanged } from "../events.ts";
+import { serverSettingsChanged } from "../events.ts";
 import { now } from "../ids.ts";
 import { decryptSecret, encryptSecret, isLegacySecret } from "../secrets.ts";
 
@@ -71,13 +71,13 @@ export function updateOidcSettings(patch: OidcPatch): OidcSettings {
 
   if (patch.clientSecret) next.clientSecret = encryptSecret(patch.clientSecret);
   write(next);
-  settingsChanged();
+  serverSettingsChanged();
   return getOidcSettings();
 }
 
 export function clearOidcSecret(): OidcSettings {
   const stored = read();
   write({ ...stored, enabled: false, clientSecret: undefined, updatedAt: now() });
-  settingsChanged();
+  serverSettingsChanged();
   return getOidcSettings();
 }

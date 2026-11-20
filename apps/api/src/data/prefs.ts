@@ -36,8 +36,8 @@ export function setUserTimezone(profileId: string, timezone: unknown): boolean {
   db.query("INSERT INTO gond_user_prefs (user_id, timezone, updated_at) VALUES (?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET timezone = excluded.timezone, updated_at = excluded.updated_at").run(userId, timezone, at);
   const profiles = profileIds(userId);
   const routines = db
-    .query(`SELECT r.id, r.cron, r.enabled FROM gond_routines r JOIN gond_bots b ON b.id = r.bot_id WHERE b.user_id IN (${profiles.map(() => "?").join(", ")}) AND r.timezone != ?`)
-    .all(...profiles, timezone) as { id: string; cron: string; enabled: number }[];
+    .query(`SELECT r.id, r.cron, r.enabled, b.user_id FROM gond_routines r JOIN gond_bots b ON b.id = r.bot_id WHERE b.user_id IN (${profiles.map(() => "?").join(", ")}) AND r.timezone != ?`)
+    .all(...profiles, timezone) as { id: string; cron: string; enabled: number; user_id: string }[];
   for (const routine of routines) {
     let next: string | null = null;
     if (routine.enabled === 1) {
@@ -49,7 +49,7 @@ export function setUserTimezone(profileId: string, timezone: unknown): boolean {
     }
     db.query("UPDATE gond_routines SET timezone = ?, next_run_at = ?, updated_at = ? WHERE id = ?").run(timezone, next, at, routine.id);
   }
-  if (routines.length) settingsChanged();
+  for (const owner of new Set(routines.map((routine) => routine.user_id))) settingsChanged(owner);
   return true;
 }
 

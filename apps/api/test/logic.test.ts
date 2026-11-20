@@ -1838,6 +1838,32 @@ describe("message indexes", () => {
     expect(sent).toContain("gond_messages_from");
     expect(sent).not.toMatch(/SCAN gond_messages(?! USING)/);
   });
+
+  test("a conversation's page, its unread counts and the ticks' lookups read an index, never every row", async () => {
+    const { Database } = await import("bun:sqlite");
+    const { runMigrations } = await import("../src/db/migrations.ts");
+    const { messagePage, UNREAD_COUNTS } = await import("../src/data/threads.ts");
+    const { UNREAD_CONVERSATIONS } = await import("../src/profiles.ts");
+    const { DUE_CHECKOUTS } = await import("../src/data/shopping.ts");
+    const db = new Database(":memory:", { strict: true });
+    runMigrations(db);
+    const plan = (sql: string) => (db.query(`EXPLAIN QUERY PLAN ${sql}`).all() as { detail: string }[]).map((row) => row.detail).join(" | ");
+    for (const cursor of [{}, { before: "x" }, { after: "x" }, { from: "x" }]) {
+      const page = plan(messagePage("t", { includeSent: true, shown: true, prompts: false, ...cursor }).sql);
+      expect(page).toContain("USING INDEX gond_messages_thread (thread_id=?");
+      expect(page).toContain("USING INDEX gond_messages_from (from_thread_id=?");
+      expect(page).not.toContain("MULTI-INDEX OR");
+      expect(page).not.toMatch(/SCAN gond_messages(?! USING)/);
+    }
+    for (const unread of [plan(UNREAD_COUNTS), plan(UNREAD_CONVERSATIONS)]) {
+      expect(unread).toContain("gond_messages_unread");
+      expect(unread).not.toContain("gond_messages_thread");
+    }
+    expect(plan(DUE_CHECKOUTS)).toContain("gond_commerce_expiry");
+    expect(plan("SELECT * FROM gond_routines WHERE enabled = 1 AND next_run_at IS NOT NULL AND next_run_at <= ?")).toContain("gond_routines_due");
+    expect(plan("SELECT * FROM gond_delegations WHERE status = 'open' AND from_thread_id = ? ORDER BY created_at")).toContain("gond_delegations_open");
+    expect(plan("SELECT * FROM gond_teachings WHERE thread_id = ? AND status IN (?, ?)")).toContain("gond_teachings_thread");
+  });
 });
 
 describe("xAI keys", () => {

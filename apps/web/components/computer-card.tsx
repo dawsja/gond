@@ -15,7 +15,8 @@ import { Spinner } from "@/components/ui/spinner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "@/components/ui/toast";
 import { api, post } from "@/lib/api";
-import { checkedAgo, diskLow, formatBytes, percentOf } from "@/lib/health";
+import { formatBytes } from "@/lib/bytes";
+import { checkedAgo, diskLow, percentOf } from "@/lib/health";
 import type { Meter as MeterRecord } from "@/lib/markdown";
 import { cn } from "@/lib/utils";
 

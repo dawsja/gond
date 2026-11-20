@@ -105,14 +105,15 @@ export async function boxStatus(userId: string, { fresh = false, admin = false }
   let agents: BoxStatus["agents"] = [];
   let versions: BoxVersions | null = null;
   let computer: BoxStatus["health"];
+  let claude: Promise<ClaudeStatus> | null = null;
   try {
     const h = await health(box);
     reachable = true;
     updating = updating || Boolean(h.updating);
     if (!updating) {
-      const all = (await listAgents(box).catch(() => ({ agents: [] }))).agents;
-      agents = all.filter((a) => admin || a.user === userId).map(({ id, running, busy }) => ({ id, running, busy }));
-      const [found, stats] = await Promise.all([versionsCached(box, fresh), admin ? boxStats(box).catch(() => null) : null]);
+      claude = claudeStatus(box, fresh);
+      const [all, found, stats] = await Promise.all([listAgents(box).catch(() => ({ agents: [] })), versionsCached(box, fresh), admin ? boxStats(box).catch(() => null) : null]);
+      agents = all.agents.filter((a) => admin || a.user === userId).map(({ id, running, busy }) => ({ id, running, busy }));
       versions = found;
       if (stats) computer = healthOf(stats);
     }
@@ -123,7 +124,7 @@ export async function boxStatus(userId: string, { fresh = false, admin = false }
     configured: true,
     reachable,
     updating,
-    claude: updating ? { status: "error", detail: "The computer is updating." } : reachable ? await claudeStatus(box, fresh) : { status: "error", detail: "The box isn't reachable. Is the box container running?" },
+    claude: updating ? { status: "error", detail: "The computer is updating." } : reachable && claude ? await claude : { status: "error", detail: "The box isn't reachable. Is the box container running?" },
     composio: { configured: composioConfigured(userId), connected: connections.filter((c) => c.status === "active").length },
     agents,
     versions,

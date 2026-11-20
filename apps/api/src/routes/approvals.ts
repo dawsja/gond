@@ -3,13 +3,21 @@ import { Hono } from "hono";
 import { ownsThread, userId } from "../access.ts";
 import type { Env } from "../app.ts";
 import { answerProblem, decide, openApprovals } from "../approvals.ts";
-import { getApproval, listApprovals } from "../data/approvals.ts";
+import { getApproval, getApprovals, listApprovals } from "../data/approvals.ts";
 import { threadRefs } from "../data/threads.ts";
+
+const MAX_IDS = 100;
 
 export function approvalsRoutes() {
   const app = new Hono<Env>();
 
   app.get("/approvals", (c) => {
+    const asked = c.req.query("ids");
+    if (asked !== undefined) {
+      const ids = [...new Set(asked.split(",").map((id) => id.trim()).filter(Boolean))];
+      if (ids.length > MAX_IDS) return c.json({ error: `Ask for up to ${MAX_IDS} cards at a time` }, 400);
+      return c.json({ approvals: getApprovals(ids, userId(c)) });
+    }
     const status = c.req.query("status");
     const mine = new Set(threadRefs(userId(c)).map((t) => t.id));
     if (status === "pending" || !status) return c.json({ approvals: openApprovals().filter((a) => mine.has(a.threadId)) });

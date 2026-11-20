@@ -22,7 +22,7 @@ for (const method of methods) {
   if (!new RegExp(`\\b${method}: function`).test(webShell)) problems.push(`apps/ios/Gond/WebShell.swift: the bridge has no ${method}(), which the web app's GondMobile type names`);
 }
 
-const port = /export const MCP_LOOPBACK_PORT = (\d+);/.exec(read("packages/shared/src/index.ts"))?.[1];
+const port = /export const MCP_LOOPBACK_PORT = (\d+);/.exec(read("packages/shared/src/mcp.ts"))?.[1];
 const iosPort = /static let loopbackPort = (\d+)/.exec(webShell)?.[1];
 if (!port || port !== iosPort) problems.push(`apps/ios/Gond/WebShell.swift: loopbackPort is ${iosPort}, MCP_LOOPBACK_PORT is ${port}`);
 

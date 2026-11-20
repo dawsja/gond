@@ -5,6 +5,7 @@ import { createServer } from "node:http";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
+import { pipeline } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { Accounts, USER_ID, handOver, openedPath } from "./accounts.mjs";
 import { CLAUDE_BIN, checkClaude } from "./claude.mjs";
@@ -533,19 +534,33 @@ function dirEntry(dir, name) {
   }
 }
 
-function sendRawFile(response, account, relative) {
+export function sendRawFile(response, account, relative) {
   const { fd } = openInsideHome(relative, account.home, forbiddenIn(account));
-  let buffer;
+  let size;
   try {
     const stat = fs.fstatSync(fd);
     if (!stat.isFile()) throw new HttpError(400, "That's a folder, not a file");
     if (stat.size > MAX_SHARE_BYTES) throw new HttpError(413, `File is larger than ${MAX_SHARE_BYTES / 1024 / 1024} MB`);
-    buffer = fs.readFileSync(fd);
-  } finally {
+    size = stat.size;
+  } catch (error) {
     fs.closeSync(fd);
+    throw error;
   }
-  response.writeHead(200, { "Content-Type": "application/octet-stream", "Content-Length": buffer.byteLength });
-  response.end(buffer);
+  response.writeHead(200, { "Content-Type": "application/octet-stream", "Content-Length": size });
+  if (size === 0) {
+    fs.closeSync(fd);
+    response.end();
+    return STREAMED;
+  }
+  // Only the bytes fstat counted, so a file growing meanwhile can't overrun Content-Length; one that
+  // shrinks drops the connection, or the reader would wait for bytes that never come.
+  const file = fs.createReadStream(null, { fd, start: 0, end: size - 1 });
+  file.on("end", () => {
+    if (file.bytesRead !== size) response.destroy();
+  });
+  pipeline(file, response, (error) => {
+    if (error) response.destroy();
+  });
   return STREAMED;
 }
 
@@ -661,7 +676,7 @@ function listSkillFiles(account) {
 }
 
 /** Writes a whole skill folder next to the old one, then swaps it in, so a bot never reads half of it. */
-function writeSkillFolder(account, slug, files) {
+async function writeSkillFolder(account, slug, files) {
   if (!SLUG.test(slug)) throw new HttpError(400, "Bad skill slug");
   if (!Array.isArray(files) || !files.length || files.length > MAX_SKILL_FILES) throw new HttpError(400, "Bad skill files");
   const decoded = [];
@@ -680,29 +695,54 @@ function writeSkillFolder(account, slug, files) {
   const library = libraryOf(account);
   const target = path.join(library, slug);
   const tmp = path.join(library, `.${slug}.${randomBytes(4).toString("hex")}.tmp`);
-  try {
-    fs.mkdirSync(tmp, { mode: 0o755 });
-    for (const file of decoded) {
-      const full = path.join(tmp, file.path);
-      if (!full.startsWith(tmp + path.sep)) throw new HttpError(400, "Bad skill file path");
-      fs.mkdirSync(path.dirname(full), { recursive: true, mode: 0o755 });
-      fs.writeFileSync(full, file.data, { mode: file.executable ? 0o755 : 0o644 });
+  return oneSkillChange(target, async () => {
+    try {
+      await fs.promises.mkdir(tmp, { mode: 0o755 });
+      for (const file of decoded) {
+        const full = path.join(tmp, file.path);
+        if (!full.startsWith(tmp + path.sep)) throw new HttpError(400, "Bad skill file path");
+        await fs.promises.mkdir(path.dirname(full), { recursive: true, mode: 0o755 });
+        await fs.promises.writeFile(full, file.data, { mode: file.executable ? 0o755 : 0o644 });
+      }
+      const old = fs.existsSync(target) ? `${tmp}.old` : null;
+      if (old) await fs.promises.rename(target, old);
+      await fs.promises.rename(tmp, target);
+      if (old) await fs.promises.rm(old, { recursive: true, force: true });
+    } catch (error) {
+      await fs.promises.rm(tmp, { recursive: true, force: true });
+      throw error;
     }
-    const old = fs.existsSync(target) ? `${tmp}.old` : null;
-    if (old) fs.renameSync(target, old);
-    fs.renameSync(tmp, target);
-    if (old) fs.rmSync(old, { recursive: true, force: true });
-  } catch (error) {
-    fs.rmSync(tmp, { recursive: true, force: true });
-    throw error;
-  }
-  return { ok: true };
+    return { ok: true };
+  });
 }
 
 function deleteSkillFolder(account, slug) {
   if (!SLUG.test(slug)) throw new HttpError(400, "Bad skill slug");
-  fs.rmSync(path.join(libraryOf(account), slug), { recursive: true, force: true });
-  return { ok: true };
+  const target = path.join(libraryOf(account), slug);
+  return oneSkillChange(target, async () => {
+    await fs.promises.rm(target, { recursive: true, force: true });
+    return { ok: true };
+  });
+}
+
+const skillChanges = new Map();
+
+/** Other requests run between a swap's steps, so changes to one skill folder go one at a time, in order. */
+function oneSkillChange(target, change) {
+  const run = (skillChanges.get(target) ?? Promise.resolve()).then(change);
+  const settled = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  skillChanges.set(target, settled);
+  void settled.then(() => {
+    if (skillChanges.get(target) === settled) skillChanges.delete(target);
+  });
+  return run;
+}
+
+function claudeAuth(account, { fresh = false } = {}) {
+  return authStatus({ env: agentEnv(account), ...asUser(account), key: account.id, fresh });
 }
 
 const signIns = new Map();
@@ -721,10 +761,10 @@ function cancelSignIns(account = null) {
   }
 }
 
-function signedIn(account, engine) {
-  const yes = engine === "claude" && authStatus({ env: agentEnv(account), ...asUser(account) }).loggedIn === true;
+async function signedIn(account, engine) {
+  const yes = engine === "claude" && (await claudeAuth(account, { fresh: true })).loggedIn === true;
   if (yes) modelLists.forget(`${account.id}:`);
-  return Promise.resolve(yes);
+  return yes;
 }
 
 async function startSignIn(account, engine) {
@@ -1348,47 +1388,39 @@ async function desktopRoute(request, response, parts, account) {
 }
 
 /**
- * Reads a file the person's process just wrote in their runtime dir, as
- * root: never through a link (theirs to plant), never a FIFO, and only a
- * PNG. Answers null when there is nothing there.
+ * Reads a file the person's process just wrote in their runtime dir, as root: never through a link
+ * (theirs to plant), never a FIFO, nothing over `maxBytes`. `misplaced` when the folder itself has
+ * moved under a link; otherwise `data` is null when there is nothing fit to read.
  */
-/** A JPEG the person's screenshot left in their screen's folder, read the way `readShot` reads a PNG. */
-function readFrame(dir, name) {
-  if (fs.realpathSync(dir) !== path.resolve(dir)) return null;
+export function readPlacedFile(dir, name, maxBytes = Infinity) {
+  if (fs.realpathSync(dir) !== path.resolve(dir)) return { misplaced: true, data: null };
   const { O_RDONLY, O_NOFOLLOW, O_NONBLOCK } = fs.constants;
   let fd;
   try {
     fd = fs.openSync(path.join(dir, name), O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
   } catch {
-    return null;
+    return { misplaced: false, data: null };
   }
   try {
     const stat = fs.fstatSync(fd);
-    if (!stat.isFile() || stat.size > MAX_FRAME_BYTES) return null;
-    const buffer = fs.readFileSync(fd);
-    return buffer[0] === 0xff && buffer[1] === 0xd8 ? buffer : null;
+    if (!stat.isFile() || stat.size > maxBytes) return { misplaced: false, data: null };
+    return { misplaced: false, data: fs.readFileSync(fd) };
   } finally {
     fs.closeSync(fd);
   }
 }
 
+/** A teaching frame's JPEG, or nothing, a misplaced folder included: a frame is skipped, never an error. */
+function readFrame(dir, name) {
+  const { data } = readPlacedFile(dir, name, MAX_FRAME_BYTES);
+  return data?.[0] === 0xff && data[1] === 0xd8 ? data : null;
+}
+
+/** A screenshot's PNG for a bot's batch, which a misplaced folder fails. */
 function readShot(dir, name) {
-  if (fs.realpathSync(dir) !== path.resolve(dir)) throw new HttpError(500, "The screenshot folder isn't where it should be");
-  const { O_RDONLY, O_NOFOLLOW, O_NONBLOCK } = fs.constants;
-  let fd;
-  try {
-    fd = fs.openSync(path.join(dir, name), O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
-  } catch {
-    return null;
-  }
-  try {
-    const stat = fs.fstatSync(fd);
-    if (!stat.isFile()) return null;
-    const buffer = fs.readFileSync(fd);
-    return pngSize(buffer) ? buffer : null;
-  } finally {
-    fs.closeSync(fd);
-  }
+  const { misplaced, data } = readPlacedFile(dir, name);
+  if (misplaced) throw new HttpError(500, "The screenshot folder isn't where it should be");
+  return data && pngSize(data) ? data : null;
 }
 
 async function takeScreenshot(account, desktop, signal) {
@@ -1709,8 +1741,8 @@ function commandVersion(command, args) {
 const homeSizes = createHomeSizes();
 
 /** How full the computer is, and what each person's bots hold of it, for the admin's Shared computer. */
-export function stats() {
-  const byUid = isRoot ? memoryByUid() : null;
+export async function stats() {
+  const [byUid, disk, memory] = await Promise.all([isRoot ? memoryByUid() : null, diskOf(HOMES_DIR), memoryNow()]);
   const people = accounts.list().map((account) => {
     // An agent is a bot in one conversation: a bot counts once however many it has open.
     const bots = new Set([...agents].filter(([, agent]) => agent.user === account.id && agent.running && !agent.guest).map(([id]) => id.split("--")[0]));
@@ -1728,8 +1760,8 @@ export function stats() {
   });
   const measured = people.map((person) => person.at).filter(Boolean).sort();
   return {
-    disk: diskOf(HOMES_DIR),
-    memory: memoryNow(),
+    disk,
+    memory,
     load: os.loadavg(),
     cpus: os.availableParallelism?.() ?? os.cpus().length,
     people: people.map(({ at: _, ...person }) => person),
@@ -2059,7 +2091,7 @@ async function route(request, response, url) {
   if (request.method === "POST" && parts.length === 1 && parts[0] === "computer") return computerRoute(request, response, account);
   if (parts[0] === "agents") return agentRoute(request, response, parts, account);
   if (request.method === "GET" && parts.length === 2 && parts[0] === "claude" && parts[1] === "auth") {
-    return authStatus({ env: agentEnv(account), ...asUser(account) });
+    return claudeAuth(account);
   }
   if (request.method === "POST" && parts.length === 2 && parts[0] === "claude" && parts[1] === "check") {
     return checkClaude({ cwd: account.home, env: agentEnv(account), ...asUser(account) });

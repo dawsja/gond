@@ -1075,6 +1075,26 @@ const MIGRATIONS: Array<string | ((db: Database) => void)> = [
   );
   `,
   forgetCardCodes,
+  // Indexes for what runs on every tick or page load. A partial index is used only by a query whose
+  // terms read exactly as its WHERE does, so `UNREAD_LINES` in data/threads.ts must keep these words.
+  // A checkout's deadline is kept readable beside its sealed payload, so the tick reads only what is due;
+  // no open row needs filling, since every checkout in review or approved expires at start.
+  `
+  CREATE INDEX gond_messages_unread ON gond_messages (thread_id, created_at, from_thread_id) WHERE author NOT IN ('you') AND kind IN ('message', 'approval', 'signin', 'teach') AND spoken = 0;
+  CREATE INDEX gond_messages_cards ON gond_messages (approval_id) WHERE kind = 'signin';
+  DROP INDEX IF EXISTS gond_messages_pending;
+  CREATE INDEX gond_routines_due ON gond_routines (next_run_at) WHERE enabled = 1;
+  CREATE INDEX gond_routine_runs_message ON gond_routine_runs (message_id);
+  CREATE INDEX gond_attachments_message ON gond_attachments (message_id);
+  CREATE INDEX gond_delegations_open ON gond_delegations (from_thread_id, created_at) WHERE status = 'open';
+  CREATE INDEX gond_delegations_message ON gond_delegations (message_id) WHERE status = 'open';
+  CREATE INDEX gond_teachings_thread ON gond_teachings (thread_id, status);
+  CREATE INDEX gond_teachings_prompt ON gond_teachings (prompt_id) WHERE prompt_id IS NOT NULL;
+  CREATE INDEX gond_space_seen_at ON gond_space_seen (at);
+  CREATE INDEX gond_space_outbox_peer ON gond_space_outbox (peer_key, next_at);
+  ALTER TABLE gond_commerce ADD COLUMN expires_at TEXT;
+  CREATE INDEX gond_commerce_expiry ON gond_commerce (expires_at) WHERE kind = 'checkout' AND state IN ('review', 'approved');
+  `,
 ];
 
 /**
