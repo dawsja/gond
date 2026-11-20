@@ -66,6 +66,14 @@ test("argsKey changes with the permission mode", () => {
   assert.notEqual(a, b);
 });
 
+test("argsKey changes with the person's time zone, and stays put while none is known", () => {
+  const plain = argsKeyFor({ model: "m", toolNames: ["x"], permission: "ask" });
+  assert.equal(argsKeyFor({ model: "m", toolNames: ["x"], permission: "ask", timezone: null }), plain);
+  const chicago = argsKeyFor({ model: "m", toolNames: ["x"], permission: "ask", timezone: "America/Chicago" });
+  assert.notEqual(chicago, plain);
+  assert.notEqual(argsKeyFor({ model: "m", toolNames: ["x"], permission: "ask", timezone: "Europe/Paris" }), chicago);
+});
+
 test("argsKey changes when a server is refreshed, and stays put for servers never refreshed", () => {
   const plain = argsKeyFor({ model: "m", toolNames: ["x"], permission: "ask" });
   assert.equal(argsKeyFor({ model: "m", toolNames: ["x"], permission: "ask", mcpRevs: [null] }), plain);

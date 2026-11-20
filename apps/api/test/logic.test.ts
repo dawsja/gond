@@ -6,7 +6,7 @@ import { activityLine, workSteps } from "../src/driver.ts";
 import { clearWork, clipOutput, recordStep, workFor } from "../src/work.ts";
 import { curatedToolkits, isReadOnlyAction, narrowed } from "../src/composio.ts";
 import { isViewing, markViewing, VIEWING_TTL_MS } from "../src/presence.ts";
-import { renderSoul } from "../src/souls.ts";
+import { renderSoul, todayIn } from "../src/souls.ts";
 import { checkBundleFiles, packSkill, parseSkillMd, readableName, renderSkillMd, unpackSkill } from "../src/skill-bundle.ts";
 import { zipSync } from "fflate";
 import { ruleLabel, type AppCatalogEntry, type Bot, type Thread } from "@gond/shared";
@@ -2584,4 +2584,10 @@ describe("a model asked for by a bot", () => {
     expect(matchModel("5.5", plan)).toBeNull();
     expect(matchModel("haiku-9", plan)).toBeNull();
   });
+});
+
+test("a bot's today is the person's date, not UTC's", () => {
+  const centralEvening = new Date("2026-11-21T02:30:00Z");
+  expect(todayIn("America/Chicago", centralEvening)).toBe("2026-11-20");
+  expect(todayIn("UTC", centralEvening)).toBe("2026-11-21");
 });

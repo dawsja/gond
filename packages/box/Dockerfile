@@ -1,12 +1,13 @@
 # syntax=docker/dockerfile:1
 
-# The full (not slim) Node image brings git, Python 3 and a C toolchain.
+# The full (not slim) Node image brings git, Python 3 and a C toolchain. tzdata lets `date` and Python
+# read the TZ each person's processes get.
 FROM oven/bun:1.4.4 AS bun
 
 FROM node:24.22.1-bookworm
 COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
 RUN apt-get update \
- && apt-get install -y --no-install-recommends tini ripgrep jq \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tini ripgrep jq tzdata \
  && rm -rf /var/lib/apt/lists/* \
  && useradd --create-home --uid 1001 --user-group agent \
  && mkdir -p /home/agent/.bots /home/agent/.cache /home/agent/.claude /state \

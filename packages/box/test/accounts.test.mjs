@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { Accounts, FIRST_UID, accountName, handOver, nextSlot, nextUid } from "../accounts.mjs";
+import { Accounts, FIRST_UID, accountName, handOver, nextSlot, nextUid, timeZoneOf } from "../accounts.mjs";
 
 function fixture() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "gond-accounts-"));
@@ -255,4 +255,10 @@ test("resetting a home keeps memories and sign-ins, and takes everything install
   } finally {
     f.cleanup();
   }
+});
+
+test("a person's time zone becomes TZ only as a plain zone name", () => {
+  for (const zone of ["America/Chicago", "America/Argentina/Buenos_Aires", "Etc/GMT+5", "UTC"]) assert.equal(timeZoneOf(zone), zone);
+  // glibc opens a TZ that starts with "/" or ":" as a file.
+  for (const bad of ["/etc/passwd", ":/etc/shadow", "America/../../etc/passwd", "Mars/Olympus", "", null, "a".repeat(65)]) assert.equal(timeZoneOf(bad), null);
 });

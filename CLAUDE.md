@@ -798,6 +798,12 @@ One line each: where to start, and what must not change.
   in `src/data/prefs.ts` is the only reader; routines, prompts and
   templates use the bot owner's, and a change rewrites their routines.
   No team time zone. Only ISO strings cross the wire; the browser formats.
+  The computer keeps it too: every request about a home carries
+  `X-Gond-Timezone` (`headersFor`), the box checks it (`timeZoneOf`) and
+  sets `TZ` in `agentEnv`, so sites, `date` and files read the person's
+  clock; a CLI session relaunches (resumed) when it changes, a browser or
+  screen keeps the zone it started with. A bot's "Today is" is the
+  person's date (`todayIn`), never UTC's.
 - A hidden `prompt` message (author `system`) is how the API asks a bot
   to do something on its own; the dispatcher answers it like a message
   and the web never renders it.

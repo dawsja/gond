@@ -26,6 +26,20 @@ export function accountName(person, taken = new Set()) {
   }
 }
 
+/**
+ * An IANA zone name from the API, or null. It becomes TZ for everything a person runs, and glibc reads a
+ * TZ starting with "/" or ":" as a file to open, so only a plain name the platform knows gets through.
+ */
+export function timeZoneOf(value) {
+  if (typeof value !== "string" || value.length > 64 || !/^[A-Za-z][A-Za-z0-9_+-]*(?:\/[A-Za-z0-9_+-]+){0,2}$/.test(value)) return null;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: value });
+    return value;
+  } catch {
+    return null;
+  }
+}
+
 export function nextUid(used) {
   let uid = FIRST_UID;
   while (used.has(uid)) uid += 1;
@@ -59,6 +73,7 @@ export class Accounts {
     this.log = log;
 
     this.records = new Map();
+    this.zones = new Map();
     this.load();
   }
 
@@ -109,6 +124,7 @@ export class Accounts {
     account.browsers = dirs.browsers ?? path.join(home, ".config", "gond-browser-bots");
 
     account.logins = [account.claude];
+    account.timezone = this.zones.get(account.id) ?? null;
     return account;
   }
 
@@ -119,6 +135,12 @@ export class Accounts {
 
   list() {
     return [...this.records.keys()].map((id) => this.get(id));
+  }
+
+  /** The person's time zone as the API last named it, kept in memory: every request about a home names it again. */
+  noteTimeZone(id, value) {
+    const zone = timeZoneOf(value);
+    if (zone && this.records.has(id)) this.zones.set(id, zone);
   }
 
   agentAccount() {
@@ -247,6 +269,7 @@ export class Accounts {
     const account = this.describe(id, record);
     if (keepLogins) this.stashLogins(account);
     this.records.delete(id);
+    this.zones.delete(id);
     this.save();
     if (this.root && linuxUserExists(account.name)) {
       const result = run("userdel", ["--remove", account.name]);

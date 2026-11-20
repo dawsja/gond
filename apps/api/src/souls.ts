@@ -175,6 +175,12 @@ type PromptContext = {
   computer?: boolean;
 };
 
+/** The date where the person is, not UTC's, which is already tomorrow on a Central evening. */
+export function todayIn(timeZone: string, at = new Date()): string {
+  const part = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(at).map((p) => [p.type, p.value]));
+  return `${part.year}-${part.month}-${part.day}`;
+}
+
 export function systemPromptFor(bot: Bot, context: PromptContext): string {
   const where =
     context.thread.kind === "room"
@@ -205,7 +211,7 @@ export function systemPromptFor(bot: Bot, context: PromptContext): string {
     context.mcpServers.length ? `## Your MCP servers\n${context.mcpServers.map((m) => `- ${m.name}: ${m.note ?? `tools named mcp__${m.name}__…`}`).join("\n")}\nThey are the person's own servers, attached to every bot's session by Gond; their writes go through approval like any other. Use their tools directly for anything they cover. If one's tools are missing or a call says it needs a sign-in, tell the person in one line; never look for MCP settings, tokens or credentials in ~/.claude or any config file, and never try to sign a server in yourself.` : "",
     teamMemory,
     memory,
-    `## Where you are\n${where}${context.space ? `\n${context.space.note}` : ""}\nYour approval level right now is ${APPROVAL_LEVEL_LABELS[bot.approval].title}.\nThe person's time zone is ${context.timezone}. Today is ${new Date().toISOString().slice(0, 10)}.`,
+    `## Where you are\n${where}${context.space ? `\n${context.space.note}` : ""}\nYour approval level right now is ${APPROVAL_LEVEL_LABELS[bot.approval].title}.\nThe person's time zone is ${context.timezone}${context.computer !== false ? ", and your computer's clock and browser keep it too" : ""}. Today is ${todayIn(context.timezone)}.`,
   ]
     .filter(Boolean)
     .join("\n\n");

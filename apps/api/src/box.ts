@@ -2,6 +2,7 @@ import type { BotFileEntry, DesktopControl, Engine, EngineSignIn, ModelChoice, S
 import { readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { env } from "./config.ts";
+import { userTimezone } from "./data/prefs.ts";
 import { getUser, isAdmin } from "./data/users.ts";
 import type { ToolPart } from "./driver.ts";
 import type { StepUpdate } from "./work.ts";
@@ -83,8 +84,9 @@ export function personHasControl(error: unknown): boolean {
   return error instanceof BoxError && error.status === 409 && error.code === "person_has_control";
 }
 
+/** Every request about a home names the person and their time zone, which the box runs everything of theirs on. */
 function headersFor(config: BoxConfig, extra: Record<string, string> = {}): Record<string, string> {
-  return { Authorization: `Bearer ${config.token}`, ...(config.user ? { "X-Gond-User": config.user } : {}), ...extra };
+  return { Authorization: `Bearer ${config.token}`, ...(config.user ? { "X-Gond-User": config.user, "X-Gond-Timezone": userTimezone(config.user) } : {}), ...extra };
 }
 
 async function request(config: BoxConfig, route: string, init: { method: string; headers?: Record<string, string>; body?: string | Uint8Array<ArrayBuffer>; signal?: AbortSignal }, retried = false): Promise<Response> {

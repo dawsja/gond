@@ -432,6 +432,9 @@ function agentEnv(account, extra = {}) {
     DO_NOT_TRACK: "1",
 
     CLAUDE_CONFIG_DIR: account.claude,
+    // The person's own clock, so a site, `date` or a file's time reads as it does on their phone. A browser,
+    // screen or command keeps the zone it started with.
+    ...(account.timezone ? { TZ: account.timezone } : {}),
     ...extra,
   };
 }
@@ -1922,7 +1925,7 @@ async function agentTurnRoute(request, response, id, account) {
   const sendEvent = (event) => response.write(`data: ${JSON.stringify(event)}\n\n`);
   const keepalive = setInterval(() => response.write(": ping\n\n"), SSE_KEEPALIVE_MS);
   try {
-    const settings = { model: body.model, maxTurns, systemPrompt, tools, permission, mcpServers: Array.isArray(body.mcpServers) ? body.mcpServers : [], access, guest };
+    const settings = { model: body.model, maxTurns, systemPrompt, tools, permission, mcpServers: Array.isArray(body.mcpServers) ? body.mcpServers : [], access, guest, timezone: account.timezone };
     let launch = await agent.ensure(settings);
     const turn = (prompt) =>
       agent.turnWith({ prompt, images, timeoutMs, systemPrompt, onEvent: sendEvent, signal: stop.signal }).catch((error) => {
@@ -2001,6 +2004,7 @@ function accountFor(request) {
   const id = String(request.headers["x-gond-user"] ?? "").trim();
   if (!id) throw new HttpError(400, "Missing X-Gond-User");
   if (!USER_ID.test(id)) throw new HttpError(400, "Bad user id");
+  accounts.noteTimeZone(id, request.headers["x-gond-timezone"]);
   const account = accounts.get(id);
   if (!account) throw new HttpError(404, "No such account on the box", "no_account");
   return account;

@@ -161,11 +161,12 @@ export function sessionArgs({ model, maxTurns, systemPromptFile, mcpConfigFile, 
   return args;
 }
 
-export function argsKeyFor({ model, maxTurns, toolNames, permission, mcpServers = [], mcpRevs = [], access = { kind: "plan" }, guest = null }) {
-  // Only a refreshed server adds its revision, and only a guest its mode, so other sessions keep the key they had.
+export function argsKeyFor({ model, maxTurns, toolNames, permission, mcpServers = [], mcpRevs = [], access = { kind: "plan" }, guest = null, timezone = null }) {
+  // Only a refreshed server adds its revision, only a guest its mode and only a known zone itself, so other sessions keep the key they had.
   const revs = mcpRevs.some(Boolean) ? { mcpRevs } : {};
   const visitor = guest ? { guest } : {};
-  return createHash("sha256").update(JSON.stringify({ model, maxTurns: maxTurns ?? null, toolNames, permission: permission ?? "ask", mcpServers, access, ...revs, ...visitor })).digest("hex").slice(0, 16);
+  const zone = timezone ? { timezone } : {};
+  return createHash("sha256").update(JSON.stringify({ model, maxTurns: maxTurns ?? null, toolNames, permission: permission ?? "ask", mcpServers, access, ...revs, ...visitor, ...zone })).digest("hex").slice(0, 16);
 }
 
 function mcpServersConfig(servers) {
@@ -385,7 +386,7 @@ export class AgentSession extends BridgedSession {
     return { file, cleanup: () => fs.rmSync(dir, { recursive: true, force: true }) };
   }
 
-  async ensure({ model, maxTurns, systemPrompt, tools, permission = "ask", mcpServers = [], access = { kind: "plan" }, guest = null }) {
+  async ensure({ model, maxTurns, systemPrompt, tools, permission = "ask", mcpServers = [], access = { kind: "plan" }, guest = null, timezone = null }) {
     if (guest) {
       tools = [];
       mcpServers = [];
@@ -393,7 +394,8 @@ export class AgentSession extends BridgedSession {
     }
     const toolNames = tools.map((tool) => tool.name).sort();
     const mcpRevs = (Array.isArray(mcpServers) ? mcpServers : []).map((server) => (typeof server?.rev === "string" ? server.rev : null));
-    const argsKey = argsKeyFor({ model, maxTurns, toolNames, permission, mcpServers: mcpServersConfig(mcpServers), mcpRevs, access, guest });
+    // A person who moved to another zone gets a relaunched (resumed) session, so its commands read their clock.
+    const argsKey = argsKeyFor({ model, maxTurns, toolNames, permission, mcpServers: mcpServersConfig(mcpServers), mcpRevs, access, guest, timezone });
     this.tools = tools;
     const backend = backendOf(access);
     if (this.backend && this.backend !== backend) {
@@ -403,7 +405,7 @@ export class AgentSession extends BridgedSession {
     this.backend = backend;
     if (this.running && this.argsKey === argsKey) return { launched: false };
     if (this.running) await this.close({ keepSession: true });
-    this.launchEnv = { ...this.env, ...SESSION_ENV, ...claudeAccessEnv(access) };
+    this.launchEnv = { ...this.env, ...(timezone ? { TZ: timezone } : {}), ...SESSION_ENV, ...claudeAccessEnv(access) };
     this.access = access;
 
     const version = await claudeVersion({ bin: this.bin, env: this.env, uid: this.uid, gid: this.gid });
