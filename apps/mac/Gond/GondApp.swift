@@ -79,8 +79,9 @@ struct RootView: View {
             }
         }
         .frame(minWidth: 900, minHeight: 600)
-        // Connect has nothing for a toolbar to hold, and an empty one still draws its line under the title bar.
-        .toolbar(model.screen == .connect ? .hidden : .automatic, for: .windowToolbar)
+        // Connect's toolbar holds nothing, so it draws no background or line under the title bar either.
+        // (Hiding the toolbar would take the window's close and zoom buttons with it.)
+        .toolbarBackgroundVisibility(model.screen == .connect ? .hidden : .automatic, for: .windowToolbar)
         .animation(.easeOut(duration: 0.2), value: model.screen)
         .background(WindowReader { window in model.attach(window) })
         // SwiftUI's own Quick Look, the panel Finder uses, swiping through what the page sent.
