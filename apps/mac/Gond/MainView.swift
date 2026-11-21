@@ -77,14 +77,12 @@ private struct DetailToolbar: ViewModifier {
     func body(content: Content) -> some View {
         // Every item but the title gathers at the title's side unless a flexible space parts them.
         if #available(macOS 26.0, *) {
-            // Only a conversation's name is a button, so plain words need no glass; and while something of
-            // the page's covers the window, the glass would stand bright over its scrim.
             content.toolbar {
                 ToolbarItem(placement: .navigation) { TitleView(ui: ui) }
-                    .sharedBackgroundVisibility(ui.chrome == nil || ui.covered ? .hidden : .automatic)
+                    // Only a conversation's name is a button; plain words need no glass.
+                    .sharedBackgroundVisibility(ui.chrome == nil ? .hidden : .automatic)
                 ToolbarSpacer(.flexible)
                 ToolbarItemGroup { actions }
-                    .sharedBackgroundVisibility(ui.covered ? .hidden : .automatic)
             }
         } else {
             content.toolbar {

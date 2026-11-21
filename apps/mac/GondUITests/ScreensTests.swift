@@ -75,6 +75,8 @@ final class ScreensTests: XCTestCase {
                 Thread.sleep(forTimeInterval: 1)
                 let hide = app.buttons["Hide Sidebar"].firstMatch
                 if hide.exists && hide.isHittable { hide.click() } else { app.typeKey("s", modifierFlags: [.command, .control]) }
+                // Off the button to an empty stretch of the toolbar, or its tooltip shows in this shot and the next launch's.
+                app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: 0.03)).hover()
                 Thread.sleep(forTimeInterval: 2)
                 // The panel opens by itself once there's room, and the composer moves over to the chat's column.
                 if !panelShown() {
