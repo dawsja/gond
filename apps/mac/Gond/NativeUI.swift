@@ -36,6 +36,8 @@ final class NativeUI: ObservableObject {
     @Published private(set) var page = 0
     /// The page is one of the web app's own screens, which run under the toolbar and pad their top for it.
     @Published private(set) var appPage = false
+    /// How much of the window's top the toolbar covers.
+    @Published private(set) var toolbarHeight: CGFloat = 0
     /// The file Quick Look shows, and the files it can swipe through.
     @Published private(set) var preview: URL?
     @Published private(set) var previewFiles: [URL] = []
@@ -112,6 +114,11 @@ final class NativeUI: ObservableObject {
         guard let key, !key.isEmpty else { return nil }
         if key.hasPrefix("data:") { return Self.image(dataURL: key) }
         return sidebarFaces[key]
+    }
+
+    func setToolbarHeight(_ height: CGFloat) {
+        let value = height.isFinite ? max(0, height.rounded()) : 0
+        if value != toolbarHeight { toolbarHeight = value }
     }
 
     /// Set as a page is asked for, so the web view is in its place before the page first paints.

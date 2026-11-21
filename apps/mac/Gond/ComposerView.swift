@@ -103,28 +103,27 @@ struct ComposerLayer: View {
     }
 
     private var mentions: some View {
+        // Each chip is glass of its own: in one container, chips this close would melt into each other.
         ScrollView(.horizontal, showsIndicators: false) {
-            GlassGroup {
-                HStack(spacing: 6 * s) {
-                    ForEach(state.mentions) { mention in
-                        Button { ui.send(["type": "mention", "id": mention.id]) } label: {
-                            HStack(spacing: 6 * s) {
-                                if let face = ui.mentionFaces[mention.id] {
-                                    Image(nsImage: face).resizable().interpolation(.high).frame(width: 18 * s, height: 18 * s)
-                                }
-                                Text("@\(mention.handle)").font(.system(size: 12 * s, weight: .medium))
+            HStack(spacing: 8 * s) {
+                ForEach(state.mentions) { mention in
+                    Button { ui.send(["type": "mention", "id": mention.id]) } label: {
+                        HStack(spacing: 6 * s) {
+                            if let face = ui.mentionFaces[mention.id] {
+                                Image(nsImage: face).resizable().interpolation(.high).frame(width: 18 * s, height: 18 * s)
                             }
-                            .padding(.leading, 5 * s)
-                            .padding(.trailing, 10 * s)
-                            .frame(height: 28 * s)
-                            .contentShape(Capsule())
+                            Text("@\(mention.handle)").font(.system(size: 12 * s, weight: .medium))
                         }
-                        .buttonStyle(.plain)
-                        .glassControl(in: Capsule())
+                        .padding(.leading, 5 * s)
+                        .padding(.trailing, 10 * s)
+                        .frame(height: 28 * s)
+                        .contentShape(Capsule())
                     }
+                    .buttonStyle(.plain)
+                    .glassControl(in: Capsule())
                 }
-                .padding(.vertical, 2 * s)
             }
+            .padding(.vertical, 2 * s)
         }
         .scrollClipDisabled()
     }

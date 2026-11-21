@@ -23,7 +23,7 @@ struct DetailView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let toolbar = proxy.safeAreaInsets.top
+            let toolbar = ui.toolbarHeight
             // Only the web app's own screens pad their top for the toolbar; anything else starts below it.
             let under = ui.appPage
             ZStack(alignment: .top) {
@@ -61,54 +61,72 @@ struct DetailView: View {
             }
             .background(Color(nsColor: model.pageBackground ?? .windowBackgroundColor))
             .animation(.easeOut(duration: 0.2), value: ui.chrome?.thread)
-            .onChange(of: toolbar, initial: true) { _, inset in model.shell.setInsetTop(inset) }
         }
         .ignoresSafeArea(.container, edges: .top)
         .toolbarMaterial()
         .navigationTitle(ui.chrome?.title ?? ui.sidebar?.title ?? "Gond")
-        .toolbar {
-            ToolbarItem(placement: .navigation) {
-                TitleView(ui: ui)
+        .modifier(DetailToolbar(ui: ui))
+    }
+}
+
+/// The conversation's name at the toolbar's start, its actions at the end.
+private struct DetailToolbar: ViewModifier {
+    @ObservedObject var ui: NativeUI
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        // Every item but the title gathers at the title's side unless a flexible space parts them.
+        if #available(macOS 26.0, *) {
+            content.toolbar {
+                ToolbarItem(placement: .navigation) { TitleView(ui: ui) }
+                ToolbarSpacer(.flexible)
+                ToolbarItemGroup { actions }
             }
-            // On a Mac a primary action goes to the toolbar's leading edge; these belong at its trailing one.
-            ToolbarItemGroup(placement: .automatic) {
-                if let chrome = ui.chrome {
-                    ForEach(chrome.screens) { screen in
-                        Button { ui.send(["type": "screen", "id": screen.id]) } label: {
-                            Label(screen.label, systemImage: "display")
-                        }
-                        .labelStyle(.titleAndIcon)
-                        .help("Show \(screen.label)")
-                        .disabled(ui.covered)
-                    }
-                    Button { ui.send(["type": "details"]) } label: {
-                        Label("Details", systemImage: "sidebar.right")
-                    }
-                    .help("Details")
-                    .disabled(ui.covered)
-                    .accessibilityIdentifier("chrome.details")
-                    if !chrome.menu.isEmpty {
-                        Menu {
-                            ForEach(Array(chrome.menu.enumerated()), id: \.offset) { _, group in
-                                Section {
-                                    ForEach(group) { item in
-                                        Button(role: item.destructive ? .destructive : nil) {
-                                            ui.send(["type": "menu", "id": item.id])
-                                        } label: {
-                                            Label(item.label, systemImage: item.symbol)
-                                        }
-                                    }
+        } else {
+            content.toolbar {
+                ToolbarItem(placement: .navigation) { TitleView(ui: ui) }
+                ToolbarItemGroup(placement: .primaryAction) { actions }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var actions: some View {
+        if let chrome = ui.chrome {
+            ForEach(chrome.screens) { screen in
+                Button { ui.send(["type": "screen", "id": screen.id]) } label: {
+                    Label(screen.label, systemImage: "display")
+                }
+                .labelStyle(.titleAndIcon)
+                .help("Show \(screen.label)")
+                .disabled(ui.covered)
+            }
+            Button { ui.send(["type": "details"]) } label: {
+                Label("Details", systemImage: "sidebar.right")
+            }
+            .help("Details")
+            .disabled(ui.covered)
+            .accessibilityIdentifier("chrome.details")
+            if !chrome.menu.isEmpty {
+                Menu {
+                    ForEach(Array(chrome.menu.enumerated()), id: \.offset) { _, group in
+                        Section {
+                            ForEach(group) { item in
+                                Button(role: item.destructive ? .destructive : nil) {
+                                    ui.send(["type": "menu", "id": item.id])
+                                } label: {
+                                    Label(item.label, systemImage: item.symbol)
                                 }
                             }
-                        } label: {
-                            Label("More", systemImage: "ellipsis")
                         }
-                        .menuIndicator(.hidden)
-                        .help("More")
-                        .disabled(ui.covered)
-                        .accessibilityIdentifier("chrome.more")
                     }
+                } label: {
+                    Label("More", systemImage: "ellipsis")
                 }
+                .menuIndicator(.hidden)
+                .help("More")
+                .disabled(ui.covered)
+                .accessibilityIdentifier("chrome.more")
             }
         }
     }

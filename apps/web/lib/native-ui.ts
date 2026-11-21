@@ -398,7 +398,8 @@ export async function avatarPng(avatar: Element, size = 96): Promise<string | nu
 async function drawAvatar(avatar: Element, size: number): Promise<string | null> {
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = size;
-  const context = canvas.getContext("2d");
+  // In memory rather than on the GPU, so WebKit reads it back even on a Mac without a real GPU (a VM).
+  const context = canvas.getContext("2d", { willReadFrequently: true });
   if (!context) return null;
   const picture = avatar.querySelector("img");
   if (picture && !picture.complete) await picture.decode().catch(() => undefined);
@@ -444,7 +445,8 @@ async function drawFace(face: Element, size: number): Promise<string | null> {
   if (!box.width || !box.height) return null;
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = size;
-  const context = canvas.getContext("2d");
+  // In memory rather than on the GPU, so WebKit reads it back even on a Mac without a real GPU (a VM).
+  const context = canvas.getContext("2d", { willReadFrequently: true });
   if (!context) return null;
   const scale = size / Math.max(box.width, box.height);
   context.scale(scale, scale);

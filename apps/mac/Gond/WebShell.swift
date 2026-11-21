@@ -1,5 +1,4 @@
 import AppKit
-import Metal
 import os
 import SwiftUI
 import WebKit
@@ -641,11 +640,12 @@ struct WebContainer: NSViewRepresentable {
 }
 
 #if DEBUG
-/// What the screenshot job needs to tell why a page doesn't show: the page's own view of itself, the
-/// web view's place in the window, WebKit's layers and a snapshot WebKit paints itself.
+/// What the screenshot job needs to tell why a page doesn't show as it should: the page's own view of
+/// itself, the web view's place in the window and a snapshot WebKit paints apart from the window.
 extension WebShell {
     /// WebKit's feature switches by key (as Safari's Feature Flags lists them), turned off before the web view is made.
     static func turnOff(_ keys: [String], in preferences: WKPreferences) {
+        guard !keys.isEmpty else { return }
         let list = NSSelectorFromString("_features")
         let set = NSSelectorFromString("_setEnabled:forFeature:")
         let preferencesClass = WKPreferences.self as AnyObject
@@ -657,51 +657,16 @@ extension WebShell {
         typealias Setter = @convention(c) (AnyObject, Selector, Bool, AnyObject) -> Void
         let setter = unsafeBitCast(preferences.method(for: set), to: Setter.self)
         var off: [String] = []
-        var related: [String] = []
         for feature in features {
-            guard let key = feature.value(forKey: "key") as? String else { continue }
-            if keys.contains(key) {
-                setter(preferences, set, false, feature)
-                off.append(key)
-            }
-            if key.range(of: "GPU|Accelerat|Composit|Remote|Layer|Canvas|Metal|IOSurface", options: .regularExpression) != nil { related.append(key) }
+            guard let key = feature.value(forKey: "key") as? String, keys.contains(key) else { continue }
+            setter(preferences, set, false, feature)
+            off.append(key)
         }
-        Screens.note("webkit features off: [\(off.joined(separator: ","))] of asked [\(keys.joined(separator: ","))]")
-        Screens.note("webkit related features: \(related.joined(separator: ","))")
+        Screens.note("webkit features off: \(off.joined(separator: ",")) of \(keys.joined(separator: ","))")
     }
 
     func probe() async {
-        Screens.note("metal: \(MTLCreateSystemDefaultDevice()?.name ?? "none")")
-        if let window = webView.window {
-            Screens.note("window \(NSStringFromRect(window.frame)) visible=\(window.isVisible) occluded=\(!window.occlusionState.contains(.visible)) key=\(window.isKeyWindow) scale=\(window.backingScaleFactor) screen=\(NSStringFromRect(window.screen?.frame ?? .zero))")
-        } else {
-            Screens.note("the web view is in no window")
-        }
-        var chain: [String] = []
-        var view: NSView? = webView
-        while let current = view {
-            chain.append("\(type(of: current)) \(NSStringFromRect(current.frame)) hidden=\(current.isHidden) alpha=\(current.alphaValue) layer=\(current.layer.map { "hidden=\($0.isHidden) opacity=\($0.opacity)" } ?? "none")")
-            view = current.superview
-        }
-        Screens.note("views:\n  " + chain.joined(separator: "\n  "))
-        Screens.note("web view hiddenOrAncestor=\(webView.isHiddenOrHasHiddenAncestor) insetTop=\(insetTop) appPage=\(appPage) url=\(webView.url?.absoluteString ?? "none")")
-        for key in ["topContentInset", "automaticallyAdjustsContentInsets", "obscuredContentInsets"] {
-            let getter = NSSelectorFromString(key == "obscuredContentInsets" ? key : "_\(key)")
-            if webView.responds(to: getter) { Screens.note("web view \(key) = \(String(describing: webView.value(forKey: key)))") }
-        }
-        if let layer = webView.layer {
-            var count = 0
-            var filled = 0
-            var kinds: [String: Int] = [:]
-            func walk(_ layer: CALayer, depth: Int) {
-                count += 1
-                if layer.contents != nil { filled += 1 }
-                kinds[String(describing: type(of: layer)), default: 0] += 1
-                if depth < 40 { layer.sublayers?.forEach { walk($0, depth: depth + 1) } }
-            }
-            walk(layer, depth: 0)
-            Screens.note("web view layers: \(count), with contents: \(filled), kinds: \(kinds)")
-        }
+        Screens.note("web view \(NSStringFromRect(webView.frame)) in \(NSStringFromRect(webView.window?.frame ?? .zero)), toolbar \(insetTop), app page \(appPage), \(webView.url?.path ?? "no page")")
         do {
             let result = try await webView.callAsyncJavaScript(Self.probeScript, arguments: [:], contentWorld: .page)
             Screens.note("page: \(result as? String ?? String(describing: result))")
@@ -716,51 +681,32 @@ extension WebShell {
                 continuation.resume(returning: image)
             }
         }
-        if let image {
-            Screens.note("snapshot \(NSStringFromSize(image.size))")
-            Screens.save(image, as: "snapshot")
-        }
+        if let image { Screens.save(image, as: "snapshot") }
     }
 
     private static let probeScript = """
-    const out = {};
     const root = document.documentElement;
-    const rect = (el) => { const b = el.getBoundingClientRect(); return [Math.round(b.left), Math.round(b.top), Math.round(b.width), Math.round(b.height)]; };
-    const look = (el) => { if (!el) return null; const s = getComputedStyle(el); return { tag: el.tagName, rect: rect(el), opacity: s.opacity, visibility: s.visibility, display: s.display, color: s.color, background: s.backgroundColor, transform: s.transform }; };
-    out.shell = root.dataset.shell || null;
-    out.classes = root.className;
-    out.size = [innerWidth, innerHeight, devicePixelRatio];
-    out.visual = window.visualViewport ? [visualViewport.width, visualViewport.height, visualViewport.offsetTop] : null;
-    out.visibility = document.visibilityState;
-    out.focus = document.hasFocus();
     const css = getComputedStyle(root);
-    out.insetTop = css.getPropertyValue("--shell-inset-top");
-    out.safeTop = css.getPropertyValue("--safe-top");
-    out.composer = [css.getPropertyValue("--native-composer-bottom"), css.getPropertyValue("--native-composer-height")];
-    out.text = document.body ? document.body.innerText.length : -1;
-    out.bubbles = document.querySelectorAll("[data-slot=bubble]").length;
-    out.body = look(document.body);
-    out.column = look(document.querySelector("[data-native-column]"));
-    out.scroller = look(document.querySelector("[data-slot=message-scroller-viewport]"));
-    const bubble = document.querySelector("[data-slot=bubble]");
-    out.bubble = look(bubble);
-    const chain = [];
-    for (let el = bubble; el && chain.length < 30; el = el.parentElement) { const s = getComputedStyle(el); if (s.opacity !== "1" || s.visibility !== "visible" || s.transform !== "none" || s.filter !== "none" || s.clipPath !== "none" || (s.mask || "none") !== "none") chain.push(el.tagName + "." + String(el.className).slice(0, 60) + " o=" + s.opacity + " v=" + s.visibility + " t=" + s.transform + " f=" + s.filter + " c=" + s.clipPath); }
-    out.bubbleChain = chain;
-    const hit = document.elementFromPoint(innerWidth / 2, innerHeight / 2);
-    out.center = hit ? hit.tagName + "." + String(hit.className).slice(0, 80) : null;
+    const rect = (selector) => { const el = document.querySelector(selector); if (!el) return null; const b = el.getBoundingClientRect(); return [Math.round(b.left), Math.round(b.top), Math.round(b.width), Math.round(b.height)]; };
+    const out = {
+      shell: root.dataset.shell || null,
+      size: [innerWidth, innerHeight, devicePixelRatio],
+      insetTop: css.getPropertyValue("--shell-inset-top"),
+      composer: [css.getPropertyValue("--native-composer-bottom"), css.getPropertyValue("--native-composer-height")],
+      bubbles: document.querySelectorAll("[data-slot=bubble]").length,
+      column: rect("[data-native-column]"),
+      firstBubble: rect("[data-slot=bubble]"),
+    };
     try {
-      const c = document.createElement("canvas"); c.width = c.height = 1; const x = c.getContext("2d");
-      x.fillStyle = "#336699"; x.fillRect(0, 0, 1, 1); out.canvasFill = x.fillStyle;
-      try { out.canvasRead = Array.from(x.getImageData(0, 0, 1, 1).data).join(","); } catch (e) { out.canvasRead = "error " + e.name; }
-      out.canvasUrl = c.toDataURL("image/png").length;
-      const d = document.createElement("canvas"); d.width = d.height = 1; const y = d.getContext("2d", { willReadFrequently: true });
-      y.fillStyle = "#336699"; y.fillRect(0, 0, 1, 1);
-      try { out.canvasReadSoftware = Array.from(y.getImageData(0, 0, 1, 1).data).join(","); } catch (e) { out.canvasReadSoftware = "error " + e.name; }
-      out.canvasUrlSoftware = d.toDataURL("image/png").length;
-    } catch (e) { out.canvas = "error " + e; }
-    try { out.webgl = Boolean(document.createElement("canvas").getContext("webgl")); } catch (e) { out.webgl = "error " + e; }
-    out.frames = await new Promise((resolve) => { let n = 0; const start = performance.now(); const tick = () => { n += 1; if (performance.now() - start < 500) requestAnimationFrame(tick); else resolve(n); }; requestAnimationFrame(tick); setTimeout(() => resolve(n), 1500); });
+      const canvas = document.createElement("canvas");
+      canvas.width = canvas.height = 1;
+      const context = canvas.getContext("2d");
+      context.fillStyle = "#336699";
+      context.fillRect(0, 0, 1, 1);
+      out.canvas = Array.from(context.getImageData(0, 0, 1, 1).data).join(",");
+    } catch (error) {
+      out.canvas = "error " + error.name;
+    }
     return JSON.stringify(out);
     """
 }

@@ -7,9 +7,6 @@ final class ScreensTests: XCTestCase {
     private var appearance = "light"
     private var folder: URL?
 
-    /// WebKit's features to turn off on the runner, whose graphics WebKit can't use as a Mac's (see the job).
-    private static let runnerWebKitOff = "UseGPUProcessForDOMRenderingEnabled,UseGPUProcessForCanvasRenderingEnabled,UseGPUProcessForWebGLEnabled,AcceleratedDrawingEnabled,CanvasUsesAcceleratedDrawing"
-
     override func setUp() {
         continueAfterFailure = true
     }
@@ -24,22 +21,8 @@ final class ScreensTests: XCTestCase {
         var base = ["GOND_SCREENS_SERVER": server, "GOND_SCREENS_COOKIE": cookie, "GOND_SCREENS_APPEARANCE": appearance]
         // The app isn't sandboxed, so it writes what it saw beside the screenshots; this runner can't.
         if let folder { base["GOND_SCREENS_DIR"] = folder.path }
-
-        // The conversation as WebKit draws it with each set of its features, to tell which the runner needs.
-        for (label, off) in [("default", ""), ("nogpu", "UseGPUProcessForDOMRenderingEnabled,UseGPUProcessForCanvasRenderingEnabled"), ("noaccel", "AcceleratedDrawingEnabled,CanvasUsesAcceleratedDrawing")] {
-            var probe = base
-            probe["GOND_SCREENS_WEBKIT_OFF"] = off
-            launch(probe, label: "probe-\(label)", path: "/app/t/\(thread)")
-            if wait(for: "composer.field", timeout: 60) {
-                // The app looks at the page 6 s after it loads.
-                Thread.sleep(forTimeInterval: 9)
-                shot("probe-\(label)")
-            } else {
-                print("[screens] probe-\(label): the composer never showed")
-            }
-            app.terminate()
-        }
-        base["GOND_SCREENS_WEBKIT_OFF"] = Self.runnerWebKitOff
+        // WebKit's features the runner's graphics can't take (the job says which).
+        if let off = env["GOND_SCREENS_WEBKIT_OFF"] { base["GOND_SCREENS_WEBKIT_OFF"] = off }
 
         // A conversation: the toolbar, the composer, the menu, a confirm, the sidebar searching.
         launch(base, label: "conversation", path: "/app/t/\(thread)")

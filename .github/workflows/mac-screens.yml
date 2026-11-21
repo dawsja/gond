@@ -73,6 +73,9 @@ jobs:
           TEST_RUNNER_GOND_SCREENS_COOKIE: ${{ env.SCREENS_COOKIE }}
           TEST_RUNNER_GOND_SCREENS_THREAD: ${{ env.SCREENS_THREAD }}
           TEST_RUNNER_GOND_SCREENS_ROOM: ${{ env.SCREENS_ROOM }}
+          # The runner is a VM whose paravirtual GPU can't take WebKit's accelerated drawing: the page lays
+          # out but never shows, and a canvas can't be read back. Drawn in memory, it shows as on a Mac.
+          TEST_RUNNER_GOND_SCREENS_WEBKIT_OFF: AcceleratedDrawingEnabled,CanvasUsesAcceleratedDrawing
         run: |
           set -o pipefail
           export TEST_RUNNER_GOND_SCREENS_DIR="$RUNNER_TEMP/screens"

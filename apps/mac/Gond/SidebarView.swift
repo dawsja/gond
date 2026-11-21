@@ -44,7 +44,16 @@ private struct ChatsSidebar: View {
     /// The row of the conversation the page shows, if it is listed as a row.
     private var activeRow: String? { state.rows.first(where: { $0.active })?.id }
 
+    // The search above the list and you below it, never over it: rows passing under them would show through the glass.
     var body: some View {
+        VStack(spacing: 0) {
+            header
+            list
+            footer
+        }
+    }
+
+    private var list: some View {
         List(selection: $selection) {
             if !state.loaded {
                 ForEach(0..<4, id: \.self) { _ in
@@ -106,8 +115,6 @@ private struct ChatsSidebar: View {
             }
         }
         .listStyle(.sidebar)
-        .safeAreaInset(edge: .top, spacing: 0) { header }
-        .safeAreaInset(edge: .bottom, spacing: 0) { footer }
         .onAppear {
             query = state.query
             selection = activeRow
@@ -512,6 +519,15 @@ private struct SettingsSidebar: View {
     private var active: String? { items.first(where: { $0.active })?.id }
 
     var body: some View {
+        VStack(spacing: 0) {
+            list
+            MeButton(ui: ui, me: state.me, groups: state.profileMenu)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+        }
+    }
+
+    private var list: some View {
         List(selection: $selection) {
             Label("Back to chats", systemImage: "chevron.left")
                 .tag(Self.back)
@@ -527,11 +543,6 @@ private struct SettingsSidebar: View {
             }
         }
         .listStyle(.sidebar)
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            MeButton(ui: ui, me: state.me, groups: state.profileMenu)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-        }
         .onAppear { selection = active }
         .onChange(of: active) { selection = active }
         .onChange(of: selection) {

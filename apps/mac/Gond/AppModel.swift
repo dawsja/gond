@@ -86,6 +86,7 @@ final class AppModel: ObservableObject {
     var reopen: (@MainActor () -> Void)?
     private var started = false
     private var keys: Any?
+    private var layoutWatch: NSKeyValueObservation?
 
     init() {
         #if DEBUG
@@ -128,6 +129,15 @@ final class AppModel: ObservableObject {
         signIn.anchor = window
         window.tabbingMode = .disallowed
         applyWindowTheme()
+        // What the toolbar covers is what the window leaves out of its content layout rect. SwiftUI reports no
+        // safe area for it to a detail that runs under it, so AppKit is asked.
+        layoutWatch = window.observe(\.contentLayoutRect, options: [.initial, .new]) { [weak self] window, _ in
+            if Thread.isMainThread {
+                MainActor.assumeIsolated { self?.toolbarChanged(in: window) }
+            } else {
+                Task { @MainActor in self?.toolbarChanged(in: window) }
+            }
+        }
         #if DEBUG
         if Screens.active {
             // After SwiftUI has placed it: as big as the screenshots are meant to be, but all of it on the
@@ -140,6 +150,12 @@ final class AppModel: ObservableObject {
             }
         }
         #endif
+    }
+
+    private func toolbarChanged(in window: NSWindow) {
+        let height = (window.contentView?.frame.height ?? window.frame.height) - window.contentLayoutRect.maxY
+        ui.setToolbarHeight(height)
+        shell.setInsetTop(ui.toolbarHeight)
     }
 
     /// Connect can go back to the Gond it came from when one is loaded.
