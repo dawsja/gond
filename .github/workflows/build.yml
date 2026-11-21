@@ -333,7 +333,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.mac == 'true'
     runs-on: xcode-27
-    # Notarizing waits on Apple twice; a wait that never ends fails here instead of holding a release.
+    # Notarizing waits on Apple at most 20 minutes; anything that hangs fails here instead of holding a release.
     timeout-minutes: 90
     env:
       ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
@@ -431,31 +431,6 @@ jobs:
           codesign --force "${sign[@]}" --entitlements "$ENTITLEMENTS" "$MAC_APP"
           codesign --verify --strict --deep --verbose=2 "$MAC_APP"
           codesign --display --entitlements - "$MAC_APP" || true
-      # The app is notarized and stapled on its own first, so it keeps its ticket once it's dragged off
-      # the disk image; then the disk image, which Gatekeeper checks when it's opened.
-      - name: Notarize the app
-        if: env.DEVELOPER_ID == 'true'
-        run: |
-          set -o pipefail
-          zip="$RUNNER_TEMP/Gond-notarize.zip"
-          ditto -c -k --keepParent "$MAC_APP" "$zip"
-          result=$(xcrun notarytool submit "$zip" --key "$ASC_KEY" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID" --wait --timeout 30m --output-format json || true)
-          echo "$result"
-          if [ "$(jq -r '.status // empty' <<<"$result" 2>/dev/null)" != Accepted ]; then
-            id=$(jq -r '.id // empty' <<<"$result" 2>/dev/null || true)
-            [ -z "$id" ] || xcrun notarytool log "$id" --key "$ASC_KEY" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID" || true
-            echo "Apple didn't notarize the app."
-            exit 1
-          fi
-          rm -f "$zip"
-          # A new ticket can take a moment to reach the servers stapler asks.
-          for attempt in 1 2 3 4 5; do
-            xcrun stapler staple "$MAC_APP" && break
-            [ "$attempt" = 5 ] && exit 1
-            sleep 20
-          done
-          xcrun stapler validate "$MAC_APP"
-          spctl --assess --type execute --verbose=2 "$MAC_APP" || echo "Gatekeeper on this runner didn't accept the app; open the disk image on a Mac before shipping it."
       - name: Make the disk image
         run: |
           set -o pipefail
@@ -475,18 +450,37 @@ jobs:
             codesign --force --sign "$MAC_IDENTITY" --keychain "$MAC_KEYCHAIN" --timestamp "$MAC_DMG"
           fi
           ls -l "$MAC_DMG"
+      # The disk image is notarized as a whole, which covers the app inside: dragged off the image, the
+      # app's ticket is found online. Apple usually answers in minutes but can take hours, a new
+      # Developer ID's first submissions most of all, so the job asks for at most 20 minutes and then
+      # ships the image signed without a stapled ticket, which Gatekeeper checks with Apple when it's
+      # opened. A rejection fails the job.
       - name: Notarize the disk image
         if: env.DEVELOPER_ID == 'true'
         run: |
           set -o pipefail
-          result=$(xcrun notarytool submit "$MAC_DMG" --key "$ASC_KEY" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID" --wait --timeout 30m --output-format json || true)
-          echo "$result"
-          if [ "$(jq -r '.status // empty' <<<"$result" 2>/dev/null)" != Accepted ]; then
-            id=$(jq -r '.id // empty' <<<"$result" 2>/dev/null || true)
-            [ -z "$id" ] || xcrun notarytool log "$id" --key "$ASC_KEY" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID" || true
-            echo "Apple didn't notarize the disk image."
-            exit 1
-          fi
+          auth=(--key "$ASC_KEY" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID")
+          submitted=$(xcrun notarytool submit "$MAC_DMG" "${auth[@]}" --output-format json)
+          echo "$submitted"
+          id=$(jq -r '.id // empty' <<<"$submitted")
+          [ -n "$id" ] || { echo "Apple didn't take the disk image."; exit 1; }
+          status=""
+          for attempt in $(seq 40); do
+            status=$(xcrun notarytool info "$id" "${auth[@]}" --output-format json 2>/dev/null | jq -r '.status // empty' || true)
+            echo "Notarization $id: ${status:-no answer yet}"
+            if [ -n "$status" ] && [ "$status" != "In Progress" ]; then break; fi
+            sleep 30
+          done
+          case "$status" in
+            Accepted) ;;
+            "In Progress"|"")
+              echo "::warning::Apple is still notarizing $id after 20 minutes. The disk image ships signed without a stapled ticket; Gatekeeper checks with Apple when it's opened."
+              exit 0 ;;
+            *)
+              xcrun notarytool log "$id" "${auth[@]}" || true
+              echo "Apple didn't notarize the disk image ($status)."
+              exit 1 ;;
+          esac
           for attempt in 1 2 3 4 5; do
             xcrun stapler staple "$MAC_DMG" && break
             [ "$attempt" = 5 ] && exit 1

@@ -221,8 +221,9 @@ The address rules are mirrored in each app with the same tests.
     `scripts/check.mjs` (the lint) fails when the bridge misses a
     `GondMac` method, the loopback port drifts or a shared file is gone.
   - CI (`mac` in `build.yml`, `xcode-27`) tests, builds one app for Apple
-    silicon and Intel, and signs it with a Developer ID and notarizes it
-    only when `MAC_CERTIFICATE_P12`, `MAC_CERTIFICATE_PASSWORD` and the App
+    silicon and Intel, and signs it with a Developer ID and notarizes the
+    dmg (waiting at most 20 minutes, then shipping it signed without a
+    stapled ticket, which Gatekeeper checks online) only when `MAC_CERTIFICATE_P12`, `MAC_CERTIFICATE_PASSWORD` and the App
     Store Connect key (`ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8`) are all
     there and it isn't a pull request; ad hoc otherwise. The release gets
     the dmg. `mac-screens.yml` keeps light and dark screenshots against a
