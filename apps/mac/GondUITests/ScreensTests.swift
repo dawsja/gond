@@ -64,6 +64,28 @@ final class ScreensTests: XCTestCase {
                 print("[screens] the sidebar's search never showed, or can't be clicked")
                 shot("search-missing")
             }
+
+            // Details: a sheet while the sidebar leaves the chat too narrow, the panel beside it without the sidebar.
+            let details = element("chrome.details")
+            if details.waitForExistence(timeout: 5) {
+                details.click()
+                Thread.sleep(forTimeInterval: 1.5)
+                shot("details-sheet")
+                app.typeKey(.escape, modifierFlags: [])
+                Thread.sleep(forTimeInterval: 1)
+                let hide = app.buttons["Hide Sidebar"].firstMatch
+                if hide.exists && hide.isHittable { hide.click() } else { app.typeKey("s", modifierFlags: [.command, .control]) }
+                Thread.sleep(forTimeInterval: 2)
+                // The panel opens by itself once there's room, and the composer moves over to the chat's column.
+                if !panelShown() {
+                    details.click()
+                    Thread.sleep(forTimeInterval: 1.5)
+                }
+                if !panelShown() { print("[screens] the details panel never opened beside the chat") }
+                shot("details")
+            } else {
+                print("[screens] the toolbar's Details never showed")
+            }
         } else {
             print("[screens] the conversation's composer never showed")
             shot("conversation-missing")
@@ -112,6 +134,14 @@ final class ScreensTests: XCTestCase {
         app.launch()
         app.activate()
         if !app.windows.firstMatch.waitForExistence(timeout: 15) { print("[screens] \(label): no window after launch") }
+    }
+
+    /// The details panel takes the right of the window, so the composer sits left of its middle.
+    private func panelShown() -> Bool {
+        let field = element("composer.field")
+        let window = app.windows.firstMatch
+        guard field.exists, window.exists else { return false }
+        return field.frame.midX < window.frame.midX - 60
     }
 
     private func element(_ id: String) -> XCUIElement {

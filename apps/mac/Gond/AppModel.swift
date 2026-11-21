@@ -147,10 +147,29 @@ final class AppModel: ObservableObject {
                 let size = NSSize(width: min(1440, visible.width), height: min(900, visible.height))
                 window.setFrame(NSRect(x: visible.midX - size.width / 2, y: visible.midY - size.height / 2, width: size.width, height: size.height), display: true)
                 Screens.note("window \(NSStringFromRect(window.frame)) on \(NSStringFromRect(visible))")
+                if Screens.connect {
+                    try? await Task.sleep(for: .seconds(3))
+                    Self.describeTitlebar(window)
+                }
             }
         }
         #endif
     }
+
+    #if DEBUG
+    /// The window's own views around the title bar, for the job to see what draws a line under it.
+    private static func describeTitlebar(_ window: NSWindow) {
+        var lines = ["style \(window.styleMask.rawValue), separator \(window.titlebarSeparatorStyle.rawValue), transparent \(window.titlebarAppearsTransparent), toolbar \(window.toolbar.map { "visible \($0.isVisible), \($0.items.count) items" } ?? "none"), toolbar style \(window.toolbarStyle.rawValue)"]
+        func walk(_ view: NSView, depth: Int) {
+            guard lines.count < 160 else { return }
+            let flags = (view.isHidden ? " hidden" : "") + (view.alphaValue < 1 ? " alpha \(view.alphaValue)" : "")
+            lines.append(String(repeating: "  ", count: depth) + "\(type(of: view)) \(NSStringFromRect(view.frame))" + flags)
+            if depth < 9 { view.subviews.forEach { walk($0, depth: depth + 1) } }
+        }
+        if let frame = window.contentView?.superview { walk(frame, depth: 0) }
+        Screens.note(lines.joined(separator: "\n"))
+    }
+    #endif
 
     private func toolbarChanged(in window: NSWindow) {
         let height = (window.contentView?.frame.height ?? window.frame.height) - window.contentLayoutRect.maxY

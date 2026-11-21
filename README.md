@@ -77,8 +77,8 @@ affiliated with xAI, Meta or Anthropic.
 - **Multiple people.** Add an OIDC provider (Pocket ID, Authentik, Keycloak,
   …) and everyone gets their own bots, AI, apps, secrets and Linux account.
 - **Phone and desktop.** The web app is built phone-first and can go on your
-  home screen. There's also an Android app and a Rust/Tauri app for Windows
-  and Linux. Download them from [gond.io](https://gond.io/#install) or the
+  home screen. There's also an Android app, a Mac app and a Rust/Tauri app
+  for Windows and Linux. Download them from [gond.io](https://gond.io/#install) or the
   [releases page](https://github.com/dawsja/gond/releases).
 
 ## Quick start
@@ -230,6 +230,7 @@ apps/web         Next.js app (shadcn + Tailwind 4)
 apps/api         Hono API: auth, data, dispatcher, approvals, Composio, routines
 apps/desktop     Rust/Tauri app for Windows and Linux
 apps/android     Kotlin app: a Connect screen, then the web app
+apps/mac         SwiftUI app for the Mac: the web app with its own sidebar, toolbar and composer
 packages/box     The bots' computer: CLI sessions, MCP bridge, desktop, updater
 packages/shared  Types, schemas, templates and the app catalog
 ```

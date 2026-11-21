@@ -152,9 +152,10 @@ function MessageScrollerEdges({ top, bottom, viewport: selector = '[data-slot="m
     }
   }, [selector])
   const strip = "pointer-events-none absolute inset-x-0 z-10 from-background to-transparent transition-opacity duration-150"
+  // Under the Mac app's toolbar the page is solid until just above its edge, so nothing scrolled beneath shows between its glass pills.
   return (
     <div ref={ref} aria-hidden="true" className="contents">
-      <div className={cn(strip, "top-0 bg-linear-to-b")} style={{ height: top, opacity: edges.top }} />
+      <div className={cn(strip, "top-0 bg-linear-to-b mac:bg-[image:linear-gradient(to_bottom,var(--background)_calc(var(--safe-top)_-_12px),transparent)]")} style={{ height: top, opacity: edges.top }} />
       <div className={cn(strip, "bottom-0 bg-linear-to-t")} style={{ height: bottom, opacity: edges.bottom }} />
     </div>
   )

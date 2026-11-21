@@ -191,6 +191,22 @@ final class WebShell: NSObject {
       });
       window.addEventListener("error", function (event) { send("error", [event.message, event.error && event.error.stack]); });
       window.addEventListener("unhandledrejection", function (event) { send("error", ["unhandled", event.reason, event.reason && event.reason.stack]); });
+      // The toolbar's inset and the message list's top padding, frame by frame for the first seconds,
+      // kept each time they change, so the probe can tell whether the page moved once it showed.
+      var insets = window.__gondInsets = [];
+      var last = "";
+      function frame() {
+        var root = document.documentElement;
+        var inset = root ? getComputedStyle(root).getPropertyValue("--shell-inset-top").trim() : "";
+        var list = document.querySelector("[data-slot=message-scroller-viewport]");
+        var pad = list ? getComputedStyle(list).paddingTop : "none";
+        if (inset + pad !== last) {
+          last = inset + pad;
+          insets.push([Math.round(performance.now()), inset, pad]);
+        }
+        if (performance.now() < 10000) requestAnimationFrame(frame);
+      }
+      requestAnimationFrame(frame);
     })();
     """
     #endif
@@ -695,7 +711,9 @@ extension WebShell {
       composer: [css.getPropertyValue("--native-composer-bottom"), css.getPropertyValue("--native-composer-height")],
       bubbles: document.querySelectorAll("[data-slot=bubble]").length,
       column: rect("[data-native-column]"),
-      firstBubble: rect("[data-slot=bubble]"),
+      listPad: (() => { const list = document.querySelector("[data-slot=message-scroller-viewport]"); return list ? getComputedStyle(list).paddingTop : null; })(),
+      firstPaint: Math.round((performance.getEntriesByName("first-contentful-paint")[0] || { startTime: -1 }).startTime),
+      insetsByFrame: window.__gondInsets || null,
     };
     try {
       const canvas = document.createElement("canvas");

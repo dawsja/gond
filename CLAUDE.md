@@ -72,7 +72,7 @@ functions to start from; the code holds the details.
 
 ### The apps around the web app
 
-The desktop, Android and iPhone apps are shells: each ships one Connect
+The desktop, Android, iPhone and Mac apps are shells: each ships one Connect
 screen of its own, drawn with the web's tokens, then shows the Gond you
 connected to, so every other screen is the web app. Each has exactly one
 bridge, and every call on it checks that the page is on the saved
@@ -81,7 +81,8 @@ mid sign-in) can't use it. The microphone is granted to that origin only.
 The address rules are mirrored in each app with the same tests.
 
 - `apps/desktop`: Rust and Tauri v2, a Windows installer (NSIS) and a
-  Linux AppImage. Connect is `src/connect.*`: three 3D bots above the
+  Linux AppImage, Windows and Linux only (the Mac has `apps/mac`).
+  Connect is `src/connect.*`: three 3D bots above the
   words as on the iPhone (`team.svg`, written by `brand:build` from the
   cog's geometry and shaded as `GondBot` shades, never edited by hand)
   and the form as an island. The bridge is
@@ -190,15 +191,56 @@ The address rules are mirrored in each app with the same tests.
     a simulator against a throwaway Gond seeded by
     `scripts/screens-seed.ts` (`GOND_SCREENS_*` hooks exist only in debug
     builds) and keeps light and dark screenshots.
+- `apps/mac`: Swift and SwiftUI, macOS 15 and up, in place of Tauri on
+  the Mac. Connect is native (`ConnectView.swift`), then a `WKWebView`
+  (`WebShell.swift`) with the app's own sidebar, toolbar and composer,
+  Liquid Glass from macOS 26 and a material before. The page decides
+  everything; the app only draws and reports, as on the iPhone.
+  - The bridge is `window.gondMac` (`GondMac` and `macShell()` in
+    `lib/shell.ts`), never `gondMobile` (that is a phone) or `gondDesktop`
+    (Tauri's): a document-start script defined only on the saved origin,
+    posting to a `gondMac` handler that checks the frame's origin again.
+    The theme init script marks `<html data-shell="mac">` before first
+    paint; the `mac:` variant scopes the page's Mac look, and the Mac is
+    wide at every width.
+  - The sidebar is the page's state (`SidebarState`, `useNativeSidebarState`,
+    `native-sidebar.tsx`), sent whole at most once a frame, faces as PNGs by
+    key sent once per page, `sidebar("null")` on unmount; a click comes back
+    as a `gond:native-sidebar` event and the app never navigates by itself.
+  - The toolbar and composer take the iPhone's `ChromeState` and send the
+    same `ChromeEvent`s; `column` is the chat's stretch of the web view,
+    which the details panel narrows, so the composer sits over the chat.
+    Details shows the panel beside the chat where it fits, else the sheet.
+  - Only `/app` pages run under the toolbar: its height comes from the
+    window's content layout rect and reaches the page as
+    `--shell-inset-top` before first paint. WebKit's own content insets
+    are turned off, or the page would be padded twice.
+  - `ServerURL.swift`, its tests, the brand mark and `AppIcon.icon` are
+    the iPhone app's, referenced by path in `project.yml`, never copied.
+    The Xcode project is generated with XcodeGen and never checked in.
+    `scripts/check.mjs` (the lint) fails when the bridge misses a
+    `GondMac` method, the loopback port drifts or a shared file is gone.
+  - CI (`mac` in `build.yml`, `xcode-27`) tests, builds one app for Apple
+    silicon and Intel, and signs it with a Developer ID and notarizes it
+    only when `MAC_CERTIFICATE_P12`, `MAC_CERTIFICATE_PASSWORD` and the App
+    Store Connect key (`ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8`) are all
+    there and it isn't a pull request; ad hoc otherwise. The release gets
+    the dmg. `mac-screens.yml` keeps light and dark screenshots against a
+    seeded Gond (`GOND_SCREENS_*` hooks exist only in debug builds). Its
+    runner's GPU can't take WebKit's accelerated drawing, so that job alone
+    sets `GOND_SCREENS_WEBKIT_OFF` (read by debug builds only); a real Mac
+    keeps WebKit's defaults.
 - **The apps are built only when they change, each on its own, never just
   because Gond ships.** A web or API change reaches them without a build.
   The `changes` job in `build.yml` compares a push with the commit before
   and a release tag with the release before, per app: `DESKTOP_FILES`
   (`apps/desktop/`, `assets/`), `ANDROID_FILES` (`apps/android/`,
-  `assets/`), `IOS_FILES` (`apps/ios/`, `assets/`). A release carries
+  `assets/`), `IOS_FILES` (`apps/ios/`, `assets/`), `MAC_FILES`
+  (`apps/mac/`, the iPhone files it builds, `assets/`). A release carries
   each unchanged app's last build (`carry_desktop`: installers and
-  `latest.json`; `carry_android`: the APK; `gh release download`), so the
-  latest release always has what the updater and downloads read and no
+  `latest.json`; `carry_android`: the APK; `carry_mac`: the dmg;
+  `gh release download`), so the latest release always has what the
+  updater and downloads read and no
   desktop app updates to an identical build. An app's version is the
   release it was last built for. After changing how an app builds, run
   the workflow by hand, which builds them all. Anything an app build
