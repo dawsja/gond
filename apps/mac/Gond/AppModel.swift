@@ -87,8 +87,6 @@ final class AppModel: ObservableObject {
     private var started = false
     private var keys: Any?
     private var layoutWatch: NSKeyValueObservation?
-    /// The title bar as it was before Connect cleared it, put back when the page shows again.
-    private var titlebarWasTransparent: Bool?
 
     init() {
         #if DEBUG
@@ -303,14 +301,6 @@ final class AppModel: ObservableObject {
     private func applyWindowTheme() {
         guard let window else { return }
         let web = screen == .web
-        // Connect has no toolbar to set apart, so no line under the title bar either.
-        if !web {
-            if titlebarWasTransparent == nil { titlebarWasTransparent = window.titlebarAppearsTransparent }
-            window.titlebarAppearsTransparent = true
-        } else if let was = titlebarWasTransparent {
-            window.titlebarAppearsTransparent = was
-            titlebarWasTransparent = nil
-        }
         window.backgroundColor = web ? (pageBackground ?? .windowBackgroundColor) : .windowBackgroundColor
         if web, !pageFollowsSystem, let dark = pageDark {
             window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
