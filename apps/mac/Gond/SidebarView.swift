@@ -27,6 +27,8 @@ struct SidebarView: View {
             }
         }
         .animation(.easeOut(duration: 0.15), value: ui.covered)
+        // While the page covers the window its toolbar steps aside, as the iPhone's chrome does, the sidebar's toggle too.
+        .toolbar(removing: ui.covered ? .sidebarToggle : nil)
     }
 }
 

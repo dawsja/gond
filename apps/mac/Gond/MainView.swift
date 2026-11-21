@@ -7,10 +7,9 @@ struct MainView: View {
 
     var body: some View {
         NavigationSplitView(columnVisibility: $ui.columns) {
+            // The width stays the column's outermost modifier: put outside a toolbar modifier, the split view lost it.
             SidebarView(ui: ui)
                 .navigationSplitViewColumnWidth(min: 240, ideal: 290, max: 420)
-                // While the page covers the window its toolbar steps aside, as the iPhone's chrome does.
-                .toolbar(removing: ui.covered ? .sidebarToggle : nil)
         } detail: {
             DetailView(model: model, ui: ui)
         }
