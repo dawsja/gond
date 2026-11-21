@@ -9,6 +9,8 @@ struct MainView: View {
         NavigationSplitView(columnVisibility: $ui.columns) {
             SidebarView(ui: ui)
                 .navigationSplitViewColumnWidth(min: 240, ideal: 290, max: 420)
+                // While the page covers the window its toolbar steps aside, as the iPhone's chrome does.
+                .toolbar(removing: ui.covered ? .sidebarToggle : nil)
         } detail: {
             DetailView(model: model, ui: ui)
         }
@@ -80,9 +82,10 @@ private struct DetailToolbar: ViewModifier {
             content.toolbar {
                 ToolbarItem(placement: .navigation) { TitleView(ui: ui) }
                     // Only a conversation's name is a button; plain words need no glass.
-                    .sharedBackgroundVisibility(ui.chrome == nil ? .hidden : .automatic)
+                    .sharedBackgroundVisibility(ui.chrome == nil || ui.covered ? .hidden : .automatic)
                 ToolbarSpacer(.flexible)
                 ToolbarItemGroup { actions }
+                    .sharedBackgroundVisibility(ui.covered ? .hidden : .automatic)
             }
         } else {
             content.toolbar {
@@ -94,20 +97,19 @@ private struct DetailToolbar: ViewModifier {
 
     @ViewBuilder
     private var actions: some View {
-        if let chrome = ui.chrome {
+        // While something of the page's covers the window, the toolbar holds nothing, so no glass stands bright over its scrim.
+        if let chrome = ui.chrome, !ui.covered {
             ForEach(chrome.screens) { screen in
                 Button { ui.send(["type": "screen", "id": screen.id]) } label: {
                     Label(screen.label, systemImage: "display")
                 }
                 .labelStyle(.titleAndIcon)
                 .help("Show \(screen.label)")
-                .disabled(ui.covered)
             }
             Button { ui.send(["type": "details"]) } label: {
                 Label("Details", systemImage: "sidebar.right")
             }
             .help("Details")
-            .disabled(ui.covered)
             .accessibilityIdentifier("chrome.details")
             if !chrome.menu.isEmpty {
                 Menu {
@@ -127,7 +129,6 @@ private struct DetailToolbar: ViewModifier {
                 }
                 .menuIndicator(.hidden)
                 .help("More")
-                .disabled(ui.covered)
                 .accessibilityIdentifier("chrome.more")
             }
         }
@@ -140,7 +141,9 @@ private struct TitleView: View {
     @ObservedObject var ui: NativeUI
 
     var body: some View {
-        if let chrome = ui.chrome {
+        if ui.covered {
+            EmptyView()
+        } else if let chrome = ui.chrome {
             Button { ui.send(["type": "details"]) } label: {
                 HStack(spacing: 8) {
                     FacesView(faces: ui.faces, more: chrome.more, primary: chrome.primary, space: chrome.space)
@@ -161,9 +164,6 @@ private struct TitleView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            // While something of the page's is open over the conversation, its toolbar waits under it.
-            .disabled(ui.covered)
-            .opacity(ui.covered ? 0.4 : 1)
             .accessibilityLabel("\(chrome.title)'s details")
             .accessibilityIdentifier("chrome.title")
         } else if ui.sidebar == nil {
