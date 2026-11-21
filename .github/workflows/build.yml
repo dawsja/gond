@@ -454,9 +454,10 @@ jobs:
       # app's ticket is found online. Apple usually answers in minutes but can take hours, a new
       # Developer ID's first submissions most of all, so the job asks for at most 20 minutes and then
       # ships the image signed without a stapled ticket, which Gatekeeper checks with Apple when it's
-      # opened. A rejection fails the job.
+      # opened. A rejection fails the job. The MAC_NOTARIZE repository variable set to off skips it, and
+      # the image ships signed but not notarized, which Gatekeeper asks about first.
       - name: Notarize the disk image
-        if: env.DEVELOPER_ID == 'true'
+        if: env.DEVELOPER_ID == 'true' && vars.MAC_NOTARIZE != 'off'
         run: |
           set -o pipefail
           auth=(--key "$ASC_KEY" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID")

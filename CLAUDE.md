@@ -225,8 +225,9 @@ The address rules are mirrored in each app with the same tests.
     dmg (waiting at most 20 minutes, then shipping it signed without a
     stapled ticket, which Gatekeeper checks online) only when `MAC_CERTIFICATE_P12`, `MAC_CERTIFICATE_PASSWORD` and the App
     Store Connect key (`ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8`) are all
-    there and it isn't a pull request; ad hoc otherwise. The release gets
-    the dmg. `mac-screens.yml` keeps light and dark screenshots against a
+    there and it isn't a pull request; ad hoc otherwise. The repository
+    variable `MAC_NOTARIZE` set to `off` skips notarizing, the dmg still
+    signed. The release gets the dmg. `mac-screens.yml` keeps light and dark screenshots against a
     seeded Gond (`GOND_SCREENS_*` hooks exist only in debug builds). Its
     runner's GPU can't take WebKit's accelerated drawing, so that job alone
     sets `GOND_SCREENS_WEBKIT_OFF` (read by debug builds only); a real Mac
