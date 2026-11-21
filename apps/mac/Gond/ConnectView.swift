@@ -42,7 +42,6 @@ struct ConnectView: View {
             .frame(maxWidth: .infinity)
         }
         .scrollBounceBehavior(.basedOnSize)
-        .softTopEdge()
         .background(Theme.background.ignoresSafeArea())
         .onAppear { typing = true }
     }
@@ -104,17 +103,5 @@ struct ConnectView: View {
 
     private func connect() {
         Task { await model.connect() }
-    }
-}
-
-private extension View {
-    /// A Mac draws a hard line where a scroll view meets the title bar; Connect has nothing to set apart there.
-    @ViewBuilder
-    func softTopEdge() -> some View {
-        if #available(macOS 26.0, *) {
-            scrollEdgeEffectStyle(.soft, for: .top)
-        } else {
-            self
-        }
     }
 }
