@@ -26,6 +26,11 @@
     checkForUpdates: () => invoke("check_for_updates"),
     installUpdate: () => invoke("install_update"),
     showDownload: (id) => invoke("show_download", { id: Number(id) }),
+    setFrameless: (frameless) => invoke("set_frameless", { frameless: Boolean(frameless) }),
+    minimize: () => invoke("window_action", { action: "minimize" }),
+    toggleMaximize: () => invoke("window_action", { action: "maximize" }),
+    closeWindow: () => invoke("window_action", { action: "close" }),
+    isMaximized: () => invoke("window_action", { action: "state" }),
   });
   Object.defineProperty(window, "gondDesktop", { value: bridge, writable: false, configurable: false });
 
@@ -60,6 +65,20 @@
     if (menuShown) void toggleMenu(true);
   }, true);
   window.addEventListener("blur", () => (altAlone = false));
+
+  // A page without a frame marks where the window is held, data-window-drag: a press there, off its
+  // controls, moves the window and a double press maximizes it, as on a title bar.
+  const controls =
+    "a,button,input,select,textarea,label,summary,[contenteditable]:not([contenteditable='false'])," +
+    "[role=button],[role=link],[role=menuitem],[role=tab],[role=checkbox],[role=radio],[role=switch],[role=option],[role=textbox],[role=combobox],[role=slider]";
+  document.addEventListener("mousedown", (event) => {
+    if (event.button !== 0 || event.detail > 2 || !(event.target instanceof Element)) return;
+    const region = event.target.closest("[data-window-drag]");
+    const control = event.target.closest(controls);
+    if (!region || (control && region.contains(control))) return;
+    event.preventDefault();
+    invoke("window_action", { action: event.detail === 2 ? "maximize" : "drag" }).catch(() => {});
+  });
 
   window.open = (url) => {
     let target;

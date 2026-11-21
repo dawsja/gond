@@ -134,7 +134,7 @@ export function Onboarding() {
   }
 
   return (
-    <div className="relative flex min-h-dvh flex-col items-center justify-center bg-background px-4 py-10 text-foreground">
+    <div className="relative flex min-h-dvh flex-col items-center justify-center bg-background px-4 py-10 text-foreground desktop:pt-[calc(40px+var(--safe-top))]">
       <Floaters />
       <div className="flex w-full max-w-xl flex-col items-center">
         {step === "welcome" ? (

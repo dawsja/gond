@@ -93,7 +93,16 @@ The address rules are mirrored in each app with the same tests.
   stream, which ships off, or the mic gets nothing. Address rules: the
   `server-url` crate. The menu bar is always hidden; a lone tap of Alt
   shows it, and another tap, Esc, a click or a pick hides it (`init.js`,
-  `toggle_menu_bar`); no setting. Package scripts go through
+  `toggle_menu_bar`); no setting. A window without a frame has no menu
+  bar, so there Alt opens the menu below the top row.
+  Windows have no frame: the page is the title bar. Each page says so as
+  it loads (`setFrameless`, from the theme init script and `connect.js`),
+  and one that hasn't by the time it finishes loading (an older Gond, an
+  error page) gets the system's frame back (`on_page_load` in `lib.rs`).
+  The page marks where the window is held with `data-window-drag`, which
+  `init.js` turns into a move, or a maximize on a double press; its
+  buttons go through `window_action`, and `gond:window` says when it is
+  maximized. Package scripts go through
   `scripts/cargo.mjs`, which skips without cargo and fails in CI.
   It updates itself (`updater.rs`): 5 s after start and every 6 hours it
   reads `latest.json` from the latest GitHub release, downloads in the
@@ -356,8 +365,9 @@ The address rules are mirrored in each app with the same tests.
   quiet text, not a badge. A new pane at that width is an island, never
   a bordered column. Phones keep their own look.
 - **Layers are fixed**: dialogs and sheets `z-50`, the computer's window
-  `z-[70]`, a confirm `z-[90]`, everything that floats from a control
-  (lists, menus, popovers, tooltips) and toasts `z-[100]`. A new layer
+  `z-[70]`, a confirm `z-[90]`, the desktop app's window buttons
+  `z-[95]`, everything that floats from a control (lists, menus,
+  popovers, tooltips) and toasts `z-[100]`. A new layer
   takes a place in that order.
 - **Two themes, both checked every time.** Settings → Appearance is a
   `Select` of System, Light and Dark (`THEMES` in `lib/theme/theme.ts`,
@@ -409,6 +419,15 @@ The address rules are mirrored in each app with the same tests.
   `lg`), except inside the Android and iPhone apps, where the phone layout
   applies at every width (`<html data-shell="phone">`, `isPhoneShell` in
   `lib/shell.ts`).
+- **In the Windows and Linux app the page is the title bar**
+  (`<html data-shell="desktop">`, the `desktop:` variant). On a wide
+  window the top row holds the chat list's search and New, the
+  conversation's pills and the window's buttons (`WindowControls`, one
+  pill in the corner), and the islands start below it; anything else in
+  that corner leaves `--window-controls-space`. Under wide the buttons sit
+  in a strip above the page (`--shell-inset-top`), since the phone
+  layout's headers have no room for them. Rows that hold the window carry
+  `data-window-drag`.
 - Edges pad with `var(--safe-top)`, `var(--safe-bottom)` and friends,
   never `env(safe-area-inset-*)`: the tokens take the larger of `env()`
   and what the app reports, since a WebView's `env()` can't be trusted.

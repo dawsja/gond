@@ -169,7 +169,7 @@ function RightPanelContent({ thread, bot, screen }: { thread: Thread; bot: Bot |
 
 export function RightPanel(props: { thread: Thread; bot: Bot | null; screen?: ScreenProps }) {
   return (
-    <aside className="island my-2 mr-2 hidden w-72 shrink-0 flex-col gap-6 overflow-y-auto overscroll-contain px-4 pt-5 pb-4 xwide:flex mac:mt-[calc(var(--safe-top)+8px)]">
+    <aside className="island my-2 mr-2 hidden w-72 shrink-0 flex-col gap-6 overflow-y-auto overscroll-contain px-4 pt-5 pb-4 xwide:flex mac:mt-[calc(var(--safe-top)+8px)] desktop:mt-16">
       <RightPanelContent {...props} />
     </aside>
   );

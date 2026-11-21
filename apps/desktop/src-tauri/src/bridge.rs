@@ -2,7 +2,7 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 use sha2::{Digest, Sha256};
 use tauri::window::Color;
-use tauri::{AppHandle, Manager, State, Theme, WebviewWindow};
+use tauri::{AppHandle, LogicalPosition, Manager, State, Theme, WebviewWindow};
 use tauri_plugin_notification::{NotificationExt, PermissionState};
 use tauri_plugin_opener::OpenerExt;
 use url::Url;
@@ -30,6 +30,11 @@ fn from_connect_page(window: &WebviewWindow) -> bool {
         .url()
         .map(|url| crate::is_bundled(&url))
         .unwrap_or(false)
+}
+
+/// Connect or a page of the server: the two that draw the window's title row.
+fn draws_window(window: &WebviewWindow, state: &AppState) -> bool {
+    trusted(window, state) || from_connect_page(window)
 }
 
 /// Where to go once signed in: a path on the server, never another site.
@@ -215,6 +220,8 @@ pub fn set_theme(
 
 /// A tap of Alt shows the menu bar, as in any Windows app, and a second one, Esc
 /// or a click in the page hides it; `hide` only ever hides. Shown or not after.
+/// A window without a frame has nowhere for a menu bar (Windows draws it in the
+/// frame), so there the menu opens below the title row and closes itself.
 #[tauri::command]
 pub fn toggle_menu_bar(
     window: WebviewWindow,
@@ -223,6 +230,12 @@ pub fn toggle_menu_bar(
 ) -> Result<bool, String> {
     if !trusted(&window, &state) && !from_connect_page(&window) {
         return Err(NOT_HERE.to_string());
+    }
+    if !window.is_decorated().unwrap_or(true) {
+        if let Some(menu) = window.app_handle().menu().filter(|_| !hide) {
+            let _ = window.popup_menu_at(&menu, LogicalPosition::new(12.0, 60.0));
+        }
+        return Ok(false);
     }
     let shown = window.is_menu_visible().unwrap_or(false);
     let show = !hide && !shown;
@@ -319,4 +332,42 @@ pub fn show_download(
     app.opener()
         .reveal_item_in_dir(path)
         .map_err(|error| error.to_string())
+}
+
+/// A page that draws the window's title row says so as it loads, every time
+/// (`set_frameless` in lib.rs). Maximized or not.
+#[tauri::command]
+pub fn set_frameless(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    frameless: bool,
+) -> Result<bool, String> {
+    if !draws_window(&window, &state) {
+        return Err(NOT_HERE.to_string());
+    }
+    crate::set_frameless(&window, frameless);
+    Ok(window.is_maximized().unwrap_or(false))
+}
+
+/// The buttons and the drag of a page's own title row. Maximized or not after.
+#[tauri::command]
+pub fn window_action(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    action: String,
+) -> Result<bool, String> {
+    if !draws_window(&window, &state) {
+        return Err(NOT_HERE.to_string());
+    }
+    let done = match action.as_str() {
+        "minimize" => window.minimize(),
+        "maximize" if window.is_maximized().unwrap_or(false) => window.unmaximize(),
+        "maximize" => window.maximize(),
+        "close" => window.close(),
+        "drag" => window.start_dragging(),
+        "state" => Ok(()),
+        _ => return Err("Not a window action.".to_string()),
+    };
+    done.map_err(|error| error.to_string())?;
+    Ok(window.is_maximized().unwrap_or(false))
 }

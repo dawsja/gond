@@ -116,3 +116,17 @@ test("the Mac app is marked before first paint and hears the size it draws its c
   expect(mock.attributes.get("data-shell")).toBe("mac");
   expect(scales).toEqual([1.15]);
 });
+
+test("a desktop app that lets the page draw the title row is marked and told so before first paint", () => {
+  const mock = browser("light", false);
+  const said: boolean[] = [];
+  Object.assign(mock.globals.window, { gondDesktop: { changeServer: async () => {}, setFrameless: async (frameless: boolean) => (said.push(frameless), false) } });
+  runInNewContext(THEME_INIT_SCRIPT, mock.globals);
+  expect(mock.attributes.get("data-shell")).toBe("desktop");
+  expect(said).toEqual([true]);
+
+  const older = browser("light", false);
+  Object.assign(older.globals.window, { gondDesktop: { changeServer: async () => {} } });
+  runInNewContext(THEME_INIT_SCRIPT, older.globals);
+  expect(older.attributes.has("data-shell")).toBe(false);
+});

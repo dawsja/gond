@@ -4,13 +4,15 @@ mod loopback;
 mod menu;
 mod updater;
 
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
-use tauri::webview::{DownloadEvent, NewWindowResponse, PermissionKind, PermissionResponse};
+use tauri::webview::{
+    DownloadEvent, NewWindowResponse, PageLoadEvent, PermissionKind, PermissionResponse,
+};
 use tauri::window::Color;
 use tauri::{
     AppHandle, Manager, RunEvent, Theme, Webview, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
@@ -41,6 +43,8 @@ pub struct AppState {
     zoom: Mutex<f64>,
     downloads: Mutex<VecDeque<(u32, PathBuf)>>,
     download_ids: AtomicU32,
+    /// The windows whose page said, while it loaded, that it draws its own title row.
+    frameless: Mutex<HashSet<String>>,
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -56,6 +60,7 @@ impl AppState {
             zoom: Mutex::new(1.0),
             downloads: Mutex::new(VecDeque::new()),
             download_ids: AtomicU32::new(0),
+            frameless: Mutex::new(HashSet::new()),
         }
     }
 
@@ -101,6 +106,19 @@ impl AppState {
             .iter()
             .find(|(kept, _)| *kept == id)
             .map(|(_, path)| path.clone())
+    }
+
+    fn mark_frameless(&self, label: &str, frameless: bool) {
+        let mut windows = lock(&self.frameless);
+        if frameless {
+            windows.insert(label.to_string());
+        } else {
+            windows.remove(label);
+        }
+    }
+
+    fn is_frameless(&self, label: &str) -> bool {
+        lock(&self.frameless).contains(label)
     }
 
     fn next_child_label(&self) -> String {
@@ -252,6 +270,20 @@ fn page_builder<'a>(
     WebviewWindowBuilder::new(app, label, WebviewUrl::External(url))
         .title("Gond")
         .visible(false)
+        // No frame: the page draws the title row and says so as it loads (set_frameless). One that
+        // hasn't by the time it finishes (an older Gond, an error page) gets the system's frame back.
+        .decorations(false)
+        .on_page_load(|window, payload| {
+            let state = window.state::<AppState>();
+            match payload.event() {
+                PageLoadEvent::Started => state.mark_frameless(window.label(), false),
+                PageLoadEvent::Finished => {
+                    if !state.is_frameless(window.label()) {
+                        let _ = window.set_decorations(true);
+                    }
+                }
+            }
+        })
         .initialization_script(INIT_SCRIPT)
         // Tauri's own drop handler takes every file drop, so the page's drop events never fire.
         .disable_drag_drop_handler()
@@ -305,6 +337,30 @@ pub fn hide_menu_bar(window: &WebviewWindow) {
     let _ = window.hide_menu();
 }
 
+pub fn set_frameless(window: &WebviewWindow, frameless: bool) {
+    window
+        .state::<AppState>()
+        .mark_frameless(window.label(), frameless);
+    let _ = window.set_decorations(!frameless);
+}
+
+/// The page's maximize button shows restore while the window is maximized, so it hears each change.
+fn tell_maximized(window: &WebviewWindow) {
+    let watched = window.clone();
+    let maximized = AtomicBool::new(window.is_maximized().unwrap_or(false));
+    window.on_window_event(move |event| {
+        if !matches!(event, WindowEvent::Resized(_)) {
+            return;
+        }
+        let now = watched.is_maximized().unwrap_or(false);
+        if maximized.swap(now, Ordering::Relaxed) != now {
+            let _ = watched.eval(format!(
+                "window.dispatchEvent(new CustomEvent('gond:window', {{ detail: {{ maximized: {now} }} }}))"
+            ));
+        }
+    });
+}
+
 // WebKitGTK ships with media capture off, so getUserMedia isn't there for the composer's mic or a
 // call until it is turned on; who may use it is still on_permission_request's to say. The clipboard
 // is the same: WebKitGTK asks for it with a request wry passes on as Other, which is refused, so
@@ -328,6 +384,7 @@ fn allow_media(_window: &WebviewWindow) {}
 fn present(window: &WebviewWindow) {
     allow_media(window);
     hide_menu_bar(window);
+    tell_maximized(window);
     let dark = matches!(window.theme(), Ok(Theme::Dark));
     let _ = window.set_background_color(Some(if dark { DARK } else { LIGHT }));
     let _ = window.show();
@@ -438,6 +495,8 @@ pub fn run() {
             bridge::check_for_updates,
             bridge::install_update,
             bridge::show_download,
+            bridge::set_frameless,
+            bridge::window_action,
         ])
         .setup(|app| {
             let handle = app.handle().clone();

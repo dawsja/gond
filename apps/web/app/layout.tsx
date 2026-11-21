@@ -3,6 +3,7 @@ import { Inter, JetBrains_Mono } from "next/font/google";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/toast";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { WindowControls } from "@/components/window-controls";
 import { THEME_BACKGROUNDS, THEME_INIT_SCRIPT } from "@/lib/theme/theme";
 import "./globals.css";
 
@@ -43,7 +44,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="flex min-h-full flex-col bg-background font-sans text-foreground">
         <ThemeProvider>
           <TooltipProvider>
-            <Toaster>{children}</Toaster>
+            <Toaster>
+              {children}
+              <WindowControls />
+            </Toaster>
           </TooltipProvider>
         </ThemeProvider>
       </body>

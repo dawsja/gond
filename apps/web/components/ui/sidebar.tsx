@@ -230,7 +230,8 @@ function Sidebar({
             ? "p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]"
             : "group-data-[collapsible=icon]:w-(--sidebar-width-icon) group-data-[side=left]:border-r group-data-[side=right]:border-l",
           // A floating sidebar is an island; the page beside it keeps its own padding, so no gap on that side.
-          variant === "floating" && "data-[side=left]:pr-0 data-[side=right]:pl-0",
+          // In the desktop app it starts below the window's top row, which holds its header.
+          variant === "floating" && "data-[side=left]:pr-0 data-[side=right]:pl-0 desktop:pt-16",
           className
         )}
         {...props}

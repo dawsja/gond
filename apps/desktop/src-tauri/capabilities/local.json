@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "local",
-  "description": "The bundled Connect page: it may point the app at a server, and nothing else.",
+  "description": "The bundled Connect page: it may point the app at a server and draw the window's title row, nothing else.",
   "windows": ["main"],
-  "permissions": ["core:window:default", "allow-connect", "allow-platform", "allow-version"]
+  "permissions": ["core:window:default", "allow-connect", "allow-platform", "allow-version", "allow-set-frameless", "allow-window-action"]
 }

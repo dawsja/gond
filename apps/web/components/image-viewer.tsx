@@ -142,7 +142,7 @@ function PageViewer({ images, openId, onOpenId }: ViewerProps) {
                   className={cn("max-h-full max-w-full touch-none rounded-2xl object-contain select-none", zoom ? "cursor-zoom-out" : "cursor-zoom-in transition-transform duration-150")}
                 />
               </div>
-              <div className="pointer-events-none absolute inset-x-0 top-0 flex items-center gap-2 px-4 pt-[calc(var(--safe-top)+12px)]">
+              <div className="pointer-events-none absolute inset-x-0 top-0 flex items-center gap-2 px-4 pt-[calc(var(--safe-top)+12px)] wide:desktop:pr-(--window-controls-space)">
                 <p className="pointer-events-auto flex h-11 min-w-0 items-center gap-2 rounded-full border border-primary-edge bg-primary px-4 text-[13.5px] text-foreground">
                   <span className="truncate font-medium">{image.name}</span>
                   {images.length > 1 ? <span className="shrink-0 text-muted-foreground tabular-nums">{index + 1} of {images.length}</span> : null}

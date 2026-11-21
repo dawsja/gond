@@ -20,7 +20,9 @@
   --primary-edge: #d2d6dd;
   --primary-edge-focus: #bfc4cd;
   --tint-solid: #2c62ba;
+  --hangup: #c2301a;
   --shadow: 0 16px 40px rgba(15, 23, 42, 0.12), 0 0 0 1px rgba(15, 23, 42, 0.04);
+  --primary-hover: color-mix(in oklch, var(--primary), var(--foreground) 8%);
   color-scheme: light;
 }
 
@@ -36,6 +38,7 @@
     --primary-edge: #2a2a2a;
     --primary-edge-focus: #424242;
     --tint-solid: #2b61b9;
+    --hangup: #c4372b;
     --shadow: 0 16px 40px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.04);
     color-scheme: dark;
   }
@@ -68,13 +71,60 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* The window's title row, since it has no frame: held to move the window, its buttons in the corner
+   as the web app's WindowControls draws them. */
 header {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 18px 28px;
+  min-height: 64px;
+  padding: 10px 8px 10px 28px;
   font-size: 16px;
   font-weight: 650;
+}
+
+.window {
+  display: flex;
+  align-items: center;
+  height: 44px;
+  margin-left: auto;
+  padding: 2px;
+  border: 1px solid var(--primary-edge);
+  border-radius: 9999px;
+  background: var(--primary);
+}
+
+.window button {
+  width: 40px;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 9999px;
+  background: transparent;
+  color: var(--foreground);
+}
+
+.window button:hover {
+  background: var(--primary-hover);
+}
+
+.window button[data-window="close"]:hover {
+  background: var(--hangup);
+  color: #ffffff;
+}
+
+.window svg {
+  width: 16px;
+  height: 16px;
+}
+
+.window .restore,
+.window [data-maximized="true"] .maximize {
+  display: none;
+}
+
+.window [data-maximized="true"] .restore {
+  display: block;
 }
 
 main {

@@ -372,12 +372,13 @@ export function AppSidebar({ onOpen }: { onOpen: (dialog: ShellDialog) => void }
 
   return (
     <Sidebar variant="floating" collapsible="offcanvas">
-      <SidebarHeader className="flex-row items-center gap-2 px-2.5 pt-2.5 pb-2">
+      {/* In the desktop app the search and New sit in the window's top row, above the island. */}
+      <SidebarHeader data-window-drag="" className="flex-row items-center gap-2 px-2.5 pt-2.5 pb-2 desktop:absolute desktop:inset-x-0 desktop:top-0 desktop:left-2 desktop:h-16 desktop:p-0">
         <BotSearchInput query={query} setQuery={setQuery} />
         <NewMenu onOpen={onOpen} />
       </SidebarHeader>
 
-      <SidebarContent>
+      <SidebarContent className="desktop:pt-2">
         <SidebarGroup>
           <SidebarGroupContent>
             <BotRows rows={rows} hits={hits} query={query} setQuery={setQuery} lookAs="popover" onOpen={onOpen} onAsk={setAsk} />

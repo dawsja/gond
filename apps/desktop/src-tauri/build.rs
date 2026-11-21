@@ -17,6 +17,8 @@ fn main() {
         "check_for_updates",
         "install_update",
         "show_download",
+        "set_frameless",
+        "window_action",
     ]);
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(commands))
         .expect("tauri-build failed");

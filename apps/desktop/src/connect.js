@@ -39,3 +39,22 @@ form.addEventListener("submit", async (event) => {
   showError(result.error);
   input.focus();
 });
+
+// The window has no frame: the header is its title row (data-window-drag) and these are its buttons.
+const desktop = window.gondDesktop;
+const controls = document.getElementById("window");
+if (typeof desktop?.setFrameless === "function") {
+  const maximize = controls.querySelector('[data-window="maximize"]');
+  const showMaximized = (maximized) => {
+    maximize.dataset.maximized = String(Boolean(maximized));
+    maximize.setAttribute("aria-label", maximized ? "Restore" : "Maximize");
+  };
+  const actions = { minimize: desktop.minimize, maximize: desktop.toggleMaximize, close: desktop.closeWindow };
+  controls.hidden = false;
+  desktop.setFrameless(true).then(showMaximized, () => {});
+  window.addEventListener("gond:window", (event) => showMaximized(event.detail?.maximized));
+  controls.addEventListener("click", (event) => {
+    const action = actions[event.target.closest("[data-window]")?.dataset.window];
+    if (action) action().then(showMaximized, () => {});
+  });
+}

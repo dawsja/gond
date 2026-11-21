@@ -43,7 +43,7 @@ export function ChatsScreen({ className }: { className?: string }) {
     // The header's buttons float over the list, which scrolls under them, as a conversation's do.
     <div className={cn("relative flex min-h-0 flex-1 flex-col", className)}>
       {native ? <ChatsChrome searching={searching} name={me.name} avatar={me.avatar} canNewRoom={bots.length > 0} onEvent={onEvent} /> : null}
-      <header className="pointer-events-none absolute inset-x-0 top-0 z-20 flex h-[calc(56px+max(12px,var(--safe-top)))] items-center gap-2 px-4 pt-[max(12px,var(--safe-top))] pb-2">
+      <header data-window-drag="" className="pointer-events-none absolute inset-x-0 top-0 z-20 flex h-[calc(56px+max(12px,var(--safe-top)))] items-center gap-2 px-4 pt-[max(12px,var(--safe-top))] pb-2 desktop:pointer-events-auto">
         <h1 className="sr-only">Chats</h1>
         {searching ? (
           <>

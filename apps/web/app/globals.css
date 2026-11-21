@@ -52,6 +52,26 @@
   }
 }
 
+/*
+ * Inside the Windows and Linux app, whose window has no frame: the page's top row is the title bar,
+ * held with data-window-drag, its buttons (`WindowControls`) in the top-right corner. A top row there
+ * leaves them --window-controls-space. Under wide, the phone layout's headers have no room for them,
+ * so they sit in a strip above the page, the room a phone's status bar takes.
+ */
+@custom-variant desktop {
+  :root[data-shell="desktop"] & {
+    @slot;
+  }
+}
+:root[data-shell="desktop"] {
+  --window-controls-space: 146px;
+}
+@media (width < 48rem) {
+  :root[data-shell="desktop"] {
+    --shell-inset-top: 48px;
+  }
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

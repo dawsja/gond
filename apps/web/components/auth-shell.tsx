@@ -9,7 +9,7 @@ function BrandMark({ size = 28 }: { size?: number }) {
 export function AuthShell({ eyebrow, title, description, children }: { eyebrow: string; title: string; description: string; children: ReactNode }) {
   return (
     <div className="flex min-h-dvh flex-col bg-background text-foreground">
-      <header className="flex items-center gap-2 px-4 py-4 sm:px-8">
+      <header className="flex items-center gap-2 px-4 py-4 sm:px-8 desktop:pt-[calc(16px+var(--safe-top))]">
         <BrandMark />
         <span className="text-[14px] font-medium">Gond</span>
       </header>

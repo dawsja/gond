@@ -74,7 +74,21 @@ export type GondDesktop = {
   installUpdate?: () => Promise<void>;
   /** Shows a finished download in its folder, by the id its `gond:download` event carried. */
   showDownload?: (id: number) => Promise<void>;
+
+  /**
+   * The page draws the window's title row (`WindowControls`), said by the theme init script as each
+   * page loads; a page that doesn't gets the system's frame. The window's buttons answer whether it
+   * is maximized after, and so does every `gond:window` event.
+   */
+  setFrameless?: (frameless: boolean) => Promise<boolean>;
+  minimize?: () => Promise<boolean>;
+  toggleMaximize?: () => Promise<boolean>;
+  closeWindow?: () => Promise<boolean>;
+  isMaximized?: () => Promise<boolean>;
 };
+
+/** The desktop app's window buttons, for a page that draws its title row; null in an app too old to have them. */
+export type DesktopWindow = Required<Pick<GondDesktop, "minimize" | "toggleMaximize" | "closeWindow" | "isMaximized">>;
 
 /**
  * The Mac app (`apps/mac`): one way and synchronous like the iPhone's bridge, what the page reads back
@@ -141,6 +155,13 @@ export function desktopShell(): GondDesktop | null {
   if (typeof window === "undefined") return null;
   const bridge = window.gondDesktop ?? null;
   return typeof bridge?.changeServer === "function" ? bridge : null;
+}
+
+export function desktopWindow(): DesktopWindow | null {
+  const desktop = desktopShell();
+  if (!desktop) return null;
+  const { minimize, toggleMaximize, closeWindow, isMaximized } = desktop;
+  return typeof minimize === "function" && typeof toggleMaximize === "function" && typeof closeWindow === "function" && typeof isMaximized === "function" ? { minimize, toggleMaximize, closeWindow, isMaximized } : null;
 }
 
 export function macShell(): GondMac | null {

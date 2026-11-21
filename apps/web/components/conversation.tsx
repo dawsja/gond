@@ -1102,7 +1102,8 @@ export function Conversation({ threadId }: { threadId: string }) {
           </div>
         ) : null}
 
-        <header className={cn("pointer-events-none absolute inset-x-0 top-0 z-20 flex h-[calc(64px+var(--safe-top))] items-center gap-2 px-3 pt-[var(--safe-top)] sm:px-4", nativeChrome && "invisible")}>
+        {/* In the desktop app this row is the title bar, and the window's buttons take the corner unless the panel does. */}
+        <header data-window-drag="" className={cn("pointer-events-none absolute inset-x-0 top-0 z-20 flex h-[calc(64px+var(--safe-top))] items-center gap-2 px-3 pt-[var(--safe-top)] sm:px-4 desktop:pointer-events-auto wide:desktop:pr-(--window-controls-space)", panel && info && "xwide:desktop:pr-4", nativeChrome && "invisible")}>
           <Button size="icon-xl" aria-label="Back to chats" render={<Link href="/app" />} nativeButton={false} className="pointer-events-auto wide:hidden">
             <ChevronLeft aria-hidden="true" />
           </Button>
