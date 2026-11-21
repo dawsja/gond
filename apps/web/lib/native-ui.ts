@@ -387,6 +387,11 @@ function pngOf(canvas: HTMLCanvasElement): string | null {
 }
 
 /** An avatar on the page (its svg or picture) drawn into a square PNG, for the app's header. */
+/** Whether every picture in a face has loaded: until one has, its avatar shows the fallback and holds no img. */
+export function picturesLoaded(face: Element): boolean {
+  return [...face.querySelectorAll("[data-slot=avatar]")].every((avatar) => avatar.querySelector("img"));
+}
+
 export async function avatarPng(avatar: Element, size = 96): Promise<string | null> {
   try {
     return await drawAvatar(avatar, size);

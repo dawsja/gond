@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { APPROVAL_LEVELS, BOT_TEMPLATE_FORMAT, botInputSchema, type Bot, type BotTemplateSummary } from "@gond/shared";
 import { packBot, type BotBundle } from "./bot-bundle.ts";
 import { ensureDatabase } from "./db/init.ts";
-import { createBot, getBot, listBots } from "./data/bots.ts";
+import { createBot, getBot, getBotAvatar, listBots, setBotAvatar } from "./data/bots.ts";
 import { userTimezone } from "./data/prefs.ts";
 import { createRoutine, listRoutines } from "./data/routines.ts";
 import { createSkill, getSkill, getSkillBySlug, skillFiles } from "./data/skills.ts";
@@ -13,7 +13,7 @@ import { syncSkills } from "./skills.ts";
 import { greet } from "./templates.ts";
 import { syncSoul } from "./responder.ts";
 
-/** A bot as a `.bot` bundle: its job, look, approval level and routines, with the skills those use. */
+/** A bot as a `.bot` bundle: its job, look, approval level and routines, with the skills those use and its picture. */
 export function bundleOf(bot: Bot): BotBundle {
   const skills = new Map<string, Uint8Array>();
   // A reminder is about the person's own day, and an app's event about their own account, not the bot's job.
@@ -24,6 +24,7 @@ export function bundleOf(bot: Bot): BotBundle {
   });
   return {
     bot: { format: BOT_TEMPLATE_FORMAT, name: bot.name, title: bot.title, description: bot.description, color: bot.color, expression: bot.expression, shape: bot.shape, approval: bot.approval, routines },
+    picture: getBotAvatar(bot.id)?.data ?? null,
     skills,
   };
 }
@@ -34,7 +35,7 @@ export function botFile(bot: Bot): Uint8Array {
 
 export function summaryOf(bundle: BotBundle): BotTemplateSummary {
   const { name, title, description, color, expression, shape, routines } = bundle.bot;
-  return { name, title, description, color, expression, shape, skills: [...bundle.skills.keys()], routines: routines.map((r) => r.name) };
+  return { name, title, description, color, expression, shape, picture: Boolean(bundle.picture), skills: [...bundle.skills.keys()], routines: routines.map((r) => r.name) };
 }
 
 /**
@@ -48,6 +49,13 @@ export async function addFromBundle(bundle: BotBundle, userId: string): Promise<
   for (let i = 2; taken.has(name.toLowerCase()); i += 1) name = `${bundle.bot.name.slice(0, 36)} ${i}`;
   const approval = APPROVAL_LEVELS.indexOf(bundle.bot.approval) < APPROVAL_LEVELS.indexOf("auto") ? bundle.bot.approval : "auto";
   const bot = createBot(botInputSchema.parse({ name, title: bundle.bot.title, description: bundle.bot.description, color: bundle.bot.color, expression: bundle.bot.expression, shape: bundle.bot.shape, approval }), userId);
+  if (bundle.picture) {
+    try {
+      setBotAvatar(bot.id, bundle.picture);
+    } catch {
+      /* the mascot it is, then */
+    }
+  }
   const skillIds = new Map<string, string>();
   let added = 0;
   for (const [slug, bytes] of bundle.skills) {

@@ -26,7 +26,7 @@ function count(n: number, one: string, many: string) {
 function Contents({ template }: { template: BotTemplateSummary }) {
   const included = [
     "Name, job and how it works",
-    "Its look: color and mascot",
+    template.picture ? "Its look and picture" : "Its look: color and mascot",
     ...(template.skills.length ? [`${count(template.skills.length, "skill", "skills")}: ${template.skills.map((s) => `/${s}`).join(", ")}`] : []),
     ...(template.routines.length ? [`${count(template.routines.length, "routine", "routines")}: ${template.routines.join(", ")}`] : []),
   ];
@@ -54,8 +54,8 @@ function Contents({ template }: { template: BotTemplateSummary }) {
   );
 }
 
-function Who({ template, bot }: { template: BotTemplateSummary; bot?: Bot }) {
-  const face = bot ?? { ...template, primary: false };
+function Who({ template, bot, picture }: { template: BotTemplateSummary; bot?: Bot; picture?: string }) {
+  const face = bot ?? { ...template, primary: false, avatar: template.picture && picture ? picture : null };
   return (
     <div className="flex items-center gap-3">
       <BotAvatar bot={face} size={48} />
@@ -184,7 +184,7 @@ export function SharedTemplate() {
           ) : null}
           {template ? (
             <>
-              <Who template={template} />
+              <Who template={template} picture={`/api/templates/${encodeURIComponent(token)}/picture`} />
               <Contents template={template} />
               {template.routines.length ? <p className="text-[12.5px] text-muted-foreground">Its routines come in switched off; turn them on under Routines when you like.</p> : null}
             </>

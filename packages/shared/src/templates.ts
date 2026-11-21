@@ -8,7 +8,7 @@ export const BOT_TEMPLATE_FORMAT = "gond.bot/1";
 export type BotTemplateFile = z.infer<typeof botTemplateSchema>;
 
 /** A template as the person sees it before adding it: who the bot is and what comes with it. */
-export type BotTemplateSummary = Pick<BotTemplateFile, "name" | "title" | "description" | "color" | "expression" | "shape"> & { skills: string[]; routines: string[] };
+export type BotTemplateSummary = Pick<BotTemplateFile, "name" | "title" | "description" | "color" | "expression" | "shape"> & { picture: boolean; skills: string[]; routines: string[] };
 
 export type BotTemplate = {
   id: string;

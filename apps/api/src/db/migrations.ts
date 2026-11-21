@@ -1166,6 +1166,15 @@ const MIGRATIONS: Array<string | ((db: Database) => void)> = [
   ALTER TABLE gond_settings ADD COLUMN usage_keep_days INTEGER NOT NULL DEFAULT 0;
   ALTER TABLE gond_settings ADD COLUMN attachments_keep_days INTEGER NOT NULL DEFAULT 0;
   `,
+  // Bots may wear a picture again. The ones dropped above are gone, so every bot starts on its mascot.
+  `
+  CREATE TABLE gond_bot_avatars (
+    bot_id TEXT PRIMARY KEY REFERENCES gond_bots (id) ON DELETE CASCADE,
+    media_type TEXT NOT NULL,
+    data BLOB NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  `,
 ];
 
 /**

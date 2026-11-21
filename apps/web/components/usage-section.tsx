@@ -136,7 +136,7 @@ function BotsCard({ report, range, onRange }: { report: UsageReport; range: Usag
   const { bots } = useStore();
   const total = report.bots.reduce((sum, row) => sum + row.tokens, 0);
   // Every bot that's gone is one row, whatever it was called.
-  const rows: { key: string; bot: Pick<Bot, "name" | "title" | "color" | "expression" | "primary"> & Partial<Pick<Bot, "shape">>; tokens: number; cost: number | null }[] = [];
+  const rows: { key: string; bot: Pick<Bot, "name" | "title" | "color" | "expression" | "primary"> & Partial<Pick<Bot, "shape" | "avatar">>; tokens: number; cost: number | null }[] = [];
   let removed: (typeof rows)[number] | null = null;
   for (const row of report.bots) {
     const bot = bots.find((b) => b.id === row.botId);

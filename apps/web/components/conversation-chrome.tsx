@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import type { ThreadAction } from "@/components/thread-actions";
 import { useStableCallback } from "@/hooks/use-stable-callback";
-import { avatarPng, hexOf, useNativeChrome, type ChromeEvent, type ChromeState } from "@/lib/native-ui";
+import { avatarPng, hexOf, picturesLoaded, useNativeChrome, type ChromeEvent, type ChromeState } from "@/lib/native-ui";
 
 // What on the page covers the conversation, so the app's header and composer step aside for it. The
 // composer's own / list is part of the composer.
@@ -47,20 +47,31 @@ export function ConversationChrome({ avatarKey, menu, composer, mentions, onEven
   return null;
 }
 
+// How many times, a quarter second apart, a face waits for a picture still loading before it is drawn without it.
+const PICTURE_TRIES = 20;
+
 /** Each room member's face from the page's unseen copies, by bot id, as PNGs. */
 function useMentionFaces(key: string): Record<string, string> {
   const [faces, setFaces] = useState<Record<string, string>>({});
   useEffect(() => {
     let stale = false;
-    const frame = window.requestAnimationFrame(() => {
+    let tries = 0;
+    let timer = 0;
+    const draw = () => {
       const holders = [...document.querySelectorAll<HTMLElement>("[data-native-mention]")];
+      if (!holders.every(picturesLoaded) && (tries += 1) < PICTURE_TRIES) {
+        timer = window.setTimeout(draw, 250);
+        return;
+      }
       void Promise.all(holders.map(async (holder) => [holder.dataset.nativeMention!, await avatarPng(holder)] as const)).then((pairs) => {
         if (!stale) setFaces(Object.fromEntries(pairs.filter((pair): pair is readonly [string, string] => Boolean(pair[1]))));
       });
-    });
+    };
+    const frame = window.requestAnimationFrame(draw);
     return () => {
       stale = true;
       window.cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
     };
   }, [key]);
   return faces;
@@ -71,16 +82,24 @@ function useFaces(key: string): string[] {
   const [faces, setFaces] = useState<string[]>([]);
   useEffect(() => {
     let stale = false;
-    // The pill renders with the conversation; a frame later its faces are drawn.
-    const frame = window.requestAnimationFrame(() => {
+    let tries = 0;
+    let timer = 0;
+    // The pill renders with the conversation; a frame later its faces are drawn, once a bot's picture has loaded.
+    const draw = () => {
       const avatars = [...document.querySelectorAll("[data-native-avatar] [data-slot=bot-avatar]")].reverse().slice(0, 2);
+      if (!avatars.every(picturesLoaded) && (tries += 1) < PICTURE_TRIES) {
+        timer = window.setTimeout(draw, 250);
+        return;
+      }
       void Promise.all(avatars.map((avatar) => avatarPng(avatar))).then((pngs) => {
         if (!stale) setFaces(pngs.filter((png): png is string => Boolean(png)));
       });
-    });
+    };
+    const frame = window.requestAnimationFrame(draw);
     return () => {
       stale = true;
       window.cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
     };
   }, [key]);
   return faces;

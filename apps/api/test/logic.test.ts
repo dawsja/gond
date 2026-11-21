@@ -13,6 +13,7 @@ import { ruleLabel, type AppCatalogEntry, type Bot, type Thread } from "@gond/sh
 
 const bot: Bot = {
   id: "bot-1",
+  avatar: null,
   userId: "u-admin",
   name: "Scout",
   title: "Assistant",
@@ -1987,7 +1988,7 @@ describe("memory in the database", () => {
 });
 
 describe("bot pictures", () => {
-  test("an upgrade drops the pictures bots wore, and a bot that wore one falls back to its own mascot", async () => {
+  test("the pictures bots wore before the drop stay gone, and a bot that wore one falls back to its own mascot", async () => {
     const { Database } = await import("bun:sqlite");
     const { runMigrations, BOT_PICTURES_GONE_VERSION } = await import("../src/db/migrations.ts");
     const db = new Database(":memory:", { strict: true });
@@ -1996,7 +1997,7 @@ describe("bot pictures", () => {
     db.query("INSERT INTO gond_bots (id, name, color, expression, shape, model, thread_id, user_id, created_at, updated_at) VALUES ('b1', 'Patch', '#11998A', 'wink', 'cloud', 'opus', 't-b1', 'u1', ?, ?)").run(at, at);
     db.query("INSERT INTO gond_bot_avatars (bot_id, media_type, data, updated_at) VALUES ('b1', 'image/png', ?, ?)").run(new Uint8Array([137, 80, 78, 71]), at);
     runMigrations(db);
-    expect(db.query("SELECT name FROM sqlite_master WHERE name = 'gond_bot_avatars'").get()).toBeNull();
+    expect(db.query("SELECT COUNT(*) AS n FROM gond_bot_avatars").get()).toEqual({ n: 0 });
     expect(db.query("SELECT name, color, expression, shape FROM gond_bots WHERE id = 'b1'").get()).toEqual({ name: "Patch", color: "#11998A", expression: "wink", shape: "cloud" });
   });
 });

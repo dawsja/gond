@@ -2304,32 +2304,55 @@ describe("data", () => {
     }
   });
 
-  test("a bot wears only its mascot: there's no picture to set or fetch", async () => {
+  test("a bot's picture is its owner's to set, see and remove", async () => {
     const { Hono } = await import("hono");
     const { botsRoutes } = await import("../src/routes/bots.ts");
-    const { createBot, getBot } = await import("../src/data/bots.ts");
+    const { createBot, deleteBot, getBot, getBotAvatar, setBotAvatar } = await import("../src/data/bots.ts");
     const { botInputSchema } = await import("@gond/shared");
-    const bot = createBot(botInputSchema.parse({ name: "Plain" }), "u-pic");
-    expect(Object.keys(getBot(bot.id)!)).not.toContain("avatar");
+    const bot = createBot(botInputSchema.parse({ name: "Pictured" }), "u-pic");
+    expect(bot.avatar).toBeNull();
     const mine = asPerson(new Hono(), "u-pic").route("/api", botsRoutes());
-    const form = new FormData();
-    form.append("file", new Blob([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 1])], { type: "image/png" }), "bot.png");
-    expect((await mine.request(`/api/bots/${bot.id}/avatar`, { method: "PUT", body: form })).status).toBe(404);
-    expect((await mine.request(`/api/bots/${bot.id}/avatar`)).status).toBe(404);
+    const theirs = asPerson(new Hono(), "u-pic-other").route("/api", botsRoutes());
+    const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3]);
+    const upload = (app: typeof mine, type = "image/png", bytes = png) => {
+      const form = new FormData();
+      form.append("file", new Blob([bytes], { type }), "bot.png");
+      return app.request(`/api/bots/${bot.id}/avatar`, { method: "PUT", body: form });
+    };
 
-    // A bot that wore a picture may still reach for one (a habit, a skill, a note): it hears why not, and the rest still changes.
+    expect((await upload(theirs)).status).toBe(404);
+    expect((await upload(mine, "image/svg+xml", new TextEncoder().encode("<svg onload=alert(1)>"))).status).toBe(400);
+    expect((await upload(mine)).status).toBe(200);
+    const url = getBot(bot.id)!.avatar!;
+    expect(url).toStartWith(`/api/bots/${bot.id}/avatar?v=`);
+    const served = await mine.request(url);
+    expect(served.headers.get("Content-Type")).toBe("image/png");
+    expect(new Uint8Array(await served.arrayBuffer())).toEqual(png);
+    expect((await theirs.request(url)).status).toBe(404);
+
+    expect((await mine.request(`/api/bots/${bot.id}/avatar`, { method: "DELETE" })).status).toBe(204);
+    expect(getBot(bot.id)!.avatar).toBeNull();
+
+    // A bot dresses itself or a teammate from a picture on the computer; with none there's nothing to read, but the mascot can always come back.
     const { baseTools, teamTools } = await import("../src/tools.ts");
     const { getThread } = await import("../src/data/threads.ts");
     const { BOT_COLORS } = await import("@gond/shared");
     const teammate = createBot(botInputSchema.parse({ name: "Mate" }), "u-pic");
     const context = { box: null, bot, thread: getThread(bot.threadId)!, message: { depth: 0 } as never, askBot: async () => "", syncSoul: async () => undefined, stopWork: async () => false, isWorking: () => false };
-    expect(String(await baseTools(context).set_profile!.execute({ picture: "images/me.png" }, "c1"))).toBe("Bots wear their mascot now: there's no profile picture to set or take off. Offer the person a colour, shape or expression instead.");
-    const both = String(await baseTools(context).set_profile!.execute({ picture: "images/me.png", color: BOT_COLORS[2] }, "c2"));
-    expect(both).toStartWith("Profile updated (color).");
-    expect(both).toContain("no profile picture");
-    expect(getBot(bot.id)!.color).toBe(BOT_COLORS[2]);
-    expect(String(await teamTools(context).update_bot!.execute({ bot: teammate.id, picture: "none" }, "c3"))).toContain("Bots wear their mascot now");
+    const away = String(await baseTools(context).set_profile!.execute({ picture: "images/me.png", color: BOT_COLORS[2] }, "c1"));
+    expect(away).toStartWith("NOT changed: this Gond has no computer");
+    expect(getBot(bot.id)!.color).not.toBe(BOT_COLORS[2]);
+    setBotAvatar(bot.id, png);
+    expect(String(await baseTools(context).set_profile!.execute({ picture: "none", color: BOT_COLORS[2] }, "c2"))).toBe("Profile updated (picture (back to the mascot), color).");
+    expect(getBot(bot.id)).toMatchObject({ avatar: null, color: BOT_COLORS[2] });
+    setBotAvatar(teammate.id, png);
+    expect(String(await teamTools(context).update_bot!.execute({ bot: teammate.id, picture: "mascot" }, "c3"))).toBe("Mate's profile updated (picture (back to the mascot)).");
+    expect(getBot(teammate.id)!.avatar).toBeNull();
     expect(String(await baseTools(context).set_profile!.execute({}, "c4"))).toBe("Nothing to change.");
+
+    await upload(mine);
+    deleteBot(bot.id);
+    expect(getBotAvatar(bot.id)).toBeNull();
   });
 
   test("a saved Always allow is its owner's to see and forget, and once forgotten the bot asks again", async () => {
@@ -5156,13 +5179,15 @@ describe("bot templates", () => {
   test("a bot goes out as a .bot file or a link with its job, look, routines and their skills, and comes back no more trusting than Auto", async () => {
     await seedUsers(["u-tpl-a", "user"], ["u-tpl-b", "user"]);
     const { Hono } = await import("hono");
-    const { createBot, listBots } = await import("../src/data/bots.ts");
+    const { createBot, listBots, setBotAvatar, getBotAvatar } = await import("../src/data/bots.ts");
     const { createSkill, listSkills } = await import("../src/data/skills.ts");
     const { createRoutine, listRoutines } = await import("../src/data/routines.ts");
     const { botsRoutes } = await import("../src/routes/bots.ts");
     const { unpackBot } = await import("../src/bot-bundle.ts");
     const { botInputSchema } = await import("@gond/shared");
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
     const patch = createBot(botInputSchema.parse({ name: "Patch", title: "Servers", description: "Keeps the Proxmox cluster healthy.", color: "#11998A", approval: "full" }), "u-tpl-a");
+    setBotAvatar(patch.id, png);
     const skill = createSkill("u-tpl-a", { name: "Proxmox health", description: "Checks every node", instructions: "Run pvesh get /nodes and read it." });
     createRoutine(patch.id, { name: "Nightly backup check", cron: "0 2 * * *", timezone: "UTC", prompt: "Check last night's backups.", enabled: true, watch: false, skillId: skill.id });
     createRoutine(patch.id, { name: "Dentist", cron: "0 8 24 10 *", timezone: "UTC", prompt: "Remind them: dentist at 2.", enabled: true, once: true });
@@ -5186,7 +5211,7 @@ describe("bot templates", () => {
     expect(added.status).toBe(201);
     const copy = ((await added.json()) as { bot: { id: string; name: string; approval: string; userId: string } }).bot;
     expect(copy).toMatchObject({ name: "Patch", approval: "auto", userId: "u-tpl-b" });
-    expect(unzipSync(bytes, { filter: (entry) => entry.name === "picture" })).toEqual({});
+    expect(getBotAvatar(copy.id)?.mediaType).toBe("image/png");
     const imported = listSkills("u-tpl-b").find((s) => s.slug === skill.slug)!;
     expect(imported.instructions).toBe("Run pvesh get /nodes and read it.");
     expect(listRoutines(copy.id)).toMatchObject([{ name: "Nightly backup check", enabled: false, skillId: imported.id }]);
@@ -5194,18 +5219,19 @@ describe("bot templates", () => {
     const link = ((await (await mine.request(`/api/bots/${patch.id}/share`, { method: "POST" })).json()) as { url: string }).url;
     const token = new URL(link).searchParams.get("template")!;
     expect(((await (await mine.request(`/api/bots/${patch.id}/share`, { method: "POST" })).json()) as { url: string }).url).toBe(link);
-    expect(((await (await theirs.request(`/api/templates/${token}`)).json()) as { template: unknown }).template).toEqual({ name: "Patch", title: "Servers", description: "Keeps the Proxmox cluster healthy.", color: "#11998A", expression: "happy", shape: "cog", skills: [skill.slug], routines: ["Nightly backup check"] });
+    expect(((await (await theirs.request(`/api/templates/${token}`)).json()) as { template: unknown }).template).toEqual({ name: "Patch", title: "Servers", description: "Keeps the Proxmox cluster healthy.", color: "#11998A", expression: "happy", shape: "cog", picture: true, skills: [skill.slug], routines: ["Nightly backup check"] });
+    expect((await theirs.request(`/api/templates/${token}/picture`)).headers.get("Content-Type")).toBe("image/png");
     const again = await theirs.request(`/api/templates/${token}`, { method: "POST" });
     expect(((await again.json()) as { bot: { name: string } }).bot.name).toBe("Patch 2");
     expect(listSkills("u-tpl-b").filter((s) => s.slug.startsWith(skill.slug))).toHaveLength(1);
     expect((await theirs.request("/api/templates/not-a-real-token", { method: "POST" })).status).toBe(404);
 
-    // A .bot made while bots wore pictures still comes in, as its mascot.
-    const older = new FormData();
-    older.append("file", new File([zipSync({ "bot.json": unzipSync(bytes)["bot.json"]!, picture: new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0]) })], "older.bot"));
-    const olderAdded = await theirs.request("/api/bots/import", { method: "POST", body: older });
-    expect(olderAdded.status).toBe(201);
-    expect(((await olderAdded.json()) as { bot: Record<string, unknown> }).bot).not.toHaveProperty("avatar");
+    // Only a picture's own bytes make it one: a page riding in as the picture leaves the bot on its mascot.
+    const forged = new FormData();
+    forged.append("file", new File([zipSync({ "bot.json": unzipSync(bytes)["bot.json"]!, picture: new TextEncoder().encode("<svg onload=alert(1)>") })], "forged.bot"));
+    const forgedAdded = await theirs.request("/api/bots/import", { method: "POST", body: forged });
+    expect(forgedAdded.status).toBe(201);
+    expect(((await forgedAdded.json()) as { bot: { avatar: string | null } }).bot.avatar).toBeNull();
 
     const junk = new FormData();
     junk.append("file", new File([new Uint8Array([1, 2, 3])], "x.bot"));

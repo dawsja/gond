@@ -6,12 +6,19 @@ import { GondBot, type GondBotMood } from "@/components/hq/gond-bot";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn, rem } from "@/lib/utils";
 
-export function BotAvatar({ bot, size = 24, greet = false, mood, className, style }: { bot: Pick<Bot, "name" | "title" | "color" | "expression" | "primary"> & Partial<Pick<Bot, "shape">>; size?: number; greet?: boolean; mood?: GondBotMood; className?: string; style?: React.CSSProperties }) {
+export function BotAvatar({ bot, size = 24, greet = false, mood, className, style }: { bot: Pick<Bot, "name" | "title" | "color" | "expression" | "primary"> & Partial<Pick<Bot, "shape" | "avatar">>; size?: number; greet?: boolean; mood?: GondBotMood; className?: string; style?: React.CSSProperties }) {
   const disc = Math.max(12, Math.round(size * 0.3));
   const label = `${bot.name}${bot.title ? `, ${bot.title}` : ""}${bot.primary ? ", primary bot" : ""}`;
   return (
     <span data-slot="bot-avatar" className={cn("relative inline-flex shrink-0 items-center justify-center", className)} style={{ width: rem(size), height: rem(size), ...style }}>
-      <GondBot color={bot.color} size={size} expression={bot.expression} shape={bot.shape} greet={greet} mood={mood} label={label} />
+      {bot.avatar ? (
+        <Avatar className="size-full border border-primary-edge after:hidden" role="img" aria-label={label}>
+          <AvatarImage src={bot.avatar} alt="" />
+          <AvatarFallback style={{ background: bot.color }} />
+        </Avatar>
+      ) : (
+        <GondBot color={bot.color} size={size} expression={bot.expression} shape={bot.shape} greet={greet} mood={mood} label={label} />
+      )}
       {bot.primary && size >= 24 ? (
         <span aria-hidden="true" className={cn("absolute right-0 bottom-0 flex items-center justify-center rounded-full bg-gold-coin text-gold-foreground ring-[1.5px] ring-(--surface)", disc >= 18 && "gold-coin-shine")} style={{ width: rem(disc), height: rem(disc) }}>
           <CrownMark size={crownSize(disc)} />

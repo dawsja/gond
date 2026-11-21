@@ -35,7 +35,7 @@ function hash(text: string): string {
   return (h >>> 0).toString(36);
 }
 
-const looks = (bot: Bot) => [bot.id, bot.color, bot.shape, bot.expression, bot.primary];
+const looks = (bot: Bot) => [bot.id, bot.color, bot.shape, bot.avatar, bot.expression, bot.primary];
 
 /** `ink` is the theme's text colour: a room's +N chip is painted in the theme, a bot's face isn't. */
 export function faceOf(thread: ThreadRow, bot: Bot | undefined, members: Bot[], ink: string): FaceSpec {

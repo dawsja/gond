@@ -1263,7 +1263,7 @@ export function Conversation({ threadId }: { threadId: string }) {
           call={onCall}
           chrome={{
             thread: threadId,
-            avatarKey: JSON.stringify((bot ? [bot] : roomBots).map((b) => [b.id, b.color, b.shape, b.expression])),
+            avatarKey: JSON.stringify((bot ? [bot] : roomBots).map((b) => [b.id, b.color, b.shape, b.avatar, b.expression])),
             title: info?.thread.name ?? "…",
             subtitle: `${bot ? bot.title || "Teammate" : roomLine}${status}`,
             working: busy || boxUpdating,

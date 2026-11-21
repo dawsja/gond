@@ -32,6 +32,8 @@ export const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
 
 export type Bot = BotInput & {
   id: string;
+  /** A picture the person uploaded, shown in a circle instead of the mascot. */
+  avatar: string | null;
 
   userId: string;
 

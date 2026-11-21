@@ -18,7 +18,7 @@ import { WorthALookDialog, useWorthALookLine } from "@/components/worth-a-look";
 import { useStableCallback } from "@/hooks/use-stable-callback";
 import { useDrafts } from "@/lib/drafts";
 import { pictureFaceKey, sidebarHits, sidebarLists, sidebarSections, settingsSectionOf, type FaceSpec } from "@/lib/native-sidebar";
-import { faceSent, facePng, sendFaces, useNativeSidebarState, type NativeMenuItem, type SidebarEvent, type SidebarState } from "@/lib/native-ui";
+import { faceSent, facePng, picturesLoaded, sendFaces, useNativeSidebarState, type NativeMenuItem, type SidebarEvent, type SidebarState } from "@/lib/native-ui";
 import { groupedSections, SETTINGS_SECTIONS } from "@/lib/settings-sections";
 
 const FACE_PX = 128;
@@ -190,11 +190,11 @@ function FaceCopies({ faces, me }: { faces: FaceSpec[]; me: MeFace | null }) {
     let stale = false;
     let tries = 0;
     let timer = 0;
-    // The copies render with this; a frame later their faces are drawn. Your picture may still be
-    // loading, and until it has, its copy shows your initial, so it waits a few times for it.
+    // The copies render with this; a frame later their faces are drawn. A picture (yours, a bot's) may
+    // still be loading, and until it has, its copy shows the fallback, so it waits a few times for it.
     const paint = () => {
       const holders = [...document.querySelectorAll<HTMLElement>("[data-native-face]")].filter((holder) => !faceSent(holder.dataset.nativeFace!));
-      const ready = holders.filter((holder) => !holder.hasAttribute("data-native-picture") || holder.querySelector("img"));
+      const ready = holders.filter(picturesLoaded);
       if (ready.length < holders.length && (tries += 1) < 20) timer = window.setTimeout(paint, 250);
       void Promise.all(ready.map(async (holder) => [holder.dataset.nativeFace!, holder.firstElementChild ? await facePng(holder.firstElementChild, FACE_PX) : null] as const)).then((pairs) => {
         if (stale) return;
@@ -220,7 +220,7 @@ function FaceCopies({ faces, me }: { faces: FaceSpec[]; me: MeFace | null }) {
         </span>
       ))}
       {meWaiting ? (
-        <span data-native-face={meWaiting.key} data-native-picture="" className="block w-fit">
+        <span data-native-face={meWaiting.key} className="block w-fit">
           <PersonAvatar name={meWaiting.name} avatar={meWaiting.avatar} size={COPY_SIZE} />
         </span>
       ) : null}

@@ -1,11 +1,11 @@
-import { BOT_TEMPLATES, MODEL_ID_PATTERN, botInputSchema, botPatchSchema, pickBotName } from "@gond/shared";
+import { AVATAR_MAX_BYTES, BOT_TEMPLATES, MODEL_ID_PATTERN, botInputSchema, botPatchSchema, pickBotName } from "@gond/shared";
 import { forgetBotTeachings } from "../teach.ts";
 import { refreshSpaces } from "../spaces.ts";
 import { Hono } from "hono";
 import { ownBot, userId } from "../access.ts";
 import type { Env } from "../app.ts";
 import { boxConfig, deleteBotHome } from "../box.ts";
-import { createBot, deleteBot, getPrimary, listBots, setPrimary, updateBot } from "../data/bots.ts";
+import { clearBotAvatar, createBot, deleteBot, getBotAvatar, getPrimary, listBots, setBotAvatar, setPrimary, updateBot } from "../data/bots.ts";
 import { listRules, removeRule } from "../data/approvals.ts";
 import { postMessage } from "../data/threads.ts";
 import { stopBot, syncSoul } from "../responder.ts";
@@ -81,6 +81,13 @@ export function botsRoutes() {
     return bot ? c.json({ template: summaryOf(bundleOf(bot)) }) : c.json({ error: "That link doesn't lead to a bot any more" }, 404);
   });
 
+  app.get("/templates/:token/picture", (c) => {
+    const bot = sharedBot(c.req.param("token"));
+    const picture = bot ? getBotAvatar(bot.id) : null;
+    if (!picture) return c.json({ error: "There's no picture" }, 404);
+    return new Response(Buffer.from(picture.data), { headers: { "Content-Type": picture.mediaType, "Cache-Control": "private, max-age=300", "X-Content-Type-Options": "nosniff" } });
+  });
+
   app.post("/templates/:token", async (c) => {
     const bot = sharedBot(c.req.param("token"));
     if (!bot) return c.json({ error: "That link doesn't lead to a bot any more" }, 404);
@@ -129,6 +136,36 @@ export function botsRoutes() {
     if (!bot) return c.json({ error: "Couldn't find that bot" }, 404);
     await syncSoul(bot);
     return c.json({ bot });
+  });
+
+  app.get("/bots/:id/avatar", (c) => {
+    const bot = ownBot(c, c.req.param("id"));
+    const avatar = bot ? getBotAvatar(bot.id) : null;
+    if (!avatar) return c.json({ error: "There's no picture" }, 404);
+    return new Response(Buffer.from(avatar.data), {
+      headers: { "Content-Type": avatar.mediaType, "Cache-Control": "private, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff" },
+    });
+  });
+
+  app.put("/bots/:id/avatar", async (c) => {
+    const bot = ownBot(c, c.req.param("id"));
+    if (!bot) return c.json({ error: "Couldn't find that bot" }, 404);
+    const form = await c.req.formData().catch(() => null);
+    const file = form?.get("file");
+    if (!(file instanceof File)) return c.json({ error: "Send the picture as a file" }, 400);
+    if (file.size > AVATAR_MAX_BYTES) return c.json({ error: "The picture must be under 2 MB" }, 413);
+    try {
+      return c.json({ bot: setBotAvatar(bot.id, new Uint8Array(await file.arrayBuffer())) });
+    } catch (error) {
+      return c.json({ error: error instanceof Error ? error.message : "Couldn't save the picture" }, 400);
+    }
+  });
+
+  app.delete("/bots/:id/avatar", (c) => {
+    const bot = ownBot(c, c.req.param("id"));
+    if (!bot) return c.json({ error: "Couldn't find that bot" }, 404);
+    clearBotAvatar(bot.id);
+    return c.body(null, 204);
   });
 
   app.post("/bots/:id/primary", async (c) => {

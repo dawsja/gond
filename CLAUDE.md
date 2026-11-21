@@ -386,10 +386,10 @@ The address rules are mirrored in each app with the same tests.
   and pinned faces), `talking`
   while its voice speaks on a call (`call.speaking`), `glad` as an
   answered card folds (`GLAD_MS`). The box homepage and the iPhone's
-  Connect faces draw the same 3D cog. A bot always wears its mascot:
-  there are no bot pictures (`BotAvatar` draws only `GondBot`), and the
-  ones bots wore before were dropped with `gond_bot_avatars`. Only a
-  person has a picture (`usePicturePicker`).
+  Connect faces draw the same 3D cog. A bot may wear a picture instead
+  (`usePicturePicker`, a 512 px PNG or a GIF as is, `gond_bot_avatars`,
+  `Bot.avatar`); `BotAvatar` draws either. A face sent to an app as a PNG
+  waits for its pictures to load first (`picturesLoaded`).
 
 ### Layout
 
@@ -1044,8 +1044,10 @@ One line each: where to start, and what must not change.
   in `coordination.ts` keeps their schemas in Claude's non-guest tool list.
 - **Profiles through tools, not SQL**: `set_profile` and `update_bot` go
   through `profilePatch()` in `src/tools.ts`, then `syncSoul` rewrites
-  SOUL.md. Add a field there, not in the route. A `picture` asked for
-  out of an old habit is answered plainly (`NO_PICTURES`), never ignored.
+  SOUL.md. Add a field there, not in the route. `picture` is a path in
+  the calling bot's home (`setBotPicture`, checked by `pictureType`, a
+  still over 2 MB sent as the API's `previewPicture`, a GIF as is; `none`
+  restores the mascot, with or without a computer).
 - **Handoffs**: `MAX_CHAIN` stops bots waking each other forever. A
   result lands a hop up from its brief (`resultDepth`); a teammate that
   hands part on keeps its handoff open (`parentId`) until the last result
@@ -1147,8 +1149,8 @@ One line each: where to start, and what must not change.
   routine rests and its next run hears how many it missed. Events while the
   API is down are lost. Never a reminder, never in a template.
 - **Templates** (`src/bot-bundle.ts`, `src/bot-templates.ts`,
-  `botTemplateSchema`): a `.bot` zip of `bot.json` and each routine's
-  skill as `.skill`; a `picture` in an older one is never read. Memory,
+  `botTemplateSchema`): a `.bot` zip of `bot.json`, the picture (only if
+  its bytes are one) and each routine's skill as `.skill`. Memory,
   secrets, conversations, apps and MCP servers never go in.
   `addFromBundle` picks a free name, never trusts beyond Auto, reuses
   skills by slug, and brings routines in switched off on the person's
