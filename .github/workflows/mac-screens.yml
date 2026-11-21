@@ -59,6 +59,13 @@ jobs:
       # approves it; nobody can on a runner, so the approval is turned off.
       - name: Let the UI tests drive the app
         run: sudo automationmodetool enable-automationmode-without-authentication || echo "Couldn't turn off the automation approval; the UI tests may wait on it and fail."
+      # The runner's screen is small: the Dock out of the way gives the window the whole height. What
+      # graphics the runner has decides how WebKit can draw, so it is kept with the screenshots.
+      - name: Make room on the screen
+        run: |
+          defaults write com.apple.dock autohide -bool true && killall Dock || true
+          system_profiler SPDisplaysDataType > "$RUNNER_TEMP/screens/displays.txt" 2>&1 || true
+          sw_vers >> "$RUNNER_TEMP/screens/displays.txt" 2>&1 || true
       - name: Take the screenshots
         working-directory: apps/mac
         env:
@@ -78,7 +85,13 @@ jobs:
             TEST_RUNNER_GOND_SCREENS_APPEARANCE="$appearance" xcodebuild test -project Gond.xcodeproj -scheme GondScreens -destination 'platform=macOS' \
               -resultBundlePath "$RUNNER_TEMP/mac-screens-$appearance.xcresult" CODE_SIGN_IDENTITY=- 2>&1 | tee "$RUNNER_TEMP/screens/xcodebuild-$appearance.log" | grep -E '\[screens\]|error:|failed|passed|Test Case' || true
           done
-          log show --last 30m --info --debug --style compact --predicate 'subsystem == "io.gond.mac"' > "$RUNNER_TEMP/screens/app.log" || true
+          log show --last 40m --info --debug --style compact --predicate 'subsystem == "io.gond.mac"' > "$RUNNER_TEMP/screens/app.log" || true
+      - name: Keep WebKit's errors and any crashes
+        if: always()
+        run: |
+          log show --last 40m --style compact --predicate '(process BEGINSWITH "com.apple.WebKit" OR (process == "Gond" AND subsystem BEGINSWITH "com.apple.WebKit")) AND (messageType == error OR messageType == fault)' 2>&1 | tail -n 6000 > "$RUNNER_TEMP/screens/webkit.log" || true
+          mkdir -p "$RUNNER_TEMP/screens/crashes"
+          find "$HOME/Library/Logs/DiagnosticReports" /Library/Logs/DiagnosticReports -mmin -60 \( -name '*WebKit*' -o -name 'Gond*' \) -exec cp {} "$RUNNER_TEMP/screens/crashes/" \; 2>/dev/null || true
       - name: Keep the attachments too
         if: always()
         run: |

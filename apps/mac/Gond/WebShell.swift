@@ -1,4 +1,5 @@
 import AppKit
+import Metal
 import os
 import SwiftUI
 import WebKit
@@ -26,6 +27,9 @@ final class WebShell: NSObject {
     private var saved: [Int: URL] = [:]
     private var lastDownload = 0
     private var progressObservation: NSKeyValueObservation?
+    #if DEBUG
+    private var probed = false
+    #endif
 
     init(model: AppModel) {
         self.model = model
@@ -34,7 +38,12 @@ final class WebShell: NSObject {
         configuration.mediaTypesRequiringUserActionForPlayback = []
         // Safari's own words first, so the sites a sign-in passes through treat this as Safari.
         configuration.applicationNameForUserAgent = "Version/26.0 Safari/605.1.15 Gond/\(AppInfo.version) (macOS)"
-        webView = GondWebView(frame: .zero, configuration: configuration)
+        #if DEBUG
+        Self.turnOff(Screens.webKitOff, in: configuration.preferences)
+        #endif
+        let web = GondWebView(frame: .zero, configuration: configuration)
+        Self.keepContentUnderToolbar(web)
+        webView = web
         super.init()
         model.ui.shell = self
         webView.configuration.userContentController.add(ScriptHandler(self), name: "gondMac")
@@ -59,7 +68,30 @@ final class WebShell: NSObject {
             installBridge()
         }
         guard let url = URL(string: server + path) else { return }
+        model?.ui.expect(appPage: Self.isAppPath(url.path))
         webView.load(URLRequest(url: url))
+    }
+
+    /// The web app's own screens, which draw for the Mac (the sidebar is the app's, the top is under its toolbar).
+    nonisolated static func isAppPath(_ path: String) -> Bool {
+        path == "/app" || path.hasPrefix("/app/")
+    }
+
+    private var appPage: Bool { ownPage && Self.isAppPath(webView.url?.path ?? "") }
+
+    /*
+     * The page runs under the window's glass toolbar and pads its own top (--shell-inset-top), so its
+     * messages scroll beneath the glass. WebKit would otherwise inset the whole page by the toolbar's
+     * height on its own, laying it out below the toolbar and padding it a second time. Only the
+     * private switch turns that off on every macOS the app runs on.
+     */
+    private static func keepContentUnderToolbar(_ webView: WKWebView) {
+        if webView.responds(to: NSSelectorFromString("_setAutomaticallyAdjustsContentInsets:")) {
+            webView.setValue(false, forKey: "automaticallyAdjustsContentInsets")
+        }
+        if webView.responds(to: NSSelectorFromString("_setTopContentInset:")) {
+            webView.setValue(0, forKey: "topContentInset")
+        }
     }
 
     /// Another Gond's sign-in and pages have no business in this one's web view.
@@ -266,7 +298,8 @@ final class WebShell: NSObject {
         webView.evaluateJavaScript("(function(s){\(script)})(document.documentElement.style)", completionHandler: nil)
     }
 
-    /// How much of the web view's top the window's toolbar covers, as the page's --safe-top reads it.
+    /// The window toolbar's height, which the web app's screens sit under and pad as the page's --safe-top
+    /// reads it. The bridge script writes it before the page's first paint, so nothing moves once it shows.
     func setInsetTop(_ top: CGFloat) {
         let value = top.isFinite ? max(0, top.rounded()) : 0
         guard value != insetTop else { return }
@@ -275,9 +308,11 @@ final class WebShell: NSObject {
         pushInsets()
     }
 
+    /// Any other page of the Gond's (a sign-in) sits below the toolbar, so it has nothing to pad.
     private func pushInsets() {
         guard ownPage else { return }
-        let script = "s.setProperty('--shell-inset-top','\(insetTop)px');s.setProperty('--shell-inset-bottom','0px');s.setProperty('--shell-inset-left','0px');s.setProperty('--shell-inset-right','0px');"
+        let top = appPage ? insetTop : 0
+        let script = "s.setProperty('--shell-inset-top','\(top)px');s.setProperty('--shell-inset-bottom','0px');s.setProperty('--shell-inset-left','0px');s.setProperty('--shell-inset-right','0px');"
         webView.evaluateJavaScript("(function(s){\(script)})(document.documentElement.style)", completionHandler: nil)
     }
 
@@ -414,13 +449,22 @@ extension WebShell: WKNavigationDelegate {
         ownPage = ServerURL.sameOrigin(webView.url, server)
         hasPage = true
         // A provisional load that becomes a download leaves the current page and its chrome in place.
-        model?.ui.pageChanged(appPage: ownPage && (webView.url?.path.hasPrefix("/app") ?? false))
+        model?.ui.pageChanged(appPage: appPage)
         pushInsets()
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         pushInsets()
         model?.ui.pageLoaded()
+        #if DEBUG
+        if Screens.active && !probed {
+            probed = true
+            Task {
+                try? await Task.sleep(for: .seconds(6))
+                await probe()
+            }
+        }
+        #endif
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
@@ -443,6 +487,7 @@ extension WebShell: WKNavigationDelegate {
     }
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        shellLog.error("the page's process ended; loading it again")
         webView.reload()
     }
 }
@@ -594,3 +639,129 @@ struct WebContainer: NSViewRepresentable {
         view.addSubview(web)
     }
 }
+
+#if DEBUG
+/// What the screenshot job needs to tell why a page doesn't show: the page's own view of itself, the
+/// web view's place in the window, WebKit's layers and a snapshot WebKit paints itself.
+extension WebShell {
+    /// WebKit's feature switches by key (as Safari's Feature Flags lists them), turned off before the web view is made.
+    static func turnOff(_ keys: [String], in preferences: WKPreferences) {
+        let list = NSSelectorFromString("_features")
+        let set = NSSelectorFromString("_setEnabled:forFeature:")
+        let preferencesClass = WKPreferences.self as AnyObject
+        guard preferencesClass.responds(to: list), preferences.responds(to: set),
+              let features = preferencesClass.perform(list)?.takeUnretainedValue() as? [NSObject] else {
+            Screens.note("webkit features: can't be listed")
+            return
+        }
+        typealias Setter = @convention(c) (AnyObject, Selector, Bool, AnyObject) -> Void
+        let setter = unsafeBitCast(preferences.method(for: set), to: Setter.self)
+        var off: [String] = []
+        var related: [String] = []
+        for feature in features {
+            guard let key = feature.value(forKey: "key") as? String else { continue }
+            if keys.contains(key) {
+                setter(preferences, set, false, feature)
+                off.append(key)
+            }
+            if key.range(of: "GPU|Accelerat|Composit|Remote|Layer|Canvas|Metal|IOSurface", options: .regularExpression) != nil { related.append(key) }
+        }
+        Screens.note("webkit features off: [\(off.joined(separator: ","))] of asked [\(keys.joined(separator: ","))]")
+        Screens.note("webkit related features: \(related.joined(separator: ","))")
+    }
+
+    func probe() async {
+        Screens.note("metal: \(MTLCreateSystemDefaultDevice()?.name ?? "none")")
+        if let window = webView.window {
+            Screens.note("window \(NSStringFromRect(window.frame)) visible=\(window.isVisible) occluded=\(!window.occlusionState.contains(.visible)) key=\(window.isKeyWindow) scale=\(window.backingScaleFactor) screen=\(NSStringFromRect(window.screen?.frame ?? .zero))")
+        } else {
+            Screens.note("the web view is in no window")
+        }
+        var chain: [String] = []
+        var view: NSView? = webView
+        while let current = view {
+            chain.append("\(type(of: current)) \(NSStringFromRect(current.frame)) hidden=\(current.isHidden) alpha=\(current.alphaValue) layer=\(current.layer.map { "hidden=\($0.isHidden) opacity=\($0.opacity)" } ?? "none")")
+            view = current.superview
+        }
+        Screens.note("views:\n  " + chain.joined(separator: "\n  "))
+        Screens.note("web view hiddenOrAncestor=\(webView.isHiddenOrHasHiddenAncestor) insetTop=\(insetTop) appPage=\(appPage) url=\(webView.url?.absoluteString ?? "none")")
+        for key in ["topContentInset", "automaticallyAdjustsContentInsets", "obscuredContentInsets"] {
+            let getter = NSSelectorFromString(key == "obscuredContentInsets" ? key : "_\(key)")
+            if webView.responds(to: getter) { Screens.note("web view \(key) = \(String(describing: webView.value(forKey: key)))") }
+        }
+        if let layer = webView.layer {
+            var count = 0
+            var filled = 0
+            var kinds: [String: Int] = [:]
+            func walk(_ layer: CALayer, depth: Int) {
+                count += 1
+                if layer.contents != nil { filled += 1 }
+                kinds[String(describing: type(of: layer)), default: 0] += 1
+                if depth < 40 { layer.sublayers?.forEach { walk($0, depth: depth + 1) } }
+            }
+            walk(layer, depth: 0)
+            Screens.note("web view layers: \(count), with contents: \(filled), kinds: \(kinds)")
+        }
+        do {
+            let result = try await webView.callAsyncJavaScript(Self.probeScript, arguments: [:], contentWorld: .page)
+            Screens.note("page: \(result as? String ?? String(describing: result))")
+        } catch {
+            Screens.note("page probe failed: \(error)")
+        }
+        let configuration = WKSnapshotConfiguration()
+        configuration.afterScreenUpdates = true
+        let image: NSImage? = await withCheckedContinuation { continuation in
+            webView.takeSnapshot(with: configuration) { image, error in
+                if let error { Screens.note("snapshot failed: \(error)") }
+                continuation.resume(returning: image)
+            }
+        }
+        if let image {
+            Screens.note("snapshot \(NSStringFromSize(image.size))")
+            Screens.save(image, as: "snapshot")
+        }
+    }
+
+    private static let probeScript = """
+    const out = {};
+    const root = document.documentElement;
+    const rect = (el) => { const b = el.getBoundingClientRect(); return [Math.round(b.left), Math.round(b.top), Math.round(b.width), Math.round(b.height)]; };
+    const look = (el) => { if (!el) return null; const s = getComputedStyle(el); return { tag: el.tagName, rect: rect(el), opacity: s.opacity, visibility: s.visibility, display: s.display, color: s.color, background: s.backgroundColor, transform: s.transform }; };
+    out.shell = root.dataset.shell || null;
+    out.classes = root.className;
+    out.size = [innerWidth, innerHeight, devicePixelRatio];
+    out.visual = window.visualViewport ? [visualViewport.width, visualViewport.height, visualViewport.offsetTop] : null;
+    out.visibility = document.visibilityState;
+    out.focus = document.hasFocus();
+    const css = getComputedStyle(root);
+    out.insetTop = css.getPropertyValue("--shell-inset-top");
+    out.safeTop = css.getPropertyValue("--safe-top");
+    out.composer = [css.getPropertyValue("--native-composer-bottom"), css.getPropertyValue("--native-composer-height")];
+    out.text = document.body ? document.body.innerText.length : -1;
+    out.bubbles = document.querySelectorAll("[data-slot=bubble]").length;
+    out.body = look(document.body);
+    out.column = look(document.querySelector("[data-native-column]"));
+    out.scroller = look(document.querySelector("[data-slot=message-scroller-viewport]"));
+    const bubble = document.querySelector("[data-slot=bubble]");
+    out.bubble = look(bubble);
+    const chain = [];
+    for (let el = bubble; el && chain.length < 30; el = el.parentElement) { const s = getComputedStyle(el); if (s.opacity !== "1" || s.visibility !== "visible" || s.transform !== "none" || s.filter !== "none" || s.clipPath !== "none" || (s.mask || "none") !== "none") chain.push(el.tagName + "." + String(el.className).slice(0, 60) + " o=" + s.opacity + " v=" + s.visibility + " t=" + s.transform + " f=" + s.filter + " c=" + s.clipPath); }
+    out.bubbleChain = chain;
+    const hit = document.elementFromPoint(innerWidth / 2, innerHeight / 2);
+    out.center = hit ? hit.tagName + "." + String(hit.className).slice(0, 80) : null;
+    try {
+      const c = document.createElement("canvas"); c.width = c.height = 1; const x = c.getContext("2d");
+      x.fillStyle = "#336699"; x.fillRect(0, 0, 1, 1); out.canvasFill = x.fillStyle;
+      try { out.canvasRead = Array.from(x.getImageData(0, 0, 1, 1).data).join(","); } catch (e) { out.canvasRead = "error " + e.name; }
+      out.canvasUrl = c.toDataURL("image/png").length;
+      const d = document.createElement("canvas"); d.width = d.height = 1; const y = d.getContext("2d", { willReadFrequently: true });
+      y.fillStyle = "#336699"; y.fillRect(0, 0, 1, 1);
+      try { out.canvasReadSoftware = Array.from(y.getImageData(0, 0, 1, 1).data).join(","); } catch (e) { out.canvasReadSoftware = "error " + e.name; }
+      out.canvasUrlSoftware = d.toDataURL("image/png").length;
+    } catch (e) { out.canvas = "error " + e; }
+    try { out.webgl = Boolean(document.createElement("canvas").getContext("webgl")); } catch (e) { out.webgl = "error " + e; }
+    out.frames = await new Promise((resolve) => { let n = 0; const start = performance.now(); const tick = () => { n += 1; if (performance.now() - start < 500) requestAnimationFrame(tick); else resolve(n); }; requestAnimationFrame(tick); setTimeout(() => resolve(n), 1500); });
+    return JSON.stringify(out);
+    """
+}
+#endif

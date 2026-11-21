@@ -1,4 +1,5 @@
 import AppKit
+import os
 import SwiftUI
 
 enum Prefs {
@@ -27,6 +28,35 @@ enum Screens {
     static var appearance: String? { env["GOND_SCREENS_APPEARANCE"] }
     static var connect: Bool { env["GOND_SCREENS_CONNECT"] == "1" }
     static var active: Bool { server != nil || connect }
+    /// Where the job keeps its screenshots, which the app (not sandboxed, unlike the test runner) can write to.
+    static var folder: URL? { env["GOND_SCREENS_DIR"].flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0) } }
+    /// The step this launch is for, naming what the app writes there.
+    static var label: String { env["GOND_SCREENS_LABEL"].flatMap { $0.isEmpty ? nil : $0 } ?? "app" }
+    /// WebKit features to turn off, for a runner whose graphics WebKit can't use.
+    static var webKitOff: [String] { (env["GOND_SCREENS_WEBKIT_OFF"] ?? "").split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty } }
+
+    private static let log = Logger(subsystem: "io.gond.mac", category: "screens")
+
+    /// A line for the job: in the app's log and in `<label>-<appearance>.txt` beside the screenshots.
+    static func note(_ line: String) {
+        log.notice("\(label, privacy: .public): \(line, privacy: .public)")
+        guard let folder else { return }
+        let file = folder.appendingPathComponent("\(label)-\(appearance ?? "light").txt")
+        let data = Data((line + "\n").utf8)
+        if let handle = try? FileHandle(forWritingTo: file) {
+            handle.seekToEndOfFile()
+            handle.write(data)
+            try? handle.close()
+        } else {
+            try? data.write(to: file)
+        }
+    }
+
+    /// A picture for the job, beside the screenshots.
+    static func save(_ image: NSImage, as name: String) {
+        guard let folder, let tiff = image.tiffRepresentation, let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) else { return }
+        try? png.write(to: folder.appendingPathComponent("\(label)-\(appearance ?? "light")-\(name).png"))
+    }
 }
 #endif
 
@@ -100,11 +130,13 @@ final class AppModel: ObservableObject {
         applyWindowTheme()
         #if DEBUG
         if Screens.active {
-            window.isRestorable = false
-            // After SwiftUI has placed it, so the screenshots are always the same size.
+            // After SwiftUI has placed it: as big as the screenshots are meant to be, but all of it on the
+            // runner's small screen, or the parts off the edge can't be clicked or seen.
             Task {
-                window.setContentSize(NSSize(width: 1440, height: 900))
-                window.center()
+                let visible = (window.screen ?? NSScreen.main)?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+                let size = NSSize(width: min(1440, visible.width), height: min(900, visible.height))
+                window.setFrame(NSRect(x: visible.midX - size.width / 2, y: visible.midY - size.height / 2, width: size.width, height: size.height), display: true)
+                Screens.note("window \(NSStringFromRect(window.frame)) on \(NSStringFromRect(visible))")
             }
         }
         #endif

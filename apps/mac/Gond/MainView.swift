@@ -24,11 +24,9 @@ struct DetailView: View {
     var body: some View {
         GeometryReader { proxy in
             let toolbar = proxy.safeAreaInsets.top
-            // Only a page that draws for the Mac (it sends the sidebar) pads its top for the toolbar;
-            // anything else starts below it.
-            let under = ui.sidebar != nil
+            // Only the web app's own screens pad their top for the toolbar; anything else starts below it.
+            let under = ui.appPage
             ZStack(alignment: .top) {
-                Color(nsColor: model.pageBackground ?? .windowBackgroundColor)
                 WebContainer(shell: model.shell)
                     .padding(.top, under ? 0 : toolbar)
                 if let chrome = ui.chrome {
@@ -61,8 +59,9 @@ struct DetailView: View {
                     .zIndex(3)
                 }
             }
+            .background(Color(nsColor: model.pageBackground ?? .windowBackgroundColor))
             .animation(.easeOut(duration: 0.2), value: ui.chrome?.thread)
-            .onChange(of: under ? toolbar : 0, initial: true) { _, inset in model.shell.setInsetTop(inset) }
+            .onChange(of: toolbar, initial: true) { _, inset in model.shell.setInsetTop(inset) }
         }
         .ignoresSafeArea(.container, edges: .top)
         .toolbarMaterial()
@@ -71,7 +70,8 @@ struct DetailView: View {
             ToolbarItem(placement: .navigation) {
                 TitleView(ui: ui)
             }
-            ToolbarItemGroup(placement: .primaryAction) {
+            // On a Mac a primary action goes to the toolbar's leading edge; these belong at its trailing one.
+            ToolbarItemGroup(placement: .automatic) {
                 if let chrome = ui.chrome {
                     ForEach(chrome.screens) { screen in
                         Button { ui.send(["type": "screen", "id": screen.id]) } label: {

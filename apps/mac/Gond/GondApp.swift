@@ -18,6 +18,8 @@ struct GondApp: App {
                 .onAppear { delegate.model = model }
         }
         .defaultSize(Self.windowSize)
+        // The one window opens at every launch, whatever state the last run left.
+        .defaultLaunchBehavior(.presented)
         .windowResizability(.contentMinSize)
         .windowToolbarStyle(.unified(showsTitle: false))
         .commands { GondCommands(model: model, ui: model.ui) }
@@ -41,6 +43,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let look = Screens.appearance { NSApp.appearance = NSAppearance(named: look == "dark" ? .darkAqua : .aqua) }
         #endif
     }
+
+    #if DEBUG
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        guard Screens.active else { return }
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(3))
+            let shown = NSApp.windows.filter(\.isVisible).map { "\($0.identifier?.rawValue ?? "?") \(NSStringFromRect($0.frame))" }
+            Screens.note("windows: \(shown.joined(separator: "; ")), screen \(NSStringFromRect(NSScreen.main?.frame ?? .zero)) visible \(NSStringFromRect(NSScreen.main?.visibleFrame ?? .zero))")
+        }
+    }
+    #endif
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false

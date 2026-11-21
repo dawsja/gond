@@ -356,20 +356,46 @@ export async function filesFrom(picked: { name: string; type: string; data: stri
   );
 }
 
-/** A CSS colour as #rrggbb, whatever the page wrote it in (oklch, color-mix), for the app to paint with. */
+/** A CSS colour as #rrggbb, whatever the page wrote it in (oklch, color-mix), for the app to paint with; "" when it can't be read. */
 export function hexOf(css: string): string {
+  if (/^#[0-9a-f]{6}$/i.test(css)) return css.toLowerCase();
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = 1;
-  const context = canvas.getContext("2d");
+  const context = canvas.getContext("2d", { willReadFrequently: true });
   if (!context || !css) return "";
   context.fillStyle = css;
+  const parsed = String(context.fillStyle);
+  if (/^#[0-9a-f]{6}$/i.test(parsed)) return parsed.toLowerCase();
   context.fillRect(0, 0, 1, 1);
-  const [r, g, b] = context.getImageData(0, 0, 1, 1).data;
-  return `#${[r, g, b].map((v) => (v ?? 0).toString(16).padStart(2, "0")).join("")}`;
+  try {
+    const [r, g, b] = context.getImageData(0, 0, 1, 1).data;
+    return `#${[r, g, b].map((v) => (v ?? 0).toString(16).padStart(2, "0")).join("")}`;
+  } catch {
+    // WebKit refuses to read a canvas back when its graphics are unavailable.
+    return "";
+  }
+}
+
+/** A canvas as a PNG data URL, or null when the browser can't read it back (WebKit then gives "data:,"). */
+function pngOf(canvas: HTMLCanvasElement): string | null {
+  try {
+    const url = canvas.toDataURL("image/png");
+    return url.startsWith("data:image/png") ? url : null;
+  } catch {
+    return null;
+  }
 }
 
 /** An avatar on the page (its svg or picture) drawn into a square PNG, for the app's header. */
 export async function avatarPng(avatar: Element, size = 96): Promise<string | null> {
+  try {
+    return await drawAvatar(avatar, size);
+  } catch {
+    return null;
+  }
+}
+
+async function drawAvatar(avatar: Element, size: number): Promise<string | null> {
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = size;
   const context = canvas.getContext("2d");
@@ -396,11 +422,7 @@ export async function avatarPng(avatar: Element, size = 96): Promise<string | nu
     return null;
   }
   context.drawImage(source, 0, 0, size, size);
-  try {
-    return canvas.toDataURL("image/png");
-  } catch {
-    return null;
-  }
+  return pngOf(canvas);
 }
 
 /**
@@ -410,6 +432,14 @@ export async function avatarPng(avatar: Element, size = 96): Promise<string | nu
  * and the gap between a room's faces (`data-cut`) are cut out, since the app's sidebar is glass.
  */
 export async function facePng(face: Element, size = 128): Promise<string | null> {
+  try {
+    return await drawFace(face, size);
+  } catch {
+    return null;
+  }
+}
+
+async function drawFace(face: Element, size: number): Promise<string | null> {
   const box = face.getBoundingClientRect();
   if (!box.width || !box.height) return null;
   const canvas = document.createElement("canvas");
@@ -457,11 +487,7 @@ export async function facePng(face: Element, size = 128): Promise<string | null>
       }
     }
   }
-  try {
-    return canvas.toDataURL("image/png");
-  } catch {
-    return null;
-  }
+  return pngOf(canvas);
 }
 
 function shape(context: CanvasRenderingContext2D, rect: DOMRect, radius: number, inset: number) {

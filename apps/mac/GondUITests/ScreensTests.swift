@@ -7,6 +7,9 @@ final class ScreensTests: XCTestCase {
     private var appearance = "light"
     private var folder: URL?
 
+    /// WebKit's features to turn off on the runner, whose graphics WebKit can't use as a Mac's (see the job).
+    private static let runnerWebKitOff = "UseGPUProcessForDOMRenderingEnabled,UseGPUProcessForCanvasRenderingEnabled,UseGPUProcessForWebGLEnabled,AcceleratedDrawingEnabled,CanvasUsesAcceleratedDrawing"
+
     override func setUp() {
         continueAfterFailure = true
     }
@@ -18,12 +21,30 @@ final class ScreensTests: XCTestCase {
         }
         appearance = env["GOND_SCREENS_APPEARANCE"] ?? "light"
         folder = env["GOND_SCREENS_DIR"].flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0) }
-        let base = ["GOND_SCREENS_SERVER": server, "GOND_SCREENS_COOKIE": cookie, "GOND_SCREENS_APPEARANCE": appearance]
+        var base = ["GOND_SCREENS_SERVER": server, "GOND_SCREENS_COOKIE": cookie, "GOND_SCREENS_APPEARANCE": appearance]
+        // The app isn't sandboxed, so it writes what it saw beside the screenshots; this runner can't.
+        if let folder { base["GOND_SCREENS_DIR"] = folder.path }
+
+        // The conversation as WebKit draws it with each set of its features, to tell which the runner needs.
+        for (label, off) in [("default", ""), ("nogpu", "UseGPUProcessForDOMRenderingEnabled,UseGPUProcessForCanvasRenderingEnabled"), ("noaccel", "AcceleratedDrawingEnabled,CanvasUsesAcceleratedDrawing")] {
+            var probe = base
+            probe["GOND_SCREENS_WEBKIT_OFF"] = off
+            launch(probe, label: "probe-\(label)", path: "/app/t/\(thread)")
+            if wait(for: "composer.field", timeout: 60) {
+                // The app looks at the page 6 s after it loads.
+                Thread.sleep(forTimeInterval: 9)
+                shot("probe-\(label)")
+            } else {
+                print("[screens] probe-\(label): the composer never showed")
+            }
+            app.terminate()
+        }
+        base["GOND_SCREENS_WEBKIT_OFF"] = Self.runnerWebKitOff
 
         // A conversation: the toolbar, the composer, the menu, a confirm, the sidebar searching.
-        launch(base, path: "/app/t/\(thread)")
+        launch(base, label: "conversation", path: "/app/t/\(thread)")
         if wait(for: "composer.field", timeout: 60) {
-            Thread.sleep(forTimeInterval: 2)
+            Thread.sleep(forTimeInterval: 3)
             shot("conversation")
 
             let more = element("chrome.more")
@@ -50,14 +71,15 @@ final class ScreensTests: XCTestCase {
             }
 
             let search = element("sidebar.search")
-            if search.waitForExistence(timeout: 10) {
+            if search.waitForExistence(timeout: 10), search.isHittable {
                 search.click()
                 search.typeText("net")
                 Thread.sleep(forTimeInterval: 1.5)
                 shot("search")
                 search.typeKey(.escape, modifierFlags: [])
             } else {
-                print("[screens] the sidebar's search never showed")
+                print("[screens] the sidebar's search never showed, or can't be clicked")
+                shot("search-missing")
             }
         } else {
             print("[screens] the conversation's composer never showed")
@@ -68,40 +90,45 @@ final class ScreensTests: XCTestCase {
 
         // A room: the bots to @mention sit on the composer.
         if let room = env["GOND_SCREENS_ROOM"], !room.isEmpty {
-            launch(base, path: "/app/t/\(room)")
+            launch(base, label: "room", path: "/app/t/\(room)")
             if wait(for: "composer.field", timeout: 60) {
-                Thread.sleep(forTimeInterval: 2.5)
+                Thread.sleep(forTimeInterval: 3)
                 shot("room")
             } else {
                 print("[screens] the room's composer never showed")
+                shot("room-missing")
             }
             app.terminate()
         }
 
         // Settings: its sections in the sidebar.
-        launch(base, path: "/app/settings/appearance")
+        launch(base, label: "settings", path: "/app/settings/appearance")
         if !wait(for: "sidebar.back", timeout: 60) { print("[screens] Settings' sections never showed") }
-        Thread.sleep(forTimeInterval: 2)
+        Thread.sleep(forTimeInterval: 3)
         shot("settings")
         app.terminate()
 
         // Connect.
         var connect = base
         connect["GOND_SCREENS_CONNECT"] = "1"
-        launch(connect, path: nil)
+        launch(connect, label: "connect", path: nil)
         if !wait(for: "connect.address", timeout: 20) { print("[screens] Connect never showed") }
         Thread.sleep(forTimeInterval: 1)
         shot("connect")
         app.terminate()
     }
 
-    private func launch(_ env: [String: String], path: String?) {
+    private func launch(_ env: [String: String], label: String, path: String?) {
         app = XCUIApplication()
         var environment = env
+        environment["GOND_SCREENS_LABEL"] = label
         if let path { environment["GOND_SCREENS_PATH"] = path }
         app.launchEnvironment = environment
+        // Every launch starts fresh, never with the windows the last one left (or closed).
+        app.launchArguments = ["-ApplePersistenceIgnoreState", "YES"]
         app.launch()
         app.activate()
+        if !app.windows.firstMatch.waitForExistence(timeout: 15) { print("[screens] \(label): no window after launch") }
     }
 
     private func element(_ id: String) -> XCUIElement {

@@ -34,6 +34,8 @@ final class NativeUI: ObservableObject {
     @Published private(set) var searchRequest = 0
     /// Raised by each new page, so the sidebar starts over with it.
     @Published private(set) var page = 0
+    /// The page is one of the web app's own screens, which run under the toolbar and pad their top for it.
+    @Published private(set) var appPage = false
     /// The file Quick Look shows, and the files it can swipe through.
     @Published private(set) var preview: URL?
     @Published private(set) var previewFiles: [URL] = []
@@ -112,9 +114,15 @@ final class NativeUI: ObservableObject {
         return sidebarFaces[key]
     }
 
+    /// Set as a page is asked for, so the web view is in its place before the page first paints.
+    func expect(appPage: Bool) {
+        if self.appPage != appPage { self.appPage = appPage }
+    }
+
     /// A new page, or another site's: none of the chrome stays, and the sidebar only until the new
     /// page draws its own, so a reload doesn't fold it away and back.
     func pageChanged(appPage: Bool) {
+        expect(appPage: appPage)
         setChrome("null")
         page += 1
         facesFresh = true
