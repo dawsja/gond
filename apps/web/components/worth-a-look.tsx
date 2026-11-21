@@ -148,11 +148,6 @@ export function WorthALook({ as, className }: { as: "sheet" | "popover"; classNa
     </>
   );
   const pill = cn("flex min-h-12 w-full items-center gap-2 rounded-full border border-tint-edge bg-tint-wash py-1.5 pr-3.5 pl-1.5 text-foreground outline-none hover:border-primary-edge-focus focus-visible:ring-3 focus-visible:ring-ring/50 pointer-coarse:min-h-14", className);
-  const seen = noticed.length ? (
-    <Button variant="outline" size="lg" onClick={() => void markSeen()}>
-      Mark all seen
-    </Button>
-  ) : null;
 
   if (as === "popover") {
     return (
@@ -177,15 +172,38 @@ export function WorthALook({ as, className }: { as: "sheet" | "popover"; classNa
       <button type="button" aria-haspopup="dialog" onClick={() => setOpen(true)} className={pill}>
         {trigger}
       </button>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Worth a look</DialogTitle>
-          </DialogHeader>
-          <List close={close} className="pt-4" />
-          {seen ? <DialogFooter>{seen}</DialogFooter> : null}
-        </DialogContent>
-      </Dialog>
+      <WorthALookDialog open={open} onOpenChange={setOpen} />
     </>
   );
+}
+
+/** Worth a look as a dialog: on a phone from its pill, in the Mac app from its sidebar's line. */
+export function WorthALookDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+  const { noticed } = useWorthALook();
+  const close = () => onOpenChange(false);
+  const markSeen = useMarkSeen(close);
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Worth a look</DialogTitle>
+        </DialogHeader>
+        <List close={close} className="pt-4" />
+        {noticed.length ? (
+          <DialogFooter>
+            <Button variant="outline" size="lg" onClick={() => void markSeen()}>
+              Mark all seen
+            </Button>
+          </DialogFooter>
+        ) : null}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** The line the pill shows, for the Mac app's sidebar; null when there's nothing. */
+export function useWorthALookLine(): { label: string; count: number } | null {
+  const { approvals, noticed } = useWorthALook();
+  const total = approvals.length + noticed.length;
+  return total ? { label: `${count(total, "thing", "things")} worth a look`, count: total } : null;
 }

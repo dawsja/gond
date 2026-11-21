@@ -13,7 +13,7 @@ import { ThreadConfirms, type Ask } from "@/components/thread-actions";
 import { Button } from "@/components/ui/button";
 import { MessageScrollerEdges } from "@/components/ui/message-scroller";
 import { useStableCallback } from "@/hooks/use-stable-callback";
-import { avatarPng, useNativeChrome, useNativeUi, type ChromeEvent } from "@/lib/native-ui";
+import { avatarPng, useNativeApp, useNativeChrome, type ChromeEvent } from "@/lib/native-ui";
 import { cn } from "@/lib/utils";
 
 const onOpen = (dialog: ShellDialog) => dialog && openShellDialog(dialog);
@@ -23,7 +23,8 @@ export function ChatsScreen({ className }: { className?: string }) {
   const othersWaiting = useOthersWaiting();
   const current = profiles.find((p) => p.id === me.profile.id);
   // In the iPhone app the header's buttons are the app's own, in Liquid Glass; the page keeps its own in place, unseen.
-  const native = useNativeUi();
+  // The Mac app has its sidebar instead, and never shows this screen.
+  const native = useNativeApp() === "iphone";
   const [ask, setAsk] = useState<Ask | null>(null);
   const [searching, setSearching] = useState(false);
   const { query, setQuery, rows, hits } = useBotSearch();

@@ -35,7 +35,7 @@ import { useLiveEvents } from "@/components/hq/live-events";
 import { useSwipeBack } from "@/hooks/use-swipe-back";
 import { useStableCallback } from "@/hooks/use-stable-callback";
 import { useCovered } from "@/components/conversation-chrome";
-import { useNativeChrome, useNativeUi } from "@/lib/native-ui";
+import { useNativeApp, useNativeChrome } from "@/lib/native-ui";
 import { useSingleFlight, useStore } from "@/components/store";
 import { Button } from "@/components/ui/button";
 import { PersonAvatar } from "@/components/bot-avatar";
@@ -62,7 +62,8 @@ export function SettingsPage({ user, section, index = false }: { user: SessionUs
   const back = index ? "/app" : "/app/settings";
   useSwipeBack(back);
   // In the iPhone app the back button is the app's own, in Liquid Glass, and stays put while the page scrolls under it.
-  const native = useNativeUi();
+  // The Mac app lists the sections in its sidebar instead.
+  const native = useNativeApp() === "iphone";
 
   const activeLink = useRef<HTMLAnchorElement>(null);
   useEffect(() => {
@@ -286,7 +287,7 @@ export function SettingsPage({ user, section, index = false }: { user: SessionUs
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
-      <div className="mx-auto flex w-full max-w-4xl flex-col gap-5 px-4 pt-[calc(max(16px,var(--safe-top))+var(--call-pill-space)*2)] pb-[calc(32px+var(--safe-bottom))] wide:px-6 wide:py-8">
+      <div className="mx-auto flex w-full max-w-4xl flex-col gap-5 px-4 pt-[calc(max(16px,var(--safe-top))+var(--call-pill-space)*2)] pb-[calc(32px+var(--safe-bottom))] wide:px-6 wide:py-8 mac:pt-(--safe-top)">
 
         <div className="flex h-11 items-center gap-3 wide:hidden">
           <Button size="icon-xl" aria-label={index ? "Back to chats" : "All settings"} render={<Link href={back} />} nativeButton={false} className={cn(native && "invisible")}>
@@ -298,7 +299,7 @@ export function SettingsPage({ user, section, index = false }: { user: SessionUs
         {index ? <div className="wide:hidden">{list}</div> : null}
         <div className={cn("flex flex-col gap-5 wide:flex-row wide:items-start wide:gap-8", index && "hidden wide:flex")}>
           {/* The title and the sections stay put in their island while a section scrolls, and scroll inside it when the window is short. */}
-          <div className="hidden wide:island wide:sticky wide:top-8 wide:flex wide:max-h-[calc(100dvh-4rem)] wide:w-52 wide:shrink-0 wide:flex-col wide:gap-4 wide:overflow-y-auto wide:overscroll-contain wide:p-3 wide:pt-4">
+          <div className="hidden wide:island wide:sticky wide:top-8 wide:flex wide:max-h-[calc(100dvh-4rem)] wide:w-52 wide:shrink-0 wide:flex-col wide:gap-4 wide:overflow-y-auto wide:overscroll-contain wide:p-3 wide:pt-4 mac:hidden">
             <h1 className="px-3 text-[20px] leading-8 font-semibold tracking-[-0.4px]">Settings</h1>
             {nav}
           </div>

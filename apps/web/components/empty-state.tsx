@@ -33,7 +33,7 @@ export function EmptyState({ className }: { className?: string }) {
   }
 
   return (
-    <div className={cn("relative flex flex-1 flex-col overflow-y-auto", className)}>
+    <div className={cn("relative flex flex-1 flex-col overflow-y-auto mac:pt-(--safe-top)", className)}>
       <Empty className="m-auto max-w-lg px-6 py-10">
         <EmptyHeader className="max-w-md">
           <EmptyMedia>

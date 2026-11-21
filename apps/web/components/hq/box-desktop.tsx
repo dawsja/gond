@@ -1020,12 +1020,12 @@ export function DesktopToolbar({
 /** Full screen on a phone, the page behind it; a window over a dimmed page on a wide screen. */
 export function DesktopFrame({ frame, onBackdrop, backdropLabel, bar, aside, children }: { frame: RefObject<HTMLDivElement | null>; onBackdrop: () => void; backdropLabel: string; bar?: ReactNode; aside?: ReactNode; children: ReactNode }) {
   return (
-    <div data-no-swipe-back="" className="fixed inset-0 z-[70] flex items-center justify-center gap-5 bg-background wide:bg-transparent wide:p-6">
+    <div data-no-swipe-back="" className="fixed inset-0 z-[70] flex items-center justify-center gap-5 bg-background wide:bg-transparent wide:p-6 mac:pt-[calc(var(--safe-top)+24px)]">
       <button type="button" aria-label={backdropLabel} className="absolute inset-0 hidden bg-black/60 wide:block" onClick={onBackdrop} />
       {/* Something beside the window (what a bot is being shown) makes it narrower, so both fit. */}
       <div className={cn("pointer-events-none relative flex h-full w-full flex-col wide:h-auto wide:gap-2.5 [&>*]:pointer-events-auto", aside ? "wide:w-[min(62vw,960px)]" : "wide:w-[min(70vw,1040px)]")}>
         {bar}
-        <div ref={frame} className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-background wide:aspect-[16/10] wide:max-h-[calc(100dvh-7rem)] wide:flex-none wide:rounded-lg wide:border wide:border-primary-edge wide:bg-card wide:shadow-subtle-3">
+        <div ref={frame} className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-background wide:aspect-[16/10] wide:max-h-[calc(100dvh-7rem)] mac:max-h-[calc(100dvh-7rem-var(--safe-top))] wide:flex-none wide:rounded-lg wide:border wide:border-primary-edge wide:bg-card wide:shadow-subtle-3">
           {children}
         </div>
       </div>

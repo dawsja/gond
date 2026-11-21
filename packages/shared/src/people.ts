@@ -119,7 +119,7 @@ export const OIDC_PROVIDER_ID = "oidc";
 
 export const MOBILE_SIGN_IN_CALLBACK = "gond://sign-in";
 
-export const SIGN_IN_APPS = ["android", "ios", "desktop"] as const;
+export const SIGN_IN_APPS = ["android", "ios", "desktop", "mac"] as const;
 export type SignInApp = (typeof SIGN_IN_APPS)[number];
 export const OIDC_DEFAULT_SCOPES = "openid profile email";
 

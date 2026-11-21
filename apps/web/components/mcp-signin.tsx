@@ -8,12 +8,12 @@ import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/c
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { post } from "@/lib/api";
-import { desktopShell, mobileShell, useNativeShell } from "@/lib/shell";
+import { desktopShell, isWebViewShell, useNativeShell } from "@/lib/shell";
 
 export async function startMcpSignIn(server: Pick<McpServer, "id" | "oauthRedirect">, threadId?: string): Promise<boolean> {
   const loopback = server.oauthRedirect === "localhost";
 
-  const tab = loopback && !mobileShell() ? window.open("about:blank", "_blank") : null;
+  const tab = loopback && !isWebViewShell() ? window.open("about:blank", "_blank") : null;
   try {
     const { url } = await post<{ url: string }>(`/api/mcp-servers/${server.id}/login`, { threadId, app: desktopShell() ? "desktop" : undefined });
     if (tab) tab.location.href = url;

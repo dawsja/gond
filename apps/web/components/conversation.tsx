@@ -66,7 +66,7 @@ import { keep } from "@/lib/keep";
 import { editUnread, retryTurn, unsend } from "@/lib/message-actions";
 import { notReadYet } from "@/lib/message-state";
 import { sentHistory } from "@/lib/sent-history";
-import { askNative, useNativeCallBar, useNativeUi, type NativeMenuItem } from "@/lib/native-ui";
+import { askNative, useNativeApp, useNativeCallBar, useNativeSidebar, useNativeUi, type NativeMenuItem } from "@/lib/native-ui";
 import { cn } from "@/lib/utils";
 
 const ExchangeDialog = dynamic(() => import("@/components/exchange-dialog").then((m) => m.ExchangeDialog));
@@ -251,7 +251,7 @@ function quoteText(message: Message): string {
 const Line = memo(function Line({ message, threadId, bots, other, bot, approval, isRoom, space, editing, latestHandOff, stops, touch, picks, closedBy, inert, sentTo, noticed, reveal, highlighted, unread, onPick, onView, onDecide, onOpenExchange, onEdit, onUnsend, onSelectText, onReacted, onReply, onJump }: { message: Message; threadId: string; bots: Bot[]; other: ThreadRow | undefined; bot: Bot | null; approval: Approval | null | undefined; isRoom: boolean; space: ThreadSpace | null; editing: boolean; latestHandOff: boolean; stops: boolean; touch: boolean; picks: string; closedBy: string | null; inert: boolean; sentTo: string | undefined; noticed: Noticed | undefined; reveal: PictureReveal | undefined; highlighted: boolean; unread: string | undefined; onPick: (option: string, from: Message) => Promise<void>; onView: (attachmentId: string) => void; onDecide: (id: string, answer: ApprovalAnswer) => Promise<void>; onOpenExchange: (withThreadId: string) => void; onEdit: (message: Message | null, text?: string) => Promise<boolean>; onUnsend: (message: Message) => void; onSelectText: (text: string) => void; onReacted: (message: Message) => void; onReply: (message: Message) => void; onJump: (id: string) => void }) {
   const mine = message.author === "you";
   const bubble = useRef<HTMLDivElement>(null);
-  const native = useNativeUi();
+  const nativeApp = useNativeApp();
   // The tap that ends a long press still clicks the bubble; it shouldn't also show the time.
   const menuOpenedAt = useRef(0);
 
@@ -321,18 +321,23 @@ const Line = memo(function Line({ message, threadId, bots, other, bot, approval,
   const reactable = canReact(message);
   const menu = Boolean(message.body) || edits || takeBack || reactable || replyable;
   const reactWith = (emoji: ReactionEmoji) => void react(message, emoji, onReacted);
-  // On the iPhone a long press lifts the bubble into the app's own menu, with the reactions above it.
-  const openNativeMenu = async () => {
+  // On the iPhone a long press lifts the bubble into the app's own menu, with the reactions above it;
+  // on the Mac a right-click opens the app's menu at the bubble.
+  const openNativeMenu = async (selection: string) => {
     const node = bubble.current;
     if (!node) return;
-    menuOpenedAt.current = Date.now();
+    const lift = nativeApp === "iphone";
     // The badges hang below the bubble, so the lifted copy would cut them; the reactions bar shows them anyway.
-    node.dataset.lifting = "";
+    if (lift) {
+      menuOpenedAt.current = Date.now();
+      node.dataset.lifting = "";
+    }
     const box = node.getBoundingClientRect();
     const items: NativeMenuItem[] = [];
     if (replyable) items.push({ id: "reply", label: "Reply", symbol: "arrowshape.turn.up.left" });
+    if (selection) items.push({ id: "copy-selection", label: "Copy selection", symbol: "character.cursor.ibeam" });
     if (message.body) items.push({ id: "copy", label: "Copy text", symbol: "doc.on.doc" });
-    if (message.body) items.push({ id: "select", label: "Select text", symbol: "character.cursor.ibeam" });
+    if (message.body && lift) items.push({ id: "select", label: "Select text", symbol: "character.cursor.ibeam" });
     if (edits) items.push({ id: "edit", label: editsInPlace ? "Edit" : "Edit and resend", symbol: "pencil" });
     if (takeBack) items.push({ id: "unsend", label: "Unsend", symbol: "arrow.uturn.backward", destructive: true });
     const picked = await askNative({
@@ -342,10 +347,12 @@ const Line = memo(function Line({ message, threadId, bots, other, bot, approval,
       reactions: reactable ? { options: REACTIONS, mine: message.reactions.find((r) => r.author === "you")?.emoji ?? null } : null,
       items,
     });
-    delete node.dataset.lifting;
+    if (lift) delete node.dataset.lifting;
+    const copied = (ok: boolean) => toast.add(ok ? { title: "Copied." } : { type: "error", title: "Couldn't copy it." });
     if (picked?.react && (REACTIONS as readonly string[]).includes(picked.react)) reactWith(picked.react as ReactionEmoji);
     else if (picked?.action === "reply") onReply(message);
-    else if (picked?.action === "copy") void copyToClipboard(copyText(message.body)).then((ok) => toast.add(ok ? { title: "Copied." } : { type: "error", title: "Couldn't copy it." }));
+    else if (picked?.action === "copy-selection") void copyToClipboard(selection).then(copied);
+    else if (picked?.action === "copy") void copyToClipboard(copyText(message.body)).then(copied);
     else if (picked?.action === "select") onSelectText(copyText(message.body));
     else if (picked?.action === "edit") void onEdit(message);
     else if (picked?.action === "unsend") onUnsend(message);
@@ -395,14 +402,22 @@ const Line = memo(function Line({ message, threadId, bots, other, bot, approval,
           ref={bubble}
           onClick={(event) => Date.now() - menuOpenedAt.current > 1500 && showsTime(event) && setTimed((on) => !on)}
           onContextMenu={(event) => {
-            if (native && touch) {
+            if (nativeApp === "iphone" && touch) {
               event.preventDefault();
               event.preventBaseUIHandler();
-              if (menu) void openNativeMenu();
+              if (menu) void openNativeMenu("");
               return;
             }
             // A right click on a link gets the browser's own menu (open in a new tab, copy the address).
-            if (!touch && event.target instanceof Element && event.target.closest("a[href]")) event.preventBaseUIHandler();
+            if (!touch && event.target instanceof Element && event.target.closest("a[href]")) {
+              event.preventBaseUIHandler();
+              return;
+            }
+            if (nativeApp === "mac") {
+              event.preventDefault();
+              event.preventBaseUIHandler();
+              if (menu) void openNativeMenu(selectionIn(bubble.current));
+            }
           }}
           className={cn("group/lift touch-pan-y select-text pointer-coarse:select-none", !swipe && "transition-transform duration-200")}
           style={swipe ? { transform: `translateX(${swipe}px)` } : undefined}
@@ -731,10 +746,11 @@ export function Conversation({ threadId }: { threadId: string }) {
   const router = useRouter();
   const { call, end: hangUp, toggleMute } = useCall();
   const onCall = call?.info.threadId === threadId ? call : null;
-  // In the iPhone app the header and the composer are the app's own, in Liquid Glass (`ConversationChrome`),
+  // In the iPhone and Mac apps the header and the composer are the app's own, in Liquid Glass (`ConversationChrome`),
   // a call's bar too; an app too old to draw one leaves the chrome to the page for a call.
   const nativeCallBar = useNativeCallBar();
   const nativeChrome = useNativeUi() && (!onCall || nativeCallBar);
+  const nativeSidebar = useNativeSidebar();
   const composer = useRef<ComposerHandle>(null);
   const [canJump, setCanJump] = useState(false);
   const [jumpRev, setJumpRev] = useState(0);
@@ -1065,14 +1081,15 @@ export function Conversation({ threadId }: { threadId: string }) {
   // A bot's chat names its bot before the conversation's details load, so the menu is never a room's.
   const rowBot = bot ?? (row?.botId ? bots.find((b) => b.id === row.botId) : undefined);
   const botActions = row && (row.kind === "room" || rowBot) ? threadActions({ thread: row, bot: rowBot, bots, onOpen: openShellDialog, onAsk: setAsk, refresh }) : [];
-  // The iPhone app's header has no room for the phone circle, so there the call is first in the menu.
+  // The iPhone and Mac apps' headers have no room for the phone circle, so there the call is first in the menu.
   const actions = nativeChrome && callable && !onCall ? [[{ id: "call", label: `Call ${callable.name}`, icon: Phone, symbol: "phone", run: calling.dial }], ...botActions] : botActions;
   const status = boxUpdating ? " · the computer is updating, replies wait" : onCall ? " · on a call" : busy ? " · working" : waitingOnYou ? " · waiting on you" : watches.length ? ` · watching ${watches.length === 1 ? "1 thing" : `${watches.length} things`}` : "";
   const hint = busy && !isRoom ? "Add to it, or say stop" : bot ? `Message ${bot.name}` : space ? "Message the space" : answersNext.length ? `${joinNames(answersNext)} ${answersNext.length > 1 ? "answer" : "answers"} next` : "Message the room";
 
   return (
     <div className="flex min-h-0 flex-1">
-      <section className="relative flex min-w-0 flex-1 flex-col" style={{ "--composer-h": `${composerHeight}px` } as CSSProperties} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
+      {/* What the floating header takes at the top; in the Mac app the header is its toolbar, already in the inset. */}
+      <section data-native-column="" className="relative flex min-w-0 flex-1 flex-col [--header-top:calc(64px+var(--safe-top)+var(--call-pill-space))] mac:[--header-top:var(--safe-top)]" style={{ "--composer-h": `${composerHeight}px` } as CSSProperties} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
         {dropping ? (
           <div className="pointer-events-none absolute inset-0 z-30 flex bg-background/92 p-3 pt-[calc(12px+var(--safe-top))] pb-[max(12px,var(--safe-bottom))]">
             <div className="flex flex-1 flex-col items-center justify-center gap-3 rounded-3xl border-2 border-dashed border-primary-edge-focus text-center">
@@ -1151,7 +1168,7 @@ export function Conversation({ threadId }: { threadId: string }) {
           <FollowComposer height={composerHeight} />
           {nativeChrome ? <NativeJump onCanJump={setCanJump} jumpRev={jumpRev} /> : null}
           <MessageScroller className="flex-1">
-            <MessageScrollerViewport preserveScrollOnPrepend className="px-3 pt-[calc(64px+var(--safe-top)+var(--call-pill-space))] pb-(--composer-h) sm:px-4 wide:px-[max(1.5rem,calc((100%-46rem)/2))]">
+            <MessageScrollerViewport preserveScrollOnPrepend className="px-3 pt-(--header-top) pb-(--composer-h) sm:px-4 wide:px-[max(1.5rem,calc((100%-46rem)/2))]">
               <MessageScrollerContent className="gap-3 py-4">
                 {earlier && messages.length > 0 ? (
                   <MessageScrollerItem>
@@ -1223,7 +1240,7 @@ export function Conversation({ threadId }: { threadId: string }) {
                 <LiveTail threadId={threadId} isRoom={isRoom} catchUp={catchUp} onLanded={onLanded} />
               </MessageScrollerContent>
             </MessageScrollerViewport>
-            <MessageScrollerEdges top="calc(4rem + var(--safe-top) + var(--call-pill-space) + 1.5rem)" bottom="calc(var(--composer-h) + 1.5rem)" />
+            <MessageScrollerEdges top="calc(var(--header-top) + 1.5rem)" bottom="calc(var(--composer-h) + 1.5rem)" />
             {nativeChrome ? null : <MessageScrollerButton className="data-[direction=end]:bottom-[calc(var(--composer-h)+8px)]" />}
           </MessageScroller>
         </MessageScrollerProvider>
@@ -1263,7 +1280,11 @@ export function Conversation({ threadId }: { threadId: string }) {
           onHeight={setComposerHeight}
           onChromeEvent={(event) => {
             if (event.type === "back") router.push("/app");
-            else if (event.type === "details") openPill();
+            // The Mac app's Details shows or hides the panel beside the chat, as the page's own button does, where there is room for it.
+            else if (event.type === "details") {
+              if (nativeSidebar && window.matchMedia("(width >= 64rem)").matches) setPanel((p) => !p);
+              else openPill();
+            }
             else if (event.type === "menu") actions.flat().find((action) => action.id === event.id)?.run();
             else if (event.type === "cancel-reply") setReplying(null);
             else if (event.type === "jump") setJumpRev((n) => n + 1);

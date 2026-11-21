@@ -1,4 +1,4 @@
-import { mobileShell } from "@/lib/shell";
+import { macShell, mobileShell } from "@/lib/shell";
 
 export const THEMES = ["system", "light", "dark"] as const;
 export type Theme = (typeof THEMES)[number];
@@ -91,10 +91,11 @@ export function readStoredSize(): Size {
   }
 }
 
-/** An iPhone app draws its own header and composer, so it takes a size only when it draws them to match ("scale" in features()). */
+/** The iPhone and Mac apps draw their own chrome, so they take a size only when they draw it to match ("scale" in features()). */
 export function sizeOffered(): boolean {
-  const mobile = mobileShell();
-  return !mobile || mobile.platform() !== "ios" || (typeof mobile.features === "function" && mobile.features().includes("scale"));
+  const app = mobileShell() ?? macShell();
+  const own = app?.platform() === "ios" || app?.platform() === "macos";
+  return !own || (typeof app?.features === "function" && app.features().includes("scale"));
 }
 
 export function applySize(size: Size) {
@@ -105,20 +106,20 @@ export function applySize(size: Size) {
   }
   const scale = SIZE_SCALES[size];
   document.documentElement.style.fontSize = scale === 1 ? "" : `${Math.round(scale * 100)}%`;
-  const mobile = mobileShell();
-  if (typeof mobile?.setScale === "function") mobile.setScale(scale);
+  const app = mobileShell() ?? macShell();
+  if (typeof app?.setScale === "function") app.setScale(scale);
   window.dispatchEvent(new Event("gond:size"));
 }
 
 /*
  * Every size is built as rem (postcss-rem.mjs), so a bigger root font grows the whole design, before
- * the first paint and with no zoom. An iPhone app is told the scale on every load, Default too: it
- * keeps the last one it heard while it runs, and its header and composer must match the page's.
+ * the first paint and with no zoom. The iPhone and Mac apps are told the scale on every load, Default
+ * too: they keep the last one they heard while they run, and their chrome must match the page's.
  */
-const SIZE_SCRIPT = `var s=localStorage.getItem(${JSON.stringify(SIZE_STORAGE_KEY)}),m=window.gondMobile,o=!m||m.platform()!=="ios"||(typeof m.features==="function"&&m.features().indexOf("scale")>=0),k=o&&s===${JSON.stringify("large")}?${SIZE_SCALES.large}:1;if(k!==1)r.style.fontSize="${Math.round(SIZE_SCALES.large * 100)}%";if(o&&m&&typeof m.setScale==="function")m.setScale(k)`;
+const SIZE_SCRIPT = `var s=localStorage.getItem(${JSON.stringify(SIZE_STORAGE_KEY)}),m=window.gondMobile||window.gondMac,p=m&&m.platform(),o=!m||(p!=="ios"&&p!=="macos")||(typeof m.features==="function"&&m.features().indexOf("scale")>=0),k=o&&s===${JSON.stringify("large")}?${SIZE_SCALES.large}:1;if(k!==1)r.style.fontSize="${Math.round(SIZE_SCALES.large * 100)}%";if(o&&m&&typeof m.setScale==="function")m.setScale(k)`;
 
 export const THEME_INIT_SCRIPT = `(function(){try{var r=document.documentElement,t="system";try{t=localStorage.getItem(${JSON.stringify(
   THEME_STORAGE_KEY,
 )});if(t===${JSON.stringify(RETIRED_DARK)}){t="dark";localStorage.setItem(${JSON.stringify(THEME_STORAGE_KEY)},t)}}catch(e){}if(${JSON.stringify(THEMES)}.indexOf(t)<0)t="system";var d=t==="dark"||(t==="system"&&matchMedia(${JSON.stringify(
   DARK_QUERY,
-)}).matches);r.classList.toggle("dark",d);r.setAttribute("data-theme",t);var b=${JSON.stringify(THEME_BACKGROUNDS)}[d?"dark":"light"];document.querySelectorAll('meta[name="theme-color"]').forEach(function(m){m.setAttribute("content",b)});var a=localStorage.getItem(${JSON.stringify(ACCENT_STORAGE_KEY)});if(a&&/^[a-z]+$/.test(a))r.setAttribute("data-accent",a);if(window.gondMobile)r.setAttribute("data-shell","phone");${SIZE_SCRIPT}}catch(e){}})()`;
+)}).matches);r.classList.toggle("dark",d);r.setAttribute("data-theme",t);var b=${JSON.stringify(THEME_BACKGROUNDS)}[d?"dark":"light"];document.querySelectorAll('meta[name="theme-color"]').forEach(function(m){m.setAttribute("content",b)});var a=localStorage.getItem(${JSON.stringify(ACCENT_STORAGE_KEY)});if(a&&/^[a-z]+$/.test(a))r.setAttribute("data-accent",a);if(window.gondMobile)r.setAttribute("data-shell","phone");else if(window.gondMac)r.setAttribute("data-shell","mac");${SIZE_SCRIPT}}catch(e){}})()`;

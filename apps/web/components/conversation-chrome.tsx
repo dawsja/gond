@@ -9,7 +9,7 @@ import { avatarPng, hexOf, useNativeChrome, type ChromeEvent, type ChromeState }
 // composer's own / list is part of the composer.
 const COVERS = '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]';
 
-type Props = Omit<ChromeState, "faces" | "tint" | "menu" | "covered" | "composer" | "mentions"> & {
+type Props = Omit<ChromeState, "faces" | "tint" | "menu" | "covered" | "composer" | "mentions" | "column"> & {
   avatarKey: string;
   mentions: { id: string; handle: string }[];
   menu: ThreadAction[][];
@@ -18,7 +18,7 @@ type Props = Omit<ChromeState, "faces" | "tint" | "menu" | "covered" | "composer
 };
 
 /**
- * A conversation's header and composer in the iPhone app: the page keeps its own in place, unseen,
+ * A conversation's header and composer in the iPhone and Mac apps: the page keeps its own in place, unseen,
  * and hands the app what they show; the app draws them in Liquid Glass and sends back what the person
  * did. The text the person types lives in the app's field while they type: the page's copy only goes
  * back to it when the page changed it itself (sent, a mention, a dictation), counted by `textRev`, which
@@ -29,6 +29,7 @@ export function ConversationChrome({ avatarKey, menu, composer, mentions, onEven
   const mentionFaces = useMentionFaces(mentions.map((m) => m.id).join(",") + avatarKey);
   const covered = useCovered();
   const tint = useTint();
+  const column = useColumn();
 
   const handle = useStableCallback(onEvent);
 
@@ -37,6 +38,7 @@ export function ConversationChrome({ avatarKey, menu, composer, mentions, onEven
     faces,
     tint,
     covered,
+    column,
     menu: menu.map((group) => group.map(({ id, label, symbol, destructive }) => ({ id, label, symbol, destructive }))),
     mentions: mentions.map((m) => ({ ...m, face: mentionFaces[m.id] ?? null })),
     composer,
@@ -84,10 +86,47 @@ function useFaces(key: string): string[] {
   return faces;
 }
 
+/** The conversation's own stretch of the web view (`data-native-column`), which the details panel narrows. */
+function useColumn(): ChromeState["column"] {
+  const [column, setColumn] = useState({ x: 0, width: 0 });
+  useEffect(() => {
+    const section = document.querySelector("[data-native-column]");
+    if (!section) return;
+    const read = () => {
+      const box = section.getBoundingClientRect();
+      const x = Math.round(box.left);
+      const width = Math.round(box.width);
+      setColumn((now) => (now.x === x && now.width === width ? now : { x, width }));
+    };
+    void Promise.resolve().then(read);
+    const observer = new ResizeObserver(read);
+    observer.observe(section);
+    window.addEventListener("resize", read);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", read);
+    };
+  }, []);
+  return column;
+}
+
+/** What of the page's is open over everything, oldest first. */
+export function pageCovers(): Element[] {
+  return [...document.querySelectorAll(COVERS)].filter((el) => !el.closest("[data-native-composer]") && !el.closest("[data-closed]"));
+}
+
+/** Closes what is open on top, as Escape would: the app's scrim over its own sidebar and chrome was clicked. */
+export function dismissTopmost() {
+  const top = pageCovers().at(-1);
+  if (!top) return;
+  const target = document.activeElement && top.contains(document.activeElement) ? document.activeElement : top;
+  target.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true, cancelable: true }));
+}
+
 export function useCovered(): boolean {
   const [covered, setCovered] = useState(false);
   useEffect(() => {
-    const check = () => setCovered([...document.querySelectorAll(COVERS)].some((el) => !el.closest("[data-native-composer]") && !el.closest("[data-closed]")));
+    const check = () => setCovered(pageCovers().length > 0);
     void Promise.resolve().then(check);
     const observer = new MutationObserver(check);
     observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-closed", "role"] });
@@ -98,13 +137,18 @@ export function useCovered(): boolean {
 
 /** The person's own colour as the page paints Send, for the app's send button. */
 function useTint(): string {
-  const [tint, setTint] = useState("");
+  return useTokenHex("--tint-solid");
+}
+
+/** A colour token as #rrggbb, read again when the theme or the accent changes. */
+export function useTokenHex(token: string): string {
+  const [hex, setHex] = useState("");
   useEffect(() => {
-    const read = () => setTint(hexOf(getComputedStyle(document.documentElement).getPropertyValue("--tint-solid").trim()));
+    const read = () => setHex(hexOf(getComputedStyle(document.documentElement).getPropertyValue(token).trim()));
     void Promise.resolve().then(read);
     const observer = new MutationObserver(read);
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-accent", "class"] });
     return () => observer.disconnect();
-  }, []);
-  return tint;
+  }, [token]);
+  return hex;
 }

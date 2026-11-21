@@ -106,3 +106,13 @@ test("invalid or unavailable storage falls back to the device scheme", () => {
   expect(blocked.attributes.get("data-theme")).toBe("system");
   withBrowser(blocked.globals, () => expect(readStoredTheme()).toBe("system"));
 });
+
+test("the Mac app is marked before first paint and hears the size it draws its chrome at", () => {
+  const mock = browser("light", false);
+  mock.saved.set("gond-size", "large");
+  const scales: number[] = [];
+  Object.assign(mock.globals.window, { gondMac: { platform: () => "macos", features: () => ["call", "scale", "sidebar"], setScale: (scale: number) => scales.push(scale) } });
+  runInNewContext(THEME_INIT_SCRIPT, mock.globals);
+  expect(mock.attributes.get("data-shell")).toBe("mac");
+  expect(scales).toEqual([1.15]);
+});

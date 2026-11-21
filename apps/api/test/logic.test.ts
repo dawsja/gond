@@ -369,6 +369,8 @@ describe("mobile sign-in", () => {
     expect(signInCallback(signInApp("android"))).toBe(MOBILE_SIGN_IN_CALLBACK);
     expect(signInApp("ios")).toBe("ios");
     expect(signInCallback(signInApp("ios"))).toBe(MOBILE_SIGN_IN_CALLBACK);
+    expect(signInApp("mac")).toBe("mac");
+    expect(signInCallback(signInApp("mac"))).toBe(MOBILE_SIGN_IN_CALLBACK);
 
     expect(signInCallback(signInApp("app"))).toBe(MOBILE_SIGN_IN_CALLBACK);
     expect(signInCallback(signInApp(undefined))).toBe(MOBILE_SIGN_IN_CALLBACK);

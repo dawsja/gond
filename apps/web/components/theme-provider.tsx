@@ -10,7 +10,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { desktopShell, mobileShell } from "@/lib/shell";
+import { desktopShell, macShell, mobileShell } from "@/lib/shell";
 import {
   DARK_QUERY,
   THEME_STORAGE_KEY,
@@ -30,6 +30,11 @@ function syncShell(resolved: ResolvedTheme, system: boolean) {
   const desktop = desktopShell();
   if (typeof desktop?.setTheme === "function") {
     void desktop.setTheme(background, resolved === "dark", system);
+    return;
+  }
+  const mac = macShell();
+  if (mac) {
+    mac.setTheme(background, resolved === "dark", system);
     return;
   }
   const mobile = mobileShell();

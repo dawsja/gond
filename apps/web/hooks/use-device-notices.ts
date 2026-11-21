@@ -37,6 +37,6 @@ export function useDeviceNotices() {
     setNotices(next);
   }, []);
 
-  const here = isPhoneShell(shell) ? "this phone" : shell === "desktop" ? "this computer" : "this browser";
+  const here = isPhoneShell(shell) ? "this phone" : shell === "mac" ? "this Mac" : shell === "desktop" ? "this computer" : "this browser";
   return { notices, setNotices, save, here };
 }

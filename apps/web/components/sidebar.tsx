@@ -1,6 +1,6 @@
 "use client";
 
-import { handleOf, isWatchRun, plainMarkdown, routineName, type Bot, type Message } from "@gond/shared";
+import { handleOf, type Bot, type Message } from "@gond/shared";
 import { Bot as BotIcon, Link2, LogIn, MessageSquareText, Phone, Pin, Plus, Search, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -24,26 +24,12 @@ import { api } from "@/lib/api";
 import { useDrafts } from "@/lib/drafts";
 import { shortTime } from "@/lib/time";
 import { messageSnippet } from "@/lib/snippet";
-import { remoteMember, spaceSubtitle } from "@/lib/spaces";
+import { threadPreview } from "@/lib/native-sidebar";
 import { cn } from "@/lib/utils";
 import { WorthALook } from "@/components/worth-a-look";
 import { useFederation } from "@/components/spaces/use-federation";
 
 const IDLE: Record<string, string> = {};
-
-function preview(thread: ThreadRow, bots: Bot[], activity: Record<string, string>): string {
-  const busyBot = Object.keys(activity)[0];
-  if (busyBot) {
-    const line = activity[busyBot]!;
-    const name = bots.find((b) => b.id === busyBot)?.name;
-    return thread.kind === "room" && name ? `${name}: ${line}` : line;
-  }
-  const last = thread.lastMessage;
-  if (!last) return thread.space ? spaceSubtitle(thread.space) : thread.kind === "room" ? "A room for several bots." : "Say hello, or hand over a task.";
-  if (last.author === "routine") return isWatchRun(last.body) ? `Noticed: ${routineName(last.body) ?? "something"}` : `Routine: ${routineName(last.body) ?? "ran"}`;
-  const who = last.author === "you" ? "You: " : thread.kind === "room" ? `${remoteMember(thread.space, last.author)?.name ?? bots.find((b) => b.id === last.author)?.name ?? ""}: ` : "";
-  return `${who}${plainMarkdown(last.body)}`;
-}
 
 /** Something new for the person is the bot's color; bots only talking to each other there is a grey one. */
 function UnreadDot({ thread, bot, className }: { thread: ThreadRow; bot: Bot | undefined; className: string }) {
@@ -184,7 +170,7 @@ const Row = memo(function Row({ thread, bot, active, bots, activity, draft, onOp
                   {drafted}
                 </span>
               ) : (
-                <span className="truncate">{preview(thread, bots, activity)}</span>
+                <span className="truncate">{threadPreview(thread, bots, activity)}</span>
               )}
               {!active ? <UnreadDot thread={thread} bot={bot} className="ml-auto size-2 shrink-0" /> : null}
             </span>

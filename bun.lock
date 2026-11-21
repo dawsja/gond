@@ -43,6 +43,10 @@
       "name": "@gond/ios",
       "version": "0.1.0",
     },
+    "apps/mac": {
+      "name": "@gond/mac",
+      "version": "0.1.0",
+    },
     "apps/web": {
       "name": "@gond/web",
       "version": "0.1.0",
@@ -252,6 +256,8 @@
     "@gond/desktop": ["@gond/desktop@workspace:apps/desktop"],
 
     "@gond/ios": ["@gond/ios@workspace:apps/ios"],
+
+    "@gond/mac": ["@gond/mac@workspace:apps/mac"],
 
     "@gond/relay": ["@gond/relay@workspace:packages/relay"],
 

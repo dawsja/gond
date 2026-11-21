@@ -88,7 +88,7 @@ function RoomFaces({ bots, size, className }: { bots: Face[]; size: number; clas
   return (
     <span data-slot="room-avatar" role="img" aria-label={bots.map((bot) => bot.name).join(", ")} className={cn("relative inline-block shrink-0", className)} style={{ width: rem(size), height: rem(size) }}>
       <BotAvatar bot={back} size={face} className="absolute top-0 left-0" />
-      <span className="absolute rounded-full bg-(--surface)" style={{ padding: rem(cut), right: rem(-cut), bottom: rem(-cut) }}>
+      <span data-cut="" className="absolute rounded-full bg-(--surface)" style={{ padding: rem(cut), right: rem(-cut), bottom: rem(-cut) }}>
         <BotAvatar bot={front} size={face} className="block" />
       </span>
       {more > 0 ? (

@@ -8,13 +8,17 @@
  * The phone layout applies under md, and always inside the Android and
  * iPhone apps (the theme init script marks <html data-shell="phone"> before
  * first paint), so a tablet or a landscape phone never gets the desktop's
- * sidebar.
+ * sidebar. The Mac app (data-shell="mac") is wide at every width: its own
+ * sidebar sits beside the page however narrow the window.
  */
 @custom-variant wide {
   @media (width >= 48rem) {
     :root:not([data-shell="phone"]) & {
       @slot;
     }
+  }
+  :root[data-shell="mac"] & {
+    @slot;
   }
 }
 /* Room a call's pill takes under the header on a phone, when the call is away from this screen. */
@@ -29,12 +33,22 @@
     --call-pill-space: 0px;
   }
 }
+:root[data-shell="mac"][data-call-pill] {
+  --call-pill-space: 0px;
+}
 
 @custom-variant xwide {
   @media (width >= 64rem) {
     :root:not([data-shell="phone"]) & {
       @slot;
     }
+  }
+}
+
+/* Inside the Mac app, whose sidebar and toolbar are its own; after wide, so it wins over it. */
+@custom-variant mac {
+  :root[data-shell="mac"] & {
+    @slot;
   }
 }
 

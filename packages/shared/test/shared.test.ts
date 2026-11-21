@@ -57,7 +57,7 @@ describe("shared", () => {
 describe("sign-in and cards", () => {
   test("the phone app comes back to the gond scheme", () => {
     expect(MOBILE_SIGN_IN_CALLBACK).toBe("gond://sign-in");
-    expect(SIGN_IN_APPS).toEqual(["android", "ios", "desktop"]);
+    expect(SIGN_IN_APPS).toEqual(["android", "ios", "desktop", "mac"]);
   });
 
   test("a connected app's card is named by its toolkit", () => {

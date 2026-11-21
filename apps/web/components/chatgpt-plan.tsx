@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
 import { post } from "@/lib/api";
-import { mobileShell } from "@/lib/shell";
+import { isWebViewShell } from "@/lib/shell";
 import { cn, rem } from "@/lib/utils";
 
 const SEEN_KEY = "gond.chatgpt-plan-seen";
@@ -80,7 +80,7 @@ export function ChatGptPlanLine() {
 
 async function startSignIn(): Promise<void> {
   // Opened before the request, or a browser takes the later navigation for a pop-up and blocks it.
-  const tab = mobileShell() ? null : window.open("about:blank", "_blank");
+  const tab = isWebViewShell() ? null : window.open("about:blank", "_blank");
   try {
     const { url } = await post<{ url: string }>("/api/providers/chatgpt/sign-in");
     if (tab) tab.location.href = url;

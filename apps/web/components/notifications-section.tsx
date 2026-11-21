@@ -1,6 +1,6 @@
 "use client";
 
-import { Globe, Monitor, Smartphone } from "lucide-react";
+import { Globe, Laptop, Monitor, Smartphone } from "lucide-react";
 import { useEffect, useState } from "react";
 import { failed } from "@/components/failed";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -104,8 +104,8 @@ function DeviceRow() {
   }
 
   const phone = isPhoneShell(shell);
-  const name = phone ? "This phone" : shell === "desktop" ? "This computer" : "This browser";
-  const Icon = phone ? Smartphone : shell === "desktop" ? Monitor : Globe;
+  const name = phone ? "This phone" : shell === "mac" ? "This Mac" : shell === "desktop" ? "This computer" : "This browser";
+  const Icon = phone ? Smartphone : shell === "mac" ? Laptop : shell === "desktop" ? Monitor : Globe;
   const detail =
     state === "checking"
       ? "Checking…"
@@ -114,7 +114,7 @@ function DeviceRow() {
           ? pushed
             ? "On, even when the Gond app is closed."
             : "On, while the Gond app is open or just put away."
-          : shell === "desktop"
+          : shell === "desktop" || shell === "mac"
             ? "On, while the Gond app is running."
             : "On for this browser."
         : state === "off"
@@ -122,9 +122,11 @@ function DeviceRow() {
           : state === "blocked"
             ? phone
               ? "Notifications are off for Gond in the phone's settings. Turning this on opens them."
-              : shell
-                ? "Notifications are off for Gond in the computer's settings. Allow them there, then try again."
-                : "The browser blocks notifications for this site. Allow them in its site settings, then try again."
+              : shell === "mac"
+                ? "Notifications are off for Gond in System Settings. Allow them there, then try again."
+                : shell
+                  ? "Notifications are off for Gond in the computer's settings. Allow them there, then try again."
+                  : "The browser blocks notifications for this site. Allow them in its site settings, then try again."
             : shell
               ? "This version of the app can't show notifications. Update it."
               : "This browser can't get notifications from this address: it needs https.";

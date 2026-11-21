@@ -198,9 +198,10 @@ function Sidebar({
     )
   }
 
+  // The Mac app draws its own sidebar; this one never shows there, not even before the page hydrates.
   return (
     <div
-      className="group peer hidden text-sidebar-foreground wide:block"
+      className="group peer hidden text-sidebar-foreground wide:block mac:hidden"
       data-state={state}
       data-collapsible={state === "collapsed" ? collapsible : ""}
       data-variant={variant}

@@ -27,12 +27,12 @@ permissions:
 jobs:
   # What this run has to build. A main push and its release tag land together when Gond ships; the
   # tag's run builds the images (publishing latest too) and the apps, so the main run doesn't repeat
-  # them at the same moment. The desktop, Android and iPhone apps are shells around the server's web
-  # app, so each builds only when its own files changed: on a push since the commit before, on a
+  # them at the same moment. The desktop, Android, iPhone and Mac apps are shells around the server's
+  # web app, so each builds only when its own files changed: on a push since the commit before, on a
   # release since the release before. A release carries an unchanged app's last build (the desktop's
-  # installers and latest.json, the APK) instead of building it again, so no desktop app is told to
-  # update to an identical build. The workflow itself isn't an app's file: after changing how an app
-  # builds, run this workflow by hand, which builds them all.
+  # installers and latest.json, the APK, the Mac's disk image) instead of building it again, so no
+  # desktop app is told to update to an identical build. The workflow itself isn't an app's file:
+  # after changing how an app builds, run this workflow by hand, which builds them all.
   changes:
     name: What to build
     runs-on: ubuntu-24.04
@@ -43,9 +43,11 @@ jobs:
       desktop: ${{ steps.decide.outputs.desktop }}
       android: ${{ steps.decide.outputs.android }}
       ios: ${{ steps.decide.outputs.ios }}
+      mac: ${{ steps.decide.outputs.mac }}
       latest: ${{ steps.decide.outputs.latest }}
       carry_desktop: ${{ steps.decide.outputs.carry_desktop }}
       carry_android: ${{ steps.decide.outputs.carry_android }}
+      carry_mac: ${{ steps.decide.outputs.carry_mac }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -60,13 +62,15 @@ jobs:
           DESKTOP_FILES: '^(apps/desktop/|assets/)'
           ANDROID_FILES: '^(apps/android/|assets/)'
           IOS_FILES: '^(apps/ios/|assets/)'
+          # The Mac app also builds the iPhone app's address rules with their tests, and its icon.
+          MAC_FILES: '^(apps/mac/|apps/ios/Gond/ServerURL\.swift$|apps/ios/GondTests/ServerURLTests\.swift$|apps/ios/Gond/Assets\.xcassets/|apps/ios/AppIcon\.icon/|assets/)'
         run: |
-          images=true; desktop=true; android=true; ios=true; latest=false; carry_desktop=""; carry_android=""
+          images=true; desktop=true; android=true; ios=true; mac=true; latest=false; carry_desktop=""; carry_android=""; carry_mac=""
           if [ "$REF" = refs/heads/main ]; then
             latest=true
             if [ "$EVENT" = push ] && [ -n "$(git tag --points-at HEAD --list 'v*')" ]; then
               echo "This commit is a release; its tag's run builds and publishes it."
-              images=false; desktop=false; android=false; ios=false
+              images=false; desktop=false; android=false; ios=false; mac=false
             fi
           elif [ -n "$RELEASE_TAG" ]; then
             [ "$(git rev-parse origin/main)" = "$GITHUB_SHA" ] && latest=true
@@ -77,6 +81,7 @@ jobs:
             changed "$BASE" "$DESKTOP_FILES" || desktop=false
             changed "$BASE" "$ANDROID_FILES" || android=false
             changed "$BASE" "$IOS_FILES" || ios=false
+            changed "$BASE" "$MAC_FILES" || mac=false
           fi
           # A pushed release tag: each app against the release before, carrying that release's build when it didn't change.
           if [[ "$REF" == refs/tags/v* ]]; then
@@ -100,10 +105,18 @@ jobs:
                 fi
               fi
               changed "$previous" "$IOS_FILES" || ios=false
+              if ! changed "$previous" "$MAC_FILES"; then
+                if grep -q '\.dmg$' <<<"$assets"; then
+                  echo "The Mac app hasn't changed since $previous; $RELEASE_TAG carries its disk image."
+                  mac=false; carry_mac=$previous
+                else
+                  echo "The Mac app hasn't changed since $previous, but it has no disk image to carry, so it builds."
+                fi
+              fi
             fi
           fi
-          echo "images=$images desktop=$desktop android=$android ios=$ios latest=$latest carry_desktop=$carry_desktop carry_android=$carry_android"
-          { echo "images=$images"; echo "desktop=$desktop"; echo "android=$android"; echo "ios=$ios"; echo "latest=$latest"; echo "carry_desktop=$carry_desktop"; echo "carry_android=$carry_android"; } >> "$GITHUB_OUTPUT"
+          echo "images=$images desktop=$desktop android=$android ios=$ios mac=$mac latest=$latest carry_desktop=$carry_desktop carry_android=$carry_android carry_mac=$carry_mac"
+          { echo "images=$images"; echo "desktop=$desktop"; echo "android=$android"; echo "ios=$ios"; echo "mac=$mac"; echo "latest=$latest"; echo "carry_desktop=$carry_desktop"; echo "carry_android=$carry_android"; echo "carry_mac=$carry_mac"; } >> "$GITHUB_OUTPUT"
 
   check:
     name: Lint, typecheck and test
@@ -309,9 +322,192 @@ jobs:
             -exportPath "$RUNNER_TEMP/export" "${auth[@]}"
           rm -f "$key"
 
+  # The Mac app is tested and built on every change to it, one app for Apple silicon and Intel, and its
+  # disk image goes on the release. With a Developer ID certificate and the App Store Connect API key
+  # in the secrets it is signed for outside the App Store and notarized, so Gatekeeper opens it without
+  # asking; without them (a fork, a pull request) it is signed ad hoc and Gatekeeper asks first. Its
+  # version is the release's, its build number this run's. Like the iPhone app, its project is
+  # generated from project.yml on xcode-27, whose SDK has the glass the app draws.
+  mac:
+    name: Mac app
+    needs: changes
+    if: needs.changes.outputs.mac == 'true'
+    runs-on: xcode-27
+    # Notarizing waits on Apple twice; a wait that never ends fails here instead of holding a release.
+    timeout-minutes: 90
+    env:
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      # Developer ID only with the key to notarize too: Gatekeeper treats a Developer ID app Apple
+      # hasn't notarized like an unsigned one.
+      DEVELOPER_ID: ${{ secrets.MAC_CERTIFICATE_P12 != '' && secrets.MAC_CERTIFICATE_PASSWORD != '' && secrets.ASC_KEY_ID != '' && secrets.ASC_ISSUER_ID != '' && secrets.ASC_KEY_P8 != '' && github.event_name != 'pull_request' }}
+      # Written by xcodegen from project.yml, inside apps/mac.
+      ENTITLEMENTS: Gond/Gond.entitlements
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - run: brew install xcodegen
+      - working-directory: apps/mac
+        run: xcodegen generate
+      # Signed ad hoc, since Apple silicon doesn't run an unsigned test host.
+      - name: Test
+        working-directory: apps/mac
+        run: |
+          set -o pipefail
+          xcodebuild test -project Gond.xcodeproj -scheme Gond -destination 'platform=macOS' CODE_SIGN_IDENTITY=- -quiet
+      - name: Build for Apple silicon and Intel
+        working-directory: apps/mac
+        env:
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: |
+          version="${RELEASE_TAG#v}"
+          [ -n "$version" ] || version=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null | sed 's/^v//')
+          [ -n "$version" ] || version=0.1.0
+          echo "Gond for Mac $version ($BUILD_NUMBER)"
+          set -o pipefail
+          [ -f "$ENTITLEMENTS" ] || { echo "xcodegen didn't write apps/mac/$ENTITLEMENTS, which the signing below needs."; exit 1; }
+          # Ad hoc here; the next step signs it for real.
+          xcodebuild archive -project Gond.xcodeproj -scheme Gond -configuration Release -destination 'generic/platform=macOS' \
+            -archivePath "$RUNNER_TEMP/Gond.xcarchive" ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO CODE_SIGN_IDENTITY=- \
+            MARKETING_VERSION="$version" CURRENT_PROJECT_VERSION="$BUILD_NUMBER" -quiet
+          app="$RUNNER_TEMP/Gond.xcarchive/Products/Applications/Gond.app"
+          binary="$app/Contents/MacOS/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist")"
+          archs=$(lipo -archs "$binary")
+          echo "Built for $archs"
+          [[ " $archs " == *" arm64 "* && " $archs " == *" x86_64 "* ]] || { echo "The app should run on both Apple silicon and Intel."; exit 1; }
+          { echo "MAC_APP=$app"; echo "MAC_DMG=$RUNNER_TEMP/Gond_${version}_universal.dmg"; } >> "$GITHUB_ENV"
+      - name: Get the Developer ID certificate ready
+        if: env.DEVELOPER_ID == 'true'
+        env:
+          MAC_CERTIFICATE_P12: ${{ secrets.MAC_CERTIFICATE_P12 }}
+          MAC_CERTIFICATE_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          set -o pipefail
+          # A keychain of its own, unlocked for this job, so codesign never waits on a password prompt.
+          keychain="$RUNNER_TEMP/gond-signing.keychain-db"
+          password=$(uuidgen)
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          printf '%s' "$MAC_CERTIFICATE_P12" | base64 --decode > "$RUNNER_TEMP/developer-id.p12"
+          security import "$RUNNER_TEMP/developer-id.p12" -k "$keychain" -f pkcs12 -P "$MAC_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          rm -f "$RUNNER_TEMP/developer-id.p12"
+          # A .p12 often holds only the certificate, and codesign trusts it only with Apple's intermediate.
+          if curl -fsSL https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer -o "$RUNNER_TEMP/DeveloperIDG2CA.cer"; then
+            security import "$RUNNER_TEMP/DeveloperIDG2CA.cer" -k "$keychain" || true
+          fi
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$keychain" > /dev/null
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          line=$(security find-identity -v -p codesigning "$keychain" | grep '"Developer ID Application: ' | head -n 1 || true)
+          if [ -z "$line" ]; then
+            echo "MAC_CERTIFICATE_P12 holds no valid Developer ID Application certificate. It holds:"
+            security find-identity -p codesigning "$keychain"
+            exit 1
+          fi
+          echo "Signing as $(cut -d '"' -f 2 <<<"$line")"
+          { echo "MAC_KEYCHAIN=$keychain"; echo "MAC_IDENTITY=$(awk '{ print $2 }' <<<"$line")"; } >> "$GITHUB_ENV"
+          key="$RUNNER_TEMP/AuthKey_$ASC_KEY_ID.p8"
+          printf '%s\n' "$ASC_KEY_P8" > "$key"
+          chmod 600 "$key"
+          echo "ASC_KEY=$key" >> "$GITHUB_ENV"
+      # Nested code first, each keeping its own entitlements, then the app with the app's: --deep would
+      # sign everything inside with the app's entitlements.
+      - name: Sign the app
+        working-directory: apps/mac
+        run: |
+          set -o pipefail
+          if [ "$DEVELOPER_ID" = true ]; then
+            sign=(--sign "$MAC_IDENTITY" --keychain "$MAC_KEYCHAIN" --timestamp --options runtime)
+          else
+            echo "Unsigned: no Developer ID certificate here, so this build is signed ad hoc, isn't notarized, and Gatekeeper asks before it opens."
+            sign=(--sign - --options runtime)
+          fi
+          while IFS= read -r -d '' code; do
+            echo "Signing ${code#"$MAC_APP/"}"
+            codesign --force "${sign[@]}" --preserve-metadata=entitlements "$code"
+          done < <(find "$MAC_APP/Contents" -depth \( -name '*.framework' -o -name '*.dylib' -o -name '*.xpc' -o -name '*.appex' -o -name '*.app' -o -name '*.systemextension' \) -print0)
+          codesign --force "${sign[@]}" --entitlements "$ENTITLEMENTS" "$MAC_APP"
+          codesign --verify --strict --deep --verbose=2 "$MAC_APP"
+          codesign --display --entitlements - "$MAC_APP" || true
+      # The app is notarized and stapled on its own first, so it keeps its ticket once it's dragged off
+      # the disk image; then the disk image, which Gatekeeper checks when it's opened.
+      - name: Notarize the app
+        if: env.DEVELOPER_ID == 'true'
+        run: |
+          set -o pipefail
+          zip="$RUNNER_TEMP/Gond-notarize.zip"
+          ditto -c -k --keepParent "$MAC_APP" "$zip"
+          result=$(xcrun notarytool submit "$zip" --key "$ASC_KEY" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID" --wait --timeout 30m --output-format json || true)
+          echo "$result"
+          if [ "$(jq -r '.status // empty' <<<"$result" 2>/dev/null)" != Accepted ]; then
+            id=$(jq -r '.id // empty' <<<"$result" 2>/dev/null || true)
+            [ -z "$id" ] || xcrun notarytool log "$id" --key "$ASC_KEY" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID" || true
+            echo "Apple didn't notarize the app."
+            exit 1
+          fi
+          rm -f "$zip"
+          # A new ticket can take a moment to reach the servers stapler asks.
+          for attempt in 1 2 3 4 5; do
+            xcrun stapler staple "$MAC_APP" && break
+            [ "$attempt" = 5 ] && exit 1
+            sleep 20
+          done
+          xcrun stapler validate "$MAC_APP"
+          spctl --assess --type execute --verbose=2 "$MAC_APP" || echo "Gatekeeper on this runner didn't accept the app; open the disk image on a Mac before shipping it."
+      - name: Make the disk image
+        run: |
+          set -o pipefail
+          stage="$RUNNER_TEMP/dmg"
+          rm -rf "$stage"
+          mkdir -p "$stage"
+          ditto "$MAC_APP" "$stage/Gond.app"
+          ln -s /Applications "$stage/Applications"
+          # hdiutil on a hosted runner now and then fails with "Resource busy" while something scans the new image.
+          for attempt in 1 2 3 4 5; do
+            rm -f "$MAC_DMG"
+            hdiutil create -volname Gond -srcfolder "$stage" -format UDZO -ov "$MAC_DMG" && break
+            [ "$attempt" = 5 ] && exit 1
+            sleep 10
+          done
+          if [ "$DEVELOPER_ID" = true ]; then
+            codesign --force --sign "$MAC_IDENTITY" --keychain "$MAC_KEYCHAIN" --timestamp "$MAC_DMG"
+          fi
+          ls -l "$MAC_DMG"
+      - name: Notarize the disk image
+        if: env.DEVELOPER_ID == 'true'
+        run: |
+          set -o pipefail
+          result=$(xcrun notarytool submit "$MAC_DMG" --key "$ASC_KEY" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID" --wait --timeout 30m --output-format json || true)
+          echo "$result"
+          if [ "$(jq -r '.status // empty' <<<"$result" 2>/dev/null)" != Accepted ]; then
+            id=$(jq -r '.id // empty' <<<"$result" 2>/dev/null || true)
+            [ -z "$id" ] || xcrun notarytool log "$id" --key "$ASC_KEY" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID" || true
+            echo "Apple didn't notarize the disk image."
+            exit 1
+          fi
+          for attempt in 1 2 3 4 5; do
+            xcrun stapler staple "$MAC_DMG" && break
+            [ "$attempt" = 5 ] && exit 1
+            sleep 20
+          done
+          xcrun stapler validate "$MAC_DMG"
+          spctl --assess --type open --context context:primary-signature --verbose=2 "$MAC_DMG" || echo "Gatekeeper on this runner didn't accept the disk image; open it on a Mac before shipping it."
+      - name: Put the signing keychain away
+        if: always() && env.DEVELOPER_ID == 'true'
+        run: |
+          security delete-keychain "$RUNNER_TEMP/gond-signing.keychain-db" 2>/dev/null || true
+          rm -f "$RUNNER_TEMP/AuthKey_$ASC_KEY_ID.p8" "$RUNNER_TEMP/developer-id.p12"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: gond-mac
+          path: ${{ env.MAC_DMG }}
+          if-no-files-found: error
+
   release:
-    name: Release the desktop and Android apps
-    needs: [changes, check, desktop, android]
+    name: Release the desktop, Android and Mac apps
+    needs: [changes, check, desktop, android, mac]
     # The app jobs are skipped when a release carries the last one's builds; anything that failed stops it.
     if: always() && needs.check.result == 'success' && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') && (startsWith(github.ref, 'refs/tags/v') || inputs.tag != '')
 
@@ -321,9 +517,10 @@ jobs:
     env:
       CARRY_DESKTOP: ${{ needs.changes.outputs.carry_desktop }}
       CARRY_ANDROID: ${{ needs.changes.outputs.carry_android }}
+      CARRY_MAC: ${{ needs.changes.outputs.carry_mac }}
       GOND_RELEASE_KEY: ${{ secrets.GOND_RELEASE_KEY }}
     steps:
-      - if: needs.changes.outputs.desktop == 'true' || needs.changes.outputs.android == 'true'
+      - if: needs.changes.outputs.desktop == 'true' || needs.changes.outputs.android == 'true' || needs.changes.outputs.mac == 'true'
         uses: actions/download-artifact@v8
         with:
           path: release
@@ -341,6 +538,11 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release download "$CARRY_ANDROID" --repo "$GITHUB_REPOSITORY" --dir release --pattern '*.apk'
+      - name: Carry the last release's Mac app
+        if: env.CARRY_MAC != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release download "$CARRY_MAC" --repo "$GITHUB_REPOSITORY" --dir release --pattern '*.dmg'
       # What the desktop app's updater reads at releases/latest/download/latest.json.
       # The signatures go into it rather than onto the release; without them
       # (no signing key) there is no latest.json and the apps don't update.

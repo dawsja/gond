@@ -1,0 +1,109 @@
+# The Xcode project is generated from this file (`xcodegen generate`), so
+# no .xcodeproj is checked in. CI does it on a macOS runner; on a Mac,
+# `brew install xcodegen` and run it in apps/mac.
+name: Gond
+options:
+  bundleIdPrefix: io.gond
+  deploymentTarget:
+    macOS: "15.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.0"
+    DEVELOPMENT_TEAM: ""
+    # Signed ad hoc until there is a Developer ID to sign with.
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGN_STYLE: Manual
+targets:
+  Gond:
+    type: application
+    platform: macOS
+    sources:
+      - path: Gond
+      # The iPhone app's address rules, the same file with the same tests, never a copy.
+      - path: ../ios/Gond/ServerURL.swift
+      # The iPhone app's catalog, for the brand mark Connect shows (written by `bun run brand:build`).
+      - path: ../ios/Gond/Assets.xcassets
+      # The iPhone app's Icon Composer icon, which Xcode draws for the Mac too, flat ones for older macOS included.
+      - path: ../ios/AppIcon.icon
+        type: file
+        buildPhase: resources
+    info:
+      path: Gond/Info.plist
+      properties:
+        CFBundleDisplayName: Gond
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSApplicationCategoryType: public.app-category.productivity
+        LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
+        NSPrincipalClass: NSApplication
+        NSMicrophoneUsageDescription: Gond uses the microphone when you talk to your bots instead of typing, and on calls.
+        NSDownloadsFolderUsageDescription: Gond saves the files you download from your bots in Downloads.
+        # A Gond is self-hosted, often at a plain-http address on a home network.
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+        # What a bot sends is marked as downloaded, so the Mac checks a program before it first runs.
+        LSFileQuarantineEnabled: true
+    # Not sandboxed: it is downloaded directly, not from the App Store. The hardened runtime lets the
+    # microphone through only with this entitlement.
+    entitlements:
+      path: Gond/Gond.entitlements
+      properties:
+        com.apple.security.device.audio-input: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.gond.mac
+        PRODUCT_NAME: Gond
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        COMBINE_HIDPI_IMAGES: YES
+        ENABLE_PREVIEWS: YES
+        ENABLE_HARDENED_RUNTIME: YES
+      configs:
+        # The unit and UI tests load into a debug build, which library validation would refuse when signed ad hoc.
+        Debug:
+          ENABLE_HARDENED_RUNTIME: NO
+  GondTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: GondTests
+      # The iPhone app's address tests, against the same ServerURL.swift.
+      - path: ../ios/GondTests/ServerURLTests.swift
+    dependencies:
+      - target: Gond
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.gond.mac.tests
+        GENERATE_INFOPLIST_FILE: true
+  GondUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    sources:
+      - path: GondUITests
+    dependencies:
+      - target: Gond
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.gond.mac.uitests
+        GENERATE_INFOPLIST_FILE: true
+        TEST_TARGET_NAME: Gond
+schemes:
+  Gond:
+    build:
+      targets:
+        Gond: all
+        GondTests: [test]
+    test:
+      targets:
+        - GondTests
+  # Screenshots for review, against a seeded Gond (.github/workflows/mac-screens.yml); never part of `Gond`'s tests.
+  GondScreens:
+    build:
+      targets:
+        Gond: all
+        GondUITests: [test]
+    test:
+      targets:
+        - GondUITests

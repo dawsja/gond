@@ -1,4 +1,4 @@
-import { DESKTOP_SIGN_IN_CALLBACK, MOBILE_SIGN_IN_CALLBACK, type SignInApp } from "@gond/shared";
+import { DESKTOP_SIGN_IN_CALLBACK, MOBILE_SIGN_IN_CALLBACK, SIGN_IN_APPS, type SignInApp } from "@gond/shared";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 
 const CODE_TTL_MS = 2 * 60 * 1000;
@@ -8,11 +8,11 @@ type Pending = { session: string; challenge: string; expires: number };
 const holder = globalThis as typeof globalThis & { __gondMobileCodes?: Map<string, Pending> };
 const codes = (holder.__gondMobileCodes ??= new Map());
 
-const CALLBACKS: Record<SignInApp, string> = { android: MOBILE_SIGN_IN_CALLBACK, ios: MOBILE_SIGN_IN_CALLBACK, desktop: DESKTOP_SIGN_IN_CALLBACK };
+const CALLBACKS: Record<SignInApp, string> = { android: MOBILE_SIGN_IN_CALLBACK, ios: MOBILE_SIGN_IN_CALLBACK, mac: MOBILE_SIGN_IN_CALLBACK, desktop: DESKTOP_SIGN_IN_CALLBACK };
 export type { SignInApp };
 
 export function signInApp(value: unknown): SignInApp {
-  return value === "desktop" || value === "ios" ? value : "android";
+  return (SIGN_IN_APPS as readonly unknown[]).includes(value) ? (value as SignInApp) : "android";
 }
 
 export function signInCallback(app: SignInApp): string {

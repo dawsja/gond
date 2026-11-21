@@ -8,6 +8,7 @@ import { CallProvider } from "@/components/call/call-provider";
 import { ComputerPanel } from "@/components/computer-panel";
 import { failed } from "@/components/failed";
 import { ShellNotifications } from "@/components/shell-notifications";
+import { NativeSidebar } from "@/components/native-sidebar";
 import { AppSidebar } from "@/components/sidebar";
 import { ViewingReport } from "@/components/viewing-report";
 import { VersionWatch } from "@/components/version-watch";
@@ -16,7 +17,8 @@ import { TeachingProvider } from "@/components/teach/teaching-store";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { toast } from "@/components/ui/toast";
 import type { SessionUser } from "@/lib/session";
-import { desktopShell, shellBridge, type DesktopDownload } from "@/lib/shell";
+import { useNativeSidebar } from "@/lib/native-ui";
+import { downloadRevealer, macShell, shellBridge, type DesktopDownload } from "@/lib/shell";
 
 // Opened now and then, so they load when first opened rather than with every page.
 const BotDialog = dynamic(() => import("@/components/bot-dialog").then((m) => m.BotDialog));
@@ -43,12 +45,13 @@ export type ShellDialog =
 
 export function Shell({ user, children }: { user: SessionUser; children: ReactNode }) {
   const [dialog, setDialog] = useState<ShellDialog>(null);
+  const nativeSidebar = useNativeSidebar();
   return (
     <StoreProvider user={user}>
       <TeachingProvider>
       <CallProvider>
         <SidebarProvider style={{ "--sidebar-width": "300px" } as React.CSSProperties} className="h-dvh min-h-0 overflow-hidden">
-          <AppSidebar onOpen={setDialog} />
+          {nativeSidebar ? <NativeSidebar onOpen={setDialog} /> : <AppSidebar onOpen={setDialog} />}
           <SidebarInset className="min-h-0 min-w-0">
             {children}
           </SidebarInset>
@@ -168,7 +171,7 @@ function OutsideLinks() {
   return null;
 }
 
-// The desktop app saves a download straight to the Downloads folder, so this is how the person hears it went.
+// The desktop and Mac apps save a download straight to the Downloads folder, so this is how the person hears it went.
 function DesktopDownloads() {
   useEffect(() => {
     const onDownload = (event: Event) => {
@@ -177,14 +180,14 @@ function DesktopDownloads() {
         toast.add({ type: "error", title: name ? `Couldn't download ${name}.` : "Couldn't download that file." });
         return;
       }
-      const show = desktopShell()?.showDownload;
+      const show = downloadRevealer();
       toast.add({
         type: "success",
         title: `Saved to ${folder ?? "Downloads"}`,
         description: name ?? undefined,
         actionProps:
-          typeof show === "function" && id !== null
-            ? { children: "Show in folder", onClick: () => void show(id).catch(failed("Couldn't open the folder.")) }
+          show && id !== null
+            ? { children: macShell() ? "Show in Finder" : "Show in folder", onClick: () => void show(id).catch(failed("Couldn't open the folder.")) }
             : undefined,
       });
     };

@@ -76,7 +76,31 @@ export type GondDesktop = {
   showDownload?: (id: number) => Promise<void>;
 };
 
-/** The desktop app's word that a download finished (`gond:download`); null when it can't tell. */
+/**
+ * The Mac app (`apps/mac`): one way and synchronous like the iPhone's bridge, what the page reads back
+ * written into the script and kept current with events. It is a computer, never a phone: no push
+ * through the relay, and its sidebar, toolbar and composer are its own (`lib/native-ui.ts`).
+ */
+export type GondMac = {
+  platform(): "macos";
+  version(): string;
+  /** "call" (the composer draws a call), "scale" (chrome at the page's size), "sidebar" (draws the sidebar). */
+  features(): string[];
+  changeServer(): void;
+  signIn(next: string): void;
+  notify(title: string, body: string, url: string, tag: string): void;
+  notificationsState(): "granted" | "denied" | "prompt";
+  requestNotifications(): void;
+  openExternal(url: string): void;
+  setTheme(background: string, dark: boolean, system: boolean): void;
+  setScale(scale: number): void;
+  present(kind: string, request: string): void;
+  chrome(state: string): void;
+  sidebar(state: string): void;
+  showDownload(id: number): void;
+};
+
+/** The desktop and Mac apps' word that a download finished (`gond:download`); null when it can't tell. */
 export type DesktopDownload = { ok: boolean; id: number | null; name: string | null; folder: string | null };
 
 export type DesktopUpdate = {
@@ -92,10 +116,12 @@ declare global {
     gondDesktop?: GondDesktop;
 
     gondMobile?: GondMobile;
+
+    gondMac?: GondMac;
   }
 }
 
-type NativeShell = "desktop" | "android" | "ios";
+type NativeShell = "desktop" | "android" | "ios" | "mac";
 
 export function mobileShell(): GondMobile | null {
   return typeof window === "undefined" ? null : (window.gondMobile ?? null);
@@ -117,15 +143,38 @@ export function desktopShell(): GondDesktop | null {
   return typeof bridge?.changeServer === "function" ? bridge : null;
 }
 
-export function shellBridge(): GondMobile | GondDesktop | null {
-  return mobileShell() ?? desktopShell();
+export function macShell(): GondMac | null {
+  if (typeof window === "undefined") return null;
+  const bridge = window.gondMac ?? null;
+  return typeof bridge?.changeServer === "function" ? bridge : null;
+}
+
+export function shellBridge(): GondMobile | GondMac | GondDesktop | null {
+  return mobileShell() ?? macShell() ?? desktopShell();
 }
 
 export function nativeShell(): NativeShell | null {
   const mobile = mobileShell();
   if (mobile) return mobile.platform() === "ios" ? "ios" : "android";
+  if (macShell()) return "mac";
   if (desktopShell()) return "desktop";
   return null;
+}
+
+/**
+ * The phone and Mac apps: a web view that loads a sign-in the page starts itself and catches every
+ * window the page opens, so the page never opens a blank tab first to get past a pop-up blocker.
+ */
+export function isWebViewShell(): boolean {
+  return mobileShell() !== null || macShell() !== null;
+}
+
+/** Shows a finished download in its folder, by the id its `gond:download` event carried; null when the app can't. */
+export function downloadRevealer(): ((id: number) => Promise<void>) | null {
+  const mac = macShell();
+  if (typeof mac?.showDownload === "function") return async (id) => mac.showDownload(id);
+  const show = desktopShell()?.showDownload;
+  return typeof show === "function" ? show : null;
 }
 
 /** The Android and iPhone apps: a phone, whatever the window's width. */
@@ -140,7 +189,7 @@ export function useNativeShell(): NativeShell | null {
 }
 
 export function shellSignIn(next: string): boolean {
-  const mobile = mobileShell();
+  const mobile = mobileShell() ?? macShell();
   if (mobile?.signIn) {
     mobile.signIn(next);
     return true;
@@ -154,7 +203,7 @@ export function shellSignIn(next: string): boolean {
 }
 
 export function changeServer() {
-  const mobile = mobileShell();
-  if (mobile) mobile.changeServer();
+  const app = mobileShell() ?? macShell();
+  if (app) app.changeServer();
   else void desktopShell()?.changeServer();
 }
