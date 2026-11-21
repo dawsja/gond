@@ -64,6 +64,7 @@ jobs:
       - name: Make room on the screen
         run: |
           defaults write com.apple.dock autohide -bool true && killall Dock || true
+          sleep 3
           system_profiler SPDisplaysDataType > "$RUNNER_TEMP/screens/displays.txt" 2>&1 || true
           sw_vers >> "$RUNNER_TEMP/screens/displays.txt" 2>&1 || true
       - name: Take the screenshots
