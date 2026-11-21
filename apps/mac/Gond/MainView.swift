@@ -79,6 +79,8 @@ private struct DetailToolbar: ViewModifier {
         if #available(macOS 26.0, *) {
             content.toolbar {
                 ToolbarItem(placement: .navigation) { TitleView(ui: ui) }
+                    // Only a conversation's name is a button; plain words need no glass.
+                    .sharedBackgroundVisibility(ui.chrome == nil ? .hidden : .automatic)
                 ToolbarSpacer(.flexible)
                 ToolbarItemGroup { actions }
             }
@@ -164,8 +166,9 @@ private struct TitleView: View {
             .opacity(ui.covered ? 0.4 : 1)
             .accessibilityLabel("\(chrome.title)'s details")
             .accessibilityIdentifier("chrome.title")
-        } else {
-            Text(ui.sidebar?.title ?? "Gond")
+        } else if ui.sidebar == nil {
+            // A page that isn't one of the web app's screens (a sign-in); those draw their own heading.
+            Text("Gond")
                 .font(.system(size: 13, weight: .semibold))
                 .lineLimit(1)
                 .padding(.horizontal, 4)

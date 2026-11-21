@@ -468,6 +468,7 @@ private struct MeButton: View {
     @ObservedObject var ui: NativeUI
     let me: SidebarState.Me
     let groups: [[NativeMenuItem]]
+    var marked = true
 
     var body: some View {
         Menu {
@@ -495,7 +496,7 @@ private struct MeButton: View {
             .foregroundStyle(Theme.foreground)
             .padding(.horizontal, 8)
             .frame(height: 36)
-            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(me.active ? Theme.muted.opacity(0.16) : .clear))
+            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(me.active && marked ? Theme.muted.opacity(0.16) : .clear))
             .contentShape(Rectangle())
         }
         .menuStyle(.button)
@@ -521,7 +522,8 @@ private struct SettingsSidebar: View {
     var body: some View {
         VStack(spacing: 0) {
             list
-            MeButton(ui: ui, me: state.me, groups: state.profileMenu)
+            // Settings' own section is the one marked, never you as well.
+            MeButton(ui: ui, me: state.me, groups: state.profileMenu, marked: false)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)
         }

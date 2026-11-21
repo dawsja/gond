@@ -301,6 +301,8 @@ final class AppModel: ObservableObject {
     private func applyWindowTheme() {
         guard let window else { return }
         let web = screen == .web
+        // Connect has no toolbar of its own, so no line under the title bar either.
+        window.titlebarSeparatorStyle = web ? .automatic : .none
         window.backgroundColor = web ? (pageBackground ?? .windowBackgroundColor) : .windowBackgroundColor
         if web, !pageFollowsSystem, let dark = pageDark {
             window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
