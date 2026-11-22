@@ -3,7 +3,6 @@ import { isIP } from "node:net";
 import { shoppingUrl, type ShoppingProduct } from "@gond/shared";
 import { pictureType } from "./images.ts";
 
-/** Whether an address is loopback, private, link-local, shared, multicast or otherwise not on the public internet. */
 export function privateAddress(ip: string): boolean {
   const v4 = ip.startsWith("::ffff:") ? ip.slice(7) : ip;
   if (isIP(v4) === 4) {
@@ -95,7 +94,6 @@ function attr(tag: string, name: string): string | null {
   return m ? decode(m[2] ?? m[3] ?? "") : null;
 }
 
-/** JSON-LD Product images, in the page's order: a string, a list, or ImageObjects. */
 function jsonLdImages(html: string): string[] {
   const out: string[] = [];
   const visit = (node: unknown, inProduct: boolean) => {
@@ -119,16 +117,11 @@ function jsonLdImages(html: string): string[] {
     try {
       visit(JSON.parse(m[1]!.trim()), false);
     } catch {
-      /* a store's broken JSON-LD */
     }
   }
   return out;
 }
 
-/**
- * A store page's product photos, best first: Amazon's own hi-res image, the page's JSON-LD Product
- * images, then its og:image and twitter:image. Only public https addresses, each once.
- */
 export function photosInPage(html: string, base: string): string[] {
   const found: string[] = [];
   // Amazon: the main image's hi-res address, then the gallery's.
@@ -141,7 +134,6 @@ export function photosInPage(html: string, base: string): string[] {
         const sizes = Object.entries(JSON.parse(dynamic) as Record<string, [number, number]>).sort((a, b) => b[1][0] * b[1][1] - a[1][0] * a[1][1]);
         if (sizes[0]) found.push(sizes[0][0]);
       } catch {
-        /* not JSON */
       }
     }
     const src = attr(landing, "src");
@@ -164,7 +156,6 @@ export function photosInPage(html: string, base: string): string[] {
       if (url.protocol === "http:") url.protocol = "https:";
       if (shoppingUrl(url.href) && !/\.svg(\?|$)/i.test(url.pathname) && !out.includes(url.href)) out.push(url.href);
     } catch {
-      /* not an address */
     }
   }
   return out;
@@ -194,7 +185,6 @@ export function largerPhoto(url: string): string {
   return m ? `${m[1]}._AC_SL1500_.jpg` : url;
 }
 
-/** The larger version when it loads, else the address as given. */
 async function check(url: string, deps: PhotoDeps, signal: AbortSignal): Promise<{ url: string; loads: Loads }> {
   const larger = largerPhoto(url);
   if (larger !== url && (await deps.loads(larger, signal)) === "yes") return { url: larger, loads: "yes" };

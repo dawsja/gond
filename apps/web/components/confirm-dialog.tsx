@@ -9,7 +9,6 @@ import { askNative, useNativeUi } from "@/lib/native-ui";
 
 type ConfirmProps = { open: boolean; onOpenChange: (open: boolean) => void; title: string; description: string; action: string; cancel?: string; destructive?: boolean; onConfirm: () => unknown };
 
-/** A yes or no, destructive unless said otherwise. `onConfirm` runs with the confirm still open: it closes once that's done, and stays with the reason if it fails. */
 export function Confirm(props: ConfirmProps) {
   return useNativeUi() ? <NativeConfirm {...props} /> : <PageConfirm {...props} />;
 }
@@ -35,7 +34,6 @@ function PageConfirm({ open, onOpenChange, title, description, action, cancel = 
   );
 }
 
-/** The iPhone app's own alert; it closes on the tap, so the work runs after it and only a failure says so. */
 function NativeConfirm({ open, onOpenChange, title, description, action, destructive = true, onConfirm }: ConfirmProps) {
   const asked = useRef(false);
   const close = useStableCallback(onOpenChange);

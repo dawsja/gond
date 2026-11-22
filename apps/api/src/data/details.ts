@@ -7,7 +7,6 @@ import { decryptSecret, encryptSecret } from "../secrets.ts";
 /** A field as it is sealed in the row, with its value whatever it is; `type` is missing on one saved before there were types. */
 export type SealedField = { id: string; type?: string; label: string; private: boolean; value: string };
 
-/** A field's kind: as it was saved, or for one saved before there were kinds, the known detail its name stands for. */
 const typeOf = (field: SealedField) => field.type ?? detailTypeFor(field.label)?.id ?? CUSTOM_DETAIL;
 
 type Row = { id: string; user_id: string; kind: DetailKind; label: string; fields: string; expires_on: string | null; reminded: number | null; created_at: string; updated_at: string };
@@ -27,7 +26,6 @@ function toRecord(row: Row, fields = unseal(row)): DetailRecord {
     kind: row.kind,
     label: row.label,
     expiresOn: row.expires_on,
-    // A private value stays here: what leaves is only that one is saved.
     fields: fields.map((f) => ({ id: f.id, type: typeOf(f), label: f.label, private: f.private, saved: f.value !== "", value: f.private ? null : f.value })),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -51,7 +49,6 @@ export function getDetail(userId: string, id: string): DetailRecord | null {
   return row ? toRecord(row) : null;
 }
 
-/** A record by its id or its name as a bot writes it ("Maya", "maya's passport"). */
 export function findDetail(userId: string, ref: string): DetailRecord | null {
   const wanted = ref.trim();
   if (!wanted) return null;
@@ -88,7 +85,6 @@ export function saveDetail(userId: string, input: DetailInput, id?: string): Det
     const sealed = encryptSecret(JSON.stringify(fields));
     const record = current?.id ?? newId("d");
     if (current) {
-      // A new expiry date starts its reminders over.
       const reminded = current.expires_on === input.expiresOn ? current.reminded : null;
       db.query("UPDATE gond_details SET kind = ?, label = ?, fields = ?, expires_on = ?, reminded = ?, updated_at = ? WHERE id = ?").run(input.kind, input.label, sealed, input.expiresOn, reminded, at, record);
     } else {
@@ -99,11 +95,6 @@ export function saveDetail(userId: string, input: DetailInput, id?: string): Det
   });
 }
 
-/**
- * Readable details a bot saves for the person, once they said yes on its card: into the record of that
- * name, made when there is none. A field already there takes the new value, unless it is private, which
- * only the person changes, in Settings.
- */
 export function addDetailFields(userId: string, label: string, kind: DetailKind, given: { type: string; label: string; value: string }[], expiresOn: string | null): DetailRecord | { error: string } {
   const current = findDetail(userId, label);
   const before = current ? readDetailFields(userId, current.id) ?? [] : [];
@@ -145,7 +136,6 @@ export function expiringDetails(until: string): ExpiringDetail[] {
   return rows.map((row) => ({ id: row.id, userId: row.user_id, label: row.label, kind: row.kind, expiresOn: row.expires_on!, reminded: row.reminded }));
 }
 
-/** Marks a reminder sent, unless the date changed meanwhile; whether it was this call that marked it. */
 export function markReminded(id: string, expiresOn: string, stage: number): boolean {
   return ensureDatabase().query("UPDATE gond_details SET reminded = ? WHERE id = ? AND expires_on = ? AND (reminded IS NULL OR reminded > ?)").run(stage, id, expiresOn, stage).changes > 0;
 }

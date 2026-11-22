@@ -34,7 +34,6 @@
   });
   Object.defineProperty(window, "gondDesktop", { value: bridge, writable: false, configurable: false });
 
-  // Alt on its own, pressed and let go with nothing in between, shows the menu bar; Esc or a click hides it.
   let altAlone = false;
   let menuShown = false;
   const toggleMenu = (hide) =>
@@ -66,8 +65,6 @@
   }, true);
   window.addEventListener("blur", () => (altAlone = false));
 
-  // A page without a frame marks where the window is held, data-window-drag: a press there, off its
-  // controls, moves the window and a double press maximizes it, as on a title bar.
   const controls =
     "a,button,input,select,textarea,label,summary,[contenteditable]:not([contenteditable='false'])," +
     "[role=button],[role=link],[role=menuitem],[role=tab],[role=checkbox],[role=radio],[role=switch],[role=option],[role=textbox],[role=combobox],[role=slider]";

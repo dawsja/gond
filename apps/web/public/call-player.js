@@ -8,7 +8,6 @@ const CUSHION_MIN_S = 0.12;
 const CUSHION_MAX_S = 0.4;
 const CUSHION_GROW_S = 0.06;
 const CUSHION_SHRINK_S = 0.02;
-// This long without running dry, the cushion gives a step back.
 const SETTLE_S = 15;
 // More words this soon after running dry mean the network was late, not that a sentence ended.
 const LATE_S = 0.5;

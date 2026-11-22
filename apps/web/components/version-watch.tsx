@@ -7,10 +7,6 @@ import { api } from "@/lib/api";
 
 const SEEN = "gond-version";
 
-/**
- * Keeps every open page on the server's version: when the server comes back from an update with a new
- * one, the page reloads, and the first page opened after an update on each device says so once.
- */
 export function VersionWatch() {
   const first = useRef<string | null>(null);
 

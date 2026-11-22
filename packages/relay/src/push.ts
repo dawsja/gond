@@ -87,7 +87,6 @@ async function signJwt(account: ServiceAccount, claims: Record<string, unknown>)
 
 export type PushAnswer = { status: number; body: { result: PushResult } | { error: string } };
 
-/** One `/v1/push` request: checked, signed by a Gond's key, counted against that key, then sent. */
 export async function handlePush(raw: unknown, deps: { fcm: Fcm | null; spend: (key: string, limit: number) => boolean; now: () => number }): Promise<PushAnswer> {
   const push = parsePush(raw);
   if (!push) return { status: 400, body: { error: "That isn't a version 1 push." } };

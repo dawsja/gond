@@ -161,10 +161,6 @@ function AlertDialogDescription({
   )
 }
 
-/**
- * The confirm's main button. With `onAction` it stays open while the work runs (a spinner, the
- * buttons held), closes once it's done, and on a failure stays open with the reason in a toast.
- */
 function AlertDialogAction({
   className,
   variant,

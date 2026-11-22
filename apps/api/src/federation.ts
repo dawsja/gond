@@ -1,3 +1,4 @@
+import { lookup } from "node:dns/promises";
 import { GOND_RELAY_URL, type Federation, type FederationState } from "@gond/shared";
 import { RelayClient, createIdentity, inviteToken, keyCard, open, pushRequest, seal, usageReport, type Identity, type KeyCard } from "@gond/relay/client";
 import type { PushRequest, UsageReport } from "@gond/relay/protocol";
@@ -73,12 +74,6 @@ export function normalizeRelayUrl(raw: string): string | null {
   return `${url.protocol}//${host}${url.pathname.replace(/\/+$/, "")}`;
 }
 
-/**
- * Whether this Gond may open a socket to a relay another Gond named: never loopback, link-local
- * (cloud metadata among it), unspecified, localhost or a single-label name like a Compose
- * service, unless it is this Gond's own relay. A LAN relay stays allowed. Names aren't resolved,
- * so a public name that resolves to one of those isn't caught here.
- */
 export function peerRelayAllowed(raw: string, ownUrl: string | null): boolean {
   const canonical = normalizeRelayUrl(raw);
   if (!canonical) return false;
@@ -88,6 +83,44 @@ export function peerRelayAllowed(raw: string, ownUrl: string | null): boolean {
   if (/^\d+\.\d+\.\d+\.\d+$/.test(host)) return !blockedIpv4(host);
   if (host === "localhost" || host.endsWith(".localhost")) return false;
   return host.includes(".");
+}
+
+export type RelayHostLookup = (host: string) => Promise<{ address: string }[]>;
+
+export async function peerRelayReachable(
+  raw: string,
+  ownUrl: string | null,
+  resolveHost: RelayHostLookup = (host) => lookup(host, { all: true, verbatim: true }),
+): Promise<boolean> {
+  if (!peerRelayAllowed(raw, ownUrl)) return false;
+  const canonical = normalizeRelayUrl(raw)!;
+  if (ownUrl && canonical === (normalizeRelayUrl(ownUrl) ?? ownUrl)) return true;
+  const host = new URL(canonical).hostname;
+  if (host.startsWith("[") || /^\d+\.\d+\.\d+\.\d+$/.test(host)) return true;
+  let addresses: { address: string }[];
+  try {
+    addresses = await resolveHost(host);
+  } catch {
+    return false;
+  }
+  return addresses.length > 0 && addresses.every(({ address }) => !blockedIp(address));
+}
+
+function blockedIp(address: string): boolean {
+  const clean = address.split("%")[0]!.trim();
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(clean)) return blockedIpv4(clean);
+  const normalized = normalizeIpv6Address(clean);
+  return !normalized || blockedIpv6(normalized);
+}
+
+function normalizeIpv6Address(address: string): string | null {
+  const dotted = /^(.*:)(\d+\.\d+\.\d+\.\d+)$/.exec(address);
+  if (!dotted) return address;
+  const parts = dotted[2]!.split(".").map(Number);
+  if (parts.length !== 4 || parts.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return null;
+  const hi = ((parts[0]! << 8) | parts[1]!).toString(16);
+  const lo = ((parts[2]! << 8) | parts[3]!).toString(16);
+  return `${dotted[1]!}${hi}:${lo}`;
 }
 
 function blockedIpv4(host: string): boolean {
@@ -120,7 +153,6 @@ function expandIpv6(host: string): number[] | null {
   return groups.length === 8 && groups.every((g) => Number.isInteger(g)) ? groups : null;
 }
 
-/** This Gond's keys, made the first time they're needed and kept encrypted with the secret key. */
 async function identity(): Promise<Identity> {
   const current = state();
   if (current.identity) return current.identity;
@@ -144,7 +176,6 @@ export async function signPush(input: { token: string; data: string; collapse: s
   return pushRequest(await identity(), input);
 }
 
-/** This server's token count for the public total, signed with this Gond's key. */
 export async function signUsage(input: { epoch: string; tokens: number }): Promise<UsageReport> {
   return usageReport(await identity(), input);
 }
@@ -183,7 +214,6 @@ export function onInbound(handler: Inbound, undeliverable: Undeliverable) {
   state().undeliverable = undeliverable;
 }
 
-/** The key a relay's client is kept under: its canonical address, so any spelling of this Gond's own relay is its own client. */
 export function relayKey(raw: string): string {
   return normalizeRelayUrl(raw) ?? raw.trim();
 }
@@ -195,7 +225,6 @@ function remember(key: string, spelling: string) {
   spellings.set(key, known);
 }
 
-/** A client for a relay, made and connected the first time; null when too many are open and none is idle. */
 function clientFor(raw: string): Relay | null {
   const current = state();
   const key = relayKey(raw);
@@ -236,7 +265,6 @@ function dropClient(key: string) {
   current.clients.delete(key);
 }
 
-/** Closes sockets to other relays nobody sent on lately. */
 function closeIdle() {
   const current = state();
   const before = Date.now() - IDLE_CLIENT_MS;
@@ -252,7 +280,6 @@ function evictOne(): boolean {
   return true;
 }
 
-/** The connection this Gond receives on: its own relay. */
 function ownClient(): RelayClient | null {
   const current = state();
   return current.own ? (current.clients.get(current.own)?.client ?? null) : null;
@@ -280,7 +307,6 @@ async function receive(envelope: Envelope) {
   }
 }
 
-/** Starts or restarts this Gond's place among other Gonds, as its settings now say. */
 export async function startFederation() {
   stopFederation();
   const row = federationRow();
@@ -307,7 +333,6 @@ export function stopFederation() {
   setState("off");
 }
 
-/** Lets a Gond's envelopes into this Gond's mailbox, or stops them. */
 export async function allowPeer(key: string, allowed: boolean) {
   const client = ownClient();
   if (!client) return;
@@ -325,7 +350,6 @@ export async function closeInvites(hashes: string[]): Promise<boolean> {
   return done.every(Boolean);
 }
 
-/** A one-use invite: its token, after the relay has been told to let in whoever brings it. */
 export async function openInvite(expires: number): Promise<string> {
   const client = ownClient();
   if (!client) throw new Error("This Gond isn't connected to its relay right now. Try again in a moment.");
@@ -335,7 +359,6 @@ export async function openInvite(expires: number): Promise<string> {
   return token;
 }
 
-/** Puts an event in the outbox for a Gond; it goes as soon as the relay takes it. */
 export function send(peerKey: string, body: unknown, invite?: string) {
   enqueue(peerKey, invite ? { event: body, invite } : { event: body });
   void flush();
@@ -379,7 +402,6 @@ async function deliverAll(rows: OutboxItem[]) {
   for (const row of rows) if (!(await deliver(row.id, row.peer_key, row.body, row.attempts))) return;
 }
 
-/** Sends one row; false when it has to wait for a later try. */
 async function deliver(id: string, peerKey: string, raw: string, attempts: number): Promise<boolean> {
   const current = state();
   const peer = getPeer(peerKey);
@@ -389,7 +411,9 @@ async function deliver(id: string, peerKey: string, raw: string, attempts: numbe
   }
   const later = () => (outboxLater(id, retryAt(attempts)), false);
   const who = peer.name || peer.key.slice(0, 8);
-  if (!peerRelayAllowed(peer.relay_url, current.own)) {
+  if (!(await peerRelayReachable(peer.relay_url, current.own))) {
+    const key = relayKey(peer.relay_url);
+    if (key !== current.own) dropClient(key);
     console.warn(`[gond] won't open a connection to ${who}'s relay at that address (${peer.relay_url})`);
     return later();
   }
@@ -420,7 +444,6 @@ async function deliver(id: string, peerKey: string, raw: string, attempts: numbe
   }
 }
 
-/** Forgets everything waiting to go to a Gond, for one that was blocked. */
 export function dropFor(peerKey: string) {
   dropOutboxFor(peerKey);
 }

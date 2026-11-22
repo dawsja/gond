@@ -76,7 +76,6 @@ export function copyText(source: string): string {
         return line;
       }
       if (fence) return line;
-      // A card of questions is copied as its questions.
       if (QUESTIONS_OPEN.test(line)) return ((questions = true), "");
       if (questions && CONTAINER_CLOSE.test(line)) return ((questions = false), "");
       if (!line.includes("::choices[")) return line;
@@ -139,7 +138,6 @@ const MAX_CHOICES = 6;
 const MAX_CHOICE_LENGTH = 60;
 const MAX_QUESTIONS = 6;
 
-/** A row of choices: its options, whether several can be picked (`multi`), and whether the person may answer in their own words (`other`). */
 export type ChoiceRow = { options: string[]; multi: boolean; other: boolean };
 
 /**
@@ -162,7 +160,6 @@ export function choicesOf(node: Nodes): string[] | null {
   return choiceRowOf(node)?.options ?? null;
 }
 
-/** One question of a card: what it asks (as written, and as one plain line) and its choices. */
 export type Question = { asks: RootContent[]; text: string; row: ChoiceRow };
 
 /**

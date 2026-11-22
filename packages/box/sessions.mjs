@@ -31,7 +31,6 @@ export function createSessionStore(file, { fs = nodeFs } = {}) {
   };
 
   return {
-    /** The session to resume for this agent, if it was this person's on this engine. */
     get(id, user, engine) {
       const entry = saved.get(id);
       return entry && entry.user === user && entry.engine === engine ? entry.sessionId : null;
@@ -46,7 +45,6 @@ export function createSessionStore(file, { fs = nodeFs } = {}) {
     backendOf(id) {
       return saved.get(id)?.backend ?? "plan";
     },
-    /** Forgets an agent's session; with a user, only if it was theirs. */
     forget(id, user) {
       const entry = saved.get(id);
       if (!entry || (user && entry.user !== user)) return;

@@ -81,9 +81,7 @@ test("a later list says only what changed: new or different lines, refs gone, an
     gone: ["e10", "e11"],
     same: 10,
   });
-  // A scroll moves every line but changes none of them: still the same elements under the same refs.
   const scrolled = page(['- textbox "Search" [ref=e1] [box=300,-60,400,40]', '- button "Cart (0)" [ref=e2] [box=1100,-60,100,40]', ...rows.map((row) => row.replace(/box=40,(\d+)/, (_, y) => `box=40,${Number(y) - 40}`))]);
   assert.deepEqual(listChanges(before, scrolled), { text: "", gone: ["e1", "e2"], same: 12 });
-  // A new screenful says as much as the whole list, which is sent instead.
   assert.equal(listChanges(before, page(rows.map((row, i) => row.replace(`Product ${i}`, `Shoe ${i}`)))), null);
 });

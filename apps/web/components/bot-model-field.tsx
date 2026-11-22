@@ -11,7 +11,6 @@ const DEFAULT = "__default__";
 
 export type BotModels = { current: ModelCurrent; choices: ModelChoice[] };
 
-/** The models of the engine the bots run on now; null while loading or when the list can't be read. */
 export function useBotModels(): BotModels | null {
   const [models, setModels] = useState<BotModels | null>(null);
   const load = useCallback(async () => {

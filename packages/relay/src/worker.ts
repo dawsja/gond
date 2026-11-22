@@ -124,7 +124,6 @@ export class Mailbox {
     try {
       ws.close(code, reason);
     } catch {
-      // Already closed.
     }
   }
 
@@ -145,7 +144,6 @@ export class Mailbox {
     ws.send(JSON.stringify(frame));
   }
 
-  /** An envelope for this mailbox, from any mailbox: held, then handed to the owner if it's here. */
   private take(envelope: Envelope, invite: string | null): Refusal | null {
     const refused = receive(this.store, envelope, invite);
     if (!refused) for (const owner of this.owners()) this.send(owner, { t: "deliver", envelope });
@@ -157,7 +155,6 @@ export class Mailbox {
     const frame = parseClientFrame(raw);
     if (!attachment.authed) {
       if (!(await provesKey(attachment.key, attachment.nonce, frame))) return ws.close(4003, "That key wasn't proved");
-      // One socket per mailbox: a reconnecting server takes over from its old socket.
       for (const old of this.owners()) old.close(4000, "Replaced by a newer connection");
       ws.serializeAttachment({ ...attachment, authed: true } satisfies Attachment);
       this.store.touch(attachment.key);
@@ -180,7 +177,6 @@ export class Mailbox {
   }
 }
 
-/** The public token count (`usage.ts`), with its own SQLite. Only the Worker reaches it. */
 export class UsageTotals {
   private readonly store: UsageStore;
 

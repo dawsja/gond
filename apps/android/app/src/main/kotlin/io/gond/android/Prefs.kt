@@ -29,7 +29,6 @@ object Prefs {
         context.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit { putString(PUSH_TOKEN, token) }
     }
 
-    /** This phone as the server knows it for push: its id and the two keys the server gave it. */
     data class PushDevice(val id: String, val seal: String, val answer: String)
 
     fun pushDevice(context: Context): PushDevice? {

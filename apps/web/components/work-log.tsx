@@ -22,10 +22,6 @@ export function WorkLine({ bot, line, waiting = false }: { bot: Bot | undefined;
 
 const CUBES = 5;
 
-/**
- * Several bots working at once: their faces and a row of squares lighting up in each one's colour
- * in turn. A tap opens what each is doing, a line apiece, and taps again to close it.
- */
 export function WorkLines({ working, label }: { working: { bot: Bot; line: string; waiting?: boolean }[]; label: string }) {
   const [open, setOpen] = useState(false);
   return (

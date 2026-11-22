@@ -23,7 +23,6 @@ export function readMemory(owner: MemoryOwner, topic = MAIN_TOPIC): string | nul
   return row?.content ?? null;
 }
 
-/** Replaces a topic; text that is only space removes it. */
 export function writeMemory(owner: MemoryOwner, topic: string, content: string): void {
   const { name, key, id } = table(owner);
   const db = ensureDatabase();
@@ -36,7 +35,6 @@ export function writeMemory(owner: MemoryOwner, topic: string, content: string):
 
 export type MemoryTopic = { topic: string; bytes: number; updatedAt: string };
 
-/** Every topic but the main memory, by name. */
 export function memoryTopics(owner: MemoryOwner): MemoryTopic[] {
   const { name, key, id } = table(owner);
   const rows = ensureDatabase().query(`SELECT topic, LENGTH(CAST(content AS BLOB)) AS bytes, updated_at FROM ${name} WHERE ${key} = ? AND topic != '' ORDER BY topic`).all(id) as { topic: string; bytes: number; updated_at: string }[];
@@ -49,7 +47,6 @@ export function memoryOnComputer(owner: MemoryOwner): boolean {
   return row !== null;
 }
 
-/** Every bot and profile whose memory still waits on the computer. */
 export function memoriesOnComputer(): MemoryOwner[] {
   const rows = ensureDatabase().query("SELECT bot_id, user_id FROM gond_memory_moves").all() as { bot_id: string | null; user_id: string | null }[];
   return rows.map((row) => (row.bot_id ? { bot: row.bot_id } : { team: row.user_id! }));

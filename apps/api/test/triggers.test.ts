@@ -63,7 +63,6 @@ describe("routines an app's event starts", () => {
     expect(runs(bot.threadId)).toHaveLength(1);
     expect(eventsIn(runs(bot.threadId)[0]!.body)).toBe(2);
 
-    // Once the dispatcher has it, the next event is a run of its own.
     ensureDatabase().query("UPDATE gond_messages SET claimed_by = 'tick' WHERE id = ?").run(run!.id);
     expect(deliverEvent(KEY, email("ti_one", "Keys"))).toBe("ran");
     expect(runs(bot.threadId)).toHaveLength(2);

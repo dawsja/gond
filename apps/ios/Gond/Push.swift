@@ -14,7 +14,6 @@ final class Push: NSObject {
     static let shared = Push()
 
     private static let tokenKey = "push_token"
-    /// The token or the device changed: the page reads the state again and signs up with it.
     var onChange: (() -> Void)?
     private(set) var token: String? = UserDefaults.standard.string(forKey: Push.tokenKey)
 
@@ -30,14 +29,12 @@ final class Push: NSObject {
         Messaging.messaging().apnsToken = deviceToken
     }
 
-    /// What the web app reads to sign this phone up: `{ token, device }`, each null until there is one.
     var state: String {
         let object: [String: Any] = ["token": token ?? NSNull(), "device": PushKeys.load()?.id ?? NSNull()]
         let data = (try? JSONSerialization.data(withJSONObject: object)) ?? Data("{}".utf8)
         return String(decoding: data, as: UTF8.self)
     }
 
-    /// The server's answer to signing up (`{ id, seal, answer }`), or nothing to sign this phone out.
     func save(_ json: String) {
         if json.isEmpty {
             PushKeys.save(nil)
@@ -93,7 +90,6 @@ extension Push: MessagingDelegate {
     }
 }
 
-/// Push needs the app delegate's callbacks, which a SwiftUI app gets through this.
 final class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         MainActor.assumeIsolated { Push.shared.start() }

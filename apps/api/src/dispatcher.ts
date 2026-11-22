@@ -38,7 +38,6 @@ export function startDispatcher(options: { intervalMs?: number } = {}) {
   console.info("[gond] Dispatcher started");
 }
 
-/** Stops scheduling new ticks or claiming work during graceful shutdown. */
 export function stopDispatcher() {
   const current = state();
   current.stopped = true;
@@ -50,7 +49,6 @@ export function stopDispatcher() {
   current.unsubscribe = null;
 }
 
-/** One tick on the next turn of the event loop, however many ask for it before then. */
 function wake() {
   const current = state();
   if (current.woken || current.stopped) return;

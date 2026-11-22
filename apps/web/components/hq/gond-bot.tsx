@@ -16,7 +16,6 @@ type GondBotProps = {
   greet?: boolean;
   tilt?: number;
   label?: string;
-  // Eyes shut, slow breaths and a drift of z's; no blinking, glancing or hello.
   asleep?: boolean;
   mood?: GondBotMood;
 };
@@ -63,7 +62,6 @@ const LAYOUT: Record<GondBotShape, { visor: string; at: [number, number]; scale:
 const FACE_AT = { x: 52.25, y: 58 };
 const AHEAD = { x: 0, y: 0 };
 
-/** Timeouts that all go at once: a face's loop and the step inside each turn of it. */
 function timeouts() {
   const pending = new Set<ReturnType<typeof setTimeout>>();
   return {
@@ -97,7 +95,6 @@ function watchOnScreen(element: Element, onChange: (onScreen: boolean) => void):
   };
 }
 
-/** Whether anyone could see the face blink or glance: on screen, in a page that's shown. */
 function useSeen(ref: RefObject<Element | null>): boolean {
   const [seen, setSeen] = useState(false);
   useEffect(() => {
@@ -250,7 +247,6 @@ export function GondBot({
             <path d={layout.visor} transform={visorTransform} />
           </clipPath>
           {fine ? (
-            // The eyes' own outline blurred and filled with the bot's light shade: a glow in its colour.
             <filter id={ref("glow")} x="-60%" y="-60%" width="220%" height="220%">
               <feGaussianBlur in="SourceAlpha" stdDeviation="1.8" result="blur" />
               <feFlood floodColor={tone.glow} floodOpacity="0.9" />

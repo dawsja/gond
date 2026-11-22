@@ -87,7 +87,6 @@ async function errorOf(res: Response): Promise<string> {
     if (typeof body.error === "string") return body.error;
     if (body.error && typeof (body.error as { message?: unknown }).message === "string") return (body.error as { message: string }).message;
   } catch {
-    // not JSON; the text itself is the reason
   }
   return text.trim().slice(0, 300) || `HTTP ${res.status}`;
 }

@@ -16,7 +16,6 @@ test("an older CLI's running totals become the change since the last result", ()
   assert.deepEqual(first.used, { opus: { input: 100, output: 20, cacheRead: 0, cacheWrite: 0 } });
   const second = usageSince({ modelUsage: { opus: entry(150, 30), haiku: entry(5, 1) } }, first.counted);
   assert.deepEqual(second.used, { opus: { input: 50, output: 10, cacheRead: 0, cacheWrite: 0 }, haiku: { input: 5, output: 1, cacheRead: 0, cacheWrite: 0 } });
-  // Nothing new is nothing at all, and a total that fell was reset.
   assert.deepEqual(usageSince({ modelUsage: { opus: entry(150, 30), haiku: entry(5, 1) } }, second.counted).used, {});
   assert.deepEqual(usageSince({ modelUsage: { opus: entry(10, 2) } }, second.counted).used, { opus: { input: 10, output: 2, cacheRead: 0, cacheWrite: 0 } });
 });
@@ -64,7 +63,6 @@ test("a turn hears what it used and the plan's limits, and a late result's usage
   assert.deepEqual(events.find((event) => event.type === "usage")?.models, { opus: { input: 10, output: 2, cacheRead: 0, cacheWrite: 0 } });
   assert.ok(!events.some((event) => event.type === "line" && event.line.includes("rate_limit_event")));
 
-  // A background task's result after the turn ended.
   emit({ type: "result", origin: { kind: "task-notification" }, model_usage_since_last_result: { haiku: entry(3, 1) } });
   const later = [];
   const next = session.turnWith({ prompt: "again", timeoutMs: 60_000, onEvent: (event) => later.push(event), systemPrompt: "" });

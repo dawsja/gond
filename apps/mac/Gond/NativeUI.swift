@@ -23,22 +23,18 @@ final class NativeUI: ObservableObject {
     @Published private(set) var toast: ToastRequest?
     /// The conversation's faces for the toolbar, front one first.
     @Published private(set) var faces: [NSImage] = []
-    /// The room's faces for the @mention chips, by bot id.
     @Published private(set) var mentionFaces: [String: NSImage] = [:]
     /// The sidebar's faces by key, kept for the page's whole life since it sends each only once.
     @Published private(set) var sidebarFaces: [String: NSImage] = [:]
     @Published private(set) var opening = false
     /// How many points a CSS pixel takes on the page (Settings → Appearance → Size); the composer is drawn at it.
     @Published private(set) var scale: CGFloat = 1
-    /// Raised by ⌘F, so the sidebar's search takes the focus.
     @Published private(set) var searchRequest = 0
     /// Raised by each new page, so the sidebar starts over with it.
     @Published private(set) var page = 0
     /// The page is one of the web app's own screens, which run under the toolbar and pad their top for it.
     @Published private(set) var appPage = false
-    /// How much of the window's top the toolbar covers.
     @Published private(set) var toolbarHeight: CGFloat = 0
-    /// The file Quick Look shows, and the files it can swipe through.
     @Published private(set) var preview: URL?
     @Published private(set) var previewFiles: [URL] = []
 
@@ -53,7 +49,6 @@ final class NativeUI: ObservableObject {
     private var sidebarSeen = false
     private var sidebarCheck: Task<Void, Never>?
 
-    /// Something of the page's (a dialog, a sheet, a menu) is open over the conversation.
     var covered: Bool { chrome?.covered == true || sidebar?.covered == true }
 
     // MARK: From the page
@@ -109,7 +104,6 @@ final class NativeUI: ObservableObject {
         coveredChanged(from: wasCovered)
     }
 
-    /// A face the sidebar names: a key into the faces, or a picture sent as it is.
     func sidebarFace(_ key: String?) -> NSImage? {
         guard let key, !key.isEmpty else { return nil }
         if key.hasPrefix("data:") { return Self.image(dataURL: key) }
@@ -152,7 +146,6 @@ final class NativeUI: ObservableObject {
         }
     }
 
-    /// Another Gond: nothing of this one's stays.
     func clear() {
         setChrome("null")
         sidebarCheck?.cancel()
@@ -195,7 +188,6 @@ final class NativeUI: ObservableObject {
         shell?.dispatch("gond:native-sidebar", event)
     }
 
-    /// A click on the app's scrim, or Escape where the page can't hear it: the page closes what is on top.
     func dismissCover() {
         sendSidebar(["type": "dismiss"])
     }
@@ -212,7 +204,6 @@ final class NativeUI: ObservableObject {
 
     // MARK: A confirm
 
-    /// The Mac's own alert as a sheet on the window, which is Liquid Glass from macOS 26.
     private func confirm(_ request: ConfirmRequest) {
         let alert = NSAlert()
         alert.messageText = request.title
@@ -234,7 +225,6 @@ final class NativeUI: ObservableObject {
 
     // MARK: A toast
 
-    /// A glass capsule at the top of the conversation for a few seconds; a click puts it away sooner.
     private func showToast(_ request: ToastRequest) {
         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { toast = request }
         toastTimer?.cancel()
@@ -250,14 +240,12 @@ final class NativeUI: ObservableObject {
         withAnimation(.easeOut(duration: 0.25)) { toast = nil }
     }
 
-    /// The app's own word to the person, in the page's toast.
     func notice(_ text: String) {
         showToast(ToastRequest(id: UUID().uuidString, title: text, description: "", tone: "error"))
     }
 
     // MARK: A message's menu
 
-    /// A right-click on a message: the reactions first (the person's own ticked), then what can be done with it.
     private func showMessage(_ request: MessageMenuRequest) {
         let menu = NSMenu()
         menu.autoenablesItems = false
@@ -330,7 +318,6 @@ final class NativeUI: ObservableObject {
         return true
     }
 
-    /// Quick Look changed the file it shows, or closed.
     func selectPreview(_ url: URL?) {
         guard preview != url else { return }
         preview = url
@@ -383,7 +370,6 @@ final class NativeUI: ObservableObject {
         }
     }
 
-    /// Files from the Open panel, a drop or a paste, to the page as its own files.
     func attach(_ urls: [URL]) {
         let limit = 20 * 1024 * 1024
         var files: [[String: String]] = []
@@ -408,7 +394,6 @@ final class NativeUI: ObservableObject {
         send(["type": "attach", "files": files])
     }
 
-    /// A picture pasted without a file (a screenshot to the clipboard), as a PNG.
     func attachPicture(_ png: Data) {
         guard png.count <= 20 * 1024 * 1024 else {
             send(["type": "notice", "text": "A file over 20 MB was left out."])
@@ -423,7 +408,6 @@ final class NativeUI: ObservableObject {
     }
 }
 
-/// The target of a message menu's items: it answers once, with the pick or with nothing.
 @MainActor
 private final class MenuPicker: NSObject {
     private var done = false

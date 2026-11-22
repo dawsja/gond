@@ -6,9 +6,6 @@ export type UserRole = (typeof USER_ROLES)[number];
 
 export type SignInProvider = "local" | "oidc";
 
-/** How a person signs in: a password, and whether the organisation's provider is linked to this account (null when none is set up). */
-/** How a person signs in, and, for an account the provider made while one with a password waits unlinked, what moving to that one would delete. */
-/** How often the primary bot looks in on the person's bots, email and loose ends, in hours. */
 export const CHECK_IN_HOURS = [2, 3, 4, 6] as const;
 export type CheckInHours = (typeof CHECK_IN_HOURS)[number];
 
@@ -39,7 +36,6 @@ export type Me = {
   profile: ProfileRef;
 };
 
-/** How every bot of a person's talks to them (Settings → Personalization), read into each bot's prompt. */
 export const REPLY_STYLES = ["default", "professional", "friendly", "candid", "efficient"] as const;
 export type ReplyStyle = (typeof REPLY_STYLES)[number];
 export const REPLY_STYLE_LABELS: Record<ReplyStyle, { title: string; blurb: string }> = {
@@ -62,7 +58,6 @@ export function isEmojiLevel(value: unknown): value is EmojiLevel {
   return typeof value === "string" && (EMOJI_LEVELS as readonly string[]).includes(value);
 }
 
-/** The color a person picks for their chats (Settings → Appearance): their bubbles, cards and main buttons. */
 export const ACCENTS = ["blue", "purple", "pink", "red", "orange", "amber", "green"] as const;
 export type Accent = (typeof ACCENTS)[number];
 export const DEFAULT_ACCENT: Accent = "blue";
@@ -84,24 +79,20 @@ export const MAX_PROFILES = 5;
 export const DEFAULT_PROFILE_LABEL = "Default";
 export const PROFILE_LABEL_MAX = 24;
 
-/** `icon` is one emoji worn in the middle of the profile's mark, or null for its initial. */
 export type ProfileRef = { id: string; label: string; isDefault: boolean; icon: string | null };
 
-/** The emoji a profile's icon is picked from; nothing else is taken. */
 export const PROFILE_ICONS = ["💼", "🏠", "🎮", "📚", "❤️"] as const;
 export type ProfileIcon = (typeof PROFILE_ICONS)[number];
 
 export type Profile = ProfileRef & {
   accent: Accent;
   avatar: string | null;
-  /** Its bots finish and ask in silence: no notices. */
   muted: boolean;
   /** Conversations with something new, and cards waiting on the person. */
   unread: number;
   needsYou: number;
 };
 
-/** What a profile may be called: a name none of the person's other profiles has. */
 export function profileLabelError(label: string, taken: string[]): string | null {
   const name = label.trim();
   if (!name) return "Give the profile a name";

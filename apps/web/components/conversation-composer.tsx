@@ -32,21 +32,17 @@ import { cn } from "@/lib/utils";
 
 export const MAX_FILES = 6;
 
-/** What the conversation asks of its composer. */
 export type ComposerHandle = { focus: () => void; attach: (files: File[]) => void };
 
-/** The line a reply quotes, as the composer shows it. */
 export type Replying = { id: string; name: string; color: string | null; text: string };
 
 type ChromeHeader = Omit<ComponentProps<typeof ConversationChrome>, "files" | "replying" | "mentions" | "composer" | "onEvent">;
 
-/** What a space that isn't open says over the composer. */
 function spaceNotice(space: ThreadSpace): string {
   if (space.status === "joining") return `Waiting for ${space.gonds.find((g) => g.host)?.name ?? "the other Gond"} to let you in. What you write meanwhile stays here.`;
   return `This space is ${space.status === "left" ? "one you left" : "closed"}, so what you write here stays here and no bot answers.`;
 }
 
-/** Thumbnail for a photo about to be sent, falling back to a paperclip for other files or unreadable images. */
 function ComposerFileMedia({ file }: { file: File }) {
   const previewable = isPreviewableImage(file);
   const [preview, setPreview] = useState<{ file: File; url: string } | null>(null);
@@ -80,11 +76,6 @@ function ComposerFileMedia({ file }: { file: File }) {
   );
 }
 
-/**
- * The conversation's composer: the draft, sent-line recall, the @ and / list, files, voice and Later.
- * It holds what changes as the person types, so typing redraws only this. In the iPhone app it hands
- * itself and the header to the app (`ConversationChrome`), and `onChromeEvent` hears what is the header's.
- */
 export function Composer({
   ref,
   threadId,
@@ -112,7 +103,6 @@ export function Composer({
   nativeChrome: boolean;
   touch: boolean;
   busy: boolean;
-  /** The field's hint when it isn't a reply. */
   hint: string;
   label: string;
   bot: Bot | null;
@@ -131,7 +121,6 @@ export function Composer({
   onChromeEvent: (event: ChromeEvent) => void;
 }) {
   const { text: draft, rev: draftRev, latest: latestDraft, typed: appTyped, set: setDraft } = useComposerDraft();
-  // Which of the person's sent lines Up and Down put in the field (`sentHistory`), while it still shows that line.
   const [recall, setRecall] = useState<number | null>(null);
   const restored = useRef(false);
   useEffect(() => {
@@ -345,8 +334,6 @@ export function Composer({
   }
 
   const placeholder = reply ? `Reply to ${reply.name}` : hint;
-  // At the pill's start on one line, first in the row beneath once the message stacks. On phones,
-  // offer the camera alongside the photo library and files; on desktop, go straight to files.
   const attachButton = phone ? (
     <DropdownMenu>
       <DropdownMenuTrigger render={<InputGroupButton type="button" variant="ghost" size="icon-sm" aria-label="Attach files" className={cn("rounded-full", below && "mr-auto")} />}>
@@ -384,8 +371,6 @@ export function Composer({
         onSubmit={send}
         ref={form}
         data-native-composer={nativeChrome ? "" : undefined}
-        // Under the app's composer the page keeps its own in place, unseen, so what sits above it (the
-        // bots to mention, files, a quote, the / list) and the messages' padding stay where they were.
         style={nativeChrome ? { paddingBottom: "var(--native-composer-bottom, max(0.75rem, var(--safe-bottom)))" } : undefined}
         className={cn("pointer-events-none absolute inset-x-0 bottom-0 z-20 px-3 pt-2.5 pb-[calc(var(--safe-bottom)+8px)] sm:px-4 sm:pt-3 wide:px-[max(1.5rem,calc((100%-46rem)/2))] wide:pb-5 [&>*]:pointer-events-auto", nativeChrome && "transition-[padding] duration-250 ease-out")}
       >
@@ -393,7 +378,6 @@ export function Composer({
         <input ref={photoInput} type="file" accept="image/*" multiple className="sr-only" tabIndex={-1} aria-hidden="true" onChange={onPickFiles} />
         <input ref={fileInput} type="file" multiple className="sr-only" tabIndex={-1} aria-hidden="true" onChange={onPickFiles} />
         {chips.length && !nativeChrome ? (
-          // One row a thumb swipes along on a phone, however many bots; on a wide screen they wrap.
           <div className="-mx-3 mb-2 flex max-w-[calc(100%+1.5rem)] gap-1.5 overflow-x-auto overscroll-x-contain px-3 py-1 sm:-mx-4 sm:max-w-[calc(100%+2rem)] sm:px-4 wide:mx-0 wide:max-w-full wide:flex-wrap wide:overflow-visible wide:px-0">
             {chips.map((who) => (
               <Button key={who.id} type="button" size="sm" onClick={() => mention(who)} title={who.detail ?? undefined} className="shrink-0 gap-1.5 pl-1 text-[13px]">

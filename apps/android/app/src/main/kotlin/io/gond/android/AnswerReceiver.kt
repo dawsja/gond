@@ -37,7 +37,6 @@ class AnswerReceiver : BroadcastReceiver() {
         }.start()
     }
 
-    /** Null when the card took the answer; otherwise what to tell the person. */
     private fun send(context: Context, approval: String, decision: String): String? {
         val server = Prefs.server(context) ?: return context.getString(R.string.answer_open)
         val device = Prefs.pushDevice(context) ?: return context.getString(R.string.answer_open)

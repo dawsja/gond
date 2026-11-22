@@ -22,10 +22,6 @@ function linkError(code: string, name: string): string {
   return `Couldn't link ${name}. Try again.`;
 }
 
-/**
- * The local account moving to the organisation's provider without starting over: linking its sign-in
- * here means signing in with it lands in this same account, bots, chats and all.
- */
 export function LinkedSignIn() {
   const [signIns, setSignIns] = useState<SignIns | null>(null);
   const [busy, setBusy] = useState(false);
@@ -35,7 +31,6 @@ export function LinkedSignIn() {
     void api<SignIns>("/api/me/sign-ins")
       .then((loaded) => {
         setSignIns(loaded);
-        // Back from the provider: say how it went, once, and drop it from the address.
         const params = new URLSearchParams(window.location.search);
         const name = loaded.oidc?.name ?? "your provider";
         if (params.has("linked")) toast.add({ type: "success", title: `${name} is linked.`, description: "Sign in with it from now on and you land here." });
@@ -83,10 +78,6 @@ function plural(count: number, one: string): string {
   return `${count} ${one}${count === 1 ? "" : "s"}`;
 }
 
-/**
- * The other way round: an account the provider made moving its sign-in to the account with a
- * password, proven by that password. What the provider's account held is deleted, and it says so first.
- */
 export function MoveSignIn() {
   const [signIns, setSignIns] = useState<SignIns | null>(null);
   const [open, setOpen] = useState(false);

@@ -1,6 +1,5 @@
 import { CALL_SAMPLE_RATE } from "@gond/shared";
 
-/** How loud a node is right now, 0 to 1, for the wave. */
 export function levelOf(analyser: AnalyserNode, buffer: Float32Array<ArrayBuffer>): number {
   analyser.getFloatTimeDomainData(buffer);
   let sum = 0;
@@ -10,7 +9,6 @@ export function levelOf(analyser: AnalyserNode, buffer: Float32Array<ArrayBuffer
 
 export type Capture = { analyser: AnalyserNode; stop: () => void; setMuted: (muted: boolean) => void };
 
-/** Why the microphone didn't start, in words the person can act on. */
 export class MicError extends Error {
   constructor(
     message: string,
@@ -137,7 +135,6 @@ function loudest(samples: Float32Array): number {
   return peak;
 }
 
-/** Each chunk scheduled as its own buffer, for engines without AudioWorklet. */
 class ScheduledVoice {
   private next = 0;
   // When the last of its words ends: speaking and draining mean words, not the silence between calls.
@@ -185,12 +182,10 @@ class ScheduledVoice {
   }
 }
 
-/** The bot's voice, played in order as it arrives: one stream through `public/call-player.js`. */
 export class CallPlayer {
   readonly analyser: AnalyserNode;
   private node: AudioWorkletNode | null = null;
   private fallback: ScheduledVoice | null = null;
-  // What arrives while the worklet loads, played once it has.
   private waiting: ArrayBuffer[] | null = [];
   private state = { speaking: false, left: 0, at: 0 };
 
@@ -230,7 +225,6 @@ export class CallPlayer {
     else this.waiting?.push(bytes);
   }
 
-  /** The person spoke over it: what is queued goes, as a person would stop mid-word. */
   clear() {
     if (this.waiting) this.waiting.length = 0;
     this.node?.port.postMessage("clear");
@@ -247,7 +241,6 @@ export class CallPlayer {
     return this.fallback ? this.fallback.left > 0 : this.state.speaking;
   }
 
-  /** Resolves once what was said has played, so a goodbye isn't cut off. */
   drained(maxMs: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, Math.min(this.left * 1000, maxMs)));
   }

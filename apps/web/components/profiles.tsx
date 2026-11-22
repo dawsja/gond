@@ -21,10 +21,8 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { del, patch, post } from "@/lib/api";
 import { cn, rem } from "@/lib/utils";
 
-/** "Aa" stands for the first letter of the name, before there is one. */
 const LETTER = "Aa";
 
-/** A profile's mark: its emoji, or the first letter of its name, in the middle of its own colour. */
 export function ProfileMark({ profile, size = 40, className }: { profile: Pick<Profile, "label" | "accent" | "icon">; size?: number; className?: string }) {
   const letter = profile.label.trim().charAt(0).toUpperCase() || LETTER;
   return (
@@ -68,7 +66,6 @@ function nextAccent(profiles: Profile[]): Accent {
   return ACCENTS.find((accent) => !profiles.some((p) => p.accent === accent)) ?? ACCENTS[0];
 }
 
-/** Opens a profile on this device. Everything on the page belongs to the one it leaves, so the app starts over. */
 export async function openProfile(id: string) {
   await post(`/api/profiles/${encodeURIComponent(id)}/open`);
   // A full load on purpose: nothing of the old profile may stay in memory, the store's or the router's.
@@ -76,20 +73,17 @@ export async function openProfile(id: string) {
   window.location.assign("/app");
 }
 
-/** What another profile has waiting, said short; nothing when there's nothing. */
 function waitingLine(profile: Profile): string {
   if (profile.needsYou > 0) return "Needs you";
   if (profile.unread > 0) return profile.unread === 1 ? "1 chat with something new" : `${profile.unread} chats with something new`;
   return "";
 }
 
-/** Whether a profile other than the open one has something waiting, for the dot on your picture. */
 export function useOthersWaiting(): boolean {
   const { me, profiles } = useStore();
   return profiles.some((p) => p.id !== me.profile.id && (p.unread > 0 || p.needsYou > 0));
 }
 
-/** The person's profiles from their picture: open one, add one, or go to Settings. */
 export function ProfilesDialog({ onClose }: { onClose: () => void }) {
   const { me, profiles } = useStore();
   const [opening, setOpening] = useState<string | null>(null);
@@ -147,7 +141,6 @@ export function ProfilesDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
-/** A new profile starts empty, as a new person does, and opens here once it's made. */
 export function AddProfileDialog({ onClose }: { onClose: () => void }) {
   const { profiles } = useStore();
   const [label, setLabel] = useState("");
@@ -249,7 +242,6 @@ function EditProfileDialog({ profile, onClose }: { profile: Profile; onClose: ()
   );
 }
 
-/** Settings → Profiles: each profile's notifications, renaming and deleting, and adding one. */
 export function ProfilesCard() {
   const { me, profiles } = useStore();
   const [adding, setAdding] = useState(false);

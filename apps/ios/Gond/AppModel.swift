@@ -35,6 +35,7 @@ final class AppModel: ObservableObject {
     let ui = NativeUI()
     private(set) lazy var shell = WebShell(model: self)
     private let signIn = SignIn()
+    private var started = false
 
     init() {
         #if DEBUG
@@ -48,8 +49,11 @@ final class AppModel: ObservableObject {
     }
 
     func start() {
+        // Dismissing a full-screen sheet (such as the camera or Safari) fires RootView.onAppear again;
+        // only the first appearance opens the initial page, so returning stays in the same chat.
+        guard !started else { return }
+        started = true
         Notifications.shared.onOpen = { [weak self] url in self?.open(url) }
-        // A tap on a notification that launched the app opens its conversation, not the list.
         let target = Notifications.shared.takePendingOpen() ?? "/app"
         #if DEBUG
         let screens = ProcessInfo.processInfo.environment
@@ -64,7 +68,6 @@ final class AppModel: ObservableObject {
         if server != nil { open(target) }
     }
 
-    /// Connect can go back to the Gond it came from when one is loaded.
     var canGoBack: Bool { server != nil && shell.hasPage }
 
     func showConnect(error: String? = nil) {
@@ -117,7 +120,6 @@ final class AppModel: ObservableObject {
         open("/login")
     }
 
-    /// A path on the connected Gond, like /app/t/…, or a whole address there.
     func open(_ target: String) {
         guard let server else { return }
         let path: String

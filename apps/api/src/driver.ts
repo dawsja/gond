@@ -74,7 +74,6 @@ type CliTurn = {
   // Only what is new since this agent's last turn; the box sends it instead
   // of `prompt` when the CLI session already carries the conversation.
   followUp?: string;
-  /** The CLI session this agent was last on, kept by the API (`agentSession`). */
   session?: string;
   attachments?: { name: string; mediaType: string; data: string }[];
   tools: Record<string, DriverTool>;
@@ -92,7 +91,6 @@ type CliTurn = {
   // The reply's words so far as the model writes them, or null when a tool call ends them.
   onText?: (text: string | null) => void;
   onUsage?: (usage: ModelUsage) => void;
-  // How much of a Claude plan is used, whenever Claude Code hears it change.
   onLimits?: (limits: Record<string, { used: number; resetsAt: string }>) => void;
 };
 
@@ -103,9 +101,7 @@ type CliTurnResult = {
   error: string | null;
   recovered: boolean;
   signedOut?: boolean;
-  /** How the box found the session: running, resumed from its history, or new. */
   launch?: "warm" | "resumed" | "launched";
-  /** The CLI session the turn ran in, to resume next time. */
   sessionId?: string | null;
 };
 

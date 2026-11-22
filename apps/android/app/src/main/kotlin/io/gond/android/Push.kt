@@ -26,11 +26,9 @@ object Push {
         }
     }
 
-    /** What the web app reads to sign this phone up: `{ token, device }`, each null until there is one. */
     fun state(context: Context): String =
         JSONObject().put("token", Prefs.pushToken(context) ?: JSONObject.NULL).put("device", Prefs.pushDevice(context)?.id ?: JSONObject.NULL).toString()
 
-    /** The server's answer to signing up (`{ id, seal, answer }`), or nothing to sign this phone out. */
     fun save(context: Context, json: String?) {
         if (json.isNullOrBlank()) return Prefs.setPushDevice(context, null)
         try {

@@ -38,7 +38,6 @@ function reportSoon(ms: number) {
   soon.unref?.();
 }
 
-/** Turned on, the first report goes a minute later; turned off, nothing more goes. */
 export function changeSharing(on: boolean): UsageSharing {
   setUsageSharing(on);
   if (on) reportSoon(FIRST_MS);

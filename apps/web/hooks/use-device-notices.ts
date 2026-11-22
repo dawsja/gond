@@ -8,10 +8,6 @@ import { isPhoneShell, shellBridge, useNativeShell } from "@/lib/shell";
 /** Fired when notifications are turned on or off here, so everything showing what this device hears reads it again. */
 export const NOTIFICATIONS_EVENT = "gond:notifications";
 
-/**
- * Which notices this browser or app takes, once notifications are on here (null until then), what to
- * call it, and a save that throws when it can't.
- */
 export function useDeviceNotices() {
   const shell = useNativeShell();
   const [notices, setNotices] = useState<DeviceNotices | null>(null);

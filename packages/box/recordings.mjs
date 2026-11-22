@@ -2,7 +2,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { appName, createTimeline, pageStep, samePage, TEACH_MAX_FRAME_BYTES, TEACH_MAX_FRAMES, TEACH_MAX_MS } from "./recorder.mjs";
 
-// With nobody watching the screen, a recording pauses after this, and ends after the second.
 const AWAY_PAUSE_MS = 30_000;
 const AWAY_END_MS = 30 * 60_000;
 const FRAME_GAP_MS = 600;
@@ -167,7 +166,6 @@ export function createRecordings({ root, takeFrame, windowAt, browserRecord, vie
   };
 
   return {
-    /** Starts recording a screen; the same id again is the one already running. */
     async start({ key, user, bot, id, replace = false }) {
       const running = live.get(key);
       if (running && !running.ended) {
@@ -241,7 +239,6 @@ export function createRecordings({ root, takeFrame, windowAt, browserRecord, vie
       end(rec, why);
       return statusOf(rec);
     },
-    /** Ends a recording and forgets it, files and all. */
     discard(key) {
       const rec = live.get(key);
       if (!rec) return false;
@@ -250,7 +247,6 @@ export function createRecordings({ root, takeFrame, windowAt, browserRecord, vie
       fs.rmSync(rec.dir, { recursive: true, force: true });
       return true;
     },
-    /** A step from the person's own input, placed in the window it happened in. */
     async desktopInput(key, { step, replace }) {
       const rec = live.get(key);
       if (!rec || rec.ended || rec.paused) return null;
@@ -262,7 +258,6 @@ export function createRecordings({ root, takeFrame, windowAt, browserRecord, vie
       const app = isBrowserWindow(where?.cls) ? "the browser" : appName(where?.name);
       return add(rec, { ...step, layer: "desktop", app, ...(outside ? { outside: true } : {}) }, replace);
     },
-    /** A step the bot's browser reported; the page's own words are cut to what a step may hold. */
     pageEvent(key, raw) {
       const rec = live.get(key);
       if (!rec || rec.ended || rec.paused) return null;
@@ -280,14 +275,12 @@ export function createRecordings({ root, takeFrame, windowAt, browserRecord, vie
       if (typeof raw.url === "string" && /^https?:/.test(raw.url)) step.url = raw.url.slice(0, 500);
       return add(rec, step);
     },
-    /** The browser stopped answering mid-recording: say so once, and carry on with the desktop. */
     lostBrowser(key) {
       const rec = live.get(key);
       if (!rec || rec.ended || !rec.browser) return;
       rec.browser = false;
       add(rec, { kind: "gap", layer: "browser" });
     },
-    /** Pauses a recording nobody watches, and ends one left that way too long. */
     viewersChanged(key) {
       const rec = live.get(key);
       if (!rec || rec.ended) return;
@@ -300,7 +293,6 @@ export function createRecordings({ root, takeFrame, windowAt, browserRecord, vie
       if (!rec.awayTimer && !rec.paused) rec.awayTimer = timers.setTimeout(() => ((rec.awayTimer = null), pause(rec, "away")), AWAY_PAUSE_MS);
       if (!rec.goneTimer) rec.goneTimer = timers.setTimeout(() => ((rec.goneTimer = null), end(rec, "away")), AWAY_END_MS);
     },
-    /** What a recording left on disk, after the box restarted without it in memory. */
     fromDisk(user, id) {
       if (!RECORDING_ID.test(id) || !SAFE_NAME.test(user)) return null;
       try {
@@ -318,7 +310,6 @@ export function createRecordings({ root, takeFrame, windowAt, browserRecord, vie
       if (!RECORDING_ID.test(id) || !SAFE_NAME.test(user)) return;
       fs.rmSync(dirOf(user, id), { recursive: true, force: true });
     },
-    /** Everything a person's recordings left, when they are deleted. */
     removeUser(user) {
       if (SAFE_NAME.test(user)) fs.rmSync(path.join(root, user), { recursive: true, force: true });
     },
@@ -339,7 +330,6 @@ export function createRecordings({ root, takeFrame, windowAt, browserRecord, vie
       writeSteps(rec);
       live.delete(key);
     },
-    /** Recordings nobody came back for, a week on. */
     sweep(maxAgeMs = 7 * 24 * 60 * 60_000) {
       const cutoff = now() - maxAgeMs;
       for (const user of fs.existsSync(root) ? fs.readdirSync(root) : []) {

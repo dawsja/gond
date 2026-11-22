@@ -10,7 +10,6 @@ import UserNotifications
 final class Notifications: NSObject {
     static let shared = Notifications()
 
-    /// Where a clicked notification goes: a path on your Gond.
     var onOpen: ((String) -> Void)?
     private var pendingOpen: String?
 
@@ -19,7 +18,6 @@ final class Notifications: NSObject {
         UNUserNotificationCenter.current().delegate = self
     }
 
-    /// "granted", "denied" or "prompt", as the web app's notifications card shows it.
     func state() async -> String {
         let settings = await UNUserNotificationCenter.current().notificationSettings()
         switch settings.authorizationStatus {

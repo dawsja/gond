@@ -23,11 +23,6 @@ import { cn } from "@/lib/utils";
 const frameUrl = (id: string, n: number) => `/api/teachings/${id}/frames/${n}`;
 const NEVER_KEPT = "Passwords and sign-in codes are never kept, and only you and your bots see the recording.";
 
-/**
- * "Show me how" in a conversation: one card that follows it from the offer to the skill. It asks
- * to start, says it is recording, asks the person to hide what they typed outside the browser,
- * waits while the bot looks, then shows the bot's draft to try, save or send back.
- */
 export function TeachCard({ message, bot }: { message: Message; bot: Bot | undefined }) {
   const { teaching, failed: loadFailed, reload } = useTeaching(message.approvalId);
   const name = bot?.name ?? "The bot";
@@ -154,7 +149,6 @@ function Recording({ teaching, bot, icon }: CardProps) {
   );
 }
 
-/** What was typed outside the browser, where a password can't be told from a command: the person hides what's private first. */
 function Review({ teaching, bot }: CardProps) {
   const put = usePutTeaching();
   const { discard } = useTeachActions(teaching);
@@ -338,7 +332,6 @@ function Ready({ teaching, bot, icon }: CardProps) {
   );
 }
 
-/** A recording's pictures at full size, one at a time. */
 function FrameViewer({ teaching, frames, at, onAt }: { teaching: Teaching; frames: number[]; at: number | null; onAt: (n: number | null) => void }) {
   const index = at === null ? -1 : frames.indexOf(at);
   const step = teaching.steps.find((s) => s.frame === at);
@@ -369,7 +362,6 @@ function FrameViewer({ teaching, frames, at, onAt }: { teaching: Teaching; frame
   );
 }
 
-/** Changing the draft by hand: its name, its steps one per line, and its instructions. */
 function EditDraft({ teaching, draft, onClose }: { teaching: Teaching; draft: TeachDraft; onClose: () => void }) {
   const put = usePutTeaching();
   const [name, setName] = useState(draft.name);

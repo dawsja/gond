@@ -58,7 +58,6 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
     app.set_menu(menu)?;
     app.on_menu_event(|app, event| {
         on_menu(app, event.id().as_ref());
-        // A pick from the menu is done with it, so it goes back out of the way.
         for window in app.webview_windows().values() {
             crate::hide_menu_bar(window);
         }

@@ -19,7 +19,6 @@ export function contrast(a: string, b: string): number {
   return (hi + 0.05) / (lo + 0.05);
 }
 
-/** `colour` at `alpha` painted over `under`, as a browser composites `bg-x/20` or `ring-x/50`. */
 export function over(colour: string, alpha: number, under: string): string {
   const top = channels(colour);
   const bottom = channels(under);

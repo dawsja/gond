@@ -3,11 +3,6 @@ import { getApproval } from "./data/approvals.ts";
 import { memberOfAuthor } from "./data/spaces.ts";
 import { recentMessages } from "./data/threads.ts";
 
-/**
- * The last `count` lines of a conversation up to `upTo`. With `after`, only
- * those newer than it and none of `self`'s own (what a resumed session
- * hasn't seen), and none a running turn already took as a steer.
- */
 export function transcript(thread: Thread, bots: Bot[], self: Bot, upTo: Message, count = 30, options: { after?: string | null } = {}): string {
   const after = options.after ?? null;
   const lines = recentMessages(thread.id, count).filter((m) => m.createdAt <= upTo.createdAt && (!after || (m.createdAt > after && (m.author !== self.id || m.spoken) && (!m.steered || m.id === upTo.id))));
@@ -31,7 +26,6 @@ export function transcriptLines(lines: Message[], bots: Bot[], self: Pick<Bot, "
     .join("\n");
 }
 
-/** Who said a line, as a bot reading a conversation back should see them. */
 export function authorName(author: string, threadId: string, names: Map<string, string>, selfId?: string): string {
   if (author === "you") return "Person";
   if (author === "routine") return "Routine";
@@ -40,7 +34,6 @@ export function authorName(author: string, threadId: string, names: Map<string, 
   return (names.get(author) ?? author) + (author === selfId ? " (you)" : "");
 }
 
-/** How an approval card ended, so a bot reading back knows its person's answer and not only that it asked. */
 function approvalEnding(m: Message): string {
   const card = m.approvalId ? getApproval(m.approvalId) : null;
   const status = card?.status;
@@ -48,7 +41,6 @@ function approvalEnding(m: Message): string {
   return status === "allowed" ? "; your person said yes" : status === "denied" ? "; your person said no" : status === "expired" ? "; nobody answered in time" : status === "pending" ? "; waiting for your person" : "";
 }
 
-/** Someone on another Gond in a space, said so plainly: they aren't the person, and their bots aren't teammates. */
 function fromAfar(threadId: string, author: string): string {
   const member = memberOfAuthor(threadId, author);
   if (!member) return "Someone from another Gond (not your person)";

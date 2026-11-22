@@ -24,7 +24,6 @@ export type UsageReport = {
   /** What the bots run on now, and the host of its key when it is one. */
   source: UsageSource;
   host: string | null;
-  /** How much is left, null when the provider doesn't share it; checkedAt is when it was last read. */
   windows: PlanWindow[] | null;
   checkedAt: string | null;
   /** This month on what the bots run on now; cost only where the provider says what it billed. */

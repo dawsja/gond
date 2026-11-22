@@ -47,7 +47,6 @@ function Steps({ phase }: { phase: ServerUpdatePhase }) {
   );
 }
 
-/** Settings → About: the server's version, and for the admin, a newer Gond with what's new and one button to update to it. */
 export function ServerUpdateCard() {
   const { admin } = useStore();
   const host = useSyncExternalStore(never, () => window.location.host, () => "");

@@ -216,7 +216,6 @@ const PLAN_ERRORS: Record<string, string> = {
   subscription_sharing_user_unavailable: "ChatGPT couldn't check your plan just now. Try again in a moment.",
 };
 
-/** What a Grok plan's refusal means to the person; its errors are `{ code, error }`. */
 export function grokError(status: number, body: unknown): string {
   const data = (body ?? {}) as { code?: unknown; error?: unknown; message?: unknown };
   const nested = data.error && typeof data.error === "object" ? (data.error as { code?: unknown; message?: unknown }) : null;
@@ -231,7 +230,6 @@ export function grokError(status: number, body: unknown): string {
   return providerError(status, body);
 }
 
-/** What a ChatGPT plan's refusal means to the person, from its code, before or inside the stream. */
 export function planError(status: number, body: unknown): string {
   const error = (body as { error?: unknown; response?: { error?: unknown } })?.error ?? (body as { response?: { error?: unknown } })?.response?.error;
   const code = (error as { code?: unknown })?.code ?? (body as { code?: unknown })?.code;
@@ -258,10 +256,8 @@ export function isHandoff(name: unknown): boolean {
   return typeof name === "string" && HANDOFFS.includes(name);
 }
 
-/** A call's name as far as it has streamed in could still be a handoff's. */
 const couldBeHandoff = (name: string) => HANDOFFS.some((handoff) => handoff.startsWith(name));
 
-/** Anthropic's streamed events back into the message an unstreamed call answers, telling `onText` the reply's words on the way. */
 export function anthropicAssembler(onText?: TextSink) {
   let message: Record<string, unknown> = {};
   const blocks: Record<string, unknown>[] = [];
@@ -314,7 +310,6 @@ export function anthropicAssembler(onText?: TextSink) {
   };
 }
 
-/** A chat API's streamed chunks back into the message an unstreamed call answers. */
 export function openAiAssembler(onText?: TextSink) {
   const message: Record<string, unknown> = {};
   const calls: { id?: string; type?: string; function: { name: string; arguments: string } }[] = [];
@@ -359,7 +354,6 @@ export function openAiAssembler(onText?: TextSink) {
   };
 }
 
-/** The reply's words in a Responses API stream, for `onText`; the step itself is still `readResponses`. */
 export function responsesText(onText?: TextSink) {
   let text = "";
   return (raw: unknown) => {
@@ -439,7 +433,6 @@ async function sendResponses(turn: NativeTurn, input: unknown[], onText?: TextSi
     try {
       payload = JSON.parse(raw);
     } catch {
-      /* plain text */
     }
     throw new Error(grok ? grokError(res.status, payload) : planError(res.status, payload));
   }

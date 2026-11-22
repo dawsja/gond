@@ -40,7 +40,6 @@ form.addEventListener("submit", async (event) => {
   input.focus();
 });
 
-// The window has no frame: the header is its title row (data-window-drag) and these are its buttons.
 const desktop = window.gondDesktop;
 const controls = document.getElementById("window");
 if (typeof desktop?.setFrameless === "function") {

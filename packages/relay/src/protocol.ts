@@ -13,35 +13,23 @@ export const PROTOCOL = 1;
 export const VERSIONS = [PROTOCOL] as const;
 
 export const LIMITS = {
-  /** The largest envelope as sent, JSON and all. Files go in chunks. */
   envelopeBytes: 256 * 1024,
-  /** The largest frame a socket takes; an envelope plus its frame. */
   frameBytes: 300 * 1024,
-  /** What one mailbox holds for an owner who is away, by count and by size. */
   queued: 2000,
   queuedBytes: 64 * 1024 * 1024,
-  /** How long a held envelope waits for its owner before it goes. */
   queueMs: 7 * 24 * 60 * 60 * 1000,
-  /** Envelopes one key may send a minute. */
   sendsPerMinute: 120,
-  /** Senders one mailbox may let in, and invites it may have open. */
   allowed: 1000,
   invites: 100,
   inviteMs: 30 * 24 * 60 * 60 * 1000,
-  /** A socket that hasn't answered its challenge by then is closed. */
   helloMs: 10_000,
-  /** A mailbox nobody connected to for this long is removed, with everything in it. */
   idleMs: 90 * 24 * 60 * 60 * 1000,
   /** A push's sealed notice; Firebase takes 4 KB of data in all. */
   pushBytes: 3000,
-  /** Pushes one key may send a minute. */
   pushesPerMinute: 120,
-  /** How far a push's time may be from the relay's, either way. */
   pushSkewMs: 5 * 60 * 1000,
-  /** How often one key may report its usage, and how many tokens an hour a report may add. */
   usageEveryMs: 10 * 60 * 1000,
   usageTokensPerHour: 250_000_000,
-  /** Days of daily counts `/v1/usage` gives back. */
   usageDays: 90,
 } as const;
 
@@ -104,7 +92,6 @@ export type PushRequest = {
   token: string;
   /** The sealed notice, base64url. */
   data: string;
-  /** A newer push with the same collapse key replaces an older one still waiting. */
   collapse: string | null;
   /**
    * Shows nothing by itself: what it carries changes what the phone already shows (a card answered
@@ -142,12 +129,10 @@ export type UsageTotals = { tokens: number; gonds: number; since: number | null;
 export const PUSH_PLATFORMS = ["android", "ios"] as const;
 export type PushPlatform = (typeof PUSH_PLATFORMS)[number];
 
-/** What a relay says about itself at its root address. */
 export function info() {
   return { name: "gond-relay", protocol: PROTOCOL, versions: VERSIONS, limits: { envelopeBytes: LIMITS.envelopeBytes, queueDays: LIMITS.queueMs / 86_400_000 } };
 }
 
-/** Words for each refusal, written for the Gond that reads them (and its logs). */
 export const REFUSALS: Record<Refusal, string> = {
   not_allowed: "That mailbox doesn't take envelopes from this key. It needs an invite first.",
   too_big: `Envelopes are at most ${LIMITS.envelopeBytes} bytes; send big things in chunks.`,
@@ -217,7 +202,6 @@ export function parseEnvelope(value: unknown): Envelope | null {
   return { v: 1, id: e.id, from: e.from, to: e.to, at: e.at, enc: e.enc, ct: e.ct, sig: e.sig };
 }
 
-/** Reads one frame from a client, or null for anything that isn't one. */
 export function parseClientFrame(raw: string): ClientFrame | null {
   if (raw.length > LIMITS.frameBytes) return null;
   let value: unknown;
@@ -275,7 +259,6 @@ export function randomB64(bytes: number): string {
   return toB64(crypto.getRandomValues(new Uint8Array(bytes)));
 }
 
-/** An invite token is shared once, in the invite link; the relay keeps only its hash. */
 export async function inviteHash(token: string): Promise<string> {
   return toB64(await crypto.subtle.digest("SHA-256", utf8(token)));
 }

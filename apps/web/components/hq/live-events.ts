@@ -86,7 +86,6 @@ function connect() {
     try {
       dispatch(JSON.parse(event.data) as LiveEvent);
     } catch {
-      // Not ours.
     }
   };
   stream.onerror = () => {

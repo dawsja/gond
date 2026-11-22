@@ -101,7 +101,6 @@ function markSeen(): boolean {
   return true;
 }
 
-/** Step 2 for the ChatGPT engine: Continue with ChatGPT, or the account it signed in. */
 export function ChatGptAccount({ providers, reload }: { providers: Record<ProviderKind, ProviderMeta | null> | null; reload: () => void }) {
   const params = useSearchParams();
   const [welcome, setWelcome] = useState(false);

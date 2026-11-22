@@ -38,7 +38,6 @@ function parsed<T>(text: string | null, fallback: T): T {
  */
 export const LATE_ANSWER_HOURS = 24;
 
-/** The oldest a card can have been asked and still be answered late. */
 function answerableSince(at = Date.now()): string {
   return new Date(at - LATE_ANSWER_HOURS * 3_600_000).toISOString();
 }
@@ -66,7 +65,6 @@ function toApproval(row: Row): Approval {
   };
 }
 
-/** Tells the profiles whose cards these are; one emit each, however many cards. */
 function changedFor(rows: Pick<Row, "thread_id">[]) {
   for (const threadId of new Set(rows.map((row) => row.thread_id))) approvalsChanged(threadOwner(threadId));
 }
@@ -87,27 +85,23 @@ export function createApproval(input: { botId: string; threadId: string; tool: s
   return getApproval(id)!;
 }
 
-/** The work a waiting or paused card holds; null for any other card. */
 export function cardWork(id: string): CardWork | null {
   const row = ensureDatabase().query("SELECT note FROM gond_approvals WHERE id = ? AND (status = 'pending' OR outcome = 'paused')").get(id) as { note: string | null } | null;
   const work = parsed<Partial<CardWork> | null>(row?.note ?? null, null);
   return work && typeof work.answering === "string" ? { answering: work.answering, done: Array.isArray(work.done) ? work.done.filter((step): step is string => typeof step === "string") : [] } : null;
 }
 
-/** A waiting card that keeps its work closes paused instead of expired: it can still be answered. */
 export function pauseApproval(id: string): boolean {
   const rows = ensureDatabase().query("UPDATE gond_approvals SET status = 'expired', outcome = 'paused', resolved_at = ? WHERE id = ? AND status = 'pending' AND note IS NOT NULL RETURNING thread_id").all(now(), id) as Pick<Row, "thread_id">[];
   changedFor(rows);
   return rows.length > 0;
 }
 
-/** The cards in a conversation that can still be answered late, newest first. */
 export function pausedApprovals(threadId: string): Approval[] {
   const rows = ensureDatabase().query("SELECT * FROM gond_approvals WHERE status = 'expired' AND created_at > ? AND thread_id = ? AND outcome = 'paused' ORDER BY created_at DESC").all(answerableSince(), threadId) as Row[];
   return rows.map(toApproval);
 }
 
-/** Paused cards that can't be answered any more (one, a conversation's, or one bot's there) read as plainly expired from now. The ones it closed. */
 export function unpauseApprovals(where: { id?: string; threadId?: string; botId?: string }): Approval[] {
   const clauses = ["status = 'expired'", "created_at > ?", "outcome = 'paused'"];
   const params: string[] = [answerableSince()];
@@ -133,7 +127,6 @@ export function lapsePausedApprovals(at = Date.now()): Approval[] {
   return rows.map(toApproval);
 }
 
-/** A paused card answered late; null when it was already answered or stopped being answerable. */
 export function resolvePaused(id: string, status: "allowed" | "denied", rule: string | null, answer: { outcome?: ApprovalOutcome | null; note?: string | null; input?: Record<string, unknown> } = {}): Approval | null {
   const row = ensureDatabase()
     .query("UPDATE gond_approvals SET status = ?, rule = ?, resolved_at = ?, outcome = ?, note = ?, edited = ?, input = COALESCE(?, input) WHERE id = ? AND status = 'expired' AND outcome = 'paused' AND created_at > ? RETURNING *")
@@ -148,7 +141,6 @@ export function getApproval(id: string): Approval | null {
   return row ? toApproval(row) : null;
 }
 
-/** These cards in one statement, in the order asked; with `userId`, only those in that profile's conversations. */
 export function getApprovals(ids: string[], userId?: string): Approval[] {
   if (!ids.length) return [];
   const owned = userId === undefined ? "" : "AND thread_id IN (SELECT id FROM gond_threads WHERE user_id = ?)";

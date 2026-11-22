@@ -40,7 +40,6 @@ afterAll(async () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-/** Sends what Gond addresses to `host` (xAI's API, Gond's relay) to a local server instead, until the returned function runs. */
 function routeHost(host: string, port: number | undefined): () => void {
   const fetchBefore = globalThis.fetch;
   const SocketBefore = globalThis.WebSocket;
@@ -62,7 +61,6 @@ function text(value: string): Uint8Array {
   return new TextEncoder().encode(value);
 }
 
-/** A person's home on the computer as its files API answers it: listings, raw reads and writes, deletes; 503 while `down`. */
 async function fakeHome(request: Request, files: Map<string, Uint8Array>, down: () => boolean): Promise<Response> {
   if (down()) return Response.json({ error: "The computer is updating" }, { status: 503 });
   const url = new URL(request.url);
@@ -91,7 +89,6 @@ async function fakeHome(request: Request, files: Map<string, Uint8Array>, down: 
 
 let magickReady: Promise<typeof import("@imagemagick/magick-wasm")> | null = null;
 
-/** ImageMagick in this process, to make test pictures and read back what Gond made. */
 function magick() {
   return (magickReady ??= (async () => {
     const wasm = await import("@imagemagick/magick-wasm");
@@ -191,12 +188,10 @@ describe("data", () => {
     const server = Bun.serve({ port: 0, fetch: (request) => fakeHome(request, files, () => down) });
     const box = { url: `http://127.0.0.1:${server.port}`, token: "t", user: "u-mem" };
     try {
-      // The computer is down: the memory waits there, can't be read or written over, and nothing on it is touched.
       expect(await memoryForTurn(box, { bot: bot.id })).toBe(memory.UNREADABLE);
       expect(await memoryForTurn(box, { team: "u-mem" })).toBe(memory.UNREADABLE);
       expect(saveMemory({ bot: bot.id }, "", "- Fresh start.", { own: memory.UNREADABLE, team: memory.UNREADABLE })).toEqual({ waiting: true });
       expect(files.size).toBe(7);
-      // Without a computer at all it waits too, rather than the bot starting over with none.
       expect(await memoryForTurn(null, { bot: bot.id })).toBe(memory.UNREADABLE);
 
       down = false;
@@ -204,7 +199,6 @@ describe("data", () => {
       expect(memoryOnComputer({ bot: bot.id })).toBe(false);
       expect(memoryTopics({ bot: bot.id }).map((t) => t.topic)).toEqual(["garden", "trips/2026"]);
       expect(readMemory({ bot: bot.id }, memory.topicName("memory/garden.md")!)).toBe("Roses in May.");
-      // What moved leaves the computer, with a copy set aside; what isn't notes stays where it was.
       expect(files.has(`${home}/MEMORY.md`)).toBe(false);
       expect(files.has(`${home}/memory/trips/2026.md`)).toBe(false);
       expect(new TextDecoder().decode(files.get(`${home}/.memory-moved/memory/garden.md`))).toBe("Roses in May.");
@@ -217,16 +211,13 @@ describe("data", () => {
       expect(files.has(".team/u-mem/MEMORY.md")).toBe(false);
       expect(files.has(".team/u-mem/clients.md")).toBe(true);
 
-      // Moved, the memory is the database's, with or without a computer.
       expect(await memoryForTurn(null, { bot: bot.id })).toBe("- Likes tea.\n- memory/garden.md: the garden");
 
-      // A MEMORY.md a bot writes on the computer afterwards, out of habit, is merged in at its next turn, losing neither side.
       files.set(`${home}/MEMORY.md`, text("- Likes coffee now."));
       const merged = await memoryForTurn(box, { bot: bot.id });
       expect(merged).toContain("- Likes tea.");
       expect(merged).toContain("- Likes coffee now.");
       expect(files.has(`${home}/MEMORY.md`)).toBe(false);
-      // The bot tidies it; the same file turning up again (one that couldn't be removed) doesn't bring the old line back.
       expect(saveMemory({ bot: bot.id }, "", "- Likes tea.", undefined)).toEqual({ saved: true });
       files.set(`${home}/MEMORY.md`, text("- Likes coffee now."));
       expect(await memoryForTurn(box, { bot: bot.id })).toBe("- Likes tea.");
@@ -242,16 +233,13 @@ describe("data", () => {
     const { botInputSchema } = await import("@gond/shared");
     const team = { team: "u-cas" };
     writeMemory(team, "", "- Office is in Leeds.");
-    // Two turns load the same memory, and both save.
     const first = { own: null, team: "- Office is in Leeds." };
     const second = { own: null, team: "- Office is in Leeds." };
     expect(saveMemory(team, "", "- Office is in Leeds.\n- Dana runs payroll.", first)).toEqual({ saved: true });
     expect(saveMemory(team, "", "- Office is in Leeds.\n- Fridays are remote.", second)).toEqual({ changed: "- Office is in Leeds.\n- Dana runs payroll." });
     expect(readMemory(team)).toBe("- Office is in Leeds.\n- Dana runs payroll.");
-    // Having heard it as it is now, the second turn's merged save goes through, and so do its next ones.
     expect(saveMemory(team, "", "- Office is in Leeds.\n- Dana runs payroll.\n- Fridays are remote.", second)).toEqual({ saved: true });
     expect(saveMemory(team, "", "- Office is in Leeds.\n- Dana runs payroll.\n- Fridays are remote.\n- Coffee at 10.", second)).toEqual({ saved: true });
-    // A topic the turn hasn't read isn't written over; a memory nobody wrote yet takes the first save.
     writeMemory(team, "clients", "Acme.");
     const third = { own: null, team: null };
     expect(saveMemory(team, "clients", "Globex.", third)).toEqual({ changed: "Acme." });
@@ -320,7 +308,6 @@ describe("data", () => {
     const after = count();
     expect(await ask("ask_approval", { summary: "Pay the invoice" }, "Pay the invoice")).toBe("allow");
     expect(count()).toBe(after);
-    // An email that goes out still shows its letter on Always allow; saving a draft doesn't ask.
     for (const tool of ["GMAIL_SEND_EMAIL", "mcp__gmail__reply_to_thread"]) {
       const sending = ask(tool, { recipient_email: "a@b.co", subject: "s", body: "b" }, "Send it");
       const card = listMessages(bot.threadId).at(-1)!;
@@ -349,7 +336,6 @@ describe("data", () => {
     const mineId = cardIn(one.threadId);
     const plain = requestApproval({ bot: one, threadId: one.threadId, tool: "mcp__toad__delete_app", input: { id: "a1" } });
     const plainId = cardIn(one.threadId);
-    // Another bot's card in this chat, and this bot's card in another, stay open.
     const theirs = askApproval({ bot: two, threadId: one.threadId, tool: "Bash", input: { command: "ls" } });
     const theirsId = cardIn(one.threadId);
     const elsewhere = askApproval({ bot: one, threadId: two.threadId, tool: "Bash", input: { command: "ls" } });
@@ -357,12 +343,10 @@ describe("data", () => {
 
     expect(setAside(one.id, one.threadId)).toBe(2);
     expect(await mine).toMatchObject({ decision: "deny", aside: true });
-    // A caller that only reads the decision sees a no, so nothing it guards can run.
     expect(await plain).toBe("deny");
     for (const id of [mineId, plainId]) expect(getApproval(id)).toMatchObject({ status: "expired", outcome: "aside" });
     for (const id of [theirsId, elsewhereId]) expect(getApproval(id)?.status).toBe("pending");
     expect(setAside(one.id, one.threadId)).toBe(0);
-    // A tap that lands after it was set aside changes nothing.
     expect(decide(mineId, { decision: "allow" })?.status).toBe("expired");
     expect(setAsideText("for \"run `ls`\"")).toContain("Their message comes next");
 
@@ -370,14 +354,12 @@ describe("data", () => {
     decide(elsewhereId, { decision: "deny" });
     await Promise.all([theirs, elsewhere]);
 
-    // The person's line sets the card aside only once the turn has taken it.
     const { steer } = await import("../src/responder.ts");
     const turn = (took: boolean) => ({ botId: one.id, threadId: one.threadId, route: "person", messageId: "m", steer: async () => took }) as unknown as Parameters<typeof steer>[0][number];
     const waiting = askApproval({ bot: one, threadId: one.threadId, tool: "Bash", input: { command: "make deploy" } });
     const waitingId = cardIn(one.threadId);
     expect(await steer([turn(false)], "Actually, deploy to staging")).toEqual([false]);
     expect(getApproval(waitingId)?.status).toBe("pending");
-    // A tap on another question's choices replies to it: the card waits for its own answer.
     expect(await steer([turn(true)], "Yes", { keepCards: true })).toEqual([true]);
     expect(getApproval(waitingId)?.status).toBe("pending");
     expect(await steer([turn(true)], "Actually, deploy to staging")).toEqual([true]);
@@ -568,7 +550,6 @@ describe("data", () => {
     expect(page({ from: cut })).toEqual(ids(all.filter((m) => m.created_at >= cut).slice(0, 7)));
     expect(page({ prompts: false, limit: 100 })).toEqual(ids(all.filter((m) => m.kind !== "prompt")));
     expect(new Set(page({ limit: 100 })).size).toBe(all.length);
-    // An empty cursor from a hand-made request reads as no cursor, not as a broken query.
     expect(page({ before: "", from: "", after: "" })).toEqual(page({}));
   });
 
@@ -814,7 +795,6 @@ describe("data", () => {
     expect(told[0]).toContain("isn't a request");
     expect(transcriptLines([action, info], [ops, dev], dev)).toBe("Opsy (teammate, action for you): Deploy the fix to staging.\nOpsy (teammate, for your information): My part is done.");
 
-    // The answer to an action goes back as information, and wakes the bot that asked for it to carry on.
     deliverReply(dev, getThread(dev.threadId)!, action, "Deployed to staging.");
     const back = listMessages(ops.threadId).at(-1)!;
     expect(back).toMatchObject({ author: dev.id, body: "Deployed to staging.", note: "info" });
@@ -885,7 +865,6 @@ describe("data", () => {
     const space = createSpace({ threadId: room.id, userId: "u-admin", hostKey: host, status: "active" });
     for (const key of [host, guest, other]) addSpaceGond(space.id, key);
     setGondMembers(space.id, guest, [{ id: "p-1", kind: "person", name: "Sam", color: null }]);
-    // Another Gond reusing the same id makes its own member, and Sam is still Sam.
     setGondMembers(space.id, other, [{ id: "p-1", kind: "bot", name: "Impostor", color: null }]);
     expect(spaceMembers(space.id).map((m) => [m.gond, m.name])).toEqual([
       [guest, "Sam"],
@@ -895,14 +874,12 @@ describe("data", () => {
     expect(memberOfAuthor(room.id, remoteAuthor(guest, "p-1"))?.kind).toBe("person");
     expect(memberOfAuthor(room.id, remoteAuthor(other, "p-1"))?.kind).toBe("bot");
 
-    // Here as a guest: lines come only through the host, and only by members their own Gond named.
     const line = (gond: string, author: string) => ({ id: "l1", gond, author, body: "hi", at: 1, replyTo: null });
     expect(mayTakeLine(space, host, line(guest, "p-1"), own)).toBe(true);
     expect(mayTakeLine(space, host, line(guest, "p-9"), own)).toBe(false);
     expect(mayTakeLine(space, host, line(host, "p-1"), own)).toBe(false);
     expect(mayTakeLine(space, guest, line(guest, "p-1"), own)).toBe(false);
     expect(mayTakeLine(space, host, line(own, "p-1"), own)).toBe(false);
-    // Here as the host: a guest speaks only for itself.
     expect(mayTakeLine(space, guest, line(guest, "p-1"), host)).toBe(true);
     expect(mayTakeLine(space, guest, line(other, "p-1"), host)).toBe(false);
     expect(mayTakeLine(space, guest, line(guest, "someone-new"), host)).toBe(false);
@@ -993,10 +970,8 @@ describe("data", () => {
     expect(((await refused.json()) as { error: string }).error).toContain("Settings → Spaces");
     expect(getThread(space.id)!.members).toEqual([clo.id]);
     expect((await edit(space.id, [clo.id, ada.id])).status).toBe(200);
-    // A space may come down to one bot; a room keeps two.
     expect((await edit(space.id, [ada.id])).status).toBe(200);
     expect((await edit(space.id, [])).status).toBe(400);
-    // An ordinary room takes any of the person's bots.
     expect((await edit(room.id, [clo.id, ada.id, patch.id])).status).toBe(200);
   });
 
@@ -1013,16 +988,13 @@ describe("data", () => {
     const tools = (author: string, thread = own) =>
       baseTools({ box: { url: "http://box.invalid", token: "t", user: "u-admin" }, bot: scout, thread, message: { depth: 0, author } as never, askBot: async () => "", syncSoul: async () => undefined, stopWork: async () => false, isWorking: () => false });
 
-    // Off until the person switches it on.
     expect(tools("you").say_in_space).toBeUndefined();
     setRule(space.id, { botId: scout.id, level: "talk", memory: false, peopleWake: true, botsWake: false, relay: true });
     const say = tools("you").say_in_space!;
     expect(say.description).toContain('"Trip"');
     expect(await say.execute({ space: "Trip", text: "Sam, the ferry leaves at 9." }, "c1")).toContain('Said in "Trip"');
     expect(listMessages(room.id).at(-1)).toMatchObject({ author: scout.id, body: "Sam, the ferry leaves at 9." });
-    // Never on a teammate's, a routine's or another Gond's word.
     expect(await tools("routine").say_in_space!.execute({ space: "Trip", text: "Hi" }, "c2")).toContain("NOT said");
-    // In the space itself it just answers there.
     expect(tools("you", room).say_in_space).toBeUndefined();
   });
 
@@ -1058,12 +1030,10 @@ describe("data", () => {
     expect(listMessages(room.id)).toHaveLength(3);
     expect(getThread(net.threadId)).toBeTruthy();
 
-    // A line that names nobody reaches one bot, which is told it must answer and point to whose area it is.
     const { postMessage } = await import("../src/data/threads.ts");
     const { promptFor } = await import("../src/responder.ts");
     const UNNAMED = "The person named nobody in this line, so it came to you alone";
     const unnamed = postMessage({ threadId: room.id, author: "you", body: "is the VPN up?" });
-    // Patchy spoke last, so the line is Patchy's alone.
     expect(promptFor(patch, room, unnamed, [patch, net])).toContain(UNNAMED);
     const named = postMessage({ threadId: room.id, author: "you", body: "@netty is the VPN up?" });
     expect(promptFor(net, room, named, [patch, net])).not.toContain(UNNAMED);
@@ -1116,21 +1086,18 @@ describe("data", () => {
       expect(claimOf(line.id)).toBeNull();
       expect(targetsFor(routed, room, [patch, sentry]).map((b) => b.id)).toEqual([sentry.id]);
 
-      // A line that names its bot never waits on the router.
       const calls = asked.length;
       const named = await postFromPerson(room, { body: "@routepatch reboot it" });
       expect(claimOf(named.id)).toBeNull();
       expect(named.sentTo).toBeNull();
       expect(asked.length).toBe(calls);
 
-      // An answer that names nobody in the room leaves the line to the rules.
       answer = "I'm not sure.";
       const unsure = await postFromPerson(room, { body: "and the backups?" });
       await settled(unsure.id);
       expect(getMessage(unsure.id)!.sentTo).toBeNull();
       expect(claimOf(unsure.id)).toBeNull();
 
-      // A line still held for the router at a restart wasn't cut off: it is released to route by the rules.
       const held = postMessage({ threadId: room.id, author: "you", body: "status?", routing: true });
       releaseClaims(ensureDatabase());
       expect(claimOf(held.id)).toBeNull();
@@ -1357,7 +1324,6 @@ describe("data", () => {
       expect(getProvider("u-grok", "grok")?.account).toEqual({ email: "grok@example.com", name: null });
       expect(allProviderKeys()).toEqual(expect.arrayContaining(["grok-access-1234567890", "grok-refresh-1234567890"]));
 
-      // Under five minutes left, so the next use renews it, once, with the rotated refresh token kept.
       expect(await Promise.all([grokAccessToken("u-grok"), grokAccessToken("u-grok")])).toEqual(["grok-access-renewed-12345", "grok-access-renewed-12345"]);
       expect(seen.filter((call) => call.body.get("grant_type") === "refresh_token")).toHaveLength(1);
       expect(planSession("u-grok", "grok")?.refreshToken).toBe("grok-refresh-renewed-123");
@@ -1535,7 +1501,6 @@ describe("data", () => {
     const light = updateBot(made.id, { name: "Inbox bot" })!;
     expect(engineRun(plan, "u-model", light).model).toBe("haiku");
 
-    // On a key the plan's alias means nothing, so the key's model runs, background calls too.
     saveProvider("u-model", "anthropic", { baseUrl: "https://api.kimi.com/coding/", apiKey: "sk-kimi-1234567890" });
     const keyed = { ...plan, engines: { ...plan.engines, claude: { access: "api" as const, model: "kimi-for-coding" } } };
     expect(engineRun(keyed, "u-model", light)).toMatchObject({ model: "kimi-for-coding", access: { smallModel: "kimi-for-coding" } });
@@ -1572,7 +1537,6 @@ describe("data", () => {
     try {
       expect(getVoice("u-voice")).toEqual({ using: null, transcribeModel: null, callModel: null, callVoice: {} });
       expect((await send()).status).toBe(409);
-      // The bots' OpenAI-compatible key is theirs alone.
       saveProvider("u-voice", "openai", { baseUrl: `http://127.0.0.1:${upstream.port}/v1`, apiKey: "sk-bots-key-123456" });
       expect(getVoice("u-voice").using).toBeNull();
       expect((await send()).status).toBe(409);
@@ -1595,7 +1559,6 @@ describe("data", () => {
       expect((await app.request("/api/voice", { method: "PUT", body: JSON.stringify({ callModel: "gpt-image-2" }) })).status).toBe(400);
       expect(setVoice("u-voice", { callModel: "gpt-live-1" }).callModel).toBe("gpt-live-1");
 
-      // A pick made on the old key doesn't follow the person to xAI.
       setVoice("u-voice", { transcribeModel: "Systran/faster-whisper-small" });
       saveProvider("u-voice", "voice", { baseUrl: "https://api.x.ai/v1", apiKey: "xai-voice-key-123456" });
       expect(getVoice("u-voice").using).toBe("xai");
@@ -1670,7 +1633,6 @@ describe("data", () => {
       expect(other.status).toBe(200);
       expect(seen[2]).toMatchObject({ path: "/other/responses", auth: "Bearer sk-other-key-123456" });
 
-      // The voice key is the API's own: its token opens nothing here.
       saveProvider("u-admin", "voice", { baseUrl: `http://127.0.0.1:${upstream.port}/voice`, apiKey: "sk-voice-only-123456" });
       expect((await app.request("/api/llm/voice/audio/transcriptions", { method: "POST", headers: { authorization: `Bearer ${providerProxyToken("u-admin", "voice")}` }, body: "{}" })).status).toBe(404);
       expect(seen).toHaveLength(3);
@@ -1685,7 +1647,6 @@ describe("data", () => {
 
   test("each bot has its own screen, which goes to one of its replies at a time, and the ones turned away hear when it is free", async () => {
     const { releaseComputer, waitForScreen, desktopHolder } = await import("../src/desktop.ts");
-    // One bot at work in three conversations, and a second bot alongside.
     const ada = { botId: "b-ada", threadId: "t-ada" };
     const room = { botId: "b-ada", threadId: "t-room" };
     const other = { botId: "b-ada", threadId: "t-other" };
@@ -2001,7 +1962,6 @@ describe("data", () => {
       const again = await open();
       expect(again.status).toBe(503);
       expect(((await again.json()) as { error: string }).error).toContain("isn't answering");
-      // The probe marking it failed changes nothing the session is launched with.
       setMcpAuthStatus(server.id, "error", "no answer");
       expect(boxMcpServers({ userId: "u-gone" })[0]).toEqual(given);
     } finally {
@@ -2025,7 +1985,6 @@ describe("data", () => {
         asked.push(name);
 
         if (name === "robinhood.com.ico") return new Response(new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 0]), { headers: { "content-type": "image/png" } });
-        // Labelled a picture, but a script: never relayed from Gond's own address.
         if (name === "evil.example.ico") return new Response("<svg xmlns='http://www.w3.org/2000/svg' onload='alert(1)'/>", { headers: { "content-type": "image/svg+xml" } });
         return new Response(new Uint8Array([137, 80, 78, 71]), { status: 404, headers: { "content-type": "image/png" } });
       },
@@ -2333,7 +2292,6 @@ describe("data", () => {
     expect((await mine.request(`/api/bots/${bot.id}/avatar`, { method: "DELETE" })).status).toBe(204);
     expect(getBot(bot.id)!.avatar).toBeNull();
 
-    // A bot dresses itself or a teammate from a picture on the computer; with none there's nothing to read, but the mascot can always come back.
     const { baseTools, teamTools } = await import("../src/tools.ts");
     const { getThread } = await import("../src/data/threads.ts");
     const { BOT_COLORS } = await import("@gond/shared");
@@ -2374,7 +2332,6 @@ describe("data", () => {
       return app.route("/api", botsRoutes() as never);
     };
     const mine = open("u-rules");
-    // The same person with another of their profiles open, and someone else entirely.
     const otherProfile = open("u-rules", "u-rules-work");
     const someoneElse = open("u-rules-other");
     const forget = (app: ReturnType<typeof open>, rule: string) => app.request(`/api/bots/${bot.id}/rules`, { method: "DELETE", body: JSON.stringify({ rule }) });
@@ -2400,7 +2357,6 @@ describe("data", () => {
     expect((await forget(mine, "")).status).toBe(400);
     expect((await forget(mine, "Bash(git:*)")).status).toBe(204);
     expect(listRules(bot.id)).toEqual([]);
-    // The card that saved it no longer says "From now on".
     expect(getApproval(card.approvalId!)).toMatchObject({ status: "allowed", rule: null });
 
     const again = askApproval({ bot, threadId: bot.threadId, tool: "Bash", input: { command: "git log" } });
@@ -2492,7 +2448,6 @@ describe("data", () => {
     expect(delivered).toEqual(["https://push.example/tester"]);
     expect(seen).toEqual([{ topic: "notify", userId: "u-tester", ...notice }]);
 
-    // Every browser and app the person turned notifications on in gets every notice, whichever they used last.
     delivered.length = 0;
     saveSubscription({ endpoint: "https://push.example/tester-phone", keys: { p256dh: "a", auth: "b" } }, "u-tester");
     const app = asPerson(new Hono(), "u-tester").route("/api", pushRoutes());
@@ -2656,7 +2611,6 @@ describe("data", () => {
       const servedSvg = await app.request(`/api/attachments/${svg.id}`);
       expect(servedSvg.headers.get("content-disposition")).toStartWith("attachment;");
       expect(servedSvg.headers.get("content-security-policy")).toBe("sandbox");
-      // Any file goes; one Gond can't show is kept as bytes to download.
       const exe = await send(new File(["MZ"], "setup.exe", { type: "application/x-msdownload" }));
       expect(exe.status).toBe(201);
       const program = ((await exe.json()) as { message: { attachments: { id: string; mediaType: string }[] } }).message.attachments[0]!;
@@ -2693,7 +2647,6 @@ describe("data", () => {
         return app.request(`/api/threads/${bot.threadId}/messages`, { method: "POST", body: form });
       };
 
-      // Whatever type the browser gave it, the bytes say HEIC.
       for (const type of ["image/heic", "", "application/octet-stream"]) {
         const sent = await send(photo, type);
         expect(sent.status).toBe(201);
@@ -2744,7 +2697,6 @@ describe("data", () => {
     try {
       const config = { url: `http://127.0.0.1:${box.port}`, token: "t", user: "u-admin" };
 
-      // The admin's team memory from before profiles moves in as theirs alone.
       ensureDatabase().query("INSERT OR IGNORE INTO gond_memory_moves (user_id) VALUES (?), (?)").run("u-admin", "u-other");
       expect(await memoryForTurn(config, { team: "u-admin" })).toBe("Dylan is the founder.");
       expect(await memoryForTurn({ ...config, user: "u-other" }, { team: "u-other" })).toBeNull();
@@ -2958,7 +2910,6 @@ describe("steering", () => {
       expect((await postFromPerson(room, { body: "@everyone shorter please" })).steered).toBe(false);
       activeTurns().delete(`${bot.id}--${room.id}`);
 
-      // A turn on a teammate's task hears the person as an aside to answer with post_message, rather than leaving them waiting until it's done.
       const mate = createBot(botInputSchema.parse({ name: "Brief Giver" }), "u-steer");
       const brief = postMessage({ threadId: thread.id, author: mate.id, body: "draft the summary", fromThreadId: mate.threadId });
       activeTurns().set(`${bot.id}--${thread.id}`, { ...turn, messageId: brief.id, route: "chain" });
@@ -3096,11 +3047,9 @@ describe("stop", () => {
       answer = "NOTHING_NEW";
       const asked = postMessage({ threadId: thread.id, author: "you", body: "Anything?" });
       await botTurn(bot, thread, asked);
-      // The quiet word is never posted, whoever woke the bot.
       expect(listMessages(thread.id).at(-1)!.id).toBe(asked.id);
       expect(listMessages(thread.id).some((m) => m.body === "NOTHING_NEW")).toBe(false);
 
-      // An answer with the word tacked on (a line steered in mid-turn that had nothing for it) posts without it.
       answer = "Start with backups.\n\nNOTHING_NEW";
       const again = postMessage({ threadId: thread.id, author: "you", body: "Which first?" });
       await botTurn(bot, thread, again);
@@ -3133,7 +3082,6 @@ describe("stop", () => {
     expect(message.replyTo).toEqual({ id: said.id, author: bot.id, text: "Want me to also check the backups on the NAS?" });
     expect(transcriptLines([getMessage(message.id)!], [bot], bot)).toBe('Person: (replying to Quoted (you): "Want me to also check the backups on the NAS?") Yes, and tonight');
 
-    // A pick is a reply to the message that asked, quoted as its question, so two open at once stay apart.
     const first = postMessage({ threadId: bot.threadId, author: bot.id, body: "The backups all ran.\n\nShould I delete the old ones? ::choices[Yes | No]", answered: true });
     const second = postMessage({ threadId: bot.threadId, author: bot.id, body: "Also, restart the NAS tonight?\n\n::choices[Yes | No]", answered: true });
     const picked = (await (await post(bot.threadId, { body: "Yes", replyTo: second.id })).json()) as { message: { id: string } };
@@ -3253,7 +3201,6 @@ describe("stop", () => {
       await botTurn(bot, thread, first);
       expect(turns[0]!.followUp).toBeUndefined();
       expect(turns[0]!.session).toBeUndefined();
-      // Kept in the database, so a restart of either side still resumes it and sends only what's new.
       expect(agentSession(`${bot.id}--${thread.id}`)).toEqual({ run: "claude:plan", sessionId: "s-1", seenAt: first.createdAt });
 
       await new Promise((resolve) => setTimeout(resolve, 5));
@@ -3279,14 +3226,12 @@ describe("stop", () => {
       expect(deleted.some((path) => path.includes("--sum-"))).toBe(true);
       expect(await summarizeThread({ box: boxConfig("u-recall"), bot, thread, bots: [bot], run, window: 30 })).toBe(false);
 
-      // More came since the last turn than the window holds, so the full prompt and its summary go instead of a follow-up.
       const third = postMessage({ threadId: thread.id, author: "you", body: "What did we decide?" });
       await botTurn(bot, thread, third);
       expect(turns.at(-1)!.followUp).toBeUndefined();
       expect(turns.at(-1)!.prompt).toContain("Earlier in this conversation, summarized");
       expect(turns.at(-1)!.prompt).toContain("Sonic on Fridays");
 
-      // Back on Claude Code after turns on a ChatGPT plan: the old session missed them, so it is forgotten and starts over.
       const agent = `${bot.id}--${thread.id}`;
       saveAgentSession({ agentId: agent, botId: bot.id, threadId: thread.id }, { run: "native:chatgpt", sessionId: null, seenAt: null });
       const before = deleted.length;
@@ -3502,7 +3447,6 @@ describe("handoffs", () => {
 
     const result = postMessage({ threadId: clo.threadId, author: jeff.id, body: "Result for the task you handed me:\n\nHere's the report.", fromThreadId: jeff.threadId });
     finishDelegation(handoff.id, "done", "Here's the report.", result.id);
-    // The result is for the person, and the prompt says so, so the bot never thanks Jeff in their chat.
     expect(answerGoesTo(result)).toBe("person");
     const told = promptFor(clo, cloThread, result, [clo, jeff]);
     expect(told).toContain("This is the result of the task you handed Exchange Jeff. Your answer goes to the person");
@@ -3516,7 +3460,6 @@ describe("handoffs", () => {
     deliverReply(clo, cloThread, asked, "Hello.");
     expect(listMessages(clo.threadId).at(-1)).toMatchObject({ author: clo.id, body: "Hello.", fromThreadId: null });
 
-    // Gond's own report and a hidden prompt answer the person, and hear that teammates' lines here were answered already.
     const incident = postMessage({ threadId: clo.threadId, author: "system", body: "Incident: a run stopped.", fromThreadId: jeff.threadId });
     expect(answerGoesTo(incident)).toBe("person");
     const report = promptFor(clo, cloThread, incident, [clo, jeff]);
@@ -3549,7 +3492,6 @@ describe("handoffs", () => {
     expect(listMessages(net.threadId).at(-1)).toMatchObject({ author: net.id, body: "Failover works.", fromThreadId: null });
     expect(listMessages(patch.threadId).some((m) => m.body === "Failover works.")).toBe(false);
 
-    // When the teammate opened the exchange, its next line is still the teammate's to hear back on.
     await tick();
     postMessage({ threadId: net.threadId, author: "you", body: "Thanks" });
     await tick();
@@ -3576,7 +3518,6 @@ describe("handoffs", () => {
     const toolsOf = (bot: typeof patch, message: { depth: number }) =>
       baseTools({ box: { url: "http://box.invalid", token: "t", user: "u-wake" }, bot, thread: getThread(bot.threadId)!, message: message as never, askBot: async () => "", syncSoul: async () => undefined, stopWork: async () => false, isWorking: () => false, tellWorking: async () => false, reportTo }).message_bot!;
 
-    // The person's errand: Patch asks Net and Sentry to do their parts and ends its turn, waiting on them.
     const errand = postMessage({ threadId: patch.threadId, author: "you", body: "Decommission the old NAS." });
     await tick();
     await toolsOf(patch, errand).execute({ bot: "Wake Net", kind: "action", text: "Move the DNS records off the NAS and confirm." }, "c1");
@@ -3586,7 +3527,6 @@ describe("handoffs", () => {
     const sentryNote = listMessages(sentry.threadId).at(-1)!;
     await tick();
 
-    // Net reports as information mid-turn: that still wakes Patch, whose answer goes to the person.
     expect(await toolsOf(net, netNote).execute({ bot: "Wake Patch", kind: "info", text: "DNS is moved. My part is done." }, "c3")).toContain("carries on");
     const netReport = listMessages(patch.threadId).at(-1)!;
     expect(netReport).toMatchObject({ author: net.id, note: "info", fromThreadId: net.threadId });
@@ -3597,13 +3537,11 @@ describe("handoffs", () => {
     expect(prompt).toContain("do it now");
     expect(prompt).toContain(QUIET_REPLY);
 
-    // Net's final answer lands while its report still waits: it doesn't wake Patch a second time.
     deliverReply(net, getThread(net.threadId)!, netNote, "Done: DNS is off the NAS.");
     const netAnswer = listMessages(patch.threadId).at(-1)!;
     expect(netAnswer.body).toBe("Done: DNS is off the NAS.");
     expect(waits(netAnswer.id)).toBe(false);
 
-    // While Patch works in its chat, Sentry's answer reaches that turn by steer instead of queuing a new one.
     markAnswered(netReport.id);
     const steered: string[] = [];
     activeTurns().set("wake-patch-turn", { botId: patch.id, threadId: patch.threadId, userId: "u-wake", messageId: netReport.id, route: "person", controller: new AbortController(), startedAt: Date.now(), steer: async (text: string) => (steered.push(text), true) });
@@ -3620,12 +3558,10 @@ describe("handoffs", () => {
       activeTurns().delete("wake-patch-turn");
     }
 
-    // Patch's answer to a report is the person's, so the two bots can't bounce lines.
     deliverReply(patch, getThread(patch.threadId)!, netReport, "The NAS is decommissioned.");
     expect(listMessages(patch.threadId).at(-1)).toMatchObject({ author: patch.id, body: "The NAS is decommissioned.", fromThreadId: null });
     expect(listMessages(net.threadId).some((m) => m.body === "The NAS is decommissioned.")).toBe(false);
 
-    // Once the person speaks again the errand is over: a late line from Net only lets Patch know.
     await tick();
     postMessage({ threadId: patch.threadId, author: "you", body: "Thanks" });
     await tick();
@@ -3873,7 +3809,6 @@ describe("tools for running the work", () => {
     const { getDelegation } = await import("../src/data/delegations.ts");
     const { claimPendingMessages, listMessages, releaseClaim } = await import("../src/data/threads.ts");
     const { primary, dev, run, stopped } = await setup("u-waves");
-    // Too long is refused, never cut, so a teammate doesn't get a brief missing its end.
     const posts = listMessages(dev.threadId).length;
     expect(await run("delegate_bot", { bot: dev.name, brief: "Build it. ".repeat(1300) })).toStartWith("NOT delegated: the brief is 12,999 characters, over the limit of 12,000");
     expect(await run("post_message", { text: "x".repeat(4001) })).toStartWith("NOT posted: that message is 4,001 characters");
@@ -4158,7 +4093,6 @@ describe("the computer", () => {
       port: 0,
       async fetch(request: Request) {
         const url = new URL(request.url);
-        // One screen stands in for every bot's: its control is the one the tests set.
         const status = (bot = state.bot) => ({ bot, running: true, ready: true, width: 2048, height: 1280, viewers: 0, control: state.control });
         if (url.pathname === "/desktop" && request.method === "GET") return Response.json({ screens: [status()] });
         const control = /^\/desktop\/([\w-]+)\/control$/.exec(url.pathname);
@@ -4340,7 +4274,6 @@ describe("the computer", () => {
       const picked = baseTools({ ...context, bot: other, thread: otherThread }).request_login!.execute({ site: "Grubhub", fields: ["username", "password", "code"] }, "c3");
       await until(() => listMessages(otherThread.id).at(-1)?.kind === "secret");
       const pickCard = listMessages(otherThread.id).at(-1)!;
-      // Its browser has a page open by now, so the card says where the details will go.
       expect(pickCard.body).toStartWith("Sign in to Grubhub (example.com):");
       const pick = (body: object) => routes.request(`/api/secret-requests/${pickCard.approvalId}`, { method: "POST", body: JSON.stringify(body) });
       expect((await pick({ saved: "Doordash", values: { GRUBHUB_CODE: "1111" } })).status).toBe(404);
@@ -4380,7 +4313,6 @@ describe("the computer", () => {
       const routes = asPerson(new Hono(), me).route("/api", secretsRoutes());
       const send = (method: string, path: string, body?: object) => routes.request(path, { method, ...(body ? { body: JSON.stringify(body) } : {}) });
 
-      // Saved once in Settings: checked, and only its name, brand, last four and expiry readable.
       expect((await send("POST", "/api/cards", { card: { number: "4242 4242 4242 4241", expiry: "08/28", cvc: "123" } })).status).toBe(400);
       expect((await send("POST", "/api/cards", { card: { number: "4242 4242 4242 4242", expiry: "13/28", cvc: "123" } })).status).toBe(400);
       const added = (await (await send("POST", "/api/cards", { card: { number: "4242 4242 4242 4242", expiry: "8/2028", cvc: "123", name: "Dawson Domin", zip: "73102" }, nickname: "Personal Visa" })).json()) as { name: string };
@@ -4388,16 +4320,13 @@ describe("the computer", () => {
       const listed = (await (await send("GET", "/api/secrets")).json()) as { secrets: { name: string; card: unknown }[] };
       expect(listed.secrets.find((s) => s.name === added.name)?.card).toEqual({ nickname: "Personal Visa", brand: "Visa", last4: "4242", expires: "08/28" });
       expect(JSON.stringify(ensureDatabase().query("SELECT * FROM gond_secrets").all())).not.toContain("4242424242424242");
-      // Never a secret of its own: not in a command, a header or a type_login by its name; scrubbed in every form a page writes it.
       expect(readSecret(me, added.name)).toBeNull();
       expect(injectSecrets(`{{secret:${added.name}}}`, me)).toBe("");
       expect(allSecretValues()).toEqual(expect.arrayContaining(["4242424242424242", "4242 4242 4242 4242", "4242-4242-4242-4242"]));
       expect(allSecretValues().some((value) => value.includes("Dawson"))).toBe(false);
-      // Changed with only what's new; the rest stays.
       expect((await send("PUT", `/api/cards/${added.name}`, { card: { expiry: "09/29" } })).status).toBe(200);
       expect(listSecrets(me).find((s) => s.name === added.name)?.card?.expires).toBe("09/29");
 
-      // A bot that asks for a card's pieces as secrets is pointed at use_card.
       expect(String(await baseTools(context).request_secret!.execute({ name: "SONIC_CARD_NUMBER", reason: "to pay" }, "s0"))).toContain("use_card");
       const tools = computerTool({ box, bot, thread });
       expect(String(await tools.browser.execute({ actions: [{ type: "type_login", ref: "e1", name: "CARD_NUMBER" }] }, "t0"))).toContain("Call use_card");
@@ -4409,7 +4338,6 @@ describe("the computer", () => {
       const shown = (await (await send("GET", `/api/secret-requests/${card.approvalId}`)).json()) as { request: { target: string; total: string } };
       expect(shown.request).toMatchObject({ target: "card", total: "$12.48" });
       expect((await send("POST", `/api/secret-requests/${card.approvalId}`, { saved: "SAVED_CARD_NOPE" })).status).toBe(404);
-      // Saved cards never keep a security code; the payment card asks for it, for this checkout only.
       expect((await send("POST", `/api/secret-requests/${card.approvalId}`, { saved: added.name })).status).toBe(400);
       const paid = (await (await send("POST", `/api/secret-requests/${card.approvalId}`, { saved: added.name, cvc: "123" })).json()) as { request: { status: string; card: string } };
       expect(paid.request).toMatchObject({ status: "given", card: "Personal Visa" });
@@ -4425,12 +4353,10 @@ describe("the computer", () => {
         { type: "fill", ref: "e4", text: "123", secret: true },
         { type: "fill", ref: "e5", text: "73102", secret: true },
       ]);
-      // The page shows the number in its field; what the bot reads back never does.
       const answer = JSON.stringify(typed);
       expect(answer).not.toContain("4242 4242 4242 4242");
       expect(answer).not.toContain("4242424242424242");
 
-      // Another conversation has no card ready, and none is held past ten minutes.
       const other = createBot(botInputSchema.parse({ name: "Runner2", approval: "full" }), me);
       expect(String(await computerTool({ box, bot: other, thread: getThread(other.threadId)! }).browser.execute({ actions: [{ type: "type_login", ref: "e1", name: "CARD_NUMBER" }] }, "t2"))).toContain("NOT typed");
       const held = (globalThis as { __gondLogins?: Map<string, { value: string; until: number }> }).__gondLogins!;
@@ -4439,7 +4365,6 @@ describe("the computer", () => {
       held.set(key, { ...held.get(key)!, until: Date.now() - 1 });
       expect(String(await tools.browser.execute({ actions: [{ type: "type_login", ref: "e1", name: "CARD_NUMBER" }] }, "t3"))).toContain("NOT typed");
 
-      // A card typed in on the card, not saved: used once, nothing stored.
       const again = baseTools(context).use_card!.execute({ site: "walmart.com", total: "$86.20" }, "c2");
       await until(() => listMessages(thread.id).at(-1)?.body.startsWith("Pay on walmart.com"));
       const second = listMessages(thread.id).at(-1)!;
@@ -4448,7 +4373,6 @@ describe("the computer", () => {
       expect(listSecrets(me).filter((s) => s.card).length).toBe(1);
       expect((await send("POST", `/api/secret-requests/${second.approvalId}`, { decline: true })).status).toBe(200);
 
-      // Keys a bot gathered one by one before there were cards become one card.
       setSecret(me, "SONIC_CARD_NUMBER", "5555 5555 5555 4444");
       setSecret(me, "SONIC_CARD_EXPIRY", "0127");
       setSecret(me, "SONIC_CARD_CVV", "321");
@@ -4706,7 +4630,6 @@ describe("the computer", () => {
       const photoPath = `.bots/${bot.id}/inbox/${photo.id.replace(/^f-/, "").slice(0, 8)}-20261019_144246.jpg`;
       expect(state.uploads.get(photoPath)?.byteLength).toBe(big.byteLength);
       expect([...state.uploads.keys()].some((path) => path.endsWith("-site.zip") && !path.includes(".."))).toBe(true);
-      // The small copy is Gond's own; the computer isn't asked for it.
       expect(state.previews).toEqual([]);
       expect(inline.map(({ name, mediaType }) => ({ name, mediaType }))).toEqual([
         { name: "20261019_144246.jpg", mediaType: "image/jpeg" },
@@ -4725,7 +4648,6 @@ describe("the computer", () => {
       expect(elsewhere.inline.map((file) => file.name)).toEqual(["20261019_144246.jpg"]);
       expect(elsewhere.files.map((f) => f.shown)).toEqual([true, false, false]);
 
-      // With no computer the bot is still shown the picture, and told plainly what it can't open.
       const without = await deliverAttachments(null, bot, message);
       expect(without.files.map((f) => [f.path, f.shown])).toEqual([[null, true], [null, true], [null, false]]);
       const note = promptFor(bot, thread, message, listBots({ userId: "u-admin" }), without.files);
@@ -4960,7 +4882,6 @@ describe("cards that expire", () => {
       expect(tools).toContain("memory_write");
       for (const name of ["Bash", "Read", "browser", "computer", "send_file", "run_with_secrets", "request_login"]) expect(tools).not.toContain(name);
 
-      // A computer that is set up but away holds only the bots that run on it.
       process.env.GOND_BOX_URL = "http://127.0.0.1:9";
       const away = globalThis as { __gondComputerAway?: number };
       away.__gondComputerAway = Date.now() + 60_000;
@@ -4974,7 +4895,6 @@ describe("cards that expire", () => {
         delete process.env.GOND_BOX_URL;
       }
 
-      // Claude Code runs on the computer, so a bot on it says what to change rather than failing quietly.
       updateAi("u-solo", { engine: "claude", enabled: ["claude", "api"] });
       const lunch = postMessage({ threadId: thread.id, author: "you", body: "And for lunch?" });
       expect(await botTurn(bot, thread, lunch)).toBe("");
@@ -5153,7 +5073,6 @@ describe("changing a secret", () => {
     expect(told).not.toContain("right-key");
     expect(readSecret("u-sec-bot", "PUSHOVER_USER_KEY")).toBe("right-key-654321");
 
-    // A saved sign-in replaced this way stays a sign-in for its site.
     const signIn = tools.request_secret!.execute({ name: "NPM_PASSWORD", reason: "rotated", replace: true }, "c4");
     const signInCard = await lastCard("secret");
     await routes.request(`/api/secret-requests/${signInCard.approvalId}`, { method: "POST", body: JSON.stringify({ value: "npm-password-2" }) });
@@ -5226,7 +5145,6 @@ describe("bot templates", () => {
     expect(listSkills("u-tpl-b").filter((s) => s.slug.startsWith(skill.slug))).toHaveLength(1);
     expect((await theirs.request("/api/templates/not-a-real-token", { method: "POST" })).status).toBe(404);
 
-    // Only a picture's own bytes make it one: a page riding in as the picture leaves the bot on its mascot.
     const forged = new FormData();
     forged.append("file", new File([zipSync({ "bot.json": unzipSync(bytes)["bot.json"]!, picture: new TextEncoder().encode("<svg onload=alert(1)>") })], "forged.bot"));
     const forgedAdded = await theirs.request("/api/bots/import", { method: "POST", body: forged });
@@ -5312,7 +5230,6 @@ describe("rooms and a bot's files", () => {
     const change = (app: typeof mine, body: unknown) => app.request(`/api/rooms/${room.id}`, { method: "PATCH", headers: json, body: JSON.stringify(body) });
 
     expect((await change(theirs, { name: "Mine" })).status).toBe(404);
-    // A room left without a name is named after its bots, the one that answers first in front.
     expect((await change(mine, { name: "  " })).status).toBe(200);
     expect(getThread(room.id)!.name).toBe("Ada and Bo");
     const unnamed = await mine.request("/api/rooms", { method: "POST", headers: json, body: JSON.stringify({ name: "", members: [bo.id, cy.id, ada.id] }) });
@@ -5332,7 +5249,6 @@ describe("rooms and a bot's files", () => {
     await change(mine, { pinned: false });
     expect(getThread(room.id)!.pinned).toBe(false);
 
-    // Two to six bots: a 1:1 isn't a room, and past six it is too slow and noisy to follow.
     const more = ["Di", "Ed", "Fy", "Gu"].map((name) => createBot(botInputSchema.parse({ name }), "u-room").id);
     const make = (members: string[]) => mine.request("/api/rooms", { method: "POST", headers: json, body: JSON.stringify({ name: "", members }) });
     expect((await make([ada.id])).status).toBe(400);
@@ -5340,7 +5256,6 @@ describe("rooms and a bot's files", () => {
     expect((await make([ada.id, bo.id, ...more])).status).toBe(201);
     expect((await change(mine, { members: [ada.id] })).status).toBe(400);
     expect((await change(mine, { members: [ada.id, bo.id, cy.id, ...more] })).status).toBe(400);
-    // A room from before the limits keeps its size and can still shrink toward them.
     const big = createRoom("Everyone", [ada.id, bo.id, cy.id, ...more], "u-room");
     const shrink = (members: string[]) => mine.request(`/api/rooms/${big.id}`, { method: "PATCH", headers: json, body: JSON.stringify({ name: "Everyone", members }) });
     expect((await shrink(getThread(big.id)!.members)).status).toBe(200);
@@ -5475,7 +5390,6 @@ describe("rooms and a bot's files", () => {
     const patchLine = ensureDatabase().query("SELECT id FROM gond_messages WHERE thread_id = ? AND author = ? ORDER BY created_at DESC LIMIT 1").get(room.id, patch.id) as { id: string };
     expect(waits(patchLine.id)).toBe(true);
 
-    // A line naming a co-answerer and someone else wakes only the someone else.
     const { answeringOf, getMessage } = await import("../src/data/threads.ts");
     const { activeTurns, wokenBy } = await import("../src/responder.ts");
     const patchMessage = getMessage(patchLine.id)!;
@@ -5485,7 +5399,6 @@ describe("rooms and a bot's files", () => {
     expect(wokenBy(mixed, thread, answeringOf(mixed.id), bots).map((b) => b.name)).toEqual(["Sage"]);
     expect(wokenBy(patchMessage, thread, answeringOf(patchMessage.id), bots).map((b) => b.name)).toEqual(["Sage"]);
 
-    // A bot still answering the same message hears the other's line arrive.
     const heard: string[] = [];
     activeTurns().set("patch-turn", { botId: patch.id, threadId: room.id, userId: "u-infra", messageId: both.id, route: "person", controller: new AbortController(), startedAt: Date.now(), steer: async (text) => (heard.push(text), true) });
     try {
@@ -5500,8 +5413,6 @@ describe("rooms and a bot's files", () => {
     const one = postMessage({ threadId: room.id, author: "you", body: "@net is the WiFi ok?" });
     expect(promptFor(net, thread, one, bots)).not.toContain("answering this same message");
 
-    // A bot answering another message of the person's hears it too, so it doesn't ask for what was just said;
-    // and once it has spoken since, the mention that named it starts no second turn to say it all again.
     const { answerMessage } = await import("../src/responder.ts");
     const elsewhere: string[] = [];
     activeTurns().set("patch-elsewhere", { botId: patch.id, threadId: room.id, userId: "u-infra", messageId: both.id, route: "person", controller: new AbortController(), startedAt: Date.now(), steer: async (text) => (elsewhere.push(text), true) });
@@ -5519,7 +5430,6 @@ describe("rooms and a bot's files", () => {
     await answerMessage(handOff);
     expect(waits(handOff.id)).toBe(false);
 
-    // A line sent while Patch and Sage are still answering reaches them mid-answer, and only Net, idle, needs a turn for it.
     const { postFromPerson } = await import("../src/responder.ts");
     const asked = postMessage({ threadId: room.id, author: "you", body: "Everyone, anything before the weekend?" });
     postMessage({ threadId: room.id, author: net.id, body: "Nothing from the network.", answered: true });
@@ -5697,7 +5607,6 @@ describe("show me how", () => {
         try {
           controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`));
         } catch {
-          /* closed */
         }
       }
     };
@@ -5869,7 +5778,6 @@ describe("usage", () => {
 
       const on = (await (await put("u-share-admin", { on: true })).json()) as { on: boolean; since: string };
       expect(on.on).toBe(true);
-      // Only what's used from now on counts, everyone's together.
       recordUsage({ userId: "u-share-user", botId: null, threadId: null, source: "claude", model: "m", tokens: { input: 100, output: 20, cacheRead: 5, cacheWrite: 0 }, cost: null });
       recordUsage({ userId: "u-share-admin", botId: null, threadId: null, source: "openai", model: "m", tokens: { input: 50, output: 0, cacheRead: 0, cacheWrite: 0 }, cost: null });
       expect(sharingState().tokens).toBe(175);
@@ -5982,17 +5890,14 @@ describe("call voices", () => {
       expect(openai.voices.map((v) => v.id)).toContain("cedar");
       await app.request("/api/voice/sample?voice=cedar");
       expect(said[1]).toMatchObject({ path: "/v1/audio/speech", body: { voice: "cedar", model: "gpt-4o-mini-tts" } });
-      // Picking the default forgets the choice, so a provider's new default follows.
       await app.request("/api/voice/call-voice", { method: "PUT", body: JSON.stringify({ voice: "marin" }) });
       expect(getVoice("u-voices").callVoice).toEqual({ xai: "ara" });
 
-      // The models the key lists, the newest the default; a server of one's own adds its other ids.
       const modelList = async () => (await (await app.request("/api/voice/models")).json()) as import("@gond/shared").VoiceModelList;
       const models = await modelList();
       expect(models.call).toEqual({ groups: [{ name: "GPT-Live", models: ["gpt-live-1"] }, { name: "GPT-Realtime", models: ["gpt-realtime-2.1-mini"] }], default: "gpt-live-1", chosen: "gpt-live-1" });
       expect(models.transcribe).toMatchObject({ default: "gpt-transcribe", chosen: "gpt-transcribe" });
       expect(models).toMatchObject({ others: ["my-whisper"], own: true });
-      // A GPT-Live voice the Realtime API doesn't have reads as the default there.
       await app.request("/api/voice/call-voice", { method: "PUT", body: JSON.stringify({ voice: "quartz" }) });
       expect(((await (await app.request("/api/voice/voices")).json()) as { chosen: string }).chosen).toBe("quartz");
       await app.request("/api/voice", { method: "PUT", body: JSON.stringify({ callModel: "gpt-realtime-2.1-mini" }) });
@@ -6000,7 +5905,6 @@ describe("call voices", () => {
       expect(realtime.chosen).toBe("marin");
       expect(realtime.voices.map((v) => v.id)).not.toContain("quartz");
       expect((await modelList()).call.chosen).toBe("gpt-realtime-2.1-mini");
-      // Picking the default again follows the newest the key offers.
       await app.request("/api/voice", { method: "PUT", body: JSON.stringify({ callModel: "" }) });
       expect(getVoice("u-voices").callModel).toBeNull();
       expect((await modelList()).call.chosen).toBe("gpt-live-1");
@@ -6083,7 +5987,6 @@ describe("calls", () => {
 
       expect(answerOnCall(prompt.id, "**Found** one at $284.")).toBe(true);
       expect(answerOnCall(prompt.id, "again")).toBe(false);
-      // The voice gets the answer and is asked to tell it, in its own words.
       await until(() => received.some((e) => e.type === "conversation.item.create" && JSON.stringify(e).includes("Found one at $284.")));
       await until(() => received.some((e) => e.type === "response.create" && JSON.stringify(e).includes("in your own words") && JSON.stringify(e).includes("Found one at $284.")));
       expect(listMessages(thread.id).some((m) => m.author === bot.id && m.body.includes("$284"))).toBe(false);
@@ -6101,7 +6004,6 @@ describe("calls", () => {
       expect(lines.at(-1)!.body).toBe("Call · under a minute");
       expect(lines.filter((m) => m.kind === "event")).toHaveLength(1);
       expect(getThread(thread.id)!.lastMessage).toBeNull();
-      // The person sees only that a call happened: what was said stays the bot's.
       expect(listMessages(thread.id, { shown: true }).filter((m) => m.kind !== "prompt").map((m) => m.body)).toEqual(["Call · under a minute"]);
       expect(callOf("u-caller")).toBeNull();
     } finally {
@@ -6272,7 +6174,6 @@ describe("profiles", () => {
     expect("error" in createProfile("u-pf-names", "work")).toBe(true);
     expect("error" in createProfile("u-pf-names", "Default")).toBe(true);
     expect("error" in createProfile("u-pf-names", "  ")).toBe(true);
-    // The default can be renamed, and then its old name is free.
     expect("error" in editProfile("u-pf-names", { label: "Work" })).toBe(true);
     expect(editProfile("u-pf-names", { label: "Home" })).toMatchObject({ label: "Home", isDefault: true });
     expect(listProfiles("u-pf-names")[0]!.label).toBe("Home");
@@ -6325,7 +6226,6 @@ describe("profiles", () => {
     expect((await app.request("/api/profiles/u-pf-open", { method: "DELETE" })).status).toBe(400);
     expect((await app.request(`/api/profiles/${work.id}/open`, { method: "POST" })).status).toBe(200);
     expect(activeProfile("s-u-pf-open", "u-pf-open")).toBe(work.id);
-    // Another person's session can never land on it, whatever its row says.
     setActiveProfile("s-u-pf-stranger", profileOf(work.id)!);
     expect(activeProfile("s-u-pf-stranger", "u-pf-stranger")).toBe("u-pf-stranger");
     await deleteProfile(work.id);
@@ -6499,7 +6399,6 @@ describe("failed turns, Try again, and taking lines back", () => {
         updateAi("u-setup", { engine: "claude", enabled: ["claude"] });
         expect(incidents()).toBe(0);
 
-        // One card per bot and conversation: a hidden prompt's failure adds none beside one, and the person's replaces it.
         mode = "missing";
         const fresh = createBot(botInputSchema.parse({ name: "Setup Fresh" }), "u-setup");
         const freshThread = getThread(fresh.threadId)!;
@@ -6519,7 +6418,6 @@ describe("failed turns, Try again, and taking lines back", () => {
         expect(cards()).toHaveLength(1);
         expect(cards()[0]!.answering).toBe(asked.id);
 
-        // Anything else is a grey line that names the message, and still reaches the primary bot.
         mode = "broken";
         const broken = await turn();
         expect(broken.last).toMatchObject({ author: "system", kind: "event", body: "Setup Worker couldn't finish: boom", answering: broken.asked.id });
@@ -6582,7 +6480,6 @@ describe("failed turns, Try again, and taking lines back", () => {
     expect(takeInterrupted(asked.id)).toContain("- Opened the invoices folder");
     markAnswered(asked.id);
 
-    // Nothing failed, so there's nothing to try again; and only the person's own line takes it.
     expect((await retry(asked.id)).status).toBe(409);
     const said = postMessage({ threadId: bot.threadId, author: bot.id, body: "Done.", answered: true });
     expect((await retry(said.id)).status).toBe(404);
@@ -6620,7 +6517,6 @@ describe("failed turns, Try again, and taking lines back", () => {
     expect(searchMessages("table for four", "u-unsend")).toEqual([]);
     expect((await unsend(typo)).status).toBe(404);
 
-    // Once a bot took it (claimed, steered into a turn or answered), it's the bot's.
     const claimed = postMessage({ threadId: bot.threadId, author: "you", body: "Claimed line" });
     ensureDatabase().query("UPDATE gond_messages SET claimed_by = 'test' WHERE id = ?").run(claimed.id);
     const steered = postMessage({ threadId: bot.threadId, author: "you", body: "Steered line", steered: true });
@@ -6636,12 +6532,10 @@ describe("failed turns, Try again, and taking lines back", () => {
     expect(getMessage(claimed.id)!.body).toBe("Claimed line");
     ensureDatabase().query("UPDATE gond_messages SET claimed_by = NULL, answered_at = ? WHERE id = ?").run(new Date().toISOString(), claimed.id);
 
-    // A bot's line isn't the person's to take back.
     const said = postMessage({ threadId: bot.threadId, author: bot.id, body: "On it.", answered: true });
     expect(getMessage(said.id)!.waiting).toBe(false);
     expect((await unsend(said)).status).toBe(404);
 
-    // A line in a space already crossed to other Gonds.
     const other = createBot(botInputSchema.parse({ name: "Unsend Two" }), "u-unsend");
     const room = createRoom("Trip", [bot.id, other.id], "u-unsend");
     createSpace({ threadId: room.id, userId: "u-unsend", hostKey: "u".repeat(64), status: "active" });
@@ -6666,7 +6560,6 @@ describe("failed turns, Try again, and taking lines back", () => {
     expect(attachmentType({ name: "server.log", type: "text/x-log" })).toBe("text/plain");
     expect(attachmentType({ name: "a.png", type: "image/png" })).toBe("image/png");
 
-    // Only text is put in the prompt, and never bytes that only claim to be text.
     expect(attachmentText("text/plain", new TextEncoder().encode("line one"))).toBe("line one");
     expect(attachmentText("text/plain", new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0, 0]))).toBeNull();
     expect(attachmentText("application/zip", new TextEncoder().encode("PK"))).toBeNull();
@@ -6734,7 +6627,6 @@ describe("failed turns, Try again, and taking lines back", () => {
       async () => {
         const admin = await boxStatus("u-admin", { admin: true });
         expect(admin.health?.people.map((p) => p.name)).toEqual(["u-health", "u-health · Work", "Someone no longer on this Gond"]);
-        // Asked as the computer, not as any one person.
         expect(asked).toEqual([null]);
         expect((await boxStatus("u-health")).health).toBeUndefined();
         statsUp = false;
@@ -6800,7 +6692,6 @@ describe("check-ins", () => {
     const hello = postMessage({ threadId: sentry.threadId, author: "you", body: "Hi!" });
     expect(personLinesIn(sentry.threadId)).toEqual({ said: 1, waiting: 1 });
     markAnswered(hello.id);
-    // The bot hasn't answered yet (and there's no AI): nothing is offered, and the offer is still to make.
     expect(offerCheckIns("u-ci")).toBe(false);
     expect(checkInsOf("u-ci").offeredAt).toBeNull();
     expect(claimOffer("u-ci")).toBe(true);
@@ -6856,12 +6747,10 @@ describe("check-ins", () => {
       expect(said.author).toBe(sentry.id);
       expect(said.body).toContain("Scout found three flights");
 
-      // Nothing new since: the model isn't asked at all.
       const calls = asked.length;
       expect(await checkIn("u-ci-run")).toBe("skipped");
       expect(asked.length).toBe(calls);
 
-      // Something new, but nothing that needs the person: nothing is posted.
       answer = "NOTHING_NEW";
       postMessage({ threadId: scout.threadId, author: scout.id, body: "Booked the hotel you picked.", answered: true });
       const count = listMessages(sentry.threadId).length;
@@ -6911,7 +6800,6 @@ describe("check-ins", () => {
       expect(await checkIn("u-ci-tie")).toBe("quiet");
       const first = checkInsOf("u-ci-tie").lastLookedAt!;
 
-      // A new line in the very millisecond the last look kept is new; the line that look already read is not.
       const hotel = postMessage({ threadId: scout.threadId, author: scout.id, body: "Booked the hotel you picked.", answered: true });
       stampAt(hotel.id, first);
       stampAt(flights.id, first);
@@ -6919,13 +6807,11 @@ describe("check-ins", () => {
       expect(asked.at(-1)).toContain("Booked the hotel");
       expect(asked.at(-1)).not.toContain("three flights");
 
-      // A line the last look read at its own stamp doesn't make the next one ask again.
       stampAt(hotel.id, checkInsOf("u-ci-tie").lastLookedAt!);
       const calls = asked.length;
       expect(await checkIn("u-ci-tie")).toBe("skipped");
       expect(asked.length).toBe(calls);
 
-      // A line written while the model thinks is for the next look.
       postMessage({ threadId: scout.threadId, author: scout.id, body: "The car is sorted too.", answered: true });
       duringCall = () => void postMessage({ threadId: scout.threadId, author: scout.id, body: "The train got cancelled.", answered: true });
       expect(await checkIn("u-ci-tie")).toBe("quiet");
@@ -7028,12 +6914,10 @@ describe("phone push", () => {
       expect(JSON.stringify(relay.pushes[0])).not.toContain("Done.");
       expect(await opened(relay.pushes[0]!, device.seal)).toEqual({ v: 1, title: "Pocket", body: "Done.", url: `/app/t/${bot.threadId}`, tag: bot.threadId });
 
-      // A bot this phone muted says nothing to it.
       expect((await device.app.request(`/api/push/devices/${device.id}/notices`, { method: "PUT", body: JSON.stringify({ notices: { mutedBots: [bot.id], other: true } }) })).status).toBe(200);
       await sendPush({ title: "Pocket", body: "Again.", url: "/app", tag: bot.threadId, threadId: bot.threadId, botId: bot.id }, "u-phone");
       expect(relay.pushes).toHaveLength(1);
 
-      // The same token from a new install takes the phone over, with new keys.
       const reinstalled = await phone("u-phone", token);
       expect(reinstalled.id).not.toBe(device.id);
       expect(listPushDevices("u-phone").map((d) => d.id)).toEqual([reinstalled.id]);
@@ -7108,7 +6992,6 @@ describe("phone push", () => {
       expect(await opened(relay.pushes[1]!, device.seal)).toEqual({ v: 1, withdraw: `card-${card.id}` });
       expect((await answer(card.id, "deny")).status).toBe(409);
 
-      // An email is read and edited in full, so its card never takes an answer from the lock screen.
       const email = createApproval({ botId: bot.id, threadId: bot.threadId, tool: "GMAIL_SEND_EMAIL", summary: "Send it", input: { recipient_email: "dana@example.com", subject: "Hi", body: "Hello" } });
       expect((await answer(email.id, "allow")).status).toBe(409);
       expect(getApproval(email.id)!.status).toBe("pending");

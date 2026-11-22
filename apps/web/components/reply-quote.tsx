@@ -5,7 +5,6 @@ import { CornerUpLeft, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-/** The quoted message: a bar in its author's colour, their name and its first words. */
 function Quoted({ name, color, text, className }: { name: string; color: string | null; text: string; className?: string }) {
   return (
     <span className={cn("flex min-w-0 gap-2.5 rounded-xl bg-bubble-inset py-1.5 pr-3 pl-2 text-left", className)}>
@@ -18,7 +17,6 @@ function Quoted({ name, color, text, className }: { name: string; color: string 
   );
 }
 
-/** At the top of a reply's bubble; a tap goes to the message it answers. */
 export function QuoteInBubble({ quote, name, color, onJump }: { quote: Quote; name: string; color: string | null; onJump: (id: string) => void }) {
   return (
     <button type="button" onClick={() => onJump(quote.id)} aria-label={`Replying to ${name}: ${quote.text}. Go to it`} className="-mx-1.5 mb-1 block rounded-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
@@ -27,7 +25,6 @@ export function QuoteInBubble({ quote, name, color, onJump }: { quote: Quote; na
   );
 }
 
-/** Above the composer while the person is replying to a message. */
 export function ReplyingTo({ name, color, text, onCancel }: { name: string; color: string | null; text: string; onCancel: () => void }) {
   return (
     <div className="mb-2 flex items-center gap-2 rounded-3xl border border-primary-edge bg-card p-1.5 pl-3">

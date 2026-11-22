@@ -2,7 +2,6 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 
-/** A process's real uid and resident memory in bytes, from `/proc/<pid>/status`; null when it says neither. */
 export function parseProcStatus(text) {
   const uid = /^Uid:\s+(\d+)/m.exec(text ?? "");
   const rss = /^VmRSS:\s+(\d+)\s*kB/im.exec(text ?? "");
@@ -10,7 +9,6 @@ export function parseProcStatus(text) {
   return { uid: Number(uid[1]), rss: rss ? Number(rss[1]) * 1024 : 0 };
 }
 
-/** Resident memory summed per uid over every process. */
 export function rssByUid(statuses) {
   const out = new Map();
   for (const text of statuses) {
@@ -20,10 +18,6 @@ export function rssByUid(statuses) {
   return out;
 }
 
-/**
- * The container's memory from cgroup v2's `memory.max` and `memory.current`; a limit of "max" (none)
- * is the machine's total. Null when the files aren't there or can't be read as numbers.
- */
 export function cgroupMemory(max, current, machineTotal) {
   if (typeof current !== "string" || typeof max !== "string") return null;
   const used = Number(current.trim());
@@ -33,7 +27,6 @@ export function cgroupMemory(max, current, machineTotal) {
   return { total: Math.min(limit, machineTotal), used: Math.min(used, limit) };
 }
 
-/** The bytes `du -sb` counted, from its first line. */
 export function parseDu(output) {
   const match = /^(\d+)\s/.exec(output ?? "");
   return match ? Number(match[1]) : null;
@@ -107,7 +100,6 @@ export function createHomeSizes({ keepMs = DU_KEEP_MS, timeoutMs = DU_TIMEOUT_MS
   };
 
   return {
-    /** The home's last size and when it was measured, queueing a new measure once it is old. */
     of(home) {
       const known = sizes.get(home);
       if ((!known || Date.now() - known.checked > keepMs) && !queue.some((job) => job.home === home)) {

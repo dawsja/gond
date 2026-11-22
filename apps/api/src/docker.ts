@@ -71,7 +71,6 @@ export function inspectContainer(idOrName: string): Promise<ContainerInfo> {
   return json<ContainerInfo>("GET", `/containers/${encodeURIComponent(idOrName)}/json`);
 }
 
-/** The container this API runs in. */
 export function selfContainer(): Promise<ContainerInfo> {
   return inspectContainer(hostname());
 }
@@ -80,7 +79,6 @@ export async function findBoxContainer(): Promise<ContainerInfo> {
   return findServiceContainer("box", env("BOX_CONTAINER"));
 }
 
-/** A Compose service's container in this API's project (`box`, `web`), or the one named. */
 export async function findServiceContainer(service: string, named?: string): Promise<ContainerInfo> {
   if (named?.trim()) return inspectContainer(named.trim());
   let project: string | null = null;
@@ -88,7 +86,6 @@ export async function findServiceContainer(service: string, named?: string): Pro
     const self = await inspectContainer(hostname());
     project = self.Config.Labels?.["com.docker.compose.project"] ?? null;
   } catch {
-    /* not in a container we can see; fall back to any box service */
   }
   const filters = { label: [`com.docker.compose.service=${service}`, ...(project ? [`com.docker.compose.project=${project}`] : [])] };
   const list = await json<{ Id: string }[]>("GET", `/containers/json?all=true&filters=${encodeURIComponent(JSON.stringify(filters))}`);

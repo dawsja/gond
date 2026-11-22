@@ -19,7 +19,6 @@ import { cn } from "@/lib/utils";
 
 const BARS = [0.5, 0.8, 1, 0.8, 0.5];
 
-/** "1:31" for the call, ticking each second. */
 function useCallClock(call: CallView | null): string {
   const [now, setNow] = useState<number | null>(null);
   const startedAt = call?.info.startedAt;
@@ -36,10 +35,6 @@ function useCallClock(call: CallView | null): string {
   return startedAt && now ? callClock(startedAt, now) : "0:00";
 }
 
-/**
- * The call's one moving thing: five bars that follow whoever is talking, in the person's color while
- * they do and the bot's while it does. Still under reduced motion.
- */
 function CallWave({ call, bot, className }: { call: CallView; bot: Pick<Bot, "color"> | undefined; className?: string }) {
   const { levels } = useCall();
   const bars = useRef<(HTMLSpanElement | null)[]>([]);
@@ -80,15 +75,10 @@ export function callLabel(call: CallView, bot: Pick<Bot, "name"> | undefined): s
   return call.speaking ? `${bot?.name ?? "The bot"} is talking` : "Listening";
 }
 
-/** The card a call's bot is waiting on, if any: the pill and the sidebar say so. */
 function waitingCard(approvals: Approval[], threadId: string): Approval | null {
   return approvals.find((a) => a.threadId === threadId && a.status === "pending") ?? null;
 }
 
-/**
- * Calling the primary bot, from its header's phone circle (or, in the iPhone app, its menu). One call
- * at a time, so a second asks first.
- */
 export function useDial(threadId: string, bot: Bot | undefined): { dial: () => void; confirm: ReactNode } {
   const { call, start } = useCall();
   const { voice } = useVoice();
@@ -138,7 +128,6 @@ export function CallButton({ threadId, bot, className }: { threadId: string; bot
   );
 }
 
-/** In the call's own chat the composer is the call: mute, what is happening, and hang up. */
 export function CallComposer({ call, bot, className }: { call: CallView; bot: Bot | undefined; className?: string }) {
   const { end, toggleMute } = useCall();
   const clock = useCallClock(call);
@@ -165,7 +154,6 @@ export function CallComposer({ call, bot, className }: { call: CallView; bot: Bo
   );
 }
 
-/** On a phone, away from the call's chat: the call as a pill under the header, a tap back to it. */
 export function CallPill() {
   const { call, end, toggleMute } = useCall();
   const { bots, approvals } = useStore();
@@ -221,7 +209,6 @@ export function CallPill() {
   );
 }
 
-/** On a wide screen, away from the call's chat: the call sits in the sidebar, above your profile. */
 export function CallBar() {
   const { call, end, toggleMute } = useCall();
   const { bots, approvals } = useStore();
@@ -265,7 +252,6 @@ export function CallBar() {
   );
 }
 
-/** The chat list's line for a bot you're on a call with. */
 export function useCallLine(threadId: string): string | null {
   const { call } = useCall();
   const clock = useCallClock(call?.info.threadId === threadId ? call : null);

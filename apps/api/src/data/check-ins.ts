@@ -15,7 +15,6 @@ type Row = {
   last_seen: string | null;
 };
 
-/** A profile's check-ins with when they last ran; a profile with no row has them on, as they come. */
 export type CheckInState = CheckIns & { offeredAt: string | null; lastRunAt: string | null; lastLookedAt: string | null; lastSeen: string | null };
 
 function rowOf(userId: string): Row | null {
@@ -66,12 +65,10 @@ export function markRun(userId: string, looked: { at: string; seen: string } | n
   else ensureDatabase().query("UPDATE gond_check_ins SET last_run_at = ? WHERE user_id = ?").run(at, userId);
 }
 
-/** Every profile with a primary bot, the ones check-ins can run for. */
 export function primaryOwners(): { userId: string; botId: string }[] {
   return ensureDatabase().query("SELECT user_id AS userId, id AS botId FROM gond_bots WHERE is_primary = 1 AND hidden = 0 AND user_id IS NOT NULL").all() as { userId: string; botId: string }[];
 }
 
-/** How many lines the person wrote to a conversation, and how many of those no turn has answered yet. */
 export function personLinesIn(threadId: string): { said: number; waiting: number } {
   const row = ensureDatabase()
     .query("SELECT COUNT(*) AS said, COUNT(CASE WHEN answered_at IS NULL THEN 1 END) AS waiting FROM gond_messages WHERE thread_id = ? AND author = 'you' AND kind = 'message' AND spoken = 0")
@@ -81,7 +78,6 @@ export function personLinesIn(threadId: string): { said: number; waiting: number
 
 export type PersonLine = { threadId: string; body: string; at: string };
 
-/** What the person said anywhere since a moment, newest first: where a promise of theirs would be. */
 export function personLinesSince(userId: string, since: string, limit = 30): PersonLine[] {
   return ensureDatabase()
     .query(
@@ -90,7 +86,6 @@ export function personLinesSince(userId: string, since: string, limit = 30): Per
     .all(userId, since, limit) as PersonLine[];
 }
 
-/** The primary bot's latest check-ins, newest first. */
 export function earlierCheckIns(threadId: string, limit = 3): { body: string; at: string }[] {
   return ensureDatabase().query("SELECT body, created_at AS at FROM gond_messages WHERE thread_id = ? AND check_in = 1 ORDER BY created_at DESC LIMIT ?").all(threadId, limit) as { body: string; at: string }[];
 }

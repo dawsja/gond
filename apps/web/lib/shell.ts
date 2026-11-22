@@ -87,7 +87,6 @@ export type GondDesktop = {
   isMaximized?: () => Promise<boolean>;
 };
 
-/** The desktop app's window buttons, for a page that draws its title row; null in an app too old to have them. */
 export type DesktopWindow = Required<Pick<GondDesktop, "minimize" | "toggleMaximize" | "closeWindow" | "isMaximized">>;
 
 /**
@@ -190,7 +189,6 @@ export function isWebViewShell(): boolean {
   return mobileShell() !== null || macShell() !== null;
 }
 
-/** Shows a finished download in its folder, by the id its `gond:download` event carried; null when the app can't. */
 export function downloadRevealer(): ((id: number) => Promise<void>) | null {
   const mac = macShell();
   if (typeof mac?.showDownload === "function") return async (id) => mac.showDownload(id);
@@ -198,7 +196,6 @@ export function downloadRevealer(): ((id: number) => Promise<void>) | null {
   return typeof show === "function" ? show : null;
 }
 
-/** The Android and iPhone apps: a phone, whatever the window's width. */
 export function isPhoneShell(shell: NativeShell | null): shell is "android" | "ios" {
   return shell === "android" || shell === "ios";
 }

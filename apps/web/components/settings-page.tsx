@@ -70,7 +70,6 @@ export function SettingsPage({ user, section, index = false }: { user: SessionUs
     activeLink.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [current.id]);
 
-  // Only AI and Shared computer show these, so no other section fetches them.
   const showsAi = current.id === "ai";
   const showsStatus = current.id === "ai" || current.id === "shared-computer";
   const connected = params.get("connected");
@@ -298,7 +297,6 @@ export function SettingsPage({ user, section, index = false }: { user: SessionUs
         </div>
         {index ? <div className="wide:hidden">{list}</div> : null}
         <div className={cn("flex flex-col gap-5 wide:flex-row wide:items-start wide:gap-8", index && "hidden wide:flex")}>
-          {/* The title and the sections stay put in their island while a section scrolls, and scroll inside it when the window is short. */}
           <div className="hidden wide:island wide:sticky wide:top-8 wide:flex wide:max-h-[calc(100dvh-4rem)] wide:desktop:top-16 wide:desktop:max-h-[calc(100dvh-6rem)] wide:w-52 wide:shrink-0 wide:flex-col wide:gap-4 wide:overflow-y-auto wide:overscroll-contain wide:p-3 wide:pt-4 mac:hidden">
             <h1 className="px-3 text-[20px] leading-8 font-semibold tracking-[-0.4px]">Settings</h1>
             {nav}

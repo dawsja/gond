@@ -77,7 +77,6 @@ const REVEAL_MS = 1_500;
 
 // Every line is Markdown to parse as the conversation opens, so the first page is short; earlier ones load on the way up.
 const PAGE = 60;
-// A jump to a line further back (a search hit, a tapped quote) reads back in bigger steps.
 const JUMP_PAGE = 200;
 const COMPOSER_HEIGHT = 68;
 // Soon enough that the chat list's reload for a reply also takes in this read marker's change.
@@ -102,11 +101,9 @@ function FileKindIcon({ kind }: { kind: FileKind }) {
   }
 }
 
-// A search hit or a tapped quote's message, ringed for a moment; the ring fades as it goes.
 const RING = "transition-shadow duration-500";
 const RINGED = "ring-2 ring-ring";
 
-/** A turn that failed on the person's message, with a way to go again. */
 function FailedTurn({ message, highlighted }: { message: Message & { answering: string }; highlighted: boolean }) {
   const [busy, setBusy] = useState(false);
   const retry = () => {
@@ -215,7 +212,6 @@ function EditBubble({ message, touch, stops, inPlace, onCancel, onSend }: { mess
   );
 }
 
-// A tap on a link, button or picture inside a bubble, or the end of a selection, isn't asking for the time.
 function showsTime(event: ReactMouseEvent): boolean {
   if (event.target instanceof Element && event.target.closest("a, button, img, input, textarea")) return false;
   return !window.getSelection()?.toString();
@@ -242,12 +238,10 @@ function revealIn(message: Message, reveals: Record<string, PictureReveal>): Pic
   return undefined;
 }
 
-/** What a reply quotes from a message still being written: its words, or its first file. */
 function quoteText(message: Message): string {
   return plainMarkdown(message.body).slice(0, 280) || message.attachments[0]?.name || "";
 }
 
-/** `unread` is what shows under the person's line no bot has read yet; only such a line edits in place or unsends. */
 const Line = memo(function Line({ message, threadId, bots, other, bot, approval, isRoom, space, editing, latestHandOff, stops, touch, picks, closedBy, inert, sentTo, noticed, reveal, highlighted, unread, onPick, onView, onDecide, onOpenExchange, onEdit, onUnsend, onSelectText, onReacted, onReply, onJump }: { message: Message; threadId: string; bots: Bot[]; other: ThreadRow | undefined; bot: Bot | null; approval: Approval | null | undefined; isRoom: boolean; space: ThreadSpace | null; editing: boolean; latestHandOff: boolean; stops: boolean; touch: boolean; picks: string; closedBy: string | null; inert: boolean; sentTo: string | undefined; noticed: Noticed | undefined; reveal: PictureReveal | undefined; highlighted: boolean; unread: string | undefined; onPick: (option: string, from: Message) => Promise<void>; onView: (attachmentId: string) => void; onDecide: (id: string, answer: ApprovalAnswer) => Promise<void>; onOpenExchange: (withThreadId: string) => void; onEdit: (message: Message | null, text?: string) => Promise<boolean>; onUnsend: (message: Message) => void; onSelectText: (text: string) => void; onReacted: (message: Message) => void; onReply: (message: Message) => void; onJump: (id: string) => void }) {
   const mine = message.author === "you";
   const bubble = useRef<HTMLDivElement>(null);
@@ -321,8 +315,6 @@ const Line = memo(function Line({ message, threadId, bots, other, bot, approval,
   const reactable = canReact(message);
   const menu = Boolean(message.body) || edits || takeBack || reactable || replyable;
   const reactWith = (emoji: ReactionEmoji) => void react(message, emoji, onReacted);
-  // On the iPhone a long press lifts the bubble into the app's own menu, with the reactions above it;
-  // on the Mac a right-click opens the app's menu at the bubble.
   const openNativeMenu = async (selection: string) => {
     const node = bubble.current;
     if (!node) return;
@@ -549,7 +541,6 @@ type HistoryProps = {
   messages: Message[];
   threadId: string;
   bots: Bot[];
-  /** The person's conversations by id, for the handoff markers. */
   threads: ReadonlyMap<string, ThreadRow>;
   approvals: ReadonlyMap<string, Approval | null>;
   bot: Bot | null;
@@ -557,7 +548,6 @@ type HistoryProps = {
   space: ThreadSpace | null;
   inSpace: boolean;
   roomBots: Bot[];
-  /** The person's lines the running turns answer: editing one stops them. */
   answering: string[] | undefined;
   editing: string | null;
   touch: boolean;
@@ -638,7 +628,6 @@ const MessageHistory = memo(function MessageHistory({ messages, threadId, bots, 
   );
 });
 
-/** Every picture the conversation shows, for the viewer. */
 function picturesIn(messages: Message[]) {
   return messages.flatMap((m) => (m.kind === "prompt" ? [] : m.attachments.filter(isPicture).map((file) => ({ id: file.id, name: file.name }))));
 }
@@ -727,7 +716,6 @@ function FollowComposer({ height }: { height: number }) {
   return null;
 }
 
-/** Under the iPhone app's chrome: says whether there is newer to scroll to, and scrolls there when the app's arrow is tapped. */
 function NativeJump({ onCanJump, jumpRev }: { onCanJump: (can: boolean) => void; jumpRev: number }) {
   const { scrollToEnd } = useMessageScroller();
   const { end } = useMessageScrollerScrollable();
@@ -786,7 +774,6 @@ export function Conversation({ threadId }: { threadId: string }) {
   const [replying, setReplying] = useState<Message | null>(null);
   // A tap on a reply's quote; the count makes a second tap on the same quote go again.
   const [jump, setJump] = useState<{ id: string; n: number } | null>(null);
-  // The message a jump landed on, ringed until the ring fades.
   const [flash, setFlash] = useState<string | null>(null);
   const flashTimer = useRef<number | null>(null);
   const flashOn = useCallback((id: string) => {
@@ -804,7 +791,6 @@ export function Conversation({ threadId }: { threadId: string }) {
   const [selectText, setSelectText] = useState<string | null>(null);
   const [viewing, setViewing] = useState<string | null>(null);
 
-  // Pictures that just landed, by attachment, for their squares to fall away once.
   const [reveals, setReveals] = useState<Record<string, PictureReveal>>({});
   const onLanded = useCallback((reveal: PictureReveal) => {
     setReveals((current) => ({ ...current, [reveal.file]: reveal }));
@@ -832,7 +818,6 @@ export function Conversation({ threadId }: { threadId: string }) {
       setInfo((current) => keep(current, next));
       setInfoFailed(false);
     } catch (failure) {
-      // Only a 404 means it's gone; a dropped connection is worth another try.
       if (failure instanceof ApiError && failure.status === 404) setMissing(true);
       else setInfoFailed(true);
     }
@@ -908,7 +893,6 @@ export function Conversation({ threadId }: { threadId: string }) {
   const bot = info?.bot ?? null;
   const space = thread?.space ?? null;
   const answering = info?.answering;
-  // Only the primary bot takes calls.
   const callable = bot?.primary ? bot : undefined;
   const calling = useDial(threadId, callable);
   const watches = useWatches(bot?.id ?? null);
@@ -933,7 +917,6 @@ export function Conversation({ threadId }: { threadId: string }) {
   const waitingOnYou = approvals.some((a) => a.threadId === threadId && a.status === "pending") || handOffOpen(handOff, desktop);
 
   const members = useMemo(() => (isRoom && thread ? thread.members.map((id) => bots.find((b) => b.id === id)).filter((b): b is Bot => Boolean(b)) : []), [isRoom, thread, bots]);
-  // In a room, @ offers only the bots in it, and in a space the people and bots on the other Gonds too.
   const chips = useMemo(() => (isRoom ? [...members.map(mentionOfBot), ...spaceMentionables(space)] : []), [isRoom, members, space]);
   const mentionable = useMemo(() => (isRoom ? chips : bots.filter((b) => !b.hidden).map(mentionOfBot)), [isRoom, chips, bots]);
   const reply = useMemo<Replying | null>(() => (replying ? { id: replying.id, name: nameOf(replying.author, bots, space), color: colorOf(replying.author, bots, space), text: quoteText(replying) } : null), [replying, bots, space]);

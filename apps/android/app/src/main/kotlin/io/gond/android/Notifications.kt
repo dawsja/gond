@@ -21,7 +21,6 @@ object Notifications {
     const val CHANNEL = "bots"
     const val EXTRA_URL = "io.gond.android.url"
 
-    /** A card the notice can answer from the lock screen, its buttons named as on the card. */
     data class Card(val id: String, val allow: String, val deny: String)
 
     fun ensureChannel(context: Context) {
@@ -31,7 +30,6 @@ object Notifications {
         manager.createNotificationChannel(channel)
     }
 
-    /** "granted", "denied" or "prompt", as the web app's notifications card shows it. */
     fun state(context: Context): String {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {

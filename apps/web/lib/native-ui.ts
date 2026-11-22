@@ -27,7 +27,6 @@ function features(): string[] {
 
 const never = () => () => {};
 
-/** Whether the app around this page draws the native pieces; false on the server's render, so it hydrates as sent. */
 export function useNativeUi(): boolean {
   return useSyncExternalStore(never, () => bridge() !== null, () => false);
 }
@@ -51,7 +50,6 @@ function sidebarBridge(): { sidebar(state: string): void } | null {
   return mac && typeof mac.sidebar === "function" && features().includes("sidebar") ? mac : null;
 }
 
-/** Whether the Mac app draws the chats and Settings' sections in its own sidebar, so the page shows neither. */
 export function useNativeSidebar(): boolean {
   return useSyncExternalStore(never, () => sidebarBridge() !== null, () => false);
 }
@@ -90,7 +88,6 @@ function listen() {
   });
 }
 
-/** Shows a native piece that answers nothing, like a toast. */
 export function tellNative(request: Extract<NativeRequest, { kind: "toast" }>) {
   const native = bridge();
   if (!native) return;
@@ -98,7 +95,6 @@ export function tellNative(request: Extract<NativeRequest, { kind: "toast" }>) {
   native.present(kind, JSON.stringify({ id: `native-${++next}`, ...rest }));
 }
 
-/** Shows a native piece and waits for what the person picked there; null when they closed it, or when there is no app to ask. */
 export function askNative<K extends NativeRequest["kind"]>(request: Extract<NativeRequest, { kind: K }>): Promise<NativeAnswer[K] | null> {
   const native = bridge();
   if (!native) return Promise.resolve(null);
@@ -121,19 +117,16 @@ export type ChromeState = {
   faces: string[];
   more: number;
   primary: boolean;
-  /** The conversation is a space, so the faces wear its globe. */
   space: boolean;
   tint: string;
   menu: NativeMenuItem[][];
   /** Something of the page's is open over the conversation (a sheet, a dialog, a menu), so the chrome steps aside. */
   covered: boolean;
-  /** Above the composer: the room's bots to @mention (with their faces), the files to send, the quote being answered. */
   mentions: { id: string; handle: string; face: string | null }[];
   files: { name: string; size: string }[];
   replying: { name: string; color: string; text: string } | null;
   /** The conversation can scroll on to its newest message, so the app shows its jump arrow. */
   jump: boolean;
-  /** The bots' screens in use, each a pill under the header that opens it. */
   screens: { id: string; label: string }[];
   /** Where the conversation sits across the web view, in CSS pixels: the Mac app centres its composer in it, clear of the details beside it. */
   column: { x: number; width: number };
@@ -153,7 +146,6 @@ export type ChromeState = {
   };
 };
 
-/** The Chats screen's header in the iPhone app: your picture, Search and New. */
 type ChatsChromeState = {
   screen: "chats";
   /** Search is open: the app draws the field, and the page shows what it finds. */
@@ -187,12 +179,10 @@ export type ChromeEvent =
   | { type: "call-mute" }
   | { type: "call-end" };
 
-/** A Settings page's back button in the iPhone app. */
 type SettingsChromeState = { screen: "settings"; label: string; covered: boolean };
 
 type AnyChrome = ChromeState | ChatsChromeState | SettingsChromeState;
 
-/** Hands the conversation's header and composer to the app while `state` is set, and takes them back when it isn't. */
 export function useNativeChrome(state: AnyChrome | null, onEvent: (event: ChromeEvent) => void) {
   const json = state ? JSON.stringify(state) : null;
   useEffect(() => {
@@ -211,7 +201,6 @@ export function useNativeChrome(state: AnyChrome | null, onEvent: (event: Chrome
 }
 
 export type SidebarRow = {
-  /** The conversation. */
   id: string;
   path: string;
   title: string;
@@ -229,7 +218,6 @@ export type SidebarRow = {
   face: string;
   active: boolean;
   working: boolean;
-  /** The row's context menu: the conversation's actions. */
   menu: NativeMenuItem[][];
 };
 
@@ -244,7 +232,6 @@ export type SidebarState = {
   mode: "chats" | "settings";
   /** The detail's title when no conversation hands over chrome (Settings' section, or "Gond"). */
   title: string;
-  /** Something of the page's is open over everything (a dialog, a sheet, a menu). */
   covered: boolean;
   /** PNGs by face key, only those not sent before in this page's life: the app keeps them until the page reloads. */
   faces: Record<string, string>;
@@ -256,13 +243,10 @@ export type SidebarState = {
   pinned: SidebarTile[];
   rows: SidebarRow[];
   hits: SidebarHit[];
-  /** Worth a look, when there is something, opened with `look`. */
   look: { label: string; count: number } | null;
-  /** The New menu: new-bot, new-room, new-space, join-space. */
   newItems: NativeMenuItem[];
   /** `face` is a key into the faces too, null for your initial on a plain circle; `profile` is the open profile's name when there are several. */
   me: { name: string; face: string | null; initial: string; profile: string | null; active: boolean };
-  /** Profiles to switch to, Settings, Sign out. */
   profileMenu: NativeMenuItem[][];
   /** A call going on in another chat; `since` is when it was picked up, in milliseconds. */
   call: { label: string; since: number; muted: boolean; color: string } | null;
@@ -311,7 +295,6 @@ function sendSidebarSoon() {
   if (!sidebarFrame && typeof window !== "undefined") sidebarFrame = window.requestAnimationFrame(flushSidebar);
 }
 
-/** Whether a face is already the app's, or on its way with the next send. */
 export function faceSent(key: string): boolean {
   return facesSent.has(key) || key in facesWaiting;
 }
@@ -321,7 +304,6 @@ export function sendFaces(faces: Record<string, string>) {
   sendSidebarSoon();
 }
 
-/** Draws the Mac app's sidebar from `state` while this is mounted, and takes it away (`null`) when it isn't. */
 export function useNativeSidebarState(state: Omit<SidebarState, "faces">, onEvent: (event: SidebarEvent) => void) {
   const json = JSON.stringify(state);
   useEffect(() => {
@@ -346,14 +328,13 @@ export function useNativeSidebarState(state: Omit<SidebarState, "faces">, onEven
   }, [onEvent]);
 }
 
-/** Files the app picked, as the page's own File objects. */
 export async function filesFrom(picked: { name: string; type: string; data: string }[]): Promise<File[]> {
-  return Promise.all(
-    picked.map(async (file) => {
-      const blob = await (await fetch(`data:${file.type || "application/octet-stream"};base64,${file.data}`)).blob();
-      return new File([blob], file.name, { type: file.type || blob.type });
-    }),
-  );
+  return picked.map((file) => {
+    const raw = atob(file.data);
+    const bytes = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i += 1) bytes[i] = raw.charCodeAt(i);
+    return new File([bytes], file.name, { type: file.type || "application/octet-stream" });
+  });
 }
 
 /** A CSS colour as #rrggbb, whatever the page wrote it in (oklch, color-mix), for the app to paint with; "" when it can't be read. */
@@ -386,7 +367,6 @@ function pngOf(canvas: HTMLCanvasElement): string | null {
   }
 }
 
-/** An avatar on the page (its svg or picture) drawn into a square PNG, for the app's header. */
 /** Whether every picture in a face has loaded: until one has, its avatar shows the fallback and holds no img. */
 export function picturesLoaded(face: Element): boolean {
   return [...face.querySelectorAll("[data-slot=avatar]")].every((avatar) => avatar.querySelector("img"));

@@ -9,7 +9,6 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { del, post } from "@/lib/api";
 
-/** A signed-in plan: who, whether it works, and how to leave. */
 export function PlanSignedIn({
   kind,
   logo,

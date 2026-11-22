@@ -11,7 +11,6 @@ import { NOTIFICATIONS_EVENT, useDeviceNotices } from "@/hooks/use-device-notice
 import { PUSH_SYNCED_EVENT, currentSubscription, disablePush, enablePush, phonePushOn, pushPermission, pushSupported, setShellNotificationsOff, shellNotificationsOff } from "@/lib/push";
 import { isPhoneShell, shellBridge, useNativeShell } from "@/lib/shell";
 
-/** Settings → Notifications: this browser or app, and the notices it gets. */
 export function NotificationsSection() {
   return (
     <>
@@ -151,7 +150,6 @@ function DeviceRow() {
   );
 }
 
-/** What else this browser or app hears about, once notifications are on here; each bot's are in its own profile. */
 function DeviceNoticesCard() {
   const { notices, setNotices, save, here } = useDeviceNotices();
   if (!notices) return null;

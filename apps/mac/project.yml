@@ -69,7 +69,6 @@ targets:
     platform: macOS
     sources:
       - path: GondTests
-      # The iPhone app's address tests, against the same ServerURL.swift.
       - path: ../ios/GondTests/ServerURLTests.swift
     dependencies:
       - target: Gond

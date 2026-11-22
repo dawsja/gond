@@ -7,12 +7,6 @@ import { LIMITS, VERSIONS, info, isKey, parseClientFrame, type RelayFrame } from
 import { handlePush, type Fcm } from "./push.ts";
 import { createUsageStore, handleUsage, usageJson } from "./usage.ts";
 
-/**
- * gond-relay on your own machine: one Bun process, every mailbox in one SQLite file. Run it
- * with Docker (packages/relay/Dockerfile) or `bun run src/server.ts`; Gond servers point at its
- * address. The Cloudflare build (worker.ts) is the same mailboxes over Durable Objects.
- */
-
 type Socket = { key: string; nonce: string; authed: boolean; timer?: ReturnType<typeof setTimeout>; turn: Promise<void> };
 
 type RelayServerOptions = { port?: number; hostname?: string; dataDir?: string; database?: Database; now?: () => number; fcm?: Fcm };
@@ -81,7 +75,6 @@ export function createRelayServer(options: RelayServerOptions = {}) {
       if (!(await provesKey(ws.data.key, ws.data.nonce, frame))) return ws.close(4003, "That key wasn't proved");
       clearTimeout(ws.data.timer);
       ws.data.authed = true;
-      // One socket per mailbox: a reconnecting server takes over from its old socket.
       owners.get(ws.data.key)?.close(4000, "Replaced by a newer connection");
       owners.set(ws.data.key, ws);
       store.touch(ws.data.key);

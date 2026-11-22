@@ -24,7 +24,6 @@ export function saveAgentSession(agent: { agentId: string; botId: string; thread
     .run(agent.agentId, agent.botId, agent.threadId, session.run, session.sessionId, session.seenAt, now(), agent.botId, agent.threadId);
 }
 
-/** Forgets the sessions of a profile's bots, as when its home on the computer was emptied; every profile's with none. */
 export function forgetAgentSessions(userId?: string): void {
   if (userId === undefined) ensureDatabase().query("DELETE FROM gond_agent_sessions").run();
   else ensureDatabase().query("DELETE FROM gond_agent_sessions WHERE bot_id IN (SELECT id FROM gond_bots WHERE user_id = ?)").run(userId);

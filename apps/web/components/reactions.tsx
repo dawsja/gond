@@ -10,7 +10,6 @@ export function canReact(message: Message): boolean {
   return message.kind === "message" && !["you", "system", "routine"].includes(message.author) && !isRemoteAuthor(message.author);
 }
 
-/** Puts the person's reaction on a bot's message, or takes it off when it is the one already there. */
 export async function react(message: Message, emoji: ReactionEmoji, onChange: (message: Message) => void) {
   const mine = message.reactions.find((r) => r.author === "you")?.emoji;
   const next = mine === emoji ? null : emoji;
@@ -22,7 +21,6 @@ export async function react(message: Message, emoji: ReactionEmoji, onChange: (m
   }
 }
 
-/** The row of reactions at the top of a bot message's menu. */
 export function ReactionPicker({ message, onReact }: { message: Message; onReact: (emoji: ReactionEmoji) => void }) {
   const mine = message.reactions.find((r) => r.author === "you")?.emoji;
   return (
@@ -42,10 +40,6 @@ export function ReactionPicker({ message, onReact }: { message: Message; onReact
   );
 }
 
-/**
- * The reactions on a bubble, pinned to its lower corner on the side away from the avatar: one chip
- * per emoji with how many gave it, the way a chat app shows them, so two bots' 👍 is "👍 2".
- */
 export function ReactionBadges({ message, bots, mine, onReact }: { message: Message; bots: Bot[]; mine: boolean; onReact: (emoji: ReactionEmoji) => void }) {
   if (!message.reactions.length) return null;
   const groups = new Map<ReactionEmoji, string[]>();

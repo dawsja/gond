@@ -83,10 +83,6 @@ export function setSecret(userId: string, name: string, value: string, requested
   settingsChanged(userId);
 }
 
-/**
- * Replaces the value of a secret the person already has, keeping its site and who asked for it; written
- * afresh, so it is encrypted again with a new IV. False when there is no such secret.
- */
 export function changeSecret(userId: string, name: string, value: string): boolean {
   const row = ensureDatabase().query("SELECT requested_by, site FROM gond_secrets WHERE user_id = ? AND name = ? AND card IS NULL").get(userId, name) as { requested_by: string | null; site: string | null } | null;
   if (!row) return false;

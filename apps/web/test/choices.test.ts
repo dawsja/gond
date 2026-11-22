@@ -49,7 +49,6 @@ describe("choiceAnswers", () => {
     expect(said).toBe("Size? L\nWhich colours: Red and Blue");
     expect(questionAnswers(["Size?", "Which colours"], `@patch ${said}`)).toEqual(["L", "Red and Blue"]);
     expect(questionAnswers(["Size?", "Which colours"], "Never mind")).toEqual([null, null]);
-    // Its rows are never answered one by one: the reply closes the card.
     const answers = choiceAnswers([bot("q1", body), you("p1", said, "q1")]);
     expect(answers.get("q1")).toEqual({ picks: [], closedBy: said });
   });

@@ -268,7 +268,6 @@ test("a guest session has no tools, or only web search, whatever permission it a
   assert.ok(talk.includes("--permission-prompt-tool"));
   const denied = talk.slice(talk.indexOf("--disallowedTools") + 1);
   for (const tool of ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "Task", "WebFetch", "WebSearch"]) assert.ok(denied.includes(tool), tool);
-  // Even with optional flags off, a guest never loads the person's settings and only the gond bridge.
   assert.equal(talk[talk.indexOf("--setting-sources") + 1], "project");
   assert.ok(talk.includes("--strict-mcp-config"));
 
@@ -276,7 +275,6 @@ test("a guest session has no tools, or only web search, whatever permission it a
   assert.equal(look[look.indexOf("--tools") + 1], "WebSearch");
   const allowed = look.slice(look.indexOf("--allowedTools") + 1, look.indexOf("--strict-mcp-config"));
   assert.deepEqual(allowed, ["mcp__gond", "WebSearch"]);
-  // WebFetch reaches any address the box can, so a guest never has it.
   const lookDenied = look.slice(look.indexOf("--disallowedTools") + 1, look.indexOf("--append-system-prompt-file"));
   assert.ok(lookDenied.includes("WebFetch"));
   assert.ok(!lookDenied.includes("WebSearch"));
@@ -292,7 +290,6 @@ test("a guest session is its own, and needs a Claude Code that can drop its tool
   assert.ok(guestReady(parseVersion(GUEST_FLOOR)));
   assert.ok(guestReady(parseVersion("2.1.310")));
   assert.ok(!guestReady(parseVersion("1.0.120")));
-  // `--tools` is the fence, so a version that can't be read is refused too.
   assert.ok(!guestReady(null));
   assert.ok(!guestReady(parseVersion("not a version")));
   assert.match(guestRefusal(null), /Couldn't tell which Claude Code/);

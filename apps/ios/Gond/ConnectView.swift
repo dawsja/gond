@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// The app's one screen of its own: where your Gond is. Everything after it is your Gond's web app.
 struct ConnectView: View {
     @ObservedObject var model: AppModel
     @FocusState private var typing: Bool
@@ -51,7 +50,6 @@ struct ConnectView: View {
         .animation(.snappy(duration: 0.3), value: typing)
     }
 
-    /// Three bots' faces, standing together like the team you're about to reach.
     private var team: some View {
         HStack(alignment: .top, spacing: -14) {
             BotFace(color: Theme.bots[0]).frame(width: 150).rotationEffect(.degrees(-10))
@@ -112,7 +110,6 @@ struct ConnectView: View {
 }
 
 extension View {
-    /// Liquid Glass from iOS 26, a material before it.
     @ViewBuilder
     func glass<S: Shape>(in shape: S) -> some View {
         if #available(iOS 26.0, *) {
@@ -122,7 +119,6 @@ extension View {
         }
     }
 
-    /// The main action: glass tinted the person's colour from iOS 26, a filled pill before it.
     @ViewBuilder
     func prominentGlass() -> some View {
         if #available(iOS 26.0, *) {

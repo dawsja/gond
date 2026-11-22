@@ -13,7 +13,6 @@ const IMAGE_HEADERS = {
   "X-Content-Type-Options": "nosniff",
 };
 
-/** "Show me how": starting, pausing and ending a recording, and what happens to the bot's draft of it. */
 export function teachingsRoutes() {
   const app = new Hono<Env>();
 
@@ -138,7 +137,6 @@ export function teachingsRoutes() {
     }
   });
 
-  // A recording's screenshots: Gond's own copy once it ended, the computer's while it records.
   app.get("/teachings/:id/frames/:n", async (c) => {
     const me = userId(c);
     const teaching = getTeaching(c.req.param("id"), me);

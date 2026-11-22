@@ -5,14 +5,12 @@
  */
 export const GOND_RELAY_URL = "https://api.gond.io";
 
-/** A line written on another Gond, by its person or one of its bots, carries this before the member's id. */
 export const REMOTE_AUTHOR = "remote:";
 
 export function isRemoteAuthor(author: string): boolean {
   return author.startsWith(REMOTE_AUTHOR);
 }
 
-/** What one of your bots may do for a line written on another Gond. */
 export const SPACE_LEVELS = ["talk", "look", "act", "full"] as const;
 export type SpaceLevel = (typeof SPACE_LEVELS)[number];
 
@@ -45,15 +43,12 @@ export type SpaceGond = {
 export const SPACE_STATUSES = ["joining", "active", "left", "closed"] as const;
 export type SpaceStatus = (typeof SPACE_STATUSES)[number];
 
-/** What a conversation needs to draw a space: the other Gonds and who is there from them. */
 export type ThreadSpace = { id: string; host: boolean; status: SpaceStatus; gonds: SpaceGond[]; members: SpaceMember[] };
 
-/** A space's details, with your bots' rules in it. */
 export type Space = ThreadSpace & { threadId: string; rules: SpaceRule[] };
 
 export type FederationState = "off" | "connecting" | "ready" | "closed" | "replaced";
 
-/** This Gond and other Gonds: on the admin's Settings → Other Gonds, and what everyone needs to invite and join. */
 export type Federation = {
   enabled: boolean;
   name: string;
@@ -61,7 +56,6 @@ export type Federation = {
   relayUrl: string;
   invites: "everyone" | "admin";
   state: FederationState;
-  /** This Gond's own six words; null until it has keys. */
   words: string[] | null;
   /** Whether the person asking may make invites and join spaces now. */
   canInvite: boolean;

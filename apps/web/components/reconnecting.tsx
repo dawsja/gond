@@ -7,7 +7,6 @@ import { Spinner } from "@/components/ui/spinner";
 
 const RETRY_MS = 3_000;
 
-/** In place of the app while the API doesn't answer, as after an update: the session is kept, so the page comes back by itself. */
 export function Reconnecting() {
   const router = useRouter();
   useEffect(() => {

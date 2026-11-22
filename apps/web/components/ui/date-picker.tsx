@@ -26,16 +26,13 @@ type DatePickerProps = {
   value: string
   onChange: (day: string) => void
   placeholder?: string
-  /** The years the month and year lists offer. */
   fromYear: number
   toYear: number
-  /** Offers Clear, for a date that may be left out. */
   clearable?: boolean
   className?: string
   "aria-label"?: string
 }
 
-/** A date field: a pill like any field, opening shadcn's calendar with month and year lists. */
 function DatePicker({ id, value, onChange, placeholder = "Pick a date", fromYear, toYear, clearable = false, className, "aria-label": label }: DatePickerProps) {
   const [open, setOpen] = useState(false)
   const selected = dateOf(value)

@@ -355,7 +355,6 @@ const CHECKOUT_TITLES: Record<CheckoutState, string> = {
   expired: "Approval expired",
   failed: "Checkout needs your help",
 };
-// A checkout that ended folds to one line, as every answered card does; the order card follows it.
 const CHECKOUT_DONE: Partial<Record<CheckoutState, { status: string; tone: "ok" | "bad" | "neutral" }>> = {
   ordered: { status: "Ordered", tone: "ok" },
   cancelled: { status: "Cancelled", tone: "neutral" },
@@ -389,7 +388,6 @@ function Checkout({ id, record, bot, onChange }: { id: string; record: ShoppingC
     };
   }, [record.state]);
   const [at, setAt] = useState(() => Date.now());
-  // Only a quote waiting for its yes counts down; nothing else here changes with the clock.
   useEffect(() => (record.state === "review" ? pollWhileShown(() => setAt(Date.now()), 1000) : undefined), [record.state]);
   const expired = Boolean(record.expiresAt && Date.parse(record.expiresAt) < at);
   async function mutate(action: string, body: object) {

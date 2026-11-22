@@ -5,7 +5,6 @@ import { hideSecrets } from "./data/secrets.ts";
 import { armedRoutines, joinWaitingRun, recordRoutineRun, routineEventId, routineForEvent, routinePrompt, runsSince, setRoutineEventId, waitingRun } from "./data/routines.ts";
 import { postMessage } from "./data/threads.ts";
 
-// A routine an event starts runs at most this often; past it, events wait for the next run's note.
 export const EVENT_RUNS_PER_HOUR = 12;
 // Events that arrive while a run waits to be picked up join it, up to this many; a burst is one run.
 export const EVENTS_PER_RUN = 10;
@@ -19,12 +18,10 @@ function listening(): Map<string, Listening> {
   return (holder.__gondTriggers ??= new Map());
 }
 
-/** Events a routine let pass while it rested, by routine, told to its next run. */
 function rested(): Map<string, number> {
   return (holder.__gondRested ??= new Map());
 }
 
-/** An event's id: Composio's trigger it came from. */
 function eventIdOf(event: Record<string, unknown>): string | null {
   const metadata = event.metadata && typeof event.metadata === "object" ? (event.metadata as Record<string, unknown>) : {};
   const id = typeof event.id === "string" && event.id !== "unknown" ? event.id : typeof metadata.id === "string" ? metadata.id : null;
@@ -39,7 +36,6 @@ export function eventText(event: Record<string, unknown>, at: string): string {
   return `${EVENT_TAG}"${at}">\n${hideSecrets(body).replace(/<\/?event/gi, "‹event")}\n</event>`;
 }
 
-/** The words a run an event started opens with, after the routine's own prompt. */
 export function eventIntro(trigger: RoutineTrigger, missed: number): string {
   const app = trigger.toolkit.charAt(0).toUpperCase() + trigger.toolkit.slice(1);
   const rest = missed ? ` ${missed} more ${missed === 1 ? "event" : "events"} came while this routine rested (it runs at most ${EVENT_RUNS_PER_HOUR} times an hour); look in the app if they matter.` : "";
@@ -115,7 +111,6 @@ export function listenFor(userId: string): Promise<void> {
   return entry.ready;
 }
 
-/** From the dispatcher's minute: a channel for every key a routine waits on, and none for a key nothing waits on now. */
 export function keepListening(): void {
   const wanted = new Map<string, string>();
   for (const { userId } of armedRoutines()) {
@@ -130,7 +125,6 @@ export function keepListening(): void {
   }
 }
 
-/** Has Composio watch for the routine's event; an error in words a bot can act on, or null once it waits. */
 export async function armRoutine(userId: string, routine: Pick<Routine, "id" | "trigger">): Promise<string | null> {
   if (!routine.trigger) return null;
   try {

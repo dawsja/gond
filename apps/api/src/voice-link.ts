@@ -1,6 +1,5 @@
 import { CALL_MODELS, CALL_SAMPLE_RATE, VOICE_MODELS, callProtocol, type VoiceProvider } from "@gond/shared";
 
-/** What a speaking model said or asked for, the same whichever model it is. */
 export type VoiceSignal =
   | { kind: "ready" }
   | { kind: "audio"; data: string }
@@ -16,11 +15,9 @@ export type VoiceSignal =
 
 export type VoiceLink = {
   sendAudio(base64: string): void;
-  /** The bot's answer to a handed-over request, for the voice to say in its own words. */
   result(id: string, text: string): void;
   /** Where the bot's work stands, for the voice to know without saying it. */
   progress(id: string, text: string): void;
-  /** Something the voice should tell the person now, like a card on their screen. */
   tell(text: string): void;
   status(id: string, text: string): void;
   /** The quiet answer to a hand-over itself, for a voice whose hand-over is a function call. */
@@ -33,13 +30,10 @@ type LinkOptions = {
   baseUrl: string;
   key: string;
   instructions: string;
-  /** What came before the call, so the voice picks up where the chat is. */
   history: string;
   greeting: string;
   botName: string;
-  /** The model the call runs on, as `speechModel` chose it. */
   model: string;
-  /** The person's pick for this provider, else its default. */
   voice: string | undefined;
   on: (signal: VoiceSignal) => void;
 };
@@ -263,7 +257,6 @@ export class SpeakQueue {
     this.queue = [];
   }
 
-  /** An ask is still waiting to start. */
   get pending(): boolean {
     return Boolean(this.waiting || this.queue.length);
   }
@@ -301,7 +294,6 @@ function keyWords(text: string): Set<string> {
   );
 }
 
-/** Whether what the voice said tells the answer, in its own words: it says at least two of the answer's key words, or its only one. */
 export function tellsAnswer(answer: string, said: string): boolean {
   const wanted = keyWords(answer);
   if (!wanted.size) return said.trim().length > 0;
@@ -320,7 +312,6 @@ export function tellsAnswer(answer: string, said: string): boolean {
 export class AnswerWatch {
   private untold: string[] = [];
   private tries = 0;
-  // The reply under way began after the answer came in, and what it has said so far.
   private watching = false;
   private said = "";
 
@@ -364,7 +355,6 @@ export class AnswerWatch {
 
 type Tool = { type: "function"; name: string; description: string; parameters: object };
 
-/** The session a realtime call opens with: xAI's own shape, or OpenAI's, which also writes down what the person says. */
 export function realtimeSession(provider: VoiceProvider, model: string, voice: string, instructions: string, tools: Tool[]): object {
   const format = { type: "audio/pcm", rate: CALL_SAMPLE_RATE };
   if (provider === "xai") return { voice, instructions, turn_detection: { type: "server_vad" }, audio: { input: { format }, output: { format } }, tools };

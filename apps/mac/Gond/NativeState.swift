@@ -75,7 +75,6 @@ struct ChromeState: Decodable, Equatable {
         let label: String
     }
 
-    /// A call with the bot, which takes the composer's place: what is happening, since when, and the bot's colour.
     struct Call: Decodable, Equatable {
         let label: String
         /// When it was picked up, in milliseconds since 1970, so the clock ticks here.
@@ -306,7 +305,6 @@ struct SidebarState: Decodable, Equatable {
         let items: [SettingsItem]
     }
 
-    /// "chats" or "settings".
     let mode: String
     let title: String
     let covered: Bool

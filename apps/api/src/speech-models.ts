@@ -6,7 +6,6 @@ import { authHeaders, upstreamUrl } from "./providers.ts";
 const LIST_MS = 10 * 60_000;
 const lists = new Map<string, { at: number; ids: string[] | null }>();
 
-/** The model ids the key's server lists, or null when it won't say; kept ten minutes, so a new model shows within that. */
 export async function listedModels(baseUrl: string, key: string): Promise<string[] | null> {
   const cacheKey = `${baseUrl}\n${key}`;
   const cached = lists.get(cacheKey);
@@ -20,7 +19,6 @@ export async function listedModels(baseUrl: string, key: string): Promise<string
 
 export type VoiceAccess = { provider: VoiceProvider; baseUrl: string; key: string; own: boolean };
 
-/** The person's voice key and whose it is; `own` is an OpenAI-compatible server that isn't OpenAI's. */
 export function voiceAccess(userId: string): VoiceAccess | null {
   const provider = getVoice(userId).using;
   const baseUrl = provider ? providerBaseUrl(userId, "voice") : null;
@@ -49,13 +47,11 @@ export async function voiceModelsFor(userId: string, access: VoiceAccess): Promi
   return voiceModelsFrom(access.provider, await listedModels(access.baseUrl, access.key), access.own, { call: voice.callModel, transcribe: voice.transcribeModel });
 }
 
-/** The model a job runs on now: the person's pick while the key offers it, else the newest it does. */
 export async function speechModel(userId: string, job: SpeechJob, access: VoiceAccess): Promise<string> {
   const voice = getVoice(userId);
   return chosenModel(access.provider, job, job === "call" ? voice.callModel : voice.transcribeModel, await listedModels(access.baseUrl, access.key), access.own);
 }
 
-/** Whether a pick may be saved: one the key offers, or on a server of the person's own, any id for the microphone and a family's for calls. */
 export async function canPick(access: VoiceAccess, job: SpeechJob, id: string): Promise<boolean> {
   if (!VOICE_MODEL_ID.test(id)) return false;
   if (access.own && job === "transcribe") return true;

@@ -12,7 +12,6 @@ import { greet } from "./templates.ts";
 const SETTLE_MS = 1_500;
 const pending = new Map<string, ReturnType<typeof setTimeout>>();
 
-/** Whether the person's bots can run now: the engine's key or plan is there, and Claude Code on a plan is signed in. */
 export async function aiWorks(userId: string): Promise<boolean> {
   try {
     const run = engineRun(getAi(userId), userId);
@@ -24,10 +23,6 @@ export async function aiWorks(userId: string): Promise<boolean> {
   return claudeSignedIn(userId);
 }
 
-/**
- * Once the person's AI works, the "Your bots don't have an AI yet" cards go and what they held up
- * runs: the message a card was waiting on is answered, and a bot that never got to greet them does.
- */
 export async function settleSetupCards(userId: string): Promise<void> {
   const cards = cardsOf(userId, AI_SETUP_CARD);
   if (!cards.length || !(await aiWorks(userId))) return;
@@ -57,7 +52,6 @@ function soon(userId: string) {
   pending.set(userId, timer);
 }
 
-/** Checks whenever someone's AI settings change, and once at start for an AI set up while Gond was down. */
 export function watchSetupCards(): () => void {
   for (const userId of cardHolders(AI_SETUP_CARD)) soon(userId);
   return subscribe((event) => {

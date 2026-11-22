@@ -14,13 +14,11 @@ function toRole(value: string | null | undefined): UserRole {
   return value === "admin" ? "admin" : "user";
 }
 
-/** Which sign-ins an account has: its password, and the OIDC provider's, once linked or made through it. */
 export function signInsOf(userId: string): { password: boolean; oidc: boolean } {
   const rows = ensureDatabase().query('SELECT providerId FROM "account" WHERE userId = ?').all(userId) as { providerId: string }[];
   return { password: rows.some((r) => r.providerId === "credential"), oidc: rows.some((r) => r.providerId === OIDC_PROVIDER_ID) };
 }
 
-/** The account a username signs in to with a password, and that password's hash. */
 export function passwordAccount(username: string): { userId: string; hash: string } | null {
   const row = ensureDatabase()
     .query('SELECT a.userId AS userId, a.password AS hash FROM "account" a JOIN "user" u ON u.id = a.userId WHERE u.username = ? AND a.providerId = \'credential\' AND a.password IS NOT NULL')
@@ -37,7 +35,6 @@ export function unlinkedPasswordAccount(): boolean {
   );
 }
 
-/** What a person has made, over all their profiles: bots, and conversations they wrote in. */
 export function contentsOf(personId: string): { bots: number; chats: number } {
   const db = ensureDatabase();
   let bots = 0;
@@ -49,7 +46,6 @@ export function contentsOf(personId: string): { bots: number; chats: number } {
   return { bots, chats };
 }
 
-/** The provider's sign-in moves from one account to another, so signing in with it opens the other. */
 export function moveProviderSignIn(fromId: string, toId: string): void {
   ensureDatabase().query('UPDATE "account" SET userId = ? WHERE userId = ? AND providerId = ?').run(toId, fromId, OIDC_PROVIDER_ID);
 }
@@ -188,7 +184,6 @@ export { AVATAR_MAX_BYTES };
 
 type AvatarRow = { media_type: string; data: Uint8Array; updated_at: string };
 
-/** A profile without a picture of its own wears the person's; `columns` reads only what the caller needs. */
 function avatarRow<T extends Partial<AvatarRow>>(userId: string, columns = "media_type, data, updated_at"): T | null {
   const query = ensureDatabase().query(`SELECT ${columns} FROM gond_user_avatars WHERE user_id = ?`);
   const own = query.get(userId) as T | null;

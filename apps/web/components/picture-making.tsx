@@ -4,7 +4,6 @@ import { IMAGE_SHAPES, type Bot, type ImageAspect } from "@gond/shared";
 import type { CSSProperties } from "react";
 import { cn } from "@/lib/utils";
 
-/** A picture that has just landed: the squares fall away over it once, in its bot's shades. */
 export type PictureReveal = { file: string; aspect: ImageAspect; color: string };
 
 // The bot's own colour from pale to deep: a square rests in a softer one and swells into a stronger one, so the frame is never one flat tint.
@@ -67,7 +66,6 @@ function Squares({ aspect, falling = false, faint = false }: { aspect: ImageAspe
   );
 }
 
-/** A picture a bot is making: a frame its shape, lit in a wave of the bot's shades, over any rough preview so far. */
 export function PictureMaking({ bot, aspect, preview }: { bot: Bot | undefined; aspect: ImageAspect; preview: string | null }) {
   const line = `${bot?.name ?? "A bot"} is making a picture`;
   return (
@@ -82,7 +80,6 @@ export function PictureMaking({ bot, aspect, preview }: { bot: Bot | undefined; 
   );
 }
 
-/** Laid over a posted picture the moment it lands. */
 export function PictureFall({ reveal }: { reveal: PictureReveal }) {
   return (
     <div className="pointer-events-none absolute inset-0" style={shades(reveal.color)}>

@@ -13,7 +13,6 @@ type Latest = { at: number; latest: string | null; notes: string[] };
 
 const holder = globalThis as typeof globalThis & { __gondRelease?: Latest; __gondServerUpdate?: { phase: ServerUpdatePhase; error: string | null; backupFailed: boolean } };
 
-/** The release this server runs, from the image (`GOND_VERSION`); "dev" for anything built otherwise. */
 export function serverVersion(): string {
   const version = (env("VERSION") ?? "").trim().replace(/^v/, "");
   return /^\d+\.\d+\.\d+$/.test(version) ? version : "dev";
@@ -34,7 +33,6 @@ export function releaseNotes(messages: string[]): string[] {
     .slice(0, MAX_NOTES);
 }
 
-/** The newest release and what it brings over this one, looked up at most every ten minutes unless `force`d. */
 async function latestRelease(force = false): Promise<Latest> {
   const cached = holder.__gondRelease;
   if (!force && cached && Date.now() - cached.at < CHECK_MS) return cached;
@@ -76,11 +74,6 @@ export async function serverUpdateReport(force = false): Promise<ServerUpdate> {
 
 const running = (phase: ServerUpdatePhase) => phase !== "idle" && phase !== "done" && phase !== "failed";
 
-/**
- * Updates Gond in place: pulls the new images, updates the computer as Team → Update does, recreates
- * the web container, and last hands the API's own replacement to a helper container. Every page
- * reloads itself once the new API answers with its version.
- */
 export function startServerUpdate({ withoutBackup = false }: { withoutBackup?: boolean } = {}): ServerUpdate["phase"] {
   if (running(state().phase) || isUpdating()) return state().phase;
   set("pulling");

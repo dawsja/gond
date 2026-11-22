@@ -63,7 +63,6 @@ function formOf(record: DetailRecord | null, kind: DetailKind = "person"): Form 
 /** A form as far as saving goes: whether a row was looked at changes nothing. */
 const comparable = (form: Form) => JSON.stringify({ ...form, rows: form.rows.map((row) => ({ ...row, checked: false })) });
 
-/** What's wrong with a row as typed, in a few words, or null. */
 function rowProblem(row: Row): string | null {
   if (!row.type) return row.value ? "Pick what this detail is." : null;
   if (row.type === CUSTOM_DETAIL && row.value && !row.label.trim()) return "Give this detail a name.";
@@ -71,7 +70,6 @@ function rowProblem(row: Row): string | null {
   return "error" in checked ? checked.error : null;
 }
 
-/** Today where the browser is, as YYYY-MM-DD. */
 function today(): string {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
@@ -81,7 +79,6 @@ function dayText(day: string): string {
   return new Date(`${day}T00:00:00`).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 }
 
-/** A record's expiry as the list shows it: plain while it's far off, a warning inside a month, and once it has run out. */
 function Expiry({ day }: { day: string }) {
   const left = daysBetween(today(), day);
   if (left < 0) return <Badge tone="bad">Expired {dayText(day)}</Badge>;
@@ -89,7 +86,6 @@ function Expiry({ day }: { day: string }) {
   return <span>Expires {dayText(day)}</span>;
 }
 
-/** What each kind of value is typed with: the keyboard a phone shows, and an example. */
 const TYPING: Record<Exclude<DetailInputKind, "date">, Pick<ComponentProps<typeof Input>, "type" | "inputMode" | "autoCapitalize" | "placeholder">> = {
   text: { type: "text" },
   email: { type: "email", inputMode: "email", autoCapitalize: "off", placeholder: "sam@example.com" },
@@ -97,7 +93,6 @@ const TYPING: Record<Exclude<DetailInputKind, "date">, Pick<ComponentProps<typeo
   vin: { type: "text", autoCapitalize: "characters", placeholder: "17 letters and numbers" },
 };
 
-/** The list a row picks its detail from: the record's own kind first, then the rest, then one of the person's own. */
 function FieldPicker({ row, kind, used, onPick }: { row: Row; kind: DetailKind; used: Set<string>; onPick: (type: string) => void }) {
   const kinds = DETAIL_KINDS.filter((k) => k !== "other").sort((a, b) => (a === kind ? -1 : b === kind ? 1 : 0));
   return (
@@ -124,7 +119,6 @@ function FieldPicker({ row, kind, used, onPick }: { row: Row; kind: DetailKind; 
   );
 }
 
-/** One record's details, new or changed; a private one is never shown, and stays as it is while left empty. */
 function DetailDialog({ record, onClose, onSaved }: { record: DetailRecord | null; onClose: () => void; onSaved: () => void }) {
   const [initial] = useState<Form>(() => formOf(record));
   const [start] = useState(() => comparable(initial));
@@ -140,7 +134,6 @@ function DetailDialog({ record, onClose, onSaved }: { record: DetailRecord | nul
 
   const setRow = (key: string, change: Partial<Row>) => setForm((current) => ({ ...current, rows: current.rows.map((row) => (row.key === key ? { ...row, ...change } : row)) }));
 
-  /** A row changes what it is: a known detail takes its name and whether it starts private, and keeps a value only that fits. */
   function pickField(row: Row, type: string) {
     const known = detailFieldType(type);
     const fits = known ? !("error" in checkDetailValue(known.input, row.value)) : true;
@@ -148,7 +141,6 @@ function DetailDialog({ record, onClose, onSaved }: { record: DetailRecord | nul
   }
 
   function pickKind(kind: DetailKind) {
-    // A new record's fields follow its kind until anything is typed into them.
     setForm((current) => ({ ...current, kind, rows: record || current.rows.some((row) => row.value) ? current.rows : presetRows(kind) }));
   }
 

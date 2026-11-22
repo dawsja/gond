@@ -1,8 +1,6 @@
 import AppKit
 import SwiftUI
 
-/// The window's sidebar, drawn from the page's `sidebar` state: your chats, or Settings' sections.
-/// A click says what was picked and the page goes there; the selection follows the page's route.
 struct SidebarView: View {
     @ObservedObject var ui: NativeUI
 
@@ -43,7 +41,6 @@ private struct ChatsSidebar: View {
     @State private var selection: String?
     @FocusState private var searching: Bool
 
-    /// The row of the conversation the page shows, if it is listed as a row.
     private var activeRow: String? { state.rows.first(where: { $0.active })?.id }
 
     // The search above the list and you below it, never over it: rows passing under them would show through the glass.
@@ -191,7 +188,6 @@ private struct ChatsSidebar: View {
         .padding(.bottom, 8)
     }
 
-    /// Return in the search opens what it found first, a chat before a message.
     private func openFirst() {
         if let row = state.rows.first {
             ui.sendSidebar(["type": "open", "path": row.path])
@@ -230,7 +226,6 @@ private struct ChatsSidebar: View {
     }
 }
 
-/// The pinned bots and rooms as faces with their names, wrapping across the sidebar.
 private struct PinnedGrid: View {
     @Environment(\.chromeScale) private var s
     @ObservedObject var ui: NativeUI
@@ -268,7 +263,6 @@ private struct PinnedGrid: View {
     }
 }
 
-/// A chat: its face, name and the bot's job, when it last spoke, and the last thing said or what it's doing.
 private struct SidebarRowView: View {
     @Environment(\.chromeScale) private var s
     let row: SidebarState.Row
@@ -341,7 +335,6 @@ private struct SidebarRowView: View {
     }
 }
 
-/// A message that matches the search: who said it and where, when, and the words around the match.
 private struct HitView: View {
     @Environment(\.chromeScale) private var s
     let hit: SidebarState.Hit
@@ -368,7 +361,6 @@ private struct HitView: View {
     }
 }
 
-/// Something new for the person is the bot's colour; bots only talking to each other there is grey.
 private struct UnreadDot: View {
     let kind: String
     let color: String
@@ -380,7 +372,6 @@ private struct UnreadDot: View {
     }
 }
 
-/// A face the page drew, or a quiet circle until it has.
 struct FaceImage: View {
     let image: NSImage?
     let size: CGFloat
@@ -398,7 +389,6 @@ struct FaceImage: View {
     }
 }
 
-/// The page's menu items in their groups, a separator between each.
 private struct ItemsMenu: View {
     let groups: [[NativeMenuItem]]
     let pick: (String) -> Void
@@ -416,7 +406,6 @@ private struct ItemsMenu: View {
     }
 }
 
-/// A call going on in another chat: what is happening and the clock open it, then mute and hang up.
 private struct SidebarCallPill: View {
     let call: SidebarState.Call
     let send: ([String: Any]) -> Void
@@ -465,7 +454,6 @@ private struct SidebarCallPill: View {
     }
 }
 
-/// You, at the foot of the sidebar: your face or initial, your name and the open profile, opening your menu.
 private struct MeButton: View {
     @ObservedObject var ui: NativeUI
     let me: SidebarState.Me
@@ -561,7 +549,6 @@ private struct SettingsSidebar: View {
 }
 
 private extension View {
-    /// The sidebar's search field: a glass capsule from macOS 26, a quiet fill before it.
     @ViewBuilder
     func searchField() -> some View {
         if #available(macOS 26.0, *) {

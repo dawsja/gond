@@ -33,7 +33,6 @@ function FileIcon({ entry }: { entry: BotFileEntry }) {
   return <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />;
 }
 
-/** What the bot keeps in its own folder on the computer, to look at and download without opening the computer. */
 export function BotFiles({ bot }: { bot: Bot }) {
   const [folder, setFolder] = useState(".");
   const [entries, setEntries] = useState<BotFileEntry[] | null>(null);

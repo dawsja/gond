@@ -1,4 +1,3 @@
-/** Server-sent events into their `data` payloads, in order. */
 export function sseEvents(text: string): unknown[] {
   const out: unknown[] = [];
   for (const block of text.split(/\r?\n\r?\n/)) {
@@ -11,13 +10,11 @@ export function sseEvents(text: string): unknown[] {
     try {
       out.push(JSON.parse(data));
     } catch {
-      /* a keep-alive or a torn line */
     }
   }
   return out;
 }
 
-/** The same `data` payloads as `sseEvents`, as they arrive. */
 export async function* sseStream(body: NonNullable<Response["body"]>): AsyncGenerator<unknown> {
   const reader = body.pipeThrough(new TextDecoderStream()).getReader();
   let buffer = "";

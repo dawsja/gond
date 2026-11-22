@@ -1,5 +1,3 @@
-
-/** How long ago a check ran, in words. */
 export function checkedAgo(iso: string, now = Date.now()): string {
   const minutes = Math.floor((now - new Date(iso).getTime()) / 60_000);
   if (!Number.isFinite(minutes) || minutes < 1) return "just now";
@@ -10,12 +8,10 @@ export function checkedAgo(iso: string, now = Date.now()): string {
   return days === 1 ? "a day ago" : `${days} days ago`;
 }
 
-/** Whole percent of `part` in `total`, 0 to 100. */
 export function percentOf(part: number, total: number): number {
   return total > 0 ? Math.round(Math.min(100, Math.max(0, (part / total) * 100))) : 0;
 }
 
-/** Disk is worth a warning once less than a tenth of it is free. */
 export function diskLow(free: number, total: number): boolean {
   return total > 0 && free / total < 0.1;
 }

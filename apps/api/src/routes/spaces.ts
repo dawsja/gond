@@ -10,7 +10,6 @@ import { allowKnownGonds, announceGond, blockGond, changeRule, closeAllSpaces, c
 import { keyWords } from "../words.ts";
 import { readBody } from "./body.ts";
 
-/** Spaces: this Gond among others (the admin's), each person's defaults, invites, joining and each space's rules. */
 export function spacesRoutes() {
   const app = new Hono<Env>();
 

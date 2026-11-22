@@ -188,7 +188,6 @@ test("the screenshot labels each listed element with its ref, and a later list s
   assert.equal(second.elements.text, 'e2 button "Cart (1)" @1150,40');
   assert.deepEqual(second.elements.changes, { gone: ["e10"], same: 8 });
 
-  // A shared screenshot goes without labels, and one asked for in full, or of a page loaded again, is whole.
   calls.length = 0;
   const shared = await browser.run(steps({ type: "screenshot" }), { since: second.elements.id, marks: false });
   assert.ok(!marked().includes("drawMarks 9"));
@@ -197,7 +196,6 @@ test("the screenshot labels each listed element with its ref, and a later list s
   const reloaded = await browser.run(steps({ type: "reload" }), { since: shared.elements.id });
   assert.equal(reloaded.elements.changes, undefined);
   assert.equal(reloaded.elements.text.split("\n").length, 9);
-  // A zoomed picture is for small details, which labels would cover.
   calls.length = 0;
   await browser.run(steps({ type: "screenshot" }), { zoom: { x: 0, y: 0, width: 200, height: 200 } });
   assert.ok(!marked().some((call) => call.startsWith("drawMarks")));

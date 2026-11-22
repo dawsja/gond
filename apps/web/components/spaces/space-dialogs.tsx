@@ -27,7 +27,6 @@ const EXPIRY_ITEMS = [
   { value: "30", label: "30 days" },
 ];
 
-/** The six words both people read out, so neither key was swapped on the way. */
 export function Words({ words }: { words: string[] }) {
   return (
     <span className="flex flex-wrap gap-1.5 font-mono text-[13px]">
@@ -40,7 +39,6 @@ export function Words({ words }: { words: string[] }) {
   );
 }
 
-/** A link that brings someone on another Gond into this room, which becomes a space. */
 export function InviteSpaceDialog({ threadId, onClose }: { threadId: string; onClose: () => void }) {
   const { refresh } = useStore();
   const [days, setDays] = useState("7");
@@ -137,7 +135,6 @@ export function InviteSpaceDialog({ threadId, onClose }: { threadId: string; onC
   );
 }
 
-/** Picks several of the person's bots from a dropdown, ticking each. */
 export function BotPicker({ bots, picked, onChange, labelledBy, empty = "No bots" }: { bots: Bot[]; picked: string[]; onChange: (ids: string[]) => void; labelledBy?: string; empty?: string }) {
   const chosen = bots.filter((b) => picked.includes(b.id));
   return (
@@ -166,7 +163,6 @@ export function BotPicker({ bots, picked, onChange, labelledBy, empty = "No bots
   );
 }
 
-/** None of the person's bots may join a space until they pick which in Settings → Spaces. */
 function NoBotsYet() {
   return (
     <>
@@ -179,7 +175,6 @@ function NoBotsYet() {
   );
 }
 
-/** Starts a space here, with the bots picked, and offers its first invite. */
 export function NewSpaceDialog({ allowed, onClose }: { allowed: string[] | null; onClose: () => void }) {
   const { bots, refresh } = useStore();
   const router = useRouter();
@@ -240,7 +235,6 @@ export function NewSpaceDialog({ allowed, onClose }: { allowed: string[] | null;
   );
 }
 
-/** Pastes an invite from another Gond, shows whose it is and who's there, and joins with the bots picked. */
 export function JoinSpaceDialog({ link: given = "", allowed, onClose }: { link?: string; allowed: string[] | null; onClose: () => void }) {
   const { bots, refresh } = useStore();
   const router = useRouter();

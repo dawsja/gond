@@ -8,7 +8,6 @@ export type DeviceNotices = { mutedBots: string[]; other: boolean };
 
 export const ALL_NOTICES: DeviceNotices = { mutedBots: [], other: true };
 
-/** Whether a device that chose `notices` gets a notice about `botId` (null: about no bot). */
 export function noticeWanted(notices: DeviceNotices, botId: string | null | undefined): boolean {
   return botId ? !notices.mutedBots.includes(botId) : notices.other;
 }

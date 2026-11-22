@@ -34,7 +34,6 @@ test("the reader follows a viewer from its handshake through every message noVNC
     bytes([6, 0, 0, 0], u32(5), "hello"),
     bytes([6, 0, 0, 0], u32(-4), [0, 0, 0, 1]),
   );
-  // Fed a byte at a time, as a network might split it.
   const events = [];
   for (const byte of stream) events.push(...reader.feed(Buffer.from([byte])));
   assert.equal(reader.lost, false);

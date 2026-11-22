@@ -11,7 +11,6 @@ export type CardValues = { number: string; expiry: string; cvc: string; name: st
 
 export const EMPTY_CARD: CardValues = { number: "", expiry: "", cvc: "", name: "", zip: "", nickname: "" };
 
-/** The card's brand on a little card, the only picture of it Gond ever draws. */
 export function CardMark({ brand, className }: { brand: string; className?: string }) {
   return (
     <span aria-hidden="true" className={cn("flex h-7 w-11 shrink-0 items-end justify-end rounded-md bg-foreground px-1.5 pb-1 text-[8.5px] font-bold tracking-wide text-background uppercase", className)}>
@@ -95,7 +94,6 @@ export function CardFields({ id, values, onChange, keep = false, nickname = true
   );
 }
 
-/** A saved card's security code, typed for this one payment; Gond never saves it. */
 export function CardCodeField({ id, value, onChange }: { id: string; value: string; onChange: (value: string) => void }) {
   return (
     <Field>
@@ -106,10 +104,8 @@ export function CardCodeField({ id, value, onChange }: { id: string; value: stri
   );
 }
 
-/** Three or four digits, as `checkCardCode` takes. */
 export const codeReady = (value: string) => /^\d{3,4}$/.test(value);
 
-/** What the API takes for a card: the fields the person filled in. */
 export function cardBody(values: CardValues) {
   return { card: { number: values.number, expiry: values.expiry, cvc: values.cvc, name: values.name, zip: values.zip }, nickname: values.nickname };
 }

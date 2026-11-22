@@ -1,9 +1,7 @@
 import { AI_SETUP_CARD, type Message } from "@gond/shared";
 
-/** What onboarding sends the primary bot, to see the AI answer before the person leaves. */
 export const HELLO = "Hi! What can you do?";
 
-/** How the hello went, read from the conversation: the bot's answer, the line saying it couldn't, or neither yet. */
 export function helloOutcome(messages: Message[], sent: Pick<Message, "id" | "createdAt">, botId: string): { replies: Message[]; failure: Message | null } {
   const at = messages.findIndex((m) => m.id === sent.id);
   const after = at >= 0 ? messages.slice(at + 1) : messages.filter((m) => m.id !== sent.id && m.createdAt >= sent.createdAt);

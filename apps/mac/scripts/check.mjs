@@ -1,8 +1,3 @@
-// A quick check without Xcode, for what would drift from the rest of Gond
-// unnoticed: the bridge offers every method the web app's GondMac type names,
-// the MCP loopback port matches packages/shared, the files the Mac app takes
-// from the iPhone app are there, and the microphone has its reason and
-// entitlement. Xcode, in CI, does the rest.
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

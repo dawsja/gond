@@ -100,7 +100,6 @@ session() {
   dock
   xfsettingsd --sm-client-disable --daemon
   xfdesktop --sm-client-disable &
-  # A dock that crashes comes back, for as long as the display lives.
   (while xset q >/dev/null 2>&1; do plank; sleep 1; done) &
   # Plank stays where the bottom was when a viewer resizes the screen, so
   # it is started again at the new size.

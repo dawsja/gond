@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// Your Gond in the window: the app's sidebar beside the page, the toolbar over it and the composer on it.
 struct MainView: View {
     @ObservedObject var model: AppModel
     @ObservedObject var ui: NativeUI
@@ -17,7 +16,6 @@ struct MainView: View {
     }
 }
 
-/// The page, under the window's toolbar when it has the Mac's layout, with the app's composer on it.
 struct DetailView: View {
     @ObservedObject var model: AppModel
     @ObservedObject var ui: NativeUI
@@ -70,7 +68,6 @@ struct DetailView: View {
     }
 }
 
-/// The conversation's name at the toolbar's start, its actions at the end.
 private struct DetailToolbar: ViewModifier {
     @ObservedObject var ui: NativeUI
 
@@ -134,8 +131,6 @@ private struct DetailToolbar: ViewModifier {
     }
 }
 
-/// The toolbar's start: the conversation's faces, name and what the bot is doing, which open its
-/// details; elsewhere the page's title (a Settings section, or Gond).
 private struct TitleView: View {
     @ObservedObject var ui: NativeUI
 
@@ -175,7 +170,6 @@ private struct TitleView: View {
     }
 }
 
-/// "Systems Administrator · working", breathing while a bot works, as the page's shimmer does.
 private struct Subtitle: View {
     let text: String
     let working: Bool
@@ -190,7 +184,6 @@ private struct Subtitle: View {
     }
 }
 
-/// A bot's face, or a room's two on the diagonal with a +N for the rest, the primary bot's crown, and a space's globe on the top corner as on the page.
 struct FacesView: View {
     let faces: [NSImage]
     let more: Int
@@ -245,7 +238,6 @@ struct FacesView: View {
     }
 }
 
-/// How far a page has loaded, a hairline under the toolbar.
 private struct LoadingBar: View {
     let progress: Double
 
@@ -260,7 +252,6 @@ private struct LoadingBar: View {
     }
 }
 
-/// A glass capsule at the top of the page: a tick, an i or a warning, the title and a line under it.
 struct ToastView: View {
     let toast: ToastRequest
     let dismiss: () -> Void

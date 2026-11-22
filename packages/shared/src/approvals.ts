@@ -19,7 +19,6 @@ export type Approval = {
   rule: string | null;
   createdAt: string;
   resolvedAt: string | null;
-  /** How an email card ended past yes or no: sent from a draft, saved as one, or sent back with changes asked. */
   outcome: ApprovalOutcome | null;
   /** The person changed the letter on the card before it went; `input` is what went. */
   edited: boolean;
@@ -35,7 +34,6 @@ export type Approval = {
  */
 export type ApprovalOutcome = "sent" | "saved" | "changes" | "aside" | "paused";
 
-/** A card nobody answered in time that can still be answered, which starts its bot's work again. */
 export function isPaused(approval: Pick<Approval, "status" | "outcome"> | null | undefined): boolean {
   return approval?.status === "expired" && approval.outcome === "paused";
 }

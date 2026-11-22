@@ -8,7 +8,6 @@ const SHOWN = new Set(["\n", "\t"]);
 
 export type TextPart = { text: string; hidden: boolean };
 
-/** The text in runs, each hidden character a part of its own. */
 export function hiddenParts(text: string): TextPart[] {
   const parts: TextPart[] = [];
   let run = "";
@@ -23,7 +22,6 @@ export function hiddenParts(text: string): TextPart[] {
   return parts;
 }
 
-/** A character as its code, the way a card names one it can't show: U+202E. */
 export function codePoint(char: string): string {
   return `U+${char.codePointAt(0)!.toString(16).toUpperCase().padStart(4, "0")}`;
 }

@@ -3,13 +3,10 @@ import os
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// A conversation's composer, floating over the bottom of the page's column, with what sits on it:
-/// the room's bots to @mention, the files going with it, the quote being answered, or a call in its place.
 struct ComposerLayer: View {
     @Environment(\.chromeScale) private var s
     @ObservedObject var ui: NativeUI
     let state: ChromeState
-    /// The detail's width, which the page's column is centred in.
     let width: CGFloat
 
     @State private var text = ""
@@ -180,7 +177,6 @@ struct ComposerLayer: View {
         .glassControl(in: RoundedRectangle(cornerRadius: 20 * s, style: .continuous), interactive: false)
     }
 
-    /// On a call the composer is the call, as on the page: mute, what is happening and the clock, hang up.
     private func callBar(_ call: ChromeState.Call) -> some View {
         let bot = Color.css(call.color, or: Theme.foreground)
         return GlassGroup {
@@ -359,8 +355,6 @@ struct ComposerLayer: View {
     }
 }
 
-/// The composer's field: Return sends, Shift or Option with Return starts a new line, and a word
-/// still being composed in an input method is never sent. Pasted or dropped files go with the message.
 struct ComposerField: NSViewRepresentable {
     @Binding var text: String
     @Binding var height: CGFloat
@@ -486,7 +480,6 @@ struct ComposerField: NSViewRepresentable {
             return false
         }
 
-        /// Grows with the text, a line at a time, up to `maxLines`; past that it scrolls.
         func measure() {
             guard let textView, let layout = textView.layoutManager, let container = textView.textContainer else { return }
             layout.ensureLayout(for: container)
@@ -500,7 +493,6 @@ struct ComposerField: NSViewRepresentable {
     }
 }
 
-/// The field's text view: a paste or drop of files, or of a picture alone, attaches them instead of typing their names.
 final class ComposerTextView: NSTextView {
     var onFiles: (([URL]) -> Void)?
     var onPicture: ((Data) -> Void)?
@@ -549,7 +541,6 @@ final class ComposerTextView: NSTextView {
     }
 }
 
-/// "1:31", how long the call has run, ticking each second.
 struct CallClock: View {
     @Environment(\.chromeScale) private var s
     let since: Double

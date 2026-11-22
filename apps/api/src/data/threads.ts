@@ -136,7 +136,6 @@ function toMessages(rows: MessageRow[]): Message[] {
   return rows.map((row) => messageFrom(row, reactions.get(row.id) ?? [], row.reply_to ? quoteFrom(row.reply_to, quoted.get(row.reply_to) ?? null) : null));
 }
 
-/** A message as a reply quotes it; null once it is gone. */
 function quoteOf(id: string): Quote | null {
   return quoteFrom(id, ensureDatabase().query("SELECT id, author, body, attachments FROM gond_messages WHERE id = ?").get(id) as QuotedRow | null);
 }
@@ -163,7 +162,6 @@ export function reactionsOf(messageId: string): Reaction[] {
   return ensureDatabase().query("SELECT author, emoji FROM gond_message_reactions WHERE message_id = ? ORDER BY created_at, rowid").all(messageId) as Reaction[];
 }
 
-/** Puts one author's reaction on a message, replacing theirs, or takes it off with null. */
 export function setReaction(message: Message, author: MessageAuthor, emoji: ReactionEmoji | null): Reaction[] {
   const db = ensureDatabase();
   if (emoji) {
@@ -197,7 +195,6 @@ const UNREAD_SINCE_READ = `FROM gond_messages m WHERE m.thread_id = t.id AND ${U
 export const UNREAD_COUNTS = `SELECT t.id AS thread_id, (SELECT COUNT(*) ${UNREAD_SINCE_READ}) AS n, (SELECT COUNT(m.from_thread_id) ${UNREAD_SINCE_READ}) AS team
   FROM gond_threads t WHERE t.id IN (SELECT value FROM json_each(?))`;
 
-/** What the list shows of each conversation, a few statements for the whole page whatever its size. */
 function toThreads(rows: ThreadRow[]): Thread[] {
   if (rows.length === 0) return [];
   const db = ensureDatabase();
@@ -240,7 +237,6 @@ function toThreads(rows: ThreadRow[]): Thread[] {
   });
 }
 
-/** What a bot said after the conversation's last routine run, when that run was a watch's. */
 function noticedIn(row: ThreadRow, run: LineRow | undefined): Thread["noticed"] {
   if (!run || !isWatchRun(run.body)) return null;
   const said = ensureDatabase()
@@ -347,15 +343,12 @@ type NewMessage = {
   steered?: boolean;
   /** Said on a call: kept for the bot, never shown, previewed, counted or searched. */
   spoken?: boolean;
-  /** A note between bots: an action to act on, or information. */
   note?: NoteKind | null;
 
   replyTo?: string | null;
 
   answering?: string | null;
-  /** A room line for the router: held back from the dispatcher until `routed` says whom it is for. */
   routing?: boolean;
-  /** The primary bot's line from a check-in. */
   checkIn?: boolean;
 };
 
@@ -383,12 +376,10 @@ export function postMessage(input: NewMessage): Message {
 /** The claim a room line holds while the router decides whom it is for, so no turn takes it first. */
 const ROUTING = "routing";
 
-/** Records whom the router judged a line was for. */
 export function setSentTo(id: string, botIds: string[]) {
   ensureDatabase().query("UPDATE gond_messages SET sent_to = ? WHERE id = ?").run(JSON.stringify(botIds), id);
 }
 
-/** The message a bot's line in a room was answering, if it was one. */
 export function answeringOf(id: string): Message | null {
   const row = ensureDatabase().query("SELECT answering FROM gond_messages WHERE id = ?").get(id) as { answering: string | null } | null;
   return row?.answering ? getMessage(row.answering) : null;
@@ -409,7 +400,6 @@ export function unsendMessage(id: string): boolean {
   return true;
 }
 
-/** Rewrites a person's line no bot has read yet; null when a bot already took it. */
 export function editMessage(id: string, body: string): Message | null {
   const row = ensureDatabase().query(`UPDATE gond_messages SET body = ? WHERE id = ? AND ${UNREAD} RETURNING *`).get(body, id) as MessageRow | null;
   if (!row) return null;
@@ -417,7 +407,6 @@ export function editMessage(id: string, body: string): Message | null {
   return toMessage(row);
 }
 
-/** The failure lines and setup cards that say a turn couldn't answer this message, for Try again to clear. */
 export function failuresAnswering(message: Pick<Message, "id" | "threadId">, setupCard: string): Message[] {
   const rows = ensureDatabase()
     .query("SELECT * FROM gond_messages WHERE thread_id = ? AND answering = ? AND ((kind = 'event' AND author = 'system') OR (kind = 'signin' AND approval_id = ?))")
@@ -433,7 +422,6 @@ export function takeLateYes(promptId: string, approvalId: string): boolean {
   return ensureDatabase().query("UPDATE gond_messages SET approval_id = NULL WHERE id = ? AND kind = 'prompt' AND approval_id = ?").run(promptId, approvalId).changes > 0;
 }
 
-/** Every card of this kind in the person's conversations, oldest first. */
 export function cardsOf(userId: string, approvalId: string): Message[] {
   const rows = ensureDatabase()
     .query("SELECT m.* FROM gond_messages m JOIN gond_threads t ON t.id = m.thread_id WHERE t.user_id = ? AND m.kind = 'signin' AND m.approval_id = ? ORDER BY m.rowid")
@@ -441,7 +429,6 @@ export function cardsOf(userId: string, approvalId: string): Message[] {
   return toMessages(rows);
 }
 
-/** The people with a card of this kind in any conversation. */
 export function cardHolders(approvalId: string): string[] {
   const rows = ensureDatabase()
     .query("SELECT DISTINCT t.user_id AS user FROM gond_messages m JOIN gond_threads t ON t.id = m.thread_id WHERE m.kind = 'signin' AND m.approval_id = ? AND t.user_id IS NOT NULL")
@@ -449,7 +436,6 @@ export function cardHolders(approvalId: string): string[] {
   return rows.map((row) => row.user);
 }
 
-/** Takes a message out of its conversation, as a routine run with nothing to say does. */
 export function dropMessage(id: string) {
   const message = getMessage(id);
   if (!message) return;
@@ -502,7 +488,6 @@ export function messagePage(threadId: string, options: MessagePage = {}): { sql:
   };
 }
 
-/** What two bots said to each other, newest page first; `before` and `from` read as in `listMessages`. */
 export function listExchange(threadId: string, withThreadId: string, options: { before?: string | null; from?: string | null; limit?: number } = {}): Message[] {
   const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
   const pair = "kind = 'message' AND ((thread_id = ? AND from_thread_id = ?) OR (thread_id = ? AND from_thread_id = ?))";
@@ -524,7 +509,6 @@ export function recentMessages(threadId: string, count: number): Message[] {
   return toMessages(rows.reverse());
 }
 
-/** The words of a search, each matched anywhere in a message (case aside), in any order. */
 function searchTerms(query: string): string[] {
   return [...new Set(query.toLowerCase().split(/\s+/).filter(Boolean))].slice(0, 8);
 }
@@ -643,7 +627,6 @@ export function closeSentFrom(threadId: string, since: string | null = null): nu
   return changed;
 }
 
-/** Whether a line is still held for the router, not answered or stopped in the meantime. */
 export function stillRouting(id: string): boolean {
   return Boolean(ensureDatabase().query("SELECT 1 FROM gond_messages WHERE id = ? AND claimed_by = ? AND answered_at IS NULL").get(id, ROUTING));
 }

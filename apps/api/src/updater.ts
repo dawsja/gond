@@ -54,7 +54,6 @@ async function waitForBox(box: BoxConfig, timeoutMs: number): Promise<void> {
       const h = await health(box);
       if (h.ok) return;
     } catch {
-      /* not yet */
     }
     await sleep(2_000);
   }
@@ -163,7 +162,6 @@ export function startUpdate(options: { pull?: boolean } = {}): BoxUpdate {
   return boxUpdate();
 }
 
-/** Updates the computer to the end, as part of Gond's own update; true when it finished. */
 export async function updateComputer(): Promise<boolean> {
   if (isUpdating()) return false;
   holder.__gondBoxUpdate = { ...IDLE, log: [], startedAt: new Date().toISOString(), kind: "update" };
@@ -190,7 +188,6 @@ async function runReset(): Promise<void> {
       log("Moving the bots' memory off the computer first…");
       await moveWaitingMemory(true);
       const left = memoriesOnComputer().length;
-      // Wiping it now would lose memory nobody has moved yet.
       if (left) throw new Error(`The memory of ${left === 1 ? "a bot or team" : `${left} bots or teams`} couldn't be moved off the computer, so nothing was wiped. Try again in a minute.`);
     }
     phase("resetting", "Wiping the computer (only the Claude Code sign-ins stay)…");

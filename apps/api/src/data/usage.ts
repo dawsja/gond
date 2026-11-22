@@ -5,7 +5,6 @@ import { now } from "../ids.ts";
 
 export type Tokens = { input: number; output: number; cacheRead: number; cacheWrite: number };
 
-/** One model's share of a turn: its tokens, and what the provider says it billed, when it says. */
 export type ModelUsage = { model: string; tokens: Tokens; cost: number | null };
 
 export type StepUsage = Omit<ModelUsage, "model">;
@@ -78,7 +77,6 @@ function zoned(at: Date, timeZone: string) {
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
-/** Midnight where the person is: today's, this Monday's or the first of this month's. */
 export function rangeStart(range: UsageRange, timeZone: string, at = new Date()): Date {
   const local = zoned(at, timeZone);
   const back = range === "week" ? Math.max(0, WEEKDAYS.indexOf(local.weekday)) : 0;

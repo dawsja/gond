@@ -61,7 +61,6 @@ export function slashQuery(text: string, caret: number): { kind: "skill" | "bot"
   return { kind: match[1] === "/" ? "skill" : "bot", query: match[2]!.toLowerCase(), start: caret - match[2]!.length - 1 };
 }
 
-/** Someone an @ can name: one of your bots, or in a space a person or bot on another Gond (`face` null for a person). */
 export type Mentionable = { id: string; name: string; handle: string; detail: string | null; face: Parameters<typeof BotAvatar>[0]["bot"] | null };
 
 export function mentionOfBot(bot: Bot): Mentionable {

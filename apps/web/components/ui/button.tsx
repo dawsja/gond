@@ -41,7 +41,6 @@ const buttonVariants = cva(
         "icon-lg": "size-9",
 
         "icon-xl": "size-11 [&_svg:not([class*='size-'])]:size-5",
-        // As tall and wide as its words, wrapping like the text around it; for the link variant.
         text: "h-auto justify-start gap-1 p-0 text-left whitespace-normal",
       },
     },

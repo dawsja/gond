@@ -23,14 +23,12 @@ const EMAIL_WORDS: Record<EmailDraft["mode"], { title: string; allow: string; de
 
 const EMAIL_ICONS: Record<EmailDraft["mode"], ReactNode> = { send: <Mail aria-hidden="true" />, reply: <CornerUpLeft aria-hidden="true" />, forward: <Forward aria-hidden="true" />, draft: <NotebookPen aria-hidden="true" /> };
 
-/** "To Dana Ruiz and 2 more · Launch plan", for the line a card folds to. */
 function emailGist(draft: EmailDraft): string {
   const people = [...draft.to, ...draft.cc, ...draft.bcc];
   const who = people.length ? `To ${emailName(people[0])}${people.length > 1 ? ` and ${people.length - 1} more` : ""}` : draft.app;
   return draft.subject ? `${who} · ${draft.subject}` : who;
 }
 
-/** A redraft's words, what it added on a green wash and what it took out struck through. */
 function Marked({ before, after }: { before: string | null; after: string }) {
   if (before === null || before === after) return <>{after}</>;
   const parts = wordDiff(before, after);
@@ -58,7 +56,6 @@ function Marked({ before, after }: { before: string | null; after: string }) {
   );
 }
 
-/** The draft as a letter: who it goes to, the subject, the body and its files, exactly as it will go; a redraft marks what changed since `before`. */
 function EmailLetter({ draft, before = null }: { draft: EmailDraft; before?: EmailDraft | null }) {
   const [addresses, setAddresses] = useState(false);
   const [open, setOpen] = useState(false);
@@ -137,7 +134,6 @@ function editOf(fields: Fields): EmailEdit {
   return { to: people(fields.to), cc: people(fields.cc), bcc: people(fields.bcc), subject: fields.subject, body: fields.body };
 }
 
-/** The letter as fields, for the person to change before it goes. */
 function EmailFields({ fields, onChange }: { fields: Fields; onChange: (fields: Fields) => void }) {
   const [copies, setCopies] = useState(Boolean(fields.cc || fields.bcc));
   const set = (key: keyof Fields) => (event: { target: { value: string } }) => onChange({ ...fields, [key]: event.target.value });
@@ -169,10 +165,6 @@ function EmailFields({ fields, onChange }: { fields: Fields; onChange: (fields: 
   );
 }
 
-/**
- * An email a connected app is about to send or save, as its letter. The person can send it as it
- * is, change it in place first, or send it back with what to change; a draft can go straight out.
- */
 export function EmailApprovalCard({ message, approval, email, bot, noticed, onDecide }: { message: Pick<Message, "id">; approval: Approval; email: EmailDraft; bot: Bot | undefined; noticed: boolean; onDecide: (id: string, answer: ApprovalAnswer) => Promise<void> }) {
   const name = bot?.name ?? "A bot";
   const editable = emailEditable(approval.tool);

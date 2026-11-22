@@ -96,10 +96,8 @@ export function placeOf(value: unknown, home?: string | null): string | null {
   return short(baseName(path)) ?? short(path);
 }
 
-// A path in a bot's own words: absolute or from home, with at least one folder in it.
 const PATH_IN_TEXT = /(?<![\w.:/])(?:~|\/[\w.@-]+)(?:\/[\w.@-]+)+\/?/g;
 
-/** A bot's narration with every path in it said as `placeOf` would, for the work line. */
 export function withoutPaths(text: string, home?: string | null): string {
   return text.replace(PATH_IN_TEXT, (path) => placeOf(path, home) ?? path);
 }
@@ -273,7 +271,6 @@ export function fromNativeAction(input: Record<string, unknown>): Record<string,
   }
 }
 
-// The first step that does something names the batch; a batch that only looks is a look.
 function screenLabel(name: string, input: Record<string, unknown>): ToolLabel | null {
   const fallback = name === "browser" ? "Using the browser" : "Using the computer";
   if (typeof input.action === "string") return input.action === "cursor_position" ? null : (stepLabel(fromNativeAction(input)) ?? { verb: fallback, detail: null });

@@ -47,7 +47,6 @@ function sentence(line: string) {
   return `${trimmed.charAt(0).toUpperCase()}${trimmed.slice(1)}?`;
 }
 
-/** What the card says for each kind of tool: a question, where it happens, and what exactly. */
 function shapeOf(message: Message, approval: Approval | null, name: string): Shape {
   const input = approval?.input ?? {};
   const tool = bareToolName(approval?.tool ?? "");
@@ -117,7 +116,6 @@ function shapeOf(message: Message, approval: Approval | null, name: string): Sha
   }
 }
 
-/** A card whose approval hasn't loaded yet (undefined) or no longer exists (null) shows what it asked, folded, and can't be answered. */
 export function ApprovalCard({ message, approval, bot, noticed = false, onDecide }: { message: Message; approval: Approval | null | undefined; bot: Bot | undefined; noticed?: boolean; onDecide: (id: string, answer: ApprovalAnswer) => Promise<void> }) {
   if (!approval) {
     const shape = shapeOf(message, null, bot?.name ?? "A bot");
@@ -138,7 +136,6 @@ function ToolApprovalCard({ message, approval, bot, noticed, onDecide }: { messa
   // Undo is only for an Always allow given here a moment ago, never an old one.
   const [undo, setUndo] = useState<"offered" | "done" | null>(null);
   const status = approval.status;
-  // Nobody answered it in time, but it can still be answered: it stays open, marked paused.
   const paused = isPaused(approval);
   const shape = shapeOf(message, approval, bot?.name ?? "A bot");
   const decide = async (decision: Decision) => {

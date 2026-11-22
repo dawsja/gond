@@ -14,10 +14,6 @@ import { readBody } from "./body.ts";
 
 const MAX_BODY = 20_000;
 
-/**
- * The type a file the person sends is kept as: one Gond knows by what the browser said, any other text
- * as plain text, else by its name, else bytes to download. HEIC is converted before this.
- */
 export function attachmentType(file: { name: string; type: string }): string {
   if ((ATTACHMENT_TYPES as readonly string[]).includes(file.type)) return file.type;
   if (file.type.startsWith("text/")) return "text/plain";
@@ -26,12 +22,10 @@ export function attachmentType(file: { name: string; type: string }): string {
 
 const INLINE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp", "application/pdf", "text/plain", "text/csv", "application/json"]);
 
-/** Who answers a room when nobody is named, by name. */
 export function answererOf(members: string[], bots: Bot[]): string | null {
   return roomAnswerer(members.map((id) => bots.find((b) => b.id === id)).filter((b): b is Bot => Boolean(b) && !b!.hidden))?.name ?? null;
 }
 
-/** The line a room shows when it is renamed or its bots change, e.g. "Ada joined. Bo left.", and who answers now if that changed. */
 export function roomChange(before: Pick<Thread, "name" | "members">, after: Pick<Thread, "name" | "members">, nameOf: (botId: string) => string, answerers: [string | null, string | null] = [null, null]): string | null {
   const lines: string[] = [];
   if (after.name !== before.name) lines.push(`Renamed to ${after.name}.`);
@@ -78,7 +72,6 @@ export function threadsRoutes() {
     return c.json({ reactions: setReaction(message, "you", emoji) });
   });
 
-  // "Less like this" under something a bot noticed on its own: the bot hears it as a hidden prompt and tightens the watch.
   app.post("/threads/:id/messages/:messageId/less", async (c) => {
     const thread = ownThread(c, c.req.param("id"));
     const message = thread ? getMessage(c.req.param("messageId")) : null;
@@ -96,7 +89,6 @@ export function threadsRoutes() {
     return c.body(null, 204);
   });
 
-  // Try again on a turn that failed: its failure lines go, and the person's message waits to be answered again.
   app.post("/threads/:id/messages/:messageId/retry", (c) => {
     const id = c.req.param("id");
     const message = ownsThread(c, id) ? getMessage(c.req.param("messageId")) : null;
@@ -109,7 +101,6 @@ export function threadsRoutes() {
     return c.json({ ok: true });
   });
 
-  // Unsend and edit: only the person's own line, only while no bot has read it, never once it crossed to another Gond.
   const unreadLine = (c: Parameters<typeof ownsThread>[0]) => {
     const id = c.req.param("id") ?? "";
     const message = ownsThread(c, id) ? getMessage(c.req.param("messageId") ?? "") : null;
@@ -252,7 +243,6 @@ export function threadsRoutes() {
     return deleteRoom(c.req.param("id")) ? c.body(null, 204) : c.json({ error: "Couldn't find that room" }, 404);
   });
 
-  // The latest rough look at a picture a bot is still making; gone once it is made.
   app.get("/threads/:id/pictures/:pictureId", (c) => {
     const preview = ownsThread(c, c.req.param("id")) ? previewOf(c.req.param("pictureId"), c.req.param("id")) : null;
     if (!preview) return c.json({ error: "That picture is already finished" }, 404);

@@ -15,26 +15,15 @@ const answeredHere = new Set<string>();
 // How long the bot smiles at a card the person just answered: about one hop.
 const GLAD_MS = 1600;
 
-/** Under an expired card's title: why it closed. */
 export const NOBODY_ANSWERED = "Nobody answered in time";
-/** A card the person wrote past instead of answering: nothing ran, and the bot read what they wrote. */
 export const SET_ASIDE = { status: "Set aside", by: "You wrote instead, so nothing ran" };
 
-/** Under a paused card's buttons: nobody answered in time, but an answer now still picks the work back up. */
 export const pausedLine = (name: string) => `Paused, since nobody answered in time. Answer now and ${name} picks it back up.`;
 
-/** Call as the person answers a card, so its folded line hops. */
 export function cheerOnFold(id: string) {
   answeredHere.add(id);
 }
 
-/**
- * Every card a bot posts for the person to act on: the bot's bubble grey with the pill edge, its icon,
- * the question with "Needs you", then what it is about, the buttons and a line on privacy. A card from
- * a bot speaking up on its own (`noticed`) wears the person's color. One that is only telling the person
- * how something goes (`needs` false) has no badge. One nobody answered in time that can still be
- * answered (`paused`, its line) says so quietly instead of "Needs you".
- */
 export function ActionCard({ icon, title, by, children, actions, note, paused, noticed = false, needs = true, className }: { icon: ReactNode; title: ReactNode; by?: ReactNode; children?: ReactNode; actions?: ReactNode; note?: ReactNode; paused?: ReactNode; noticed?: boolean; needs?: boolean; className?: string }) {
   return (
     <div className="relative w-full max-w-[440px]">
@@ -85,7 +74,6 @@ const CONFETTI: { color: string; dx: number; dy: number; delay: number; shape: s
   { color: "var(--magenta)", dx: -20, dy: 4, delay: 0.08, shape: "h-1.5 w-1 rounded-[2px]" },
 ];
 
-/** Once answered, a card folds to one line with how it ended; one the person just answered hops. */
 export function ActionCardDone({ id, bot, icon, title, by, status, tone }: { id?: string; bot?: Bot; icon: ReactNode; title: ReactNode; by?: ReactNode; status: string; tone: "ok" | "bad" | "neutral" }) {
   const [celebrate] = useState(() => Boolean(id && tone === "ok" && answeredHere.has(id)));
   const [glad, setGlad] = useState(celebrate);
@@ -126,7 +114,6 @@ export function ActionCardDone({ id, bot, icon, title, by, status, tone }: { id?
 export type ActionItem = { label: string; value: string; note?: string };
 export type ActionRow = { label: string; value: string; items?: ActionItem[] };
 
-/** The rows a card is about, drawn like the chat's tables. */
 // A value this short (a price, a date) sits on the right of its label; a longer one, like a
 // path or a sentence, goes under it, or it would squeeze the label to a letter per line.
 const FIGURE_CHARS = 24;
@@ -136,7 +123,6 @@ function ItemsRow({ row }: { row: ActionRow & { items: ActionItem[] } }) {
   return (
     <Collapsible className="border-b border-primary-edge/70 last:border-b-0">
       <CollapsibleTrigger className="flex w-full items-baseline gap-2 px-3.5 py-2 text-left outline-none focus-visible:bg-primary-hover [&[data-panel-open]_svg]:rotate-180">
-        {/* A value too long to sit beside its label goes under it, as in a plain row, or it squeezes the label to a letter a line. */}
         <span className={cn("min-w-0 flex-1", long && "flex flex-col gap-0.5")}>
           <span className="wrap-anywhere">
             {row.label} <span className="font-semibold text-tint-ink">{row.items.length === 1 ? "1 item" : `${row.items.length} items`}</span>
@@ -190,7 +176,6 @@ export function ActionRows({ rows, total }: { rows: ActionRow[]; total?: { label
   );
 }
 
-/** What the card asks about, exactly: a character it can't show as itself is named by its code instead, in red, so what the person reads is what runs. */
 export function ActionCode({ children }: { children: ReactNode }) {
   const parts = typeof children === "string" ? hiddenParts(children) : null;
   return (

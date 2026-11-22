@@ -15,7 +15,6 @@ function readEnabled(json: string | null, engine: Engine): Engine[] {
   try {
     stored = json ? JSON.parse(json) : null;
   } catch {
-    /* the defaults below */
   }
   const list = Array.isArray(stored) ? stored.filter(isEngine) : [];
   const out = ENGINES.filter((candidate) => list.includes(candidate));

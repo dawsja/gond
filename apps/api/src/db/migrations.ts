@@ -646,9 +646,7 @@ const MIGRATIONS: Array<string | ((db: Database) => void)> = [
   ALTER TABLE gond_approvals ADD COLUMN edited INTEGER NOT NULL DEFAULT 0;
   ALTER TABLE gond_approvals ADD COLUMN revises TEXT;
   `,
-  // The message the person replied to, quoted with theirs.
   `ALTER TABLE gond_messages ADD COLUMN reply_to TEXT;`,
-  // A bot shared as a template: whoever is signed in here with the link can add a copy of it.
   `
   CREATE TABLE gond_bot_shares (
     token TEXT PRIMARY KEY,
@@ -656,12 +654,9 @@ const MIGRATIONS: Array<string | ((db: Database) => void)> = [
     created_at TEXT NOT NULL
   );
   `,
-  // Said out loud on a call rather than typed.
   `ALTER TABLE gond_messages ADD COLUMN spoken INTEGER NOT NULL DEFAULT 0;`,
   // The voice a call speaks in, per provider, as JSON.
   `ALTER TABLE gond_user_prefs ADD COLUMN call_voice TEXT;`,
-  // Calls were taken out: what was said on them and their start and end lines go. The columns stay
-  // (migrations only add), unused.
   CALLS_OUT,
   // Indexes for the queries that run most: a thread's routine runs and the person's last line (the
   // thread list, rooms), the messages still waiting (every dispatcher tick), and what a
@@ -680,7 +675,6 @@ const MIGRATIONS: Array<string | ((db: Database) => void)> = [
   `ALTER TABLE gond_routines ADD COLUMN once INTEGER NOT NULL DEFAULT 0;`,
   // Whom the room's router judged a person's unnamed line was for, as a JSON array of bot ids.
   `ALTER TABLE gond_messages ADD COLUMN sent_to TEXT;`,
-  // A person's chat exports, made in the background; the zip is a blob in a table of its own.
   `
   CREATE TABLE gond_exports (
     id TEXT PRIMARY KEY,
@@ -703,9 +697,7 @@ const MIGRATIONS: Array<string | ((db: Database) => void)> = [
     data BLOB NOT NULL
   );
   `,
-  // A secret card that replaces a value the person already has, so it says so.
   `ALTER TABLE gond_secret_requests ADD COLUMN replaces INTEGER NOT NULL DEFAULT 0;`,
-  // Where a person's notices go besides their browsers and apps: one service each, its keys encrypted.
   `
   CREATE TABLE gond_notify_services (
     user_id TEXT PRIMARY KEY,
@@ -719,8 +711,6 @@ const MIGRATIONS: Array<string | ((db: Database) => void)> = [
     updated_at TEXT NOT NULL
   );
   `,
-  // "Show me how": what a person showed a bot on its screen, the screenshots taken as they did,
-  // and what the bot made of it, until it is saved as a skill or dropped.
   `
   CREATE TABLE gond_teachings (
     id TEXT PRIMARY KEY,
@@ -759,10 +749,6 @@ const MIGRATIONS: Array<string | ((db: Database) => void)> = [
   );
   `,
   allowTeachMessages,
-  // Spaces: rooms shared with people on other Gonds, through gond-relay. This Gond's keys and how it
-  // reaches the relay; the Gonds it knows; each space (a room here) with the Gonds and members in it,
-  // your bots' rules there, its invites, which of its lines are which messages here, what has
-  // arrived (so nothing posts twice) and what is waiting to go out.
   `
   CREATE TABLE gond_federation (
     id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -934,14 +920,12 @@ const MIGRATIONS: Array<string | ((db: Database) => void)> = [
     updated_at TEXT NOT NULL
   );
   `,
-  // One emoji a profile may wear in the middle of its mark.
   `ALTER TABLE gond_profiles ADD COLUMN icon TEXT;`,
   // What each browser or app gets: every bot but the ones muted on it, and the notices about no bot.
   `
   ALTER TABLE gond_push_subscriptions ADD COLUMN muted_bots TEXT NOT NULL DEFAULT '[]';
   ALTER TABLE gond_push_subscriptions ADD COLUMN other INTEGER NOT NULL DEFAULT 1;
   `,
-  // A bot's level in a space may now be "full", Always allow: the CHECK only changes by rebuilding.
   `
   CREATE TABLE gond_space_rules_next (
     space_id TEXT NOT NULL REFERENCES gond_spaces (id) ON DELETE CASCADE,
@@ -958,8 +942,6 @@ const MIGRATIONS: Array<string | ((db: Database) => void)> = [
   DROP TABLE gond_space_rules;
   ALTER TABLE gond_space_rules_next RENAME TO gond_space_rules;
   `,
-  // A household: the admin heads it, people from the OIDC provider join it and run on its keys, and the
-  // head's shared bots do errands for members' bots in conversations of the head's (errand_bot, errand_for).
   `
   CREATE TABLE gond_households (
     id TEXT PRIMARY KEY,
@@ -1030,7 +1012,6 @@ const MIGRATIONS: Array<string | ((db: Database) => void)> = [
   DROP TABLE IF EXISTS gond_notify_services;
   `,
   VOICE_KEYS,
-  // A phone the person's notices reach through Firebase (via the relay), with the keys only it and this server hold.
   `
   CREATE TABLE gond_push_devices (
     id TEXT PRIMARY KEY,
@@ -1135,7 +1116,6 @@ const MIGRATIONS: Array<string | ((db: Database) => void)> = [
   CREATE INDEX gond_agent_sessions_bot ON gond_agent_sessions (bot_id);
   `,
   markMemoryOnComputer,
-  // Bots no longer wear a picture of their own: each is its mascot, and the pictures people uploaded go.
   `DROP TABLE IF EXISTS gond_bot_avatars`,
   // Your details: what a person keeps about their household for bots to fill forms with. The fields are
   // sealed together, so a private one's value never leaves the API; the expiry stays readable for the

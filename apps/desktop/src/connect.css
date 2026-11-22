@@ -138,7 +138,6 @@ main {
   padding: 0 16px 72px;
 }
 
-/* The team you're about to reach, as on the iPhone's Connect: team.svg, drawn by brand:build. */
 .team {
   display: block;
   width: 360px;
@@ -164,7 +163,6 @@ h1 {
   line-height: 24px;
 }
 
-/* The form is an island, as the panes of the app are. */
 form {
   display: flex;
   flex-direction: column;
@@ -275,7 +273,6 @@ button:disabled {
   display: none !important;
 }
 
-/* A short window keeps the words and the form. */
 @media (max-height: 600px) {
   .team {
     display: none;

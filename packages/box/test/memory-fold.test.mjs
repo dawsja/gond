@@ -29,7 +29,6 @@ test("notes Claude Code kept on its own move into the bot's memory once, with a 
     assert.equal(fs.existsSync(from), false);
     assert.equal(fs.existsSync(`${from}.folded`), true);
 
-    // Nothing left to move: no change, no error.
     foldMemory(from, to);
     assert.equal(fs.readFileSync(path.join(to, "MEMORY.md"), "utf8"), memory);
   } finally {

@@ -57,7 +57,6 @@ struct ChromeState: Decodable, Equatable {
         let label: String
     }
 
-    /// A call with the bot, which takes the composer's place: what is happening, since when, and the bot's colour.
     struct Call: Decodable, Equatable {
         let label: String
         /// When it was picked up, in milliseconds since 1970, so the clock ticks here.
@@ -89,7 +88,6 @@ struct ChromeState: Decodable, Equatable {
     let composer: Composer
 }
 
-/// The Chats screen's header: your picture, Search and New.
 struct ChatsState: Decodable, Equatable {
     let searching: Bool?
     let face: String?
@@ -98,7 +96,6 @@ struct ChatsState: Decodable, Equatable {
     let covered: Bool
 }
 
-/// A Settings page's back button.
 struct SettingsState: Decodable, Equatable {
     let label: String
     let covered: Bool
@@ -174,7 +171,6 @@ final class NativeUI: ObservableObject {
     @Published private(set) var chatsFace: UIImage?
     @Published private(set) var settings: SettingsState?
     @Published private(set) var toast: ToastRequest?
-    /// The room's faces for the @mention chips, by bot id.
     @Published private(set) var mentionFaces: [String: UIImage] = [:]
     private var mentionSources: [String: String] = [:]
     private var toastTimer: Task<Void, Never>?
@@ -183,7 +179,6 @@ final class NativeUI: ObservableObject {
     @Published private(set) var opening = false
     /// How many points a CSS pixel takes on the page (Settings → Appearance → Size); the chrome is drawn at it.
     @Published private(set) var scale: CGFloat = 1
-    /// The file Quick Look shows, and the files it can swipe through.
     @Published private(set) var preview: URL?
     @Published private(set) var previewFiles: [URL] = []
     private var picturesAsked: String?
@@ -191,6 +186,8 @@ final class NativeUI: ObservableObject {
     weak var shell: WebShell?
     private var faceSources: [String] = []
     private var attaching: AttachPicker?
+    /// Files picked while the web view was reloading (for example after the camera triggered a WebContent reset).
+    private var pendingAttach: (thread: String, files: [AttachPicker.File])?
 
     // MARK: From the page
 
@@ -204,6 +201,7 @@ final class NativeUI: ObservableObject {
         let data = Data(json.utf8)
         let screen = (try? JSONDecoder().decode(Screen.self, from: data))?.screen
         if screen == "settings", let state = try? JSONDecoder().decode(SettingsState.self, from: data) {
+            pendingAttach = nil
             if chrome != nil { chrome = nil }
             if chats != nil { chats = nil }
             if state != settings { settings = state }
@@ -211,6 +209,7 @@ final class NativeUI: ObservableObject {
         }
         if settings != nil { settings = nil }
         if screen == "chats", let state = try? JSONDecoder().decode(ChatsState.self, from: data) {
+            pendingAttach = nil
             if chrome != nil { chrome = nil }
             if state.face != chats?.face { chatsFace = state.face.flatMap(Self.image(dataURL:)) }
             if state != chats { chats = state }
@@ -233,9 +232,12 @@ final class NativeUI: ObservableObject {
         }
         if state.covered != chrome?.covered { log.notice("chrome \(state.covered ? "covered" : "shown", privacy: .public)") }
         if state != chrome { chrome = state }
+        if let pending = pendingAttach {
+            pendingAttach = nil
+            if pending.thread == state.thread { dispatchAttach(pending.files) }
+        }
     }
 
-    /// A new page, or another site's, has none of this.
     func clear() {
         setChrome("null")
         if let message { finishMessage(nil, id: message.id) }
@@ -270,7 +272,6 @@ final class NativeUI: ObservableObject {
 
     // MARK: A confirm
 
-    /// iOS's own alert, which is Liquid Glass from iOS 26.
     private func confirm(_ request: ConfirmRequest) {
         guard let top = UIApplication.shared.topViewController else { return answer(request.id, false) }
         let alert = UIAlertController(title: request.title, message: request.message, preferredStyle: .alert)
@@ -285,7 +286,6 @@ final class NativeUI: ObservableObject {
 
     // MARK: A toast
 
-    /// A glass capsule at the top for a few seconds; a tap puts it away sooner.
     private func showToast(_ request: ToastRequest) {
         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { toast = request }
         if request.tone == "error" { UINotificationFeedbackGenerator().notificationOccurred(.error) }
@@ -363,7 +363,6 @@ final class NativeUI: ObservableObject {
         return true
     }
 
-    /// Quick Look changed the selected file or closed.
     func selectPreview(_ url: URL?) {
         guard preview != url else { return }
         log.notice("quick look shows \(url?.lastPathComponent ?? "nothing", privacy: .public)")
@@ -446,11 +445,12 @@ final class NativeUI: ObservableObject {
 
     private func presentCamera() {
         guard let top = UIApplication.shared.topViewController else { return }
+        let thread = chrome?.thread
         let picker = UIImagePickerController()
         picker.sourceType = .camera
         picker.mediaTypes = [UTType.image.identifier]
         picker.cameraCaptureMode = .photo
-        let session = AttachPicker { [weak self] files in self?.attach(files) }
+        let session = AttachPicker { [weak self] files in self?.attach(files, for: thread) }
         attaching = session
         picker.delegate = session
         top.present(picker, animated: true)
@@ -463,11 +463,12 @@ final class NativeUI: ObservableObject {
             return
         }
         guard let top = UIApplication.shared.topViewController else { return }
+        let thread = chrome?.thread
         var configuration = PHPickerConfiguration()
         configuration.filter = .images
         configuration.selectionLimit = slots
         let picker = PHPickerViewController(configuration: configuration)
-        let session = AttachPicker { [weak self] files in self?.attach(files) }
+        let session = AttachPicker { [weak self] files in self?.attach(files, for: thread) }
         attaching = session
         picker.delegate = session
         top.present(picker, animated: true)
@@ -479,21 +480,31 @@ final class NativeUI: ObservableObject {
             return
         }
         guard let top = UIApplication.shared.topViewController else { return }
+        let thread = chrome?.thread
         // Any file: Gond keeps every type, and the page and the API decide how each is shown.
         let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.item], asCopy: true)
         picker.allowsMultipleSelection = true
-        let session = AttachPicker { [weak self] files in self?.attach(files) }
+        let session = AttachPicker { [weak self] files in self?.attach(files, for: thread) }
         attaching = session
         picker.delegate = session
         top.present(picker, animated: true)
     }
 
-    private func attach(_ files: [AttachPicker.File]) {
+    private func attach(_ files: [AttachPicker.File], for thread: String?) {
         attaching = nil
         let fitting = files.filter { $0.data.count <= CameraPhoto.maxBytes }
         if fitting.count < files.count { send(["type": "notice", "text": "A file over 20 MB was left out."]) }
         guard !fitting.isEmpty else { return }
-        send(["type": "attach", "files": fitting.map { ["name": $0.name, "type": $0.type, "data": $0.data.base64EncodedString()] }])
+        if let active = chrome {
+            guard thread == nil || active.thread == thread else { return }
+            dispatchAttach(fitting)
+        } else if let thread {
+            pendingAttach = (thread, fitting)
+        }
+    }
+
+    private func dispatchAttach(_ files: [AttachPicker.File]) {
+        send(["type": "attach", "files": files.map { ["name": $0.name, "type": $0.type, "data": $0.data.base64EncodedString()] }])
     }
 
     private static func image(dataURL: String) -> UIImage? {
@@ -502,7 +513,6 @@ final class NativeUI: ObservableObject {
     }
 }
 
-/// Naming and JPEG encoding for a photo taken directly from the iPhone camera.
 enum CameraPhoto {
     static let maxBytes = 20 * 1024 * 1024
 
@@ -515,13 +525,12 @@ enum CameraPhoto {
     }
 
     static func jpegData(from image: UIImage, limit: Int = maxBytes) -> Data? {
-        guard let data = image.jpegData(compressionQuality: 0.9) else { return nil }
+        guard let data = image.jpegData(compressionQuality: 0.85) else { return nil }
         if data.count <= limit { return data }
         return image.jpegData(compressionQuality: 0.7) ?? data
     }
 }
 
-/// The camera, photo library or Files, for the composer's paperclip; what comes back goes to the page as its own files.
 private final class AttachPicker: NSObject, PHPickerViewControllerDelegate, UIDocumentPickerDelegate, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
     struct File: Sendable {
         let name: String

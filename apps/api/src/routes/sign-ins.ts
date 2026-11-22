@@ -21,7 +21,6 @@ function tooManyTries(person: string): boolean {
   return recent.length > TRIES_PER_MINUTE;
 }
 
-/** Only an account the provider made, with no password of its own, can move to one that has a password. */
 function canMove(person: string): boolean {
   const has = signInsOf(person);
   return oidcReady() && has.oidc && !has.password;
@@ -38,11 +37,6 @@ export function signInsRoutes() {
     return c.json({ password: has.password, oidc, move } satisfies SignIns);
   });
 
-  /**
-   * Moves the provider's sign-in from the account it made to one with a password, proven by that
-   * password, then removes the account it made and everything in it. The person is signed in to the
-   * other account in the same answer.
-   */
   app.post("/me/sign-ins/move", async (c) => {
     const person = personId(c);
     if (!canMove(person)) return c.json({ error: "This account already signs in with a password" }, 400);

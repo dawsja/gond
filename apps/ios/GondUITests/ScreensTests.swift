@@ -132,7 +132,6 @@ final class ScreensTests: XCTestCase {
             if bubble.waitForExistence(timeout: 10) {
                 bubble.press(forDuration: 1.1)
                 shot("4-message")
-                // Reply: the quote sits on the composer.
                 if app.buttons["Reply"].waitForExistence(timeout: 3) {
                     app.buttons["Reply"].tap()
                     shot("4b-reply")
@@ -143,7 +142,6 @@ final class ScreensTests: XCTestCase {
                     app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.88)).tap()
                 }
                 Thread.sleep(forTimeInterval: 1)
-                // Copy text: its "Copied." is the app's toast.
                 bubble.press(forDuration: 1.1)
                 if app.buttons["Copy text"].waitForExistence(timeout: 3) {
                     app.buttons["Copy text"].tap()
@@ -192,7 +190,6 @@ final class ScreensTests: XCTestCase {
             shot("7-details")
             app.terminate()
 
-            // The Chats screen: its header's buttons, and a long press on a row.
             app.launchEnvironment["GOND_SCREENS_PATH"] = "/app"
             app.launch()
             let search = app.buttons["chats.search"]
@@ -218,7 +215,6 @@ final class ScreensTests: XCTestCase {
             }
             app.terminate()
 
-            // A Settings page: its back button.
             app.launchEnvironment["GOND_SCREENS_PATH"] = "/app/settings/appearance"
             app.launch()
             _ = app.buttons["settings.back"].waitForExistence(timeout: 60)
@@ -226,7 +222,6 @@ final class ScreensTests: XCTestCase {
             shot("12-settings")
             app.terminate()
 
-            // A room: the bots to @mention sit on the composer.
             if let room = env["GOND_SCREENS_ROOM"], !room.isEmpty {
                 app.launchEnvironment["GOND_SCREENS_PATH"] = "/app/t/\(room)"
                 app.launch()

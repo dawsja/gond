@@ -89,7 +89,6 @@ export function plainText(value: string): string {
 
 const SIGNIN_CARD_FRESH_MS = 30 * 60_000;
 
-/** A note about a tool that only a Gond with a computer has. */
 function onComputer(note: string): { note: string; computer: true } {
   return { note, computer: true };
 }
@@ -133,13 +132,11 @@ const NOTES: (string | { note: string; computer: true })[] = [
   onComputer("browser and computer are your hands on the screen: a list of JSON actions run in order by Gond, answered with the screen as it is after them. browser is a Chrome window that stays open between replies, for every website; its answer lists what is on screen with refs to act on (click, fill, select, check, read, wait_for and the rest, in its description). computer is the whole desktop, for everything else on it. Connected apps, MCP servers, APIs and the shell come first; never script the screen yourself."),
 ];
 
-/** What the system prompt says about the tools, leaving out those that need a computer when there is none. */
 export function toolNotesFor(computer: boolean): string {
   return NOTES.flatMap((note) => (typeof note === "string" ? [note] : computer ? [note.note] : [])).join("\n");
 }
 
 type Context = {
-  /** Null when this Gond has no computer: the tools that need one are left out. */
   box: BoxConfig | null;
   bot: Bot;
   thread: Thread;
@@ -153,19 +150,15 @@ type Context = {
 
   isWorking: (botId: string, threadId: string) => boolean;
 
-  /** Hands a note to the bot's turns running now, so it hears it mid-work; false when it isn't working. */
   tellWorking?: (bot: Bot, text: string) => Promise<boolean>;
 
-  /** Posts a line for a bot that asked this one to act, waking it; null when it isn't waiting on one. */
   reportTo?: (bot: Bot, fromThreadId: string, asker: Bot, body: string, depth: number) => Message | null;
 
   signal?: AbortSignal;
 
-  /** The bot's memory and the team's as this turn last saw them, so a save can't drop what another turn wrote since. */
   memoryRead?: MemoryRead;
 };
 
-/** What a turn has seen of its memory: the two main memories it loaded, and each topic it read, by `memoryKey`. */
 export type MemoryRead = { own: LoadedMemory; team: LoadedMemory; topics?: Map<string, string | null> };
 
 function memoryKey(owner: MemoryOwner, topic: string): string {
@@ -205,7 +198,6 @@ const MEMORY_WAITING = "NOT saved: your memory is still on the computer from bef
 const MEMORY_LEFT_OUT = "Your memory is left out in this space, so you can't read or change it here. If your person wants something kept, they can ask you in your own chat.";
 const MAX_MEMORY_READ = 32 * 1024;
 
-/** Whether this turn may use its memory: everywhere but a space whose owner left it out. */
 function memoryHere(context: Context): boolean {
   return !isSpace(context.thread) || memoryAllowed(context.thread, context.bot);
 }
@@ -214,7 +206,6 @@ const MAX_DECISION_ROWS = 12;
 const MAX_DECISION_ITEMS = 60;
 const DECISION_KINDS = ["purchase", "send", "delete", "publish", "other"] as const;
 
-/** What a decision card shows beyond its question, trimmed and with every stored secret blanked, since the web shows it as written. */
 // ask_approval is a yes or no on one act; a model that wants a pick reaches for it anyway and puts
 // the options on the buttons, so deny ends up meaning "the other one" and the bot hears "don't".
 const OPTION_LABEL = /^\s*(?:(?:option|choice|plan)\s+[a-z0-9]\b|[a-d1-4]\s*[:).-])/i;
@@ -331,10 +322,6 @@ function profilePatch(input: Record<string, unknown>): { name?: string; title?: 
   return patch;
 }
 
-/**
- * A teammate's own model from what a bot asked for, checked against what the person's AI lists, so a
- * typo never leaves a bot on a model that can't answer. Words for the model when it can't be set.
- */
 async function botModelPatch(userId: string, asked: string): Promise<{ model: string; modelFor: string } | string> {
   if (/^(default|none|settings)$/i.test(asked.trim())) return { model: "", modelFor: "" };
   const { current, choices } = await modelsInUse(userId);
@@ -418,7 +405,6 @@ async function setBotPicture(box: BoxConfig | null, from: Bot, target: Bot, give
   return { ok: "picture" };
 }
 
-/** The tools that use the computer, left out when this Gond has none. */
 const COMPUTER_TOOLS = ["send_file", "watch_me", "propose_skill", "request_login", "use_card"];
 
 function withoutComputer(box: BoxConfig | null, tools: Record<string, DriverTool>): Record<string, DriverTool> {
@@ -427,7 +413,6 @@ function withoutComputer(box: BoxConfig | null, tools: Record<string, DriverTool
   return tools;
 }
 
-/** A file name from the first words of a picture's prompt. */
 export function pictureName(prompt: string): string {
   return (
     prompt
@@ -452,11 +437,6 @@ export function mcpServerName(value: string): string {
     .slice(0, 40);
 }
 
-/**
- * Saying something in a space for the person, asked in their own chat with the bot: only where they
- * switched it on for this bot (`relay`), and only on their word, never a teammate's, a routine's or
- * another Gond's.
- */
 function sayInSpaceTool(context: Context): Record<string, DriverTool> {
   const { bot, thread, message } = context;
   const spaces = relaySpaces(bot).filter((space) => space.id !== thread.id);
@@ -925,7 +905,6 @@ export function baseTools(context: Context): Record<string, DriverTool> {
         if (long) return `NOT sent: ${long}. Make it shorter, or put the detail in a file and say where it is.`;
         const kind: NoteKind = isNoteKind(input.kind) ? input.kind : "action";
         if (thread.kind === "room" && thread.members.includes(target.id)) {
-          // A group chat, like the person's: what one member tells another there is said where everyone sees it.
           const body = hideSecrets(mentionsIn(text).includes(handleOf(target.name)) ? text : `@${handleOf(target.name)} ${text}`);
           const wake = kind === "action" && botLinesSincePerson(thread.id) < MAX_ROOM_LINES;
           postMessage({ threadId: thread.id, author: bot.id, body, depth, answered: !wake, wake, note: kind });
@@ -1508,14 +1487,12 @@ export function baseTools(context: Context): Record<string, DriverTool> {
     return mine.find((r) => r.id === ref) ?? mine.find((r) => r.name.toLowerCase() === ref.trim().toLowerCase()) ?? null;
   }
 
-  /** A skill named for a routine: its id, null for none, undefined when the person has no such skill. */
   function routineSkill(ref: unknown): string | null | undefined {
     const slug = typeof ref === "string" ? ref.trim().replace(/^\//, "") : "";
     if (!slug) return null;
     return getSkillBySlug(bot.userId, slug)?.id;
   }
 
-  /** A routine an app's event starts: checked against what the app offers, and watched for at once when it's on. */
   async function createEventRoutine(input: Record<string, unknown>, given: Record<string, unknown>): Promise<string> {
     const slug = String(given.slug ?? "").trim().toUpperCase();
     if (!slug) return "NOT created: the trigger needs its slug, from list_triggers.";
@@ -1548,7 +1525,6 @@ export function baseTools(context: Context): Record<string, DriverTool> {
   }
 }
 
-/** A trigger's settings as a bot reads them: each name, whether it's needed, its type, what it is and its default. */
 function triggerSettings(config: Record<string, unknown>): string {
   const properties = config.properties && typeof config.properties === "object" ? (config.properties as Record<string, Record<string, unknown> | undefined>) : {};
   const required = new Set(Array.isArray(config.required) ? config.required.map(String) : []);

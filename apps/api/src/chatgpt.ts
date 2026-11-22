@@ -198,7 +198,6 @@ export function completeChatGptLoginFrom(pasted: string, userId: string): Promis
   return completeChatGptLogin({ code: q.get("code"), state: q.get("state"), error: q.get("error"), errorDescription: q.get("error_description"), clientId: q.get("client_id") }, userId);
 }
 
-/** A live access token for the person's plan, renewed when it's close to running out; null when they must sign in again. */
 export async function chatGptAccessToken(userId: string): Promise<string | null> {
   const session = planSession(userId, "chatgpt");
   if (!session) return null;

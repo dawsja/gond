@@ -15,7 +15,6 @@ enum PushCrypto {
         return Data(base64Encoded: text)
     }
 
-    /// The notice's JSON, or nil when it wasn't sealed for this key.
     static func open(key: String, sealed: String) -> String? {
         guard let key = bytes(key), let raw = bytes(sealed), raw.count >= 12 + 16,
               let box = try? AES.GCM.SealedBox(combined: raw),
@@ -59,7 +58,6 @@ struct PhoneNotice {
     }
 }
 
-/// The category whose notifications carry Allow and Deny (`Notifications.swift` sets it up).
 enum PushCategory {
     static let card = "gond.card"
     static let allow = "allow"

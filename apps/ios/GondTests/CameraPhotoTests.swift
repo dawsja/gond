@@ -4,7 +4,7 @@ import XCTest
 
 final class CameraPhotoTests: XCTestCase {
     func testPhotoNameUsesTimestampInPosixFormat() {
-        let date = Date(timeIntervalSince1970: 1_795_306_530) // 2026-11-22 00:15:30 UTC
+        let date = Date(timeIntervalSince1970: 1_795_306_530)
         XCTAssertEqual(CameraPhoto.name(for: date, timeZone: TimeZone(secondsFromGMT: 0)!), "Photo-20261122-001530.jpg")
     }
 

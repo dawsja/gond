@@ -5,7 +5,6 @@ import { ManageKey, ProviderCheck, ProviderForm, useProviders } from "@/componen
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
-/** Settings → Voice: the one key the microphone and calls run on, kept apart from the bots' keys. */
 export function VoiceKeyCard() {
   const { providers, reload } = useProviders();
   const provider = providers?.voice ?? null;

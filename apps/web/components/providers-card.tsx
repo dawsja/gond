@@ -32,7 +32,6 @@ export function useProviders() {
   return { providers, reload: load };
 }
 
-/** Addresses to fill the Base URL from with one tap, when a kind of key has more than one usual home. */
 const URL_PRESETS: Partial<Record<ProviderKind, { label: string; url: string }[]>> = {
   voice: [
     { label: "OpenAI", url: "https://api.openai.com/v1" },
@@ -116,7 +115,6 @@ export function ProviderCheck({ provider }: { provider: ProviderMeta }) {
   );
 }
 
-/** A saved key's own actions: change it, check it, or remove it. */
 export function ManageKey({ kind, provider, onChange }: { kind: Exclude<ProviderKind, PlanProviderKind>; provider: ProviderMeta; onChange: () => void }) {
   const label = PROVIDER_LABELS[kind];
   const [editing, setEditing] = useState(false);
@@ -171,7 +169,6 @@ export function ManageKey({ kind, provider, onChange }: { kind: Exclude<Provider
   );
 }
 
-/** Step 2 for the API engine: one row per API, the saved ones to pick between, the rest to add. */
 export function KeyList({
   providers,
   only,
@@ -180,7 +177,6 @@ export function KeyList({
   onChange,
 }: {
   providers: Record<ProviderKind, ProviderMeta | null>;
-  /** The APIs the engine can run on, when it is fewer than all of them. */
   only?: readonly KeyProviderKind[];
   chosen: ProviderKind;
   onPick: (kind: KeyProviderKind) => void;

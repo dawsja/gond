@@ -19,7 +19,6 @@ type ExportRow = {
   expires_at: string | null;
 };
 
-/** What an export was asked to gather: one conversation or all of them, from a moment or from the start. */
 export type ExportJob = { id: string; userId: string; threadId: string | null; since: string | null };
 
 function toExport(row: ExportRow): ChatExport {
@@ -51,7 +50,6 @@ export function preparingExport(userId: string): ChatExport | null {
   return found ? toExport(found) : null;
 }
 
-/** Starts the row for a new export, and lets go of the person's oldest past what the list shows. */
 export function createExport(input: { userId: string; threadId: string | null; since: string | null; label: string; total: number }): ExportJob {
   const id = newId("x");
   transaction((db) => {

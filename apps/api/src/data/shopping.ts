@@ -154,7 +154,6 @@ function expireCheckout(id: string, userId: string) {
 
 export const DUE_CHECKOUTS = "SELECT id, user_id FROM gond_commerce WHERE kind = 'checkout' AND state IN ('review', 'approved') AND expires_at <= ?";
 
-/** Every purchase card past its time, from the dispatcher's tick: only those due are opened. */
 export function expireDueCheckouts(at = now()) {
   const rows = ensureDatabase().query(DUE_CHECKOUTS).all(at) as { id: string; user_id: string }[];
   for (const row of rows) expireCheckout(row.id, row.user_id);

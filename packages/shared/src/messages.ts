@@ -18,13 +18,11 @@ export type Thread = {
 
   /** The latest line between the person and the bot or room; what bots said to each other here never counts. */
   lastMessage: { author: string; body: string; at: string } | null;
-  /** Unread lines for the person. */
   unread: number;
   /** Bots wrote to each other here since the person last looked, and nothing new is for them. */
   unreadTeam: boolean;
   /** What a watch's latest run said, while the person hasn't read it yet. */
   noticed: { watch: string; body: string; at: string } | null;
-  /** A room shared with people on other Gonds: who is there from where. Null for any other conversation. */
   space: ThreadSpace | null;
   createdAt: string;
   updatedAt: string;
@@ -55,7 +53,6 @@ export function isReaction(value: unknown): value is ReactionEmoji {
   return typeof value === "string" && (REACTIONS as readonly string[]).includes(value);
 }
 
-/** One reaction on a message: `author` is "you" or a bot's id, like a message's. */
 export type Reaction = { author: MessageAuthor; emoji: ReactionEmoji };
 
 export type ChatAttachment = {
@@ -85,7 +82,6 @@ export type Message = {
   steered: boolean;
   /** Said out loud on a call: the person's words as heard, or what the bot's voice said. Kept for the bot, never shown. */
   spoken: boolean;
-  /** A note between bots: an action the bot it reaches must act on, or information that needs nothing. */
   note: NoteKind | null;
   /** In a room, the bots Gond's router judged a person's unnamed line was for; null when the line named them or nothing was routed. */
   sentTo: string[] | null;
@@ -100,7 +96,6 @@ export type Message = {
    * taken back or edited. Always filled by the API; optional only so cards drawn from other things needn't say.
    */
   waiting?: boolean;
-  /** What the primary bot said on a check-in of its own, not in answer to anything. */
   checkIn?: boolean;
   createdAt: string;
 };
@@ -109,7 +104,6 @@ export type Quote = { id: string; author: MessageAuthor; text: string };
 
 export const QUOTE_CHARS = 280;
 
-/** How a bot reads a reply: `(replying to Patch: "…") ` ahead of the person's words. */
 export function replyLine(quote: Quote | null, nameOf: (author: MessageAuthor) => string): string {
   return quote ? `(replying to ${nameOf(quote.author)}: "${quote.text.slice(0, 200)}${quote.text.length > 200 ? "…" : ""}") ` : "";
 }

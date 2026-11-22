@@ -6,12 +6,6 @@ import path from "node:path";
 import type { Federation, Message, Space, SpaceInvitePreview, Thread } from "@gond/shared";
 import { createRelayServer } from "../../../packages/relay/src/server.ts";
 
-/*
- * Spaces end to end: three real Gond APIs, each with its own database, and one relay between them,
- * as on three servers. Ada hosts, Sam and Cy join; lines go round, the rules hold, a Gond that
- * restarts gets what it missed, and the relay never holds a readable word.
- */
-
 type Gond = { name: string; url: string; dir: string; port: number; cookie: string; proc: ReturnType<typeof Bun.spawn> | null; secret: string };
 
 const relayDb = new Database(":memory:", { strict: true });
@@ -136,7 +130,6 @@ describe("spaces between three Gonds", () => {
     expect(space.members.map((m) => m.name)).toEqual(expect.arrayContaining(["Patch", "Ledger", "ada"]));
     expect(space.gonds.find((g) => g.host)?.name).toBe("Ada's Gond");
 
-    // The invite works once.
     await expect(call(cy, "POST", "/api/spaces/join", { link: invite.link, botIds: [] })).resolves.toBeTruthy();
     const refused = await until("Cy refused", async () => {
       const cyRooms = (await call<{ threads: Thread[] }>(cy, "GET", "/api/threads")).threads.filter((t) => t.space);
@@ -145,7 +138,6 @@ describe("spaces between three Gonds", () => {
     });
     await call(cy, "DELETE", `/api/rooms/${refused.id}`);
 
-    // Nothing from before the space was made went to Sam.
     expect((await messages(sam, samThread.id)).some((m) => m.body.includes("private note"))).toBe(false);
     const adaSide = await call<{ space: Space }>(ada, "GET", `/api/spaces/threads/${room.id}`);
     expect(adaSide.space.members.map((m) => m.name)).toEqual(expect.arrayContaining(["Juniper", "sam"]));
@@ -168,7 +160,6 @@ describe("spaces between three Gonds", () => {
     const { invite } = await call<{ invite: { link: string } }>(ada, "POST", "/api/spaces/invites", { threadId: room.id, days: 1 });
     cyThread = (await call<{ thread: Thread }>(cy, "POST", "/api/spaces/join", { link: invite.link, botIds: [] })).thread;
     await until("Cy let in", async () => (await call<{ space: Space }>(cy, "GET", `/api/spaces/threads/${cyThread.id}`)).space.status === "active");
-    // Cy sees what was said since the space began, and who's there from both other Gonds.
     await said(cy, cyThread.id, "Hello from Sam");
     const cySpace = (await call<{ space: Space }>(cy, "GET", `/api/spaces/threads/${cyThread.id}`)).space;
     expect(cySpace.members.map((m) => m.name)).toEqual(expect.arrayContaining(["Juniper", "Patch", "sam"]));

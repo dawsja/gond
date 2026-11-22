@@ -22,7 +22,6 @@ const INPUTS: Record<LoginField["kind"], { type: string; autoComplete: string; i
 
 const TYPE_IT = "type";
 
-/** The person's saved sign-ins, by site, newest first, each with the fields of this card it fills. */
 function useSavedLogins(fields: LoginField[], pending: boolean) {
   const [secrets, setSecrets] = useState<SecretMeta[]>([]);
   useEffect(() => {

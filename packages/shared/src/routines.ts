@@ -25,11 +25,8 @@ export type Routine = {
 };
 /** An event in a connected app that runs a routine the moment it happens (Composio's triggers). */
 export type RoutineTrigger = {
-  /** The app, like gmail. */
   toolkit: string;
-  /** Composio's name for the event, like GMAIL_NEW_GMAIL_MESSAGE. */
   slug: string;
-  /** The event in words, like "New Gmail message". */
   name: string;
   config: Record<string, unknown>;
 };

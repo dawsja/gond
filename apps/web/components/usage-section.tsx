@@ -20,7 +20,6 @@ import { api } from "@/lib/api";
 const RANGE_LABELS: Record<UsageRange, string> = { month: "This month", week: "This week", today: "Today" };
 const WINDOW_LABELS: Record<PlanWindow["name"], string> = { session: "5-hour limit", weekly: "Weekly limit", monthly: "Monthly limit" };
 const PLANS = new Set<UsageSource>(["claude", "chatgpt", "grok"]);
-// Amber from this share used on.
 const HIGH = 80;
 
 const tokens = (n: number) => new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(n);
@@ -44,7 +43,6 @@ function ago(iso: string): string {
   return hours < 24 ? `${hours} h ago` : new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-/** The plan or key by name, and what about it the person would recognise. */
 function planName(report: UsageReport): { name: string; detail: string } {
   switch (report.source) {
     case "claude":
@@ -60,7 +58,6 @@ function planName(report: UsageReport): { name: string; detail: string } {
   }
 }
 
-/** Why there is no meter, and where to look instead. */
 function notShared(report: UsageReport): { text: string; link: { href: string; label: string } | null } {
   if (report.source === "claude") return { text: "Shows here after your bots' next reply.", link: null };
   if (report.source === "grok") return { text: "Grok didn't say how much is left just now.", link: null };
@@ -135,7 +132,6 @@ const REMOVED: Pick<Bot, "name" | "title" | "color" | "expression" | "primary"> 
 function BotsCard({ report, range, onRange }: { report: UsageReport; range: UsageRange; onRange: (range: UsageRange) => void }) {
   const { bots } = useStore();
   const total = report.bots.reduce((sum, row) => sum + row.tokens, 0);
-  // Every bot that's gone is one row, whatever it was called.
   const rows: { key: string; bot: Pick<Bot, "name" | "title" | "color" | "expression" | "primary"> & Partial<Pick<Bot, "shape" | "avatar">>; tokens: number; cost: number | null }[] = [];
   let removed: (typeof rows)[number] | null = null;
   for (const row of report.bots) {
@@ -184,7 +180,6 @@ function BotsCard({ report, range, onRange }: { report: UsageReport; range: Usag
   );
 }
 
-/** The admin's: whether this server's token count adds to the public one at gond.io/usage. */
 function SharingCard() {
   const [sharing, setSharing] = useState<UsageSharing | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);

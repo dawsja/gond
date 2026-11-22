@@ -60,7 +60,6 @@ export function createStore(sql: Sql, now: () => number = Date.now) {
       return null;
     },
 
-    /** Stops taking a sender's envelopes and drops the ones held from them. */
     forget(mailbox: string, sender: string) {
       sql.run(`DELETE FROM relay_allowed WHERE mailbox = ? AND sender = ?`, mailbox, sender);
       sql.run(`DELETE FROM relay_queue WHERE mailbox = ? AND sender = ?`, mailbox, sender);
@@ -78,7 +77,6 @@ export function createStore(sql: Sql, now: () => number = Date.now) {
       sql.run(`DELETE FROM relay_invites WHERE mailbox = ? AND hash = ?`, mailbox, hash);
     },
 
-    /** An invite lets one sender in, once. */
     takeInvite(mailbox: string, hash: string): boolean {
       const open = count(`SELECT COUNT(*) AS n FROM relay_invites WHERE mailbox = ? AND hash = ? AND expires_at > ?`, mailbox, hash, now()) > 0;
       sql.run(`DELETE FROM relay_invites WHERE mailbox = ? AND hash = ?`, mailbox, hash);
@@ -105,7 +103,6 @@ export function createStore(sql: Sql, now: () => number = Date.now) {
       sql.run(`DELETE FROM relay_queue WHERE mailbox = ? AND sender = ? AND id = ?`, mailbox, sender, id);
     },
 
-    /** Counts one send against the key's minute; false once it's spent. */
     spend(key: string, limit: number = LIMITS.sendsPerMinute): boolean {
       const minute = Math.floor(now() / 60_000);
       const row = sql.all(`SELECT minute, count FROM relay_sends WHERE key = ?`, key)[0];
@@ -115,7 +112,6 @@ export function createStore(sql: Sql, now: () => number = Date.now) {
       return true;
     },
 
-    /** Drops what waited too long, spent invites, and mailboxes nobody has opened in months. */
     sweep() {
       const at = now();
       sql.run(`DELETE FROM relay_queue WHERE held_at < ?`, at - LIMITS.queueMs);
@@ -135,7 +131,6 @@ export function challenge(): { nonce: string; frame: RelayFrame } {
   return { nonce, frame: { t: "challenge", nonce, versions: VERSIONS } };
 }
 
-/** A hello proves the socket holds the private half of the mailbox's key. */
 export async function provesKey(mailbox: string, nonce: string, frame: ClientFrame | null): Promise<boolean> {
   return frame?.t === "hello" && frame.key === mailbox && (await verifySignature(frame.key, frame.sig, signedHello(nonce)));
 }
@@ -156,7 +151,6 @@ export function receive(store: Store, envelope: Envelope, invite: string | null)
 
 export type Route = (envelope: Envelope, inviteHash: string | null) => Promise<Refusal | null>;
 
-/** One frame from a mailbox's owner, once its socket has proved the key. */
 export async function ownerFrame(store: Store, key: string, frame: ClientFrame, route: Route): Promise<RelayFrame | null> {
   const refused = (reason: Refusal, id?: string): RelayFrame => ({ t: "refused", id, reason, message: REFUSALS[reason] });
   switch (frame.t) {

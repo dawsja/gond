@@ -11,7 +11,6 @@ const css = read("app/globals.css");
 
 type Tokens = Record<string, string>;
 
-/** Every `--name: value;` of each innermost rule, by selector, in source order. */
 function rules(source: string): Map<string, Tokens> {
   const found = new Map<string, Tokens>();
   const plain = source.replace(/\/\*[\s\S]*?\*\//g, "");
@@ -31,7 +30,6 @@ function block(selector: string): Tokens {
   return tokens;
 }
 
-/** A token's colour with every var() followed, lower-case six-digit hex. */
 function colour(tokens: Tokens, name: string): string {
   let value = tokens[name];
   for (let hops = 0; value?.startsWith("var(--"); hops++) {

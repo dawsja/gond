@@ -23,7 +23,6 @@ use url::Url;
 
 use config::{Bounds, Config};
 
-/// Kept in step with MCP_LOOPBACK_PORT in packages/shared.
 pub const LOOPBACK_PORT: u16 = 47651;
 const PROBE_TIMEOUT: Duration = Duration::from_secs(8);
 const INIT_SCRIPT: &str = include_str!("init.js");
@@ -43,7 +42,6 @@ pub struct AppState {
     zoom: Mutex<f64>,
     downloads: Mutex<VecDeque<(u32, PathBuf)>>,
     download_ids: AtomicU32,
-    /// The windows whose page said, while it loaded, that it draws its own title row.
     frameless: Mutex<HashSet<String>>,
 }
 
@@ -90,7 +88,6 @@ impl AppState {
         *zoom
     }
 
-    /// A finished download's path stays here; the page gets an id to ask for it to be shown.
     fn keep_download(&self, path: PathBuf) -> u32 {
         let id = self.download_ids.fetch_add(1, Ordering::Relaxed) + 1;
         let mut downloads = lock(&self.downloads);
@@ -332,7 +329,6 @@ fn page_builder<'a>(
         })
 }
 
-/// The menu bar stays out of the way: hidden in every window, and shown for a moment by a tap of Alt.
 pub fn hide_menu_bar(window: &WebviewWindow) {
     let _ = window.hide_menu();
 }
@@ -344,7 +340,6 @@ pub fn set_frameless(window: &WebviewWindow, frameless: bool) {
     let _ = window.set_decorations(!frameless);
 }
 
-/// The page's maximize button shows restore while the window is maximized, so it hears each change.
 fn tell_maximized(window: &WebviewWindow) {
     let watched = window.clone();
     let maximized = AtomicBool::new(window.is_maximized().unwrap_or(false));

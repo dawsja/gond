@@ -22,7 +22,6 @@ const STRAY_MS = 5_000;
 const SWEEP_MS = 5 * 60_000;
 
 type Found = {
-  /** Where it is in the home. */
   path: string;
   /** Where its copy goes on the first move, relative to `base`; null for a file that stays. */
   copyAs: string | null;
@@ -109,7 +108,6 @@ async function teamPlace(box: BoxConfig, userId: string, first: boolean, signal:
   return { base, files };
 }
 
-/** Removes the folders left empty under `dir`, and `dir` itself when it is. */
 async function pruneEmpty(box: BoxConfig, dir: string, signal: AbortSignal): Promise<boolean> {
   let left = 0;
   for (const entry of await listing(box, dir, signal)) {
@@ -210,7 +208,6 @@ export async function moveWaitingMemory(beforeWipe = false): Promise<void> {
   }
 }
 
-/** At start, and every few minutes while any memory still waits on the computer. */
 export function startMemoryMoves(): void {
   const sweep = () => {
     if (!memoriesOnComputer().length) {

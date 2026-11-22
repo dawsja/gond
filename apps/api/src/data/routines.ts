@@ -79,7 +79,6 @@ export function getRoutine(id: string): Routine | null {
   return row ? toRoutine(row) : null;
 }
 
-/** A routine an app's event starts has no cron and no next run: it runs when the event arrives. */
 function nextRunAt(routine: { enabled: boolean; cron: string; timezone: string; trigger?: RoutineTrigger | null }): string | null {
   return routine.enabled && !routine.trigger ? (nextRun(routine.cron, routine.timezone)?.toISOString() ?? null) : null;
 }
@@ -123,32 +122,27 @@ export function routineEventId(id: string): string | null {
   return (ensureDatabase().query("SELECT event_id FROM gond_routines WHERE id = ?").get(id) as { event_id: string | null } | null)?.event_id ?? null;
 }
 
-/** The routine an arriving event is for, by the trigger Composio named, with its owner. */
 export function routineForEvent(eventId: string): { routine: Routine; userId: string } | null {
   const row = ensureDatabase().query("SELECT r.*, b.user_id AS owner FROM gond_routines r JOIN gond_bots b ON b.id = r.bot_id WHERE r.event_id = ?").get(eventId) as (Row & { owner: string | null }) | null;
   return row?.owner ? { routine: toRoutine(row), userId: row.owner } : null;
 }
 
-/** Every routine that waits on an app's event and is on, with its owner, for subscribing at start. */
 export function armedRoutines(): { routine: Routine; userId: string; eventId: string }[] {
   const rows = ensureDatabase().query("SELECT r.*, b.user_id AS owner FROM gond_routines r JOIN gond_bots b ON b.id = r.bot_id WHERE r.event_id IS NOT NULL").all() as (Row & { owner: string | null })[];
   return rows.flatMap((row) => (row.owner && row.event_id ? [{ routine: toRoutine(row), userId: row.owner, eventId: row.event_id }] : []));
 }
 
-/** A person's routines that wait on events, for when their apps change under them. */
 export function eventRoutinesOf(userId: string): Routine[] {
   const rows = ensureDatabase().query("SELECT r.* FROM gond_routines r JOIN gond_bots b ON b.id = r.bot_id WHERE b.user_id = ? AND r.event IS NOT NULL").all(userId) as Row[];
   return rows.map(toRoutine);
 }
 
-/** A run of this routine that is posted and not yet picked up, which a new event can join. */
 export function waitingRun(routineId: string): { messageId: string; body: string } | null {
   return ensureDatabase()
     .query("SELECT m.id AS messageId, m.body FROM gond_routine_runs r JOIN gond_messages m ON m.id = r.message_id WHERE r.routine_id = ? AND r.status = 'started' AND m.answered_at IS NULL AND m.claimed_by IS NULL ORDER BY r.started_at DESC LIMIT 1")
     .get(routineId) as { messageId: string; body: string } | null;
 }
 
-/** Joins an event to a waiting run, only while nothing has picked it up; whether it did. */
 export function joinWaitingRun(messageId: string, body: string): boolean {
   return ensureDatabase().query("UPDATE gond_messages SET body = ? WHERE id = ? AND answered_at IS NULL AND claimed_by IS NULL").run(body, messageId).changes > 0;
 }

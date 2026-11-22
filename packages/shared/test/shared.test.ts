@@ -115,7 +115,6 @@ describe("plain markdown", () => {
     expect(withoutPaths("Let me check /home/agent/.team/u1/MEMORY.md and ~/.bots/b1/notes/todo.md, then https://example.com/a/b.", home)).toBe("Let me check the team memory and todo.md, then https://example.com/a/b.");
     expect(toolLabel("mcp__gond__submit_checkout", { checkoutId: "c1", revision: 3 }, plain)).toEqual({ verb: "Placing the order", detail: null });
     expect(toolLabel("present_products", { products: [] }, plain)).toEqual({ verb: "Showing products", detail: null });
-    // Without `plain` the label stays exact: the work log, and what a retried turn hears it did.
     expect(toolLabel("Bash", { command: "bun test" }, { home })).toEqual({ verb: "Running", detail: "`bun test`" });
   });
 
@@ -323,7 +322,6 @@ describe("email cards", () => {
     expect(emailDraftOf("GMAIL_DELETE_MESSAGE", { message_id: "m1" })).toBeNull();
     expect(emailDraftOf("SLACK_SEND_MESSAGE", { channel: "c", text: "hi" })).toBeNull();
     expect(emailDraftOf("OUTLOOK_SEND_EMAIL", { to_recipients: [{ emailAddress: { name: "Ann Lee", address: "ann@x.com" } }], subject: "s" })?.to).toEqual(["Ann Lee <ann@x.com>"]);
-    // An MCP server's mail tool is a letter too, named by the tool or by the server.
     expect(emailDraftOf("mcp__gmail__send_email", { to: "a@b.co", subject: "Hi", body: "x" })).toMatchObject({ app: "Gmail", mode: "send" });
     expect(emailDraftOf("mcp__workspace__gmailCreateDraft", { to: "a@b.co", subject: "Hi", body: "x" })).toMatchObject({ app: "Gmail", mode: "draft" });
     expect(emailDraftOf("mcp__outlook__reply-to-message", { body: "On it." })).toMatchObject({ app: "Outlook", mode: "reply" });
@@ -421,7 +419,6 @@ describe("rooms", () => {
     expect(ids(addressedIn("dispatcher is down", members))).toEqual([]);
     expect(ids(addressedIn("can you both check?", members))).toEqual(["net", "patch"]);
     expect(ids(addressedIn("everyone, status please", members))).toEqual(["net", "patch"]);
-    // A group word ending the line is to the room, comma or not; not when it's what the line acts on.
     expect(ids(addressedIn("ily guys", members))).toEqual(["net", "patch"]);
     expect(ids(addressedIn("thanks team!", members))).toEqual(["net", "patch"]);
     expect(ids(addressedIn("night everyone", members))).toEqual(["net", "patch"]);
@@ -458,11 +455,9 @@ describe("rooms", () => {
     expect(ids(roomTargets("require TOTP for all accounts no passkey", three, posture))).toEqual(["sentry"]);
     expect(ids(roomTargets("require TOTP for all accounts no passkey", three, posture, ["net"]))).toEqual(["sentry"]);
     expect(ids(roomTargets("awesome. tell everyone", three, [line("you", "@patch what is your proposed list"), line("patch", "Here it is.")]))).toEqual(["patch"]);
-    // A line to the whole room hands on to whoever answered it, as before.
     const intros = [line("you", "Hey all, meet Sentry"), line("sentry", "Hi."), line("patch", "Hi."), line("net", "Hi.")];
     expect(ids(roomTargets("what do you own?", three, intros))).toEqual(["net"]);
     expect(ids(roomTargets("What exact UPS should I get?", three, [line("you", "would you guys shut things down?"), line("net", "Yes."), line("patch", "Yes.")]))).toEqual(["patch"]);
-    // The router's pick for the person's last line carries over like a name would.
     const routed = [{ ...line("you", "require TOTP"), sentTo: ["sentry"] }, line("net", "Not mine.")];
     expect(ids(roomTargets("and recovery codes", three, routed))).toEqual(["sentry"]);
   });
@@ -535,7 +530,6 @@ describe("your details' fields", () => {
     expect(checkDetailValue("date", "March 3, 2018")).toEqual({ value: "2018-03-03" });
     expect(checkDetailValue("text", "  peanuts,   tree nuts ")).toEqual({ value: "peanuts, tree nuts" });
 
-    // Dates are read in the local calendar, and a day that doesn't exist isn't one.
     expect(toDay("09/21/2000")).toBe("2000-09-21");
     expect(toDay("2018-02-31")).toBeNull();
     expect(toDay("next Tuesday")).toBeNull();

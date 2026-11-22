@@ -19,7 +19,6 @@ const ADDRESS_FIELDS: Record<keyof ShippingAddress, string> = {
   phone: "the phone number",
 };
 
-/** The shipping address, or what to fix in it, in words the person can act on. */
 function addressOf(input: unknown): ShippingAddress | string {
   const parsed = addressSchema.safeParse(input);
   if (parsed.success) return parsed.data;

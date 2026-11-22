@@ -30,7 +30,6 @@ function useSavedCards(pending: boolean) {
   return cards;
 }
 
-/** A bot at a checkout asks to pay: the person picks a saved card, or types one in, and says yes to this total. */
 export function PayCard({ request, bot, onAnswered }: { request: SecretRequest; bot: Bot | undefined; onAnswered: (request: SecretRequest) => void }) {
   const cards = useSavedCards(request.status === "pending");
   const [picked, setPicked] = useState<string | null>(null);

@@ -12,7 +12,6 @@ import { del, patch } from "@/lib/api";
 
 export type Ask = { kind: "delete" | "transfer"; thread: ThreadRow };
 
-/** `symbol` is the SF Symbol the iPhone app's menu shows for it. */
 export type ThreadAction = { id: string; label: string; icon: LucideIcon; symbol: string; run: () => void; destructive?: boolean };
 
 export function threadActions({ thread, bot, bots, onOpen, onAsk, refresh }: { thread: ThreadRow; bot: Bot | undefined; bots: Bot[]; onOpen: (dialog: NonNullable<ShellDialog>) => void; onAsk: (ask: Ask) => void; refresh: () => Promise<void> }): ThreadAction[][] {

@@ -2,7 +2,7 @@
 
 import { MAX_PROFILES } from "@gond/shared";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BotAvatar, PersonAvatar, RoomAvatar, roomMembers } from "@/components/bot-avatar";
 import { useCall } from "@/components/call/call-provider";
 import { dismissTopmost, useCovered, useTokenHex } from "@/components/conversation-chrome";
@@ -17,7 +17,7 @@ import { threadActions, ThreadConfirms, type Ask, type ThreadAction } from "@/co
 import { WorthALookDialog, useWorthALookLine } from "@/components/worth-a-look";
 import { useStableCallback } from "@/hooks/use-stable-callback";
 import { useDrafts } from "@/lib/drafts";
-import { pictureFaceKey, sidebarHits, sidebarLists, sidebarSections, settingsSectionOf, type FaceSpec } from "@/lib/native-sidebar";
+import { pictureFaceKey, sidebarHits, sidebarLists, sidebarSections, settingsSectionOf, watchNativeFaces, type FaceSpec } from "@/lib/native-sidebar";
 import { faceSent, facePng, picturesLoaded, sendFaces, useNativeSidebarState, type NativeMenuItem, type SidebarEvent, type SidebarState } from "@/lib/native-ui";
 import { groupedSections, SETTINGS_SECTIONS } from "@/lib/settings-sections";
 
@@ -30,11 +30,6 @@ const NEW_SYMBOLS: Record<string, string> = { "new-bot": "plus.bubble", "new-roo
 const items = (groups: ThreadAction[][]): NativeMenuItem[][] => groups.map((group) => group.map(({ id, label, symbol, destructive }) => ({ id, label, symbol, destructive })));
 const nothing = () => {};
 
-/**
- * The Mac app's sidebar, drawn natively from what the page's own sidebar shows: the chats (or, in
- * Settings, its sections), the New menu, Worth a look, a call away from its chat and your menu. What
- * the person does there comes back as `gond:native-sidebar` and runs what the page's sidebar would.
- */
 export function NativeSidebar({ onOpen }: { onOpen: (dialog: ShellDialog) => void }) {
   const { me, profiles, bots, threads, loaded, refresh } = useStore();
   const activity = useActivity();
@@ -179,41 +174,28 @@ export function NativeSidebar({ onOpen }: { onOpen: (dialog: ShellDialog) => voi
 
 type MeFace = { key: string; name: string; avatar: string };
 
-/** Unseen copies of the faces the app hasn't been sent yet, painted once each and sent with the next state. */
 function FaceCopies({ faces, me }: { faces: FaceSpec[]; me: MeFace | null }) {
   const [, setPainted] = useState(0);
+  const containerRef = useRef<HTMLDivElement>(null);
   const waiting = faces.filter((face) => !faceSent(face.key));
   const meWaiting = me && !faceSent(me.key) ? me : null;
   const keys = [...waiting.map((face) => face.key), meWaiting?.key ?? ""].join(" ").trim();
   useEffect(() => {
-    if (!keys) return;
-    let stale = false;
-    let tries = 0;
-    let timer = 0;
-    // The copies render with this; a frame later their faces are drawn. A picture (yours, a bot's) may
-    // still be loading, and until it has, its copy shows the fallback, so it waits a few times for it.
-    const paint = () => {
-      const holders = [...document.querySelectorAll<HTMLElement>("[data-native-face]")].filter((holder) => !faceSent(holder.dataset.nativeFace!));
-      const ready = holders.filter(picturesLoaded);
-      if (ready.length < holders.length && (tries += 1) < 20) timer = window.setTimeout(paint, 250);
-      void Promise.all(ready.map(async (holder) => [holder.dataset.nativeFace!, holder.firstElementChild ? await facePng(holder.firstElementChild, FACE_PX) : null] as const)).then((pairs) => {
-        if (stale) return;
-        const painted = Object.fromEntries(pairs.filter((pair): pair is readonly [string, string] => Boolean(pair[1])));
-        if (!Object.keys(painted).length) return;
+    if (!keys || !containerRef.current) return;
+    return watchNativeFaces({
+      container: containerRef.current,
+      isSent: faceSent,
+      isReady: (holder) => picturesLoaded(holder as unknown as Element),
+      renderFace: (element) => facePng(element, FACE_PX),
+      onFaces: (painted) => {
         sendFaces(painted);
         setPainted((n) => n + 1);
-      });
-    };
-    const frame = window.requestAnimationFrame(paint);
-    return () => {
-      stale = true;
-      window.cancelAnimationFrame(frame);
-      window.clearTimeout(timer);
-    };
+      },
+    });
   }, [keys]);
   if (!waiting.length && !meWaiting) return null;
   return (
-    <div aria-hidden="true" className="invisible fixed top-0 left-0 size-0 overflow-hidden">
+    <div ref={containerRef} aria-hidden="true" className="invisible fixed top-0 left-0 size-0 overflow-hidden">
       {waiting.map((face) => (
         <span key={face.key} data-native-face={face.key} className="block w-fit">
           {"bot" in face ? <BotAvatar bot={face.bot} size={COPY_SIZE} /> : <RoomAvatar bots={face.members} size={COPY_SIZE} space={face.space} />}

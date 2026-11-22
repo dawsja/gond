@@ -21,7 +21,6 @@ import { spaceSubtitle } from "@/lib/spaces";
 
 const heading = "text-[13px] font-semibold";
 
-/** A room's place among other Gonds, in its details: an invite for a room, everything about a space. */
 export function SpaceSection({ thread }: { thread: Thread }) {
   const { federation } = useFederation();
   if (!thread.space) {

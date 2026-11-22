@@ -57,18 +57,6 @@ import { memoryForTurn } from "./memory-moves.ts";
 import { keyWords } from "./words.ts";
 import { usageRecorder } from "./usage.ts";
 
-/*
- * Spaces: a room here that is the same room on other Gonds. The Gond that made it hosts it: a guest
- * sends its lines to the host, and the host posts them and passes them to everyone else, so every
- * Gond sees every line once. What goes between Gonds is only what people and bots say there, the
- * members' names and colours, and each Gond's name: never a card, a file, a memory or a setting.
- *
- * A line from another Gond is untrusted. It wakes only the bots it names (another Gond's bots only
- * where you let them), and each bot answers it by your rules for that space: in words only, with no
- * tools in an empty folder (`talk`), with the web as well (`look`), or not at all until you say yes
- * on a card (`act`), after which it works for you as if you had asked.
- */
-
 const LINE_CHARS = 16_000;
 const SHORT_SECRET = 4;
 const NAME_CHARS = 60;
@@ -80,7 +68,6 @@ const INVITE_DAYS = [1, 7, 30] as const;
 export type InviteDays = (typeof INVITE_DAYS)[number];
 export const INVITE_PREFIX = "gond-space:";
 
-// The wire, inside each sealed envelope. Everything from another Gond is checked here before use.
 type WireCard = KeyCard & { name: string; relay: string };
 type WireMember = MemberInput;
 type WireLine = { id: string; gond: string; author: string; body: string; at: number; replyTo: string | null };
@@ -105,7 +92,6 @@ const id = (value: unknown): string | null => (typeof value === "string" && ID.t
 // Control characters, line breaks and the marks that reorder or hide text: a name is shown in cards and read by bots, so it is one plain line.
 const UNSAFE_IN_NAME = /[\p{Cc}\u2028\u2029\u200b\u200e\u200f\u202a-\u202e\u2066-\u2069\ufeff]/gu;
 
-/** A name or short line another Gond sent, as one plain line of at most `max` characters; empty when nothing is left. */
 export function plainName(value: unknown, max = NAME_CHARS): string {
   if (typeof value !== "string") return "";
   return value.slice(0, max * 4).replace(UNSAFE_IN_NAME, " ").replace(/\s+/g, " ").trim().slice(0, max).trim();
@@ -186,14 +172,12 @@ export function parseEvent(body: unknown): SpaceEvent | null {
   }
 }
 
-// The invite: everything the other Gond needs to reach this one, in a link that works once.
 type Invite = { v: 1; space: string; name: string; token: string; expires: number; host: WireCard; members: WireMember[] };
 
 export function inviteCode(invite: Invite): string {
   return INVITE_PREFIX + Buffer.from(JSON.stringify(invite)).toString("base64url");
 }
 
-/** The invite in what someone pasted: the link, the code, or the code with words around it. */
 export function readInvite(pasted: string): Invite | null {
   const found = /gond-space:([A-Za-z0-9_-]+)/.exec(pasted) ?? /#([A-Za-z0-9_-]{40,})/.exec(pasted);
   if (!found) return null;
@@ -209,14 +193,12 @@ export function readInvite(pasted: string): Invite | null {
   }
 }
 
-/** The person's id as their Gond names them in a space. */
 const personMember = (userId: string) => `p-${userId}`;
 
 function ownName(): string {
   return federationRow().name.trim() || "A Gond";
 }
 
-/** Whether this Gond will connect to a relay another Gond named: never loopback, link-local or a bare service name. */
 function relayAllowed(relay: string): boolean {
   return peerRelayAllowed(relay, relayUrlOf(federationRow()));
 }
@@ -247,7 +229,6 @@ function isHost(space: SpaceRow): boolean {
   return space.host_key === ownKey();
 }
 
-/** Sends an event to every other Gond in a space this Gond hosts, or to the host from a guest. */
 function fanOut(space: SpaceRow, body: SpaceEvent, except?: string) {
   const targets = isHost(space) ? spaceGonds(space.id) : [space.host_key];
   for (const key of targets) if (key !== except && !getPeer(key)?.blocked) send(key, body);
@@ -296,7 +277,6 @@ function inOrder(spaceId: string, work: () => Promise<void> | void) {
   });
 }
 
-/** Sends who is in a space once things settle, so a burst of changes is one send. */
 function membersSoon(spaceId: string) {
   if (membersDue.has(spaceId)) return;
   membersDue.set(
@@ -309,7 +289,6 @@ function membersSoon(spaceId: string) {
   );
 }
 
-/** A line out to the space, after any members change still settling. */
 function sendLine(space: SpaceRow, body: SpaceEvent, except?: string) {
   const due = membersDue.get(space.id);
   if (due) {
@@ -319,8 +298,6 @@ function sendLine(space: SpaceRow, body: SpaceEvent, except?: string) {
   }
   inOrder(space.id, () => fanOut(space, body, except));
 }
-
-// --- Out: lines said here go to the space -------------------------------------------------------
 
 function wireLine(space: SpaceRow, message: Message): WireLine | null {
   if (message.commerceId) return null;
@@ -352,7 +329,6 @@ function outbound(message: Message) {
   if (wired) sendLine(space, { t: "line", space: space.id, line: wired });
 }
 
-// While above zero, lines posted in a space stay on this Gond (a "stop" treated as Stop, and the bot's account of it).
 let keptHere = 0;
 
 /** Posts what `post` posts without it going to the other Gonds; posting is synchronous, so nothing else slips in. */
@@ -364,8 +340,6 @@ export function keepHere<T>(post: () => T): T {
     keptHere -= 1;
   }
 }
-
-// --- In: what other Gonds send ------------------------------------------------------------------
 
 async function inbound(from: string, body: unknown) {
   const e = parseEvent(body);
@@ -559,9 +533,6 @@ function onGond(from: string, e: Extract<SpaceEvent, { t: "gond" }>) {
   emit({ topic: "spaces" });
 }
 
-// --- Your bots and another Gond's lines ---------------------------------------------------------
-
-/** One bot's answers to another Gond's lines in one space: the one running, and those waiting their turn. */
 type Lane = { threadId: string; botId: string; running: GuestJob | null; waiting: GuestJob[] };
 type GuestJob = { task: string; run: (signal: AbortSignal) => Promise<void>; controller: AbortController };
 
@@ -595,17 +566,14 @@ async function drain(key: string, lane: Lane) {
   if (lanes.get(key) === lane) lanes.delete(key);
 }
 
-/** Whether any of your bots is answering, or waiting to answer, another Gond's line in this conversation. */
 export function hasGuestWork(threadId: string): boolean {
   return [...lanes.values()].some((lane) => lane.threadId === threadId && (lane.running || lane.waiting.length));
 }
 
-/** The bots answering another Gond's line in this conversation right now. */
 export function guestWorkers(threadId: string): string[] {
   return [...lanes.values()].filter((lane) => lane.threadId === threadId && lane.running).map((lane) => lane.botId);
 }
 
-/** Stops every answer to another Gond's line in this conversation, and drops those waiting: what Stop does to them. */
 export function stopGuestWork(threadId: string): { stopped: number; dropped: number; tasks: string[] } {
   const report = { stopped: 0, dropped: 0, tasks: [] as string[] };
   for (const lane of lanes.values()) {
@@ -621,7 +589,6 @@ export function stopGuestWork(threadId: string): { stopped: number; dropped: num
   return report;
 }
 
-/** Bots' lines in a row since a person last spoke, here or on another Gond. */
 function botRun(threadId: string): number {
   let run = 0;
   for (const m of [...recentMessages(threadId, MAX_ROOM_LINES + 5)].reverse()) {
@@ -632,11 +599,6 @@ function botRun(threadId: string): number {
   return run;
 }
 
-/**
- * Which of your bots a line from another Gond wakes, and how: a person's line wakes the bots it
- * names (or all of them, said to everyone); another Gond's bot only where you let bots wake yours,
- * by @handle, and not past the room's run of bot lines.
- */
 export function wokenFromAfar(body: string, fromBot: boolean, bots: Bot[], rules: (bot: Bot) => SpaceRule, run: number): Bot[] {
   if (fromBot) {
     if (run >= MAX_ROOM_LINES) return [];
@@ -660,7 +622,6 @@ function answerFromAfar(space: SpaceRow, message: Message) {
   }
 }
 
-/** The instructions for a bot answering someone on another Gond, who isn't its owner. */
 export function guestInstructions(bot: Bot, rule: SpaceRule, memory: string | null): string {
   const can = rule.level === "look" ? "You can search the web, and nothing else" : "You have no tools at all";
   return [
@@ -692,10 +653,6 @@ async function answerAsGuest(bot: Bot, thread: Thread, message: Message, rule: S
   }
 }
 
-/**
- * One answer from a bot to someone on another Gond: no tools, or only the web with `search`, its words
- * redacted, in a session of its own that is closed again, on its owner's AI.
- */
 async function guestReply(input: { bot: Bot; threadId: string; instructions: string; prompt: string; search: boolean; signal: AbortSignal }): Promise<string> {
   const { bot, threadId, instructions, prompt, search, signal } = input;
   activity(threadId, bot.id, "Thinking…");
@@ -767,13 +724,6 @@ async function askToAct(bot: Bot, thread: Thread, message: Message, who: string,
   }
 }
 
-// --- What people here do ------------------------------------------------------------------------
-
-/**
- * A person's line in a space wakes only the bots it names: people there talk to each other too, and
- * a bot answering every line would talk over them. Returns the bots to answer it, or null when it's
- * not a space.
- */
 /**
  * The hidden prompt that lets a bot do what someone on another Gond asked. Said as Gond's own word, with
  * the request set apart as what was asked: a yes inside quoted text from another Gond reads like the kind
@@ -802,14 +752,11 @@ export function postInSpace(thread: Thread, input: { body: string; attachments?:
   return message;
 }
 
-/** Whether a turn in this conversation may load the bot's memory: always, except in a space where its owner left that off. */
 export function memoryAllowed(thread: Thread, bot: Bot): boolean {
   const space = spaceOfThread(thread.id);
   return !space || ruleOf(space.id, bot.id, thread.userId).memory;
 }
 
-/** What a bot's turn in a space is told about where it is. */
-/** What every turn in a space hears, beside the system prompt: its answer is public there, with no private reply. */
 export const SPACE_TURN = "This is a space: whatever you answer here is posted here, where everyone in it reads it, people and bots on the other Gonds included. There is no private reply in this conversation. If your person wants something kept from the others, leave it out, say so in a line, and tell them to ask you in your own chat with them; never say something wasn't shared when your answer here is sharing it.";
 
 export function isSpace(thread: Thread): boolean {
@@ -843,19 +790,16 @@ export async function createInvite(thread: Thread, days: InviteDays): Promise<{ 
   return { link: appUrl ? `${appUrl}/join#${code.slice(INVITE_PREFIX.length)}` : code, code, expires: new Date(expires).toISOString(), words: keyWords(own.key) };
 }
 
-/** Whether a bot may be put in a space: the person let it into spaces (Settings → Spaces), or every bot. */
 export function mayJoinSpaces(userId: string, botId: string): boolean {
   const allowed = spaceDefaults(userId).bots;
   return !allowed || allowed.includes(botId);
 }
 
-/** The person's bots that may be in a space, of those asked for: only ones they let into spaces (Settings → Spaces). */
 function allowedBots(userId: string, botIds: string[]): Bot[] {
   const allowed = spaceDefaults(userId).bots;
   return botIds.map((botId) => getBot(botId)).filter((b): b is Bot => Boolean(b) && b!.userId === userId && !b!.hidden && (!allowed || allowed.includes(b!.id)));
 }
 
-/** A space started from nothing (New space): a room hosted here, ready for its first invite. */
 export async function startSpace(userId: string, name: string, botIds: string[]): Promise<Thread> {
   if (!federationEnabled()) throw new SpaceError("Spaces are off on this Gond.", 409);
   const own = await ownWireCard();
@@ -894,7 +838,6 @@ export async function joinSpace(userId: string, pasted: string, botIds: string[]
   return getThread(thread.id)!;
 }
 
-/** Leaves a space (a guest) or closes it for everyone (its host); what was said stays. */
 export function leaveSpace(thread: Thread) {
   const space = spaceOfThread(thread.id);
   if (!space || (space.status !== "active" && space.status !== "joining")) return;
@@ -906,7 +849,6 @@ export function leaveSpace(thread: Thread) {
   changed(thread.userId);
 }
 
-/** Takes back at the relay what a space that ended had opened: its unused invites, and the Gonds no other live space here still needs. */
 async function revoke(space: SpaceRow) {
   if (isHost(space)) await closeInvites(openInvites(space.id));
   const gonds = isHost(space) ? spaceGonds(space.id) : [space.host_key];
@@ -927,13 +869,11 @@ export function spaceDetails(thread: Thread): Space | null {
   };
 }
 
-/** A bot's rule in a space as it stands, for a change that only says some of it. */
 export function currentRule(thread: Thread, botId: string): SpaceRule | null {
   const space = spaceOfThread(thread.id);
   return space ? ruleOf(space.id, botId, thread.userId) : null;
 }
 
-/** The open spaces a bot may speak in when its person asks it to in their chat with it (`relay` on its rule). */
 export function relaySpaces(bot: Bot): Thread[] {
   return spacesOf(bot.userId)
     .filter((space) => space.status === "active" && ruleOf(space.id, bot.id, bot.userId).relay)
@@ -969,7 +909,6 @@ function memberKeys(spaceId: string): Set<string> {
   return new Set(spaceMembers(spaceId).map((m) => `${m.gond}/${m.id}`));
 }
 
-/** Blocks a Gond: out of every space here, its envelopes refused by the relay, nothing more sent to it. */
 export async function blockGond(key: string, blocked: boolean) {
   setPeerBlocked(key, blocked);
   await allowPeer(key, !blocked);
@@ -988,12 +927,10 @@ export async function blockGond(key: string, blocked: boolean) {
   }
 }
 
-/** Sends each live space of the person's who is in it now, after one of their bots went. */
 export async function refreshSpaces(userId: string) {
   for (const space of spacesOf(userId)) if (space.status === "active") membersSoon(space.id);
 }
 
-/** Leaves or closes every space of a person's, before they are deleted. */
 export function leaveAllSpaces(userId: string) {
   for (const space of spacesOf(userId)) {
     const thread = getThread(space.thread_id);
@@ -1001,7 +938,6 @@ export function leaveAllSpaces(userId: string) {
   }
 }
 
-/** Closes or leaves every live space here, for Spaces being turned off: each other Gond hears it first. */
 export function closeAllSpaces() {
   for (const space of allLiveSpaces()) {
     const thread = getThread(space.thread_id);
@@ -1009,7 +945,6 @@ export function closeAllSpaces() {
   }
 }
 
-/** Tells every Gond this one shares a space with its new name or relay. */
 export function announceGond() {
   const row = federationRow();
   const told = new Set<string>();
@@ -1033,7 +968,6 @@ export class SpaceError extends Error {
   }
 }
 
-/** Hooks Spaces into the conversations: what is said here goes out, what other Gonds send comes in. */
 export function startSpaces() {
   onInbound(inbound, (peerKey, body) => {
     const e = parseEvent(body);

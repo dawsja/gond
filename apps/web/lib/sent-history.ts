@@ -1,6 +1,5 @@
 type Line = { author: string; kind: string; body: string };
 
-/** What the person sent in a conversation, newest first and each once in a row: what Up and Down in the composer go through. */
 export function sentHistory(messages: Line[]): string[] {
   const history: string[] = [];
   for (let i = messages.length - 1; i >= 0; i -= 1) {

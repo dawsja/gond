@@ -26,7 +26,6 @@ export function releaseClaims(db: Database): number {
     paused +
     db.query("UPDATE gond_approvals SET status = 'expired', resolved_at = ? WHERE status = 'pending'").run(at).changes +
     db.query("UPDATE gond_secret_requests SET status = 'expired', resolved_at = ? WHERE status = 'pending'").run(at).changes;
-  // An export's job lived in memory too; the person starts it again.
   db.query("UPDATE gond_exports SET status = 'failed', error = ?, finished_at = ? WHERE status = 'preparing'").run("Gond restarted while it was being prepared. Start it again.", at);
   if (cut.length || cards) console.info(`[gond] Picking up after a restart: ${cut.length} message(s) to answer again, ${cards - paused} open card(s) expired, ${paused} paused to answer later`);
   return cards;

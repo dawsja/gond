@@ -14,7 +14,6 @@ export const setRoutineEnabled = (routine: Routine, enabled: boolean) => patch(`
 
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 
-/** A routine as it stands. Only its bot makes, changes, runs or removes one; the person switches it on or off. */
 export function RoutineDetails({ bot, routine, onClose, onChange }: { bot: Bot; routine: Routine; onClose: () => void; onChange: () => void | Promise<void> }) {
   const [skill, setSkill] = useState<Skill | null>(null);
   const [busy, setBusy] = useState(false);

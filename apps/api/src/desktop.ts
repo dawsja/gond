@@ -20,7 +20,6 @@ const holder = globalThis as typeof globalThis & {
 const DESKTOP_LAPSE_MS = 2 * 60_000;
 const WAIT_POLL_MS = 500;
 
-// Every bot has a screen of its own, so what is kept per screen is keyed by the person and the bot.
 const screenKey = (userId: string, botId: string) => `${userId}\n${botId}`;
 const ofPerson = (userId: string, key: string) => key.startsWith(`${userId}\n`);
 
@@ -214,7 +213,6 @@ export async function desktopState(userId: string): Promise<DesktopState> {
   return { screens: out, drivers: driversOf(userId) };
 }
 
-/** Tells the person's pages how their screens stand: `known` when the caller just read it, else read now. */
 export async function emitDesktop(userId: string, known: DesktopState | null = null): Promise<void> {
   const desktop = known ?? (await desktopState(userId).catch((): DesktopState => ({ screens: [], drivers: driversOf(userId) })));
   emit({ topic: "desktop", userId, desktop });

@@ -13,18 +13,12 @@ type ViewerImage = { id: string; name: string };
 const ZOOM = 2.5;
 const SWIPE_PX = 60;
 
-/**
- * Pictures in a conversation, one at a time over the dimmed page: the picture is the object, with
- * the pills floating over it like a conversation's. A tap zooms in where it lands and dragging
- * moves around; a swipe or the arrows go to the next one.
- */
 type ViewerProps = { images: ViewerImage[]; openId: string | null; onOpenId: (id: string | null) => void };
 
 export function ImageViewer(props: ViewerProps) {
   return useNativeUi() ? <NativeViewer {...props} /> : <PageViewer {...props} />;
 }
 
-/** The iPhone app's Quick Look: its own zoom, swipes, Share and Save to Photos, in Liquid Glass. */
 function NativeViewer({ images, openId, onOpenId }: ViewerProps) {
   const shown = useRef<string | null>(null);
   const close = useStableCallback(onOpenId);
@@ -119,7 +113,6 @@ function PageViewer({ images, openId, onOpenId }: ViewerProps) {
               <div
                 className="absolute inset-0 flex items-center justify-center overflow-hidden px-4 pt-[calc(var(--safe-top)+72px)] pb-[calc(var(--safe-bottom)+24px)] wide:px-20"
                 onClick={(event) => {
-                  // A tap on the dark around the picture closes it, as on a phone's photo viewer.
                   if (event.target !== event.currentTarget) return;
                   setZoom(null);
                   onOpenId(null);

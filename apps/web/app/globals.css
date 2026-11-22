@@ -21,7 +21,6 @@
     @slot;
   }
 }
-/* Room a call's pill takes under the header on a phone, when the call is away from this screen. */
 :root {
   --call-pill-space: 0px;
 }
@@ -165,16 +164,6 @@
   --shadow-subtle-3: var(--shadow-subtle-3);
 }
 
-/*
- * The neutrals are oah's: "cool paper" in the light (page #f6f7f9, cards white, ink #16181d) and
- * "soft black" in the dark (page #0c0c0c, cards #151515, a darker sidebar #080808). oah draws its
- * dark fills and edges in white at 4 to 12%; here each is solid, that white composited over the
- * surface it sits on (a fill over the card, so it still shows on the page), since the accent
- * shades, hovers and cut-out rings below mix with these tokens. No brand colour: the person's
- * accent and the bots are the only colour. test/palette.test.ts reads this file and holds every
- * contrast this palette promises (text, muted text, focus ring, destructive and its wash, each
- * accent's shades), so a change that drops one fails there.
- */
 :root {
   /* The colour a cut-out ring is painted in, so it reads as a gap whatever the badge sits on: the
      page here, and each raised surface (a filled button, a card, a dialog, a sheet) sets its own. */
@@ -488,17 +477,14 @@
     30% { opacity: 1; }
     100% { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(1); }
   }
-  /* A square lit in its bot's colour (`--lit`) and back to dark. */
   @keyframes light-up {
     0%, 70%, 100% { background: var(--muted); transform: scale(0.85); }
     35% { background: var(--lit); transform: scale(1); }
   }
-  /* The squares of a picture being made (`PictureMaking`): each rests in one shade of the bot's colour (`--rest`) and swells into another (`--lit`). */
   @keyframes picture-light {
     0%, 100% { background: var(--rest); transform: scale(0.86); }
     45% { background: var(--lit); transform: scale(1); }
   }
-  /* And falls away onto the finished picture. */
   @keyframes picture-fall {
     0% { opacity: 1; transform: scale(1); }
     40% { background: var(--lit); }
@@ -538,8 +524,6 @@ html[data-selecting] [data-selecting-in] * {
   --tw-inset-shadow: inset 0 1px 0 rgb(255 255 255 / 0.65), inset 0 -1px 0 rgb(90 55 0 / 0.35);
 }
 
-/* On a wide screen the panes float on the page as islands: the chat list, a conversation's details,
-   Settings' sections. Hovers and the active row inside one are bg-muted. */
 @utility island {
   border-radius: 22px;
   background-color: var(--card);

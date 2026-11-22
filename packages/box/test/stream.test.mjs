@@ -9,7 +9,6 @@ test("a reply's words come through as the model writes them, and a tool call end
   assert.deepEqual(streamText({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Hel" } }), { type: "text_delta", text: "Hel" });
   assert.deepEqual(streamText({ type: "content_block_start", index: 1, content_block: { type: "tool_use", id: "t", name: "Bash" } }), { type: "text_end" });
   assert.deepEqual(streamText({ type: "content_block_start", index: 1, content_block: { type: "server_tool_use", id: "t", name: "web_search" } }), { type: "text_end" });
-  // A handoff keeps the words on screen and starts a new paragraph.
   assert.deepEqual(streamText({ type: "content_block_start", index: 1, content_block: { type: "tool_use", id: "t", name: "mcp__gond__delegate_bot" } }), { type: "text_delta", text: "\n\n" });
   assert.equal(streamText({ type: "content_block_delta", delta: { type: "thinking_delta", thinking: "hmm" } }), null);
   assert.equal(streamText({ type: "content_block_delta", delta: { type: "input_json_delta", partial_json: "{" } }), null);
@@ -43,7 +42,6 @@ function cleanUp(t, session, dir) {
   });
 }
 
-/** Waits for a fake CLI to have written what it was launched with. */
 async function launches(file, count) {
   for (let i = 0; i < 100; i += 1) {
     const lines = fs.existsSync(file) ? fs.readFileSync(file, "utf8").trim().split("\n").filter(Boolean) : [];

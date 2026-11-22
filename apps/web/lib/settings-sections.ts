@@ -1,7 +1,6 @@
 import type { UserRole } from "@gond/shared";
 import { Bell, BookUser, Database, Gauge, Globe, Layers, Link2, Blocks, BrainCircuit, Info, KeyRound, LogIn, MessageCircleHeart, Mic, Monitor, Palette, Server, Sparkles, UserRound } from "lucide-react";
 
-/** The headings Settings' list is grouped under; a section with no group sits on its own at the end. */
 const SETTINGS_GROUPS = [
   { id: "you", label: "You" },
   { id: "bots", label: "Bots" },
@@ -43,7 +42,6 @@ function sectionsFor(role: UserRole) {
   return SETTINGS_SECTIONS.filter((s) => role === "admin" || !s.admin);
 }
 
-/** The person's sections under their headings, in order; the ungrouped ones last, under none. */
 export function groupedSections(role: UserRole, skip?: SettingsSection) {
   const sections = sectionsFor(role).filter((s) => s.id !== skip);
   const groups = SETTINGS_GROUPS.map((g) => ({ id: g.id as SettingsGroup | null, label: g.label as string | null, sections: sections.filter((s) => s.group === g.id) }));

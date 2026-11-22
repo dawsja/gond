@@ -50,7 +50,6 @@ import { memoryForTurn } from "./memory-moves.ts";
 const CONTEXT_LINES = 30;
 const ROOM_LOOKBACK = 30;
 
-/** What an agent's last turn ran on (`runKey`), and the last message its CLI session was given, if one was. */
 type Seen = { run: string; at: string | null };
 
 /** The engine and account a turn runs on, as far as a CLI session's history goes: a model change within one keeps it. */
@@ -81,7 +80,6 @@ type Active = {
   threadId: string;
   userId: string;
   messageId: string;
-  // Where this turn's answer goes: the person's line reaches a turn that doesn't answer them as an aside (`asideText`).
   route: AnswerRoute;
   controller: AbortController;
   startedAt: number;
@@ -133,10 +131,6 @@ export function unansweredEnding(name: string, cause: StopCause | null, failure:
   return { event: failure, incident: !setupError };
 }
 
-/**
- * What isn't set up when a turn couldn't run, as one sentence for the person's card: no AI picked or
- * signed in, the CLI missing from the computer (the box's 424) or signed out there. Null for any other failure.
- */
 function setupProblem(failure: unknown, engine = ENGINE_LABELS.claude.name): string | null {
   if (failure instanceof EngineSetupError) return failure.message;
   if (failure instanceof BoxError && failure.status === 424) return `${engine} isn't set up on the computer.`;
@@ -179,7 +173,6 @@ async function settled(threadId: string, ms = STOP_SETTLE_MS) {
   while (turnsIn(threadId).length && Date.now() < until) await new Promise((resolve) => setTimeout(resolve, 100));
 }
 
-/** What a stop halted: the turns and what they were answering, and everything they had set going, paused cards too. */
 type StopReport = { stopped: number; dropped: number; tasks: string[]; screen: boolean; teammates: string[]; sent: number; followUps: number; recordings: number; cards?: number };
 
 async function stopWorkFrom(threadId: string, since: string | null, seen: Set<string>, report: StopReport) {
@@ -242,7 +235,6 @@ function plural(count: number, one: string, many = `${one}s`) {
   return `${count === 1 ? "one" : count} ${count === 1 ? one : many}`;
 }
 
-/** The bot's own account of a stop, written from the report so it is exact. */
 export function stoppedReply(report: StopReport): string {
   const lines: string[] = [];
   if (report.stopped) {
@@ -260,7 +252,6 @@ export function stoppedReply(report: StopReport): string {
   return ["Stopped.", lines.map((line) => `- ${line}`).join("\n"), "I won't pick it back up unless you ask."].join("\n\n");
 }
 
-/** Whether a stop in this conversation would halt anything. */
 export function hasWork(threadId: string): boolean {
   return turnsIn(threadId).length > 0 || openDelegationsFrom(threadId).length > 0 || threadBusy(threadId) || teachingIn(threadId) || hasGuestWork(threadId) || hasPausedCards(threadId);
 }
@@ -298,7 +289,6 @@ const DESKTOP_FREE_STEER = "Your screen you were waiting for is free now: take a
 const DESKTOP_FREE_PROMPT =
   "Your screen was busy with your work in another conversation when you needed it, and it is free now. Take a screenshot and carry on with what you were going to do on it. If it is already done or no longer needed, tell the person in a line.";
 
-/** The person gave a bot's screen back: each reply it was taken from carries on, in its running turn or a new one. */
 export async function tellHandedBack(userId: string, botId: string): Promise<void> {
   await carryOn(userId, handedBack(userId, botId), HANDED_BACK_STEER, HANDED_BACK_PROMPT);
 }
@@ -315,7 +305,6 @@ async function carryOn(userId: string, drivers: DesktopDriver[], steerWith: stri
   }
 }
 
-/** A teammate's note handed to every turn of the bot running now; false when none took it. */
 async function tellWorking(bot: Bot, text: string): Promise<boolean> {
   const turns = [...activeTurns().values()].filter((turn) => turn.botId === bot.id);
   const taken = await Promise.all(turns.map((turn) => turn.steer(text).catch(() => false)));
@@ -326,25 +315,14 @@ export function steerText(body: string): string {
   return `The person sent this while you were working:\n\n${body}\n\nIf it changes what you're doing, adjust course; otherwise keep it in mind and carry on. Don't start over: this is part of the same piece of work, and your answer at the end covers it.`;
 }
 
-/** The bots answering in a conversation right now. */
 function workingIn(threadId: string): string[] {
   return turnsIn(threadId).map((turn) => turn.botId);
 }
 
-/**
- * The person's line reaching a turn whose answer goes to a teammate or up a chain (a handoff, an
- * `ask_bot`): the person hears from it through post_message, since its final answer isn't theirs.
- */
 export function asideText(body: string, teammate: string): string {
   return `The person wrote to you in your chat with them while you work on what ${teammate} asked of you:\n\n${body}\n\nYour final answer goes to ${teammate}, not to the person, so answer them now with post_message. If they ask for something else, do it too and tell them with post_message; if it has to wait, say so, finish ${teammate}'s task, then do it and tell them before your final answer. Keep what is theirs out of your final answer, and carry on with the task.`;
 }
 
-/**
- * The person's line goes into the running answers of the bots it is for, as a
- * message in a group chat reaches those mid-reply; `all` when every one of
- * them took it, so nobody needs a new turn for it. A bot on a teammate's task
- * hears it as an aside (`asideText`), so it never sits unanswered behind the task.
- */
 function steerableTurns(thread: Thread, message: Pick<Message, "author" | "body">, targets = targetsFor(message, thread, listBots({ includeHidden: true, userId: thread.userId }), roomBefore(thread), workingIn(thread.id))): { turns: Active[]; all: boolean } {
   const running = turnsIn(thread.id);
   const turns = targets.flatMap((bot) => running.find((turn) => turn.botId === bot.id) ?? []);
@@ -392,7 +370,6 @@ export async function postFromPerson(thread: Thread, input: PersonLine): Promise
   return getMessage(message.id) ?? message;
 }
 
-/** A room line that names nobody, with words to judge and bots to choose from, is the router's to place; a thanks isn't worth a call. */
 function forTheRouter(thread: Thread, body: string): boolean {
   if (thread.kind !== "room" || !body.trim() || isClosing(body)) return false;
   const members = visibleMembers(thread, listBots({ includeHidden: true, userId: thread.userId }));
@@ -464,7 +441,6 @@ function visibleMembers(thread: Thread, bots: Bot[]): Bot[] {
   return thread.members.map((id) => bots.find((b) => b.id === id)).filter((b): b is Bot => Boolean(b) && !b!.hidden);
 }
 
-/** The other bots a room's message wakes along with `bot`: their turns run beside its own, so neither sees the other's answer yet. */
 function answeringAlongside(bot: Pick<Bot, "id">, thread: Thread, message: Message, bots: Bot[]): Bot[] {
   if (thread.kind !== "room") return [];
   const answering = getBot(message.author) ? answeringOf(message.id) : null;
@@ -472,14 +448,12 @@ function answeringAlongside(bot: Pick<Bot, "id">, thread: Thread, message: Messa
   return woken.filter((b) => b.id !== bot.id);
 }
 
-/** A room's recent messages ahead of `message` (all of them for one not posted yet), oldest first; nothing for a 1:1. */
 function roomBefore(thread: Thread, message?: Pick<Message, "id" | "createdAt">): Message[] {
   if (thread.kind !== "room") return [];
   const recent = recentMessages(thread.id, ROOM_LOOKBACK);
   return message ? recent.filter((m) => m.id !== message.id && m.createdAt <= message.createdAt) : recent;
 }
 
-// Each bot's SOUL.md as last written to the computer, so a turn writes it only when it changed.
 const soulsWritten = new Map<string, string>();
 
 export function forgetSouls() {
@@ -500,10 +474,6 @@ export async function syncSoul(bot: Bot) {
   }
 }
 
-/**
- * A file's words for the prompt, when it is text by its type and by its bytes; null for anything else, so
- * a document, archive or program the person sent stays in the inbox for the bot's own tools.
- */
 export function attachmentText(mediaType: string, data: Uint8Array): string | null {
   if (!isTextType(mediaType)) return null;
   // A browser can call any file text: a NUL byte says it isn't.
@@ -525,9 +495,7 @@ function textAttachments(message: Message): string {
 }
 
 type PromptOptions = {
-  // The last message a resumed session already saw: only what is newer goes in.
   since?: string | null;
-  // The conversation's running summary, for a prompt that starts from nothing.
   summary?: string | null;
 };
 
@@ -595,7 +563,6 @@ export function promptFor(bot: Bot, thread: Thread, message: Message, bots: Bot[
     .join("\n\n");
 }
 
-/** Whether this person's bots run on the computer (a CLI engine there), and so wait while it is away. */
 export function needsComputer(userId: string): boolean {
   return isCliEngine(getAi(userId).engine);
 }
@@ -633,7 +600,6 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
   let summaryRun: EngineRun | null = null;
   let ranOn: string | null = null;
   let engineName: string = ENGINE_LABELS.claude.name;
-  // A CLI turn runs on the computer, so it waits for it; the API's own engines don't.
   let cli = false;
   let session: string | null = null;
 
@@ -651,7 +617,6 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
     if (retryable) noteInterrupted(message.id, done, true);
     postMessage({ threadId: thread.id, author: "system", kind: "event", body, answered: true, answering });
   };
-  /** `setup`: what isn't set up (`setupProblem`), posted as a card to fix it rather than an incident. */
   const endUnanswered = async (failure: string, detail: string, setup: string | null) => {
     unanswered = detail;
     const cause = stopCauseOf(controller.signal);
@@ -973,7 +938,6 @@ export function wokenBy(line: Pick<Message, "author" | "body">, thread: Thread, 
   return named.filter((b) => !alongside.has(b.id));
 }
 
-/** Who has written in the conversation since `message`. */
 function spokeSince(threadId: string, message: Pick<Message, "createdAt">): Set<string> {
   return new Set(recentMessages(threadId, CONTEXT_LINES).filter((m) => m.createdAt > message.createdAt && m.kind === "message").map((m) => m.author));
 }

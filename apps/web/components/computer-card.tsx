@@ -242,7 +242,6 @@ function meter(fields: Pick<MeterRecord, "value" | "max" | "text" | "left" | "ri
   return { ...fields, percent: percentOf(fields.value, fields.max), label: [] };
 }
 
-/** What the computer has left, and who is using it: the admin's view, from the box's own count. */
 function Health({ health }: { health: BoxHealth }) {
   const { disk, memory } = health;
   const diskUsed = Math.max(0, disk.total - disk.free);

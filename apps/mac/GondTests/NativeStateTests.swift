@@ -1,8 +1,6 @@
 import XCTest
 @testable import Gond
 
-/// What the page sends is read leniently: a field it left out, or sent as something else, falls back
-/// to its default instead of losing the whole sidebar or composer.
 final class NativeStateTests: XCTestCase {
     private func decode<T: Decodable>(_ type: T.Type, _ json: String) throws -> T {
         try JSONDecoder().decode(type, from: Data(json.utf8))

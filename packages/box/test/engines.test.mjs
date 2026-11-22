@@ -14,7 +14,6 @@ test("a running session hears only the sections of its instructions that changed
   assert.doesNotMatch(said, /What you are/);
   assert.match(promptChangeReminder(after, after.replace(/\n\n## Memory[\s\S]*?(?=\n\n## Where)/, "")), /no longer apply: Memory/);
   assert.equal(promptChangeReminder(after, after), "");
-  // Most of it changed, a heading repeats, or nothing came before: the whole prompt again.
   assert.match(promptChangeReminder(before, "## What you are\nSomething else entirely."), /It replaces the earlier copy/);
   assert.match(promptChangeReminder(`## A\nx\n## A\ny`, after), /It replaces the earlier copy/);
   assert.match(promptChangeReminder(null, after), /House rules/);

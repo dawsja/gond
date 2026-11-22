@@ -55,8 +55,6 @@ async function sign(identity: Identity, message: Uint8Array): Promise<string> {
   return toB64(await crypto.subtle.sign({ name: "Ed25519" }, key, message as Uint8Array<ArrayBuffer>));
 }
 
-/** A push for one phone, signed by this Gond, for a relay's `/v1/push`. `data` is already sealed for the phone. */
-/** A usage report: this Gond's tokens since sharing was turned on (`epoch`), signed, for `/v1/usage`. */
 export async function usageReport(identity: Identity, input: { epoch: string; tokens: number; at?: number }): Promise<UsageReport> {
   const unsigned: Omit<UsageReport, "sig"> = { v: 1, from: identity.key, at: input.at ?? Date.now(), epoch: input.epoch, tokens: Math.max(0, Math.floor(input.tokens)) };
   return { ...unsigned, sig: await sign(identity, signedUsage(unsigned)) };
@@ -98,7 +96,6 @@ export async function seal(identity: Identity, to: KeyCard, body: unknown, optio
   return { ...unsigned, sig: await sign(identity, signedEnvelope(unsigned)) };
 }
 
-/** Opens an envelope sealed for you: checks its signature, decrypts it, and checks the inside names the same sender, recipient and id as the outside. */
 export async function open(identity: Identity, envelope: Envelope): Promise<{ from: string; id: string; at: number; body: unknown }> {
   const { sig, ...unsigned } = envelope;
   if (envelope.to !== identity.key) throw new Error("That envelope is for another key.");
@@ -133,7 +130,6 @@ export type RelayClientOptions = {
   onState?: (state: RelayState) => void;
   /** How long a request waits for an answer, connecting included. */
   timeoutMs?: number;
-  /** How often a ready connection is pinged, and how long its pong may take before it's taken for dead. */
   pingMs?: number;
   pongMs?: number;
 };
@@ -141,7 +137,6 @@ export type RelayClientOptions = {
 const PING_MS = 25_000;
 const PONG_MS = 10_000;
 
-/** One socket to this server's mailbox, kept open: it reconnects with backoff after any drop until `stop`. */
 export class RelayClient {
   private socket: WebSocket | null = null;
   private stopped = true;
@@ -277,7 +272,6 @@ export class RelayClient {
         try {
           socket.close();
         } catch {
-          /* already gone */
         }
         this.dropped(socket, 1006);
       }, this.options.pongMs ?? PONG_MS);

@@ -15,7 +15,6 @@ function callVoiceOf(raw: string | null | undefined): VoiceSettings["callVoice"]
   }
 }
 
-/** Whose speech endpoints the person's voice key reaches; null without one. */
 function voiceProvider(userId: string): VoiceProvider | null {
   const baseUrl = providerBaseUrl(userId, "voice");
   return baseUrl ? (isXaiUrl(baseUrl) ? "xai" : "openai") : null;
@@ -52,7 +51,6 @@ export function setVoice(userId: string, patch: { transcribeModel?: string | nul
   return getVoice(userId);
 }
 
-/** The voice a call on this provider speaks in; null puts the provider's own default back. */
 export function setCallVoice(userId: string, provider: VoiceProvider, id: string | null): VoiceSettings {
   const voices = { ...getVoice(userId).callVoice };
   if (id) voices[provider] = id;

@@ -15,7 +15,6 @@ import { useVoiceInput, VoiceButton } from "@/components/voice-button";
 import { patch, post } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
-/** What the person can do to a recording, each answered with it as it now stands. */
 export function useTeachActions(teaching: Teaching) {
   const put = usePutTeaching();
   const run = (path: string, fallback: string, body?: unknown) =>
@@ -38,7 +37,6 @@ export function useTeachActions(teaching: Teaching) {
   };
 }
 
-/** "Recording · 2:14", or paused, with how long is left once the end is near. */
 export function RecordingPill({ teaching, className }: { teaching: Teaching; className?: string }) {
   const ms = useRecordingMs(teaching);
   const left = teaching.maxMs - ms;
@@ -54,7 +52,6 @@ export function RecordingPill({ teaching, className }: { teaching: Teaching; cla
   );
 }
 
-/** Adding a note while showing: typed, or said through the mic like the composer. */
 function NoteField({ teaching, onDone }: { teaching: Teaching; onDone: () => void }) {
   const { note } = useTeachActions(teaching);
   const [text, setText] = useState("");
@@ -105,7 +102,6 @@ function NoteButton({ teaching, size = "lg", className }: { teaching: Teaching; 
   );
 }
 
-/** Discard asks first: what was shown so far goes with it. */
 function DiscardButton({ teaching, bot, className }: { teaching: Teaching; bot: Bot | undefined; className?: string }) {
   const { discard } = useTeachActions(teaching);
   const [asking, setAsking] = useState(false);
@@ -119,7 +115,6 @@ function DiscardButton({ teaching, bot, className }: { teaching: Teaching; bot: 
   );
 }
 
-/** A wide screen's pills while the person shows a bot how, in place of the screen's own. */
 export function TeachBar({ teaching, bot, className }: { teaching: Teaching; bot: Bot | undefined; className?: string }) {
   const { pause, resume, done } = useTeachActions(teaching);
   const paused = teaching.status === "paused";
@@ -171,7 +166,6 @@ function StepRow({ step, last, recording, onSkip }: { step: TeachStep; last: boo
   );
 }
 
-/** What the bot has seen so far, newest last, kept scrolled to the end as steps arrive. */
 export function TeachSteps({ teaching, className, onCollapse }: { teaching: Teaching; className?: string; onCollapse?: () => void }) {
   const { skip } = useTeachActions(teaching);
   const list = useRef<HTMLOListElement>(null);
@@ -227,7 +221,6 @@ function NoteRow({ text }: { text: string }) {
   );
 }
 
-/** The recording's state as words, for the phone's header in place of who has the screen. */
 export function RecordingText({ teaching }: { teaching: Teaching }) {
   const ms = useRecordingMs(teaching);
   const paused = teaching.status === "paused";
@@ -239,10 +232,6 @@ export function RecordingText({ teaching }: { teaching: Teaching }) {
   );
 }
 
-/**
- * A phone's controls while showing a bot how: the latest step in one line over the bottom row
- * (tap it for them all), and Note, Pause and Done in place of taking control.
- */
 export function TeachPhone({ teaching, bot }: { teaching: Teaching; bot: Bot | undefined }) {
   const { pause, resume, done } = useTeachActions(teaching);
   const [open, setOpen] = useState(false);
@@ -274,7 +263,6 @@ export function TeachPhone({ teaching, bot }: { teaching: Teaching; bot: Bot | u
   );
 }
 
-/** Over a conversation's composer while its bot is being shown how: where to go back to, or how to finish. */
 function TeachPill({ teaching, onOpen }: { teaching: Teaching; onOpen: () => void }) {
   const { resume, done } = useTeachActions(teaching);
   const paused = teaching.status === "paused";

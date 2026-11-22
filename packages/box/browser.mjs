@@ -63,7 +63,6 @@ export function createBrowsers({ start, idleMs = BROWSER_IDLE_MS, launchMs = LAU
         } catch {
           continue;
         }
-        // Lines without an id are the host's own news (what a person showed a bot), not answers.
         if (message.event) {
           onEvent(host.user, host.bot, message);
           continue;
@@ -131,15 +130,11 @@ export function createBrowsers({ start, idleMs = BROWSER_IDLE_MS, launchMs = LAU
   const of = (accountId, bot) => [...hosts.values()].filter((host) => host.user === accountId && (bot === undefined || host.bot === bot));
 
   return {
-    /** Starts a bot's browser on `home` if it isn't open yet; one that is stays on its page. */
     open: (account, bot, home) => request(account, bot, { op: "open", home }, launchMs),
-    /** Starts or stops reporting what the person does in a bot's browser, as `onEvent`'s teach events. */
     record: (account, bot, on) => request(account, bot, { op: "record", on }, launchMs),
     run: (account, steps, signal, options = {}) => request(account, options.bot ?? "", { op: "run", steps, ...options }, batchMs(steps) + launchMs, signal),
     running: (accountId, bot) => of(accountId, bot).some((host) => !host.dead),
-    /** How many of the person's bots have a browser open. */
     count: (accountId) => [...hosts.values()].filter((host) => host.user === accountId && !host.dead).length,
-    /** Closes a bot's browser, or every one of the person's without a bot. */
     close: (accountId, bot) => {
       for (const host of of(accountId, bot)) fail(host, "The browser was closed");
     },

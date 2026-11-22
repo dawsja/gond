@@ -45,7 +45,6 @@ export function icoFrames(data: Buffer, sizes = icoSizes): Buffer[] {
   return frames;
 }
 
-// The tile of the brand mark, drawn on a 768 square and scaled full-bleed.
 const INK = "#1b1a18";
 const TILE = `<rect x="128" y="128" width="768" height="768" rx="300" fill="${INK}"/><rect x="141" y="141" width="742" height="742" rx="287" fill="none" stroke="#ffffff" stroke-opacity="0.22" stroke-width="26"/>`;
 // Share of the tile the mascot spans in the brand mark, and so on every
@@ -80,8 +79,6 @@ export async function mascot(ink = INK, small = false): Promise<string> {
   }).join("");
 }
 
-// The figure centred on a 1024 canvas, spanning `share` of it by its
-// measured bounding box.
 async function placed(figure: string, share: number): Promise<string> {
   const { data, info } = await sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1000" viewBox="0 0 100 100">${figure}</svg>`))
     .ensureAlpha().raw().toBuffer({ resolveWithObject: true });
@@ -96,7 +93,6 @@ async function placed(figure: string, share: number): Promise<string> {
   return `<g transform="translate(512 512) scale(${scale}) translate(${-(left + right) / 20} ${-(top + bottom) / 20})">${figure}</g>`;
 }
 
-// The brand mark: the mascot centred on the ink tile, the tile full-bleed.
 export async function brandMark(figure?: string, share = MARK_MASCOT): Promise<string> {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024"><g transform="translate(512 512) scale(${1024 / 768}) translate(-512 -512)">${TILE}</g>`
     + `${await placed(figure ?? await mascot(), share)}</svg>`;

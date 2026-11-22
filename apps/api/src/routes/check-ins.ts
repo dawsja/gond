@@ -13,7 +13,6 @@ function settingsOf(id: string): CheckIns {
   return { enabled, everyHours, quietFrom, quietTo, email };
 }
 
-/** The primary bot's check-ins, the open profile's own. */
 export function checkInsRoutes() {
   const app = new Hono<Env>();
 

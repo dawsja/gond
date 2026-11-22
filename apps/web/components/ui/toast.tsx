@@ -184,7 +184,6 @@ function ToastList() {
   const { toasts } = ToastPrimitive.useToastManager()
   const native = useNativeUi()
 
-  // In the iPhone app a toast is the app's own glass capsule; one with an action stays the page's.
   React.useEffect(() => {
     if (!native) return
     for (const item of toasts) {

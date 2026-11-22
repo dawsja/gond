@@ -40,15 +40,12 @@ export function ChatsScreen({ className }: { className?: string }) {
     else if (event.type === "new") onOpen({ kind: event.kind });
   });
   return (
-    // The header's buttons float over the list, which scrolls under them, as a conversation's do.
     <div className={cn("relative flex min-h-0 flex-1 flex-col", className)}>
       {native ? <ChatsChrome searching={searching} name={me.name} avatar={me.avatar} canNewRoom={bots.length > 0} onEvent={onEvent} /> : null}
       <header data-window-drag="" className="pointer-events-none absolute inset-x-0 top-0 z-20 flex h-[calc(56px+max(12px,var(--safe-top)))] items-center gap-2 px-4 pt-[max(12px,var(--safe-top))] pb-2 desktop:pointer-events-auto">
         <h1 className="sr-only">Chats</h1>
         {searching ? (
           <>
-
-            {/* In the iPhone app the field is the app's own; this one keeps its place, unseen. */}
             <BotSearchInput query={query} setQuery={setQuery} autoFocus={!native} className={cn("pointer-events-auto h-11", native && "invisible")} />
             <Button variant="ghost" size="lg" onClick={closeSearch} className={cn("pointer-events-auto -mr-2", native && "invisible")}>
               Cancel
@@ -56,7 +53,6 @@ export function ChatsScreen({ className }: { className?: string }) {
           </>
         ) : (
           <>
-            {/* Your picture opens your profiles, and Settings from there. With more than one it wears the open one's mark, and a dot when another has something waiting. */}
             <button
               type="button"
               onClick={() => onOpen({ kind: "profiles" })}
@@ -87,7 +83,6 @@ export function ChatsScreen({ className }: { className?: string }) {
   );
 }
 
-/** Hands the header to the iPhone app: your picture, Search and New, or the search field while searching. */
 function ChatsChrome({ searching, name, avatar, canNewRoom, onEvent }: { searching: boolean; name: string; avatar: string | null; canNewRoom: boolean; onEvent: (event: ChromeEvent) => void }) {
   const covered = useCovered();
   const [face, setFace] = useState<string | null>(null);

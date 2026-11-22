@@ -21,7 +21,6 @@ function killTree(child, signal) {
     try {
       child.kill(signal);
     } catch {
-      /* already gone */
     }
   }
 }
@@ -108,7 +107,6 @@ function spawnClaude({
   });
 }
 
-/** What a short query of the CLI printed, stopped at its deadline, without holding up the box. */
 export async function queryClaude({ bin = CLAUDE_BIN, args, env, uid, gid, timeoutMs }) {
   let stdout = "";
   const result = await spawnClaude({ bin, args, env, uid, gid, timeoutMs, onLine: (line) => (stdout += `${line}\n`) });
@@ -198,14 +196,6 @@ export async function claudeModelInfo({ bin = CLAUDE_BIN, cwd, env, uid, gid, ti
   return models;
 }
 
-/**
- * Writes the system prompt where only the agent user reads it and returns
- * the path plus a cleanup. Outside the workspace on purpose: the repo's
- * working tree is what Gond collects, and nothing of ours belongs in it.
- *
- * @param {string} text
- * @param {{ uid?: number; gid?: number }} [owner]
- */
 export function writeSystemPrompt(text, { uid, gid } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "gond-claude-"));
   const file = path.join(dir, "system-prompt.md");

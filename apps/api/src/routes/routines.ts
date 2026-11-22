@@ -21,13 +21,11 @@ export function routinesRoutes() {
     return routine && ownBot(c, routine.botId) ? routine : null;
   };
 
-  // A person only switches a routine on or off; making, changing, removing and running one is the bot's (its routine tools).
   app.patch("/routines/:id", async (c) => {
     const body = await readBody(c);
     if (typeof body.enabled !== "boolean") return c.json({ error: "A routine can only be switched on or off here. Ask its bot to change it." }, 400);
     const current = ownRoutine(c, c.req.param("id"));
     if (!current) return c.json({ error: "Couldn't find that routine" }, 404);
-    // One an app's event starts has the app watch for it only while it's on.
     if (current.trigger && body.enabled && !current.enabled && (await armRoutine(userId(c), current))) {
       return c.json({ error: `Couldn't turn it on. Check that ${current.trigger.toolkit} is still connected in Settings → Apps, then try again.` }, 502);
     }

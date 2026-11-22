@@ -24,7 +24,6 @@ export function createUsageStore(sql: Sql, now: () => number = Date.now) {
 
   return {
     now,
-    /** Takes one checked report: its Gond's total so far, as far as it may have grown since the last. */
     report(key: string, epoch: string, tokens: number): "counted" | "too_soon" {
       const at = now();
       const row = sql.all("SELECT epoch, tokens, banked, at FROM relay_usage WHERE key = ?", key)[0] as { epoch: string; tokens: number; banked: number; at: number } | undefined;
@@ -59,7 +58,6 @@ export type UsageStore = ReturnType<typeof createUsageStore>;
 
 export type UsageAnswer = { status: number; body: { result: "counted" } | { error: string } };
 
-/** One `/v1/usage` report: checked, signed by a Gond's key, then counted. */
 export async function handleUsage(raw: unknown, store: UsageStore): Promise<UsageAnswer> {
   const report = parseUsage(raw);
   if (!report) return { status: 400, body: { error: "That isn't a version 1 usage report." } };
@@ -70,7 +68,6 @@ export async function handleUsage(raw: unknown, store: UsageStore): Promise<Usag
   return { status: 200, body: { result: "counted" } };
 }
 
-/** The totals as anyone may read them, from any site. */
 export function usageJson(totals: UsageTotals): Response {
   return Response.json(totals, { headers: { "access-control-allow-origin": "*", "cache-control": "public, max-age=60" } });
 }

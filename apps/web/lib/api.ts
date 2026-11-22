@@ -43,7 +43,6 @@ export const del = <T = unknown>(path: string) => api<T>(path, { method: "DELETE
 
 const inFlight = new Map<string, Promise<unknown>>();
 
-/** A GET that shares one request with every caller asking for the same path while it is on its way (several cards in one conversation). */
 export function apiShared<T = unknown>(path: string): Promise<T> {
   let pending = inFlight.get(path) as Promise<T> | undefined;
   if (!pending) {

@@ -44,7 +44,6 @@ export const BOX_UPDATE_PHASE_LABELS: Record<BoxUpdatePhase, string> = {
   failed: "Update failed",
 };
 
-/** Updating Gond itself from Settings → About: the step it is on. */
 export type ServerUpdatePhase = "idle" | "pulling" | "computer" | "web" | "server" | "done" | "failed";
 
 export type ServerUpdate = {
@@ -52,9 +51,7 @@ export type ServerUpdate = {
   current: string;
   latest: string | null;
   available: boolean;
-  /** What changed since `current`, one line each, from the commits between the two releases. */
   notes: string[];
-  /** Why this server can't update itself, when it can't (no Docker socket, say). */
   blocked: string | null;
   phase: ServerUpdatePhase;
   error: string | null;
@@ -62,7 +59,6 @@ export type ServerUpdate = {
   backupFailed: boolean;
 };
 
-/** Whether release `a` (1.2.3, with or without a v) is newer than `b`; anything that isn't one never is. */
 export function newerVersion(a: string, b: string): boolean {
   const parse = (v: string) => /^v?(\d+)\.(\d+)\.(\d+)$/.exec(v.trim())?.slice(1).map(Number) ?? null;
   const x = parse(a);

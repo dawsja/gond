@@ -24,7 +24,6 @@ export function summaryPrompt(previous: string | null, lines: string): string {
   ].join("\n\n");
 }
 
-/** What the model wrote, as the summary to keep: trimmed, capped, secrets hidden. */
 export function cleanSummary(text: string, secrets: string[] = allSecretValues()): string | null {
   const trimmed = createRedactor(secrets, Infinity)(text.trim());
   if (!trimmed) return null;
@@ -34,12 +33,6 @@ export function cleanSummary(text: string, secrets: string[] = allSecretValues()
 const holder = globalThis as typeof globalThis & { __gondSummarizing?: Set<string> };
 const summarizing = () => (holder.__gondSummarizing ??= new Set());
 
-/**
- * Folds what has dropped out of a conversation's recent window into its
- * summary once there is a batch of it, on the person's own AI. It runs after
- * a reply, in the background, one at a time per conversation; a failure
- * leaves the summary as it was and the next reply tries again.
- */
 export async function summarizeThread(input: { box: BoxConfig | null; bot: Bot; thread: Thread; bots: Bot[]; run: EngineRun; window: number }): Promise<boolean> {
   const { box, bot, thread, bots, run, window } = input;
   if (summarizing().has(thread.id)) return false;

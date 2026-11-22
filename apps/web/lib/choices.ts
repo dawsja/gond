@@ -1,6 +1,5 @@
 import { joinNames, type Message } from "@gond/shared";
 
-/** How the person answered a bot's message: the options they picked by replying to it, and the line that closed its questions, if one did. */
 export type ChoiceAnswer = { picks: string[]; closedBy: string | null };
 
 // A pick in a room names the bot it answers ("@patch Run a sweep"); the option is what's left.
@@ -59,19 +58,16 @@ export function namedIn(said: string, options: readonly string[]): string[] {
   });
 }
 
-/** What a row sends: the one option, or the ones picked in the row's order with their own words last. */
 export function answerOf(options: readonly string[], picked: readonly string[], own: string, multi: boolean): string {
   const words = own.trim();
   if (!multi) return words || picked[0] || "";
   return joinNames([...options.filter((option) => picked.includes(option)), ...(words ? [words] : [])]);
 }
 
-/** One answer of a card of questions, as its line says it: "Which size? Medium". */
 export function answerLine(question: string, answer: string): string {
   return /[?:.!]$/.test(question) ? `${question} ${answer}` : `${question}: ${answer}`;
 }
 
-/** What each question of a card was answered with, read back from the line that answered it; null for one it doesn't say. */
 export function questionAnswers(questions: readonly string[], said: string | null): (string | null)[] {
   const lines = (said ?? "").replace(ADDRESSED, "").split("\n").map((line) => line.trim());
   return questions.map((question) => {

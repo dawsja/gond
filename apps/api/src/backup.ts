@@ -65,7 +65,6 @@ export function listBackups(): BackupInfo[] {
   return out.sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.name.localeCompare(a.name));
 }
 
-/** Validates a backup filename and returns its absolute path if present, or null. */
 export function backupFile(name: string): string | null {
   if (!BACKUP_FILE.test(name)) return null;
   const full = path.join(backupsDir(), name);
@@ -96,7 +95,6 @@ function rmQuietly(file: string) {
   try {
     unlinkSync(file);
   } catch {
-    /* already gone */
   }
 }
 
@@ -115,7 +113,6 @@ export function backupSizeEstimate(): number {
 const running = new Set<string>();
 let heavy: Promise<unknown> = Promise.resolve();
 
-/** One job in a worker of its own: started, answered once, and stopped, or stopped at its time limit. */
 function inWorker<T>(job: StorageJob): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const worker = new Worker(new URL("./storage-worker.ts", import.meta.url));
@@ -157,7 +154,6 @@ export function roomFor(free: number, need: number, backups: BackupInfo[], reaso
   return null;
 }
 
-/** Makes room for a backup, or says how much it needs, so a full disk never takes the database down with it. */
 function makeRoom(dir: string, reason: BackupReason, need: number) {
   const plan = roomFor(freeBytes(dir), need, listBackups(), reason);
   if (!plan) throw new BackupError(`There isn't enough free disk space for a backup: it needs about ${sizeText(need + HEADROOM)}, and ${sizeText(freeBytes(dir))} is free. Delete an older backup or free up some space, then try again.`);
@@ -227,7 +223,6 @@ export async function cleanUpNow(at = new Date()): Promise<CompactResult> {
 const SWEEP_MS = 24 * 60 * 60 * 1000;
 const holder = globalThis as typeof globalThis & { __gondLastRetentionSweep?: number };
 
-/** Daily background sweep called from the dispatcher's minute tick. */
 export function runScheduledRetention(at = Date.now()) {
   if (holder.__gondLastRetentionSweep && at - holder.__gondLastRetentionSweep < SWEEP_MS) return;
   holder.__gondLastRetentionSweep = at;

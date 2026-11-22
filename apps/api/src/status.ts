@@ -27,7 +27,6 @@ export function forgetClaudeCheck(userId?: string) {
   cachedVersions = null;
 }
 
-/** Claude Code is installed and signed in on the computer for this person, as Settings → AI reads it. */
 export async function claudeSignedIn(userId: string): Promise<boolean> {
   const box = boxConfig(userId);
   return box ? (await checkClaudeCached(box).catch(() => null))?.status === "ok" : false;
@@ -132,7 +131,6 @@ export async function boxStatus(userId: string, { fresh = false, admin = false }
   };
 }
 
-/** The box's numbers with each account named for its person, and its profile when it isn't their default. */
 export function healthOf(stats: BoxStats, at = new Date()): NonNullable<BoxStatus["health"]> {
   return {
     disk: stats.disk,

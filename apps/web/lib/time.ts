@@ -1,4 +1,3 @@
-/** When something was said, as a chat list says it: the time today, the weekday this week, else the date. */
 export function shortTime(iso: string, now = new Date()): string {
   const date = new Date(iso);
   const sameDay = date.toDateString() === now.toDateString();

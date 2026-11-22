@@ -24,20 +24,17 @@ enum Screens {
     static var server: String? { env["GOND_SCREENS_SERVER"] }
     static var cookie: String? { env["GOND_SCREENS_COOKIE"] }
     static var path: String? { env["GOND_SCREENS_PATH"] }
-    /// "light" or "dark", for the whole app.
     static var appearance: String? { env["GOND_SCREENS_APPEARANCE"] }
     static var connect: Bool { env["GOND_SCREENS_CONNECT"] == "1" }
     static var active: Bool { server != nil || connect }
     /// Where the job keeps its screenshots, which the app (not sandboxed, unlike the test runner) can write to.
     static var folder: URL? { env["GOND_SCREENS_DIR"].flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0) } }
-    /// The step this launch is for, naming what the app writes there.
     static var label: String { env["GOND_SCREENS_LABEL"].flatMap { $0.isEmpty ? nil : $0 } ?? "app" }
     /// WebKit features to turn off, for a runner whose graphics WebKit can't use.
     static var webKitOff: [String] { (env["GOND_SCREENS_WEBKIT_OFF"] ?? "").split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty } }
 
     private static let log = Logger(subsystem: "io.gond.mac", category: "screens")
 
-    /// A line for the job: in the app's log and in `<label>-<appearance>.txt` beside the screenshots.
     static func note(_ line: String) {
         log.notice("\(label, privacy: .public): \(line, privacy: .public)")
         guard let folder else { return }
@@ -52,7 +49,6 @@ enum Screens {
         }
     }
 
-    /// A picture for the job, beside the screenshots.
     static func save(_ image: NSImage, as name: String) {
         guard let folder, let tiff = image.tiffRepresentation, let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) else { return }
         try? png.write(to: folder.appendingPathComponent("\(label)-\(appearance ?? "light")-\(name).png"))
@@ -108,7 +104,6 @@ final class AppModel: ObservableObject {
         started = true
         watchKeys()
         Notifications.shared.onOpen = { [weak self] url in self?.openNotice(url) }
-        // A click on a notification that launched the app opens its conversation, not the list.
         let target = Notifications.shared.takePendingOpen() ?? "/app"
         #if DEBUG
         if screen == .web, let server, let cookie = Screens.cookie, let path = Screens.path {
@@ -158,7 +153,6 @@ final class AppModel: ObservableObject {
         shell.setInsetTop(ui.toolbarHeight)
     }
 
-    /// Connect can go back to the Gond it came from when one is loaded.
     var canGoBack: Bool { server != nil && shell.hasPage }
 
     /// Connect over the page, which stays as it is behind it for Back.
@@ -211,7 +205,6 @@ final class AppModel: ObservableObject {
         open("/login")
     }
 
-    /// A path on the connected Gond, like /app/t/…, or a whole address there, loaded afresh.
     func open(_ target: String) {
         guard let server else { return }
         let path: String

@@ -41,7 +41,6 @@ export function Meter({ meter, children }: { meter: MeterRecord; children: React
   const caption = meter.left || meter.right;
   return (
     <ProgressPrimitive.Root value={meter.percent} data-slot="meter" className="flex flex-col gap-1.5 py-0.5">
-      {/* The value sits beside the label while both fit and wraps under it, to the left, when they don't. */}
       <div className="flex flex-wrap items-baseline justify-between gap-x-3">
         <ProgressPrimitive.Label className="min-w-0 font-medium [overflow-wrap:anywhere]">{children}</ProgressPrimitive.Label>
         <span className={cn("min-w-0 text-[13px] font-medium tabular-nums", TEXT[meter.tone])}>{meter.text}</span>
@@ -59,18 +58,11 @@ export function Meter({ meter, children }: { meter: MeterRecord; children: React
   );
 }
 
-/**
- * Where a message's choices can go: `pick` sends an answer as the person's reply to the message while
- * the question is open; `answer` is how they answered (`choiceAnswers`). A row closes once it was
- * answered, or once something else they said closed the message's questions.
- */
 export const ChoicesContext = createContext<{ pick?: (option: string) => Promise<void>; answer?: ChoiceAnswer }>({});
 
-// A pill holds a long option on several lines rather than running off the bubble.
 const PILL = "h-auto min-h-9 max-w-full py-1.5 text-left leading-5 whitespace-normal [overflow-wrap:anywhere]";
 const OWN_MAX = 500;
 
-/** The options as pills: filled while they can be tapped, the picked ones pressed, the rest fading once it's answered. */
 function OptionPills({ row, chosen, open, label, onTap, onOther }: { row: ChoiceRow; chosen: readonly string[]; open: boolean; label: string; onTap: (option: string) => void; onOther: (() => void) | null }) {
   return (
     <div data-slot="choices" role="group" aria-label={label} className="flex flex-wrap gap-2 pt-1 select-none">
@@ -129,11 +121,6 @@ function OwnAnswer({ value, onChange, onDone, onClose, done, disabled }: { value
   );
 }
 
-/**
- * A row of choices. One tap sends a plain row's option. A `multi` row's taps toggle, and Send sends
- * the ones picked together. `other` adds "Something else", whose words are sent instead of an option,
- * or after the ones picked.
- */
 export function Choices({ row }: { row: ChoiceRow }) {
   const { pick, answer } = useContext(ChoicesContext);
   const [sending, setSending] = useState<string | null>(null);
@@ -175,11 +162,6 @@ export type QuestionStep = { asks: ReactNode; text: string; row: ChoiceRow };
 type Given = { picked: string[]; own: string | null };
 const UNANSWERED: Given = { picked: [], own: null };
 
-/**
- * Several questions on one card, one at a time. A tap on a plain row's option answers it and moves
- * on; Back goes over an answer again. The last step sends every answer at once, a line each, as one
- * reply. Answered, it lists what each question got.
- */
 export function Questions({ questions }: { questions: QuestionStep[] }) {
   const { pick, answer } = useContext(ChoicesContext);
   const [step, setStep] = useState(0);

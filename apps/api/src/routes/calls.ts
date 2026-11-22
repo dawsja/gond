@@ -49,7 +49,6 @@ export function callsRoutes() {
           try {
             controller.close();
           } catch {
-            /* closed */
           }
         };
         c.req.raw.signal.addEventListener("abort", () => cleanup(), { once: true });

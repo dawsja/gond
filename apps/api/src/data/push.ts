@@ -6,7 +6,6 @@ type StoredSubscription = PushSubscriptionInput & { userAgent: string; createdAt
 
 type Row = { endpoint: string; p256dh: string; auth: string; user_agent: string; created_at: string; muted_bots: string; other: number };
 
-/** What a browser or phone is told about, as its row keeps it. */
 export function noticesOf(row: { muted_bots: string; other: number }): DeviceNotices {
   let muted: unknown;
   try {
@@ -22,7 +21,6 @@ export function listSubscriptions(userId: string): StoredSubscription[] {
   return rows.map((r) => ({ endpoint: r.endpoint, keys: { p256dh: r.p256dh, auth: r.auth }, userAgent: r.user_agent, createdAt: r.created_at, notices: noticesOf(r) }));
 }
 
-/** What this subscription of the person's is told about; everything when it isn't theirs or isn't known. */
 export function subscriptionNotices(endpoint: string, userId: string): DeviceNotices | null {
   const row = ensureDatabase().query("SELECT muted_bots, other FROM gond_push_subscriptions WHERE endpoint = ? AND user_id = ?").get(endpoint, userId) as Pick<Row, "muted_bots" | "other"> | null;
   return row ? noticesOf(row) : null;

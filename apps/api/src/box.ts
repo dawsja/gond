@@ -24,7 +24,6 @@ function boxUrl(): string | null {
 
 let tokenFile: { file: string; mtimeMs: number; token: string } | null = null;
 
-/** The box's token, read from its state volume again only when the file changed or the box refused it (`fresh`). */
 function boxToken(fresh = false): string {
   const fromEnv = (env("BOX_TOKEN") ?? "").trim();
   if (fromEnv) return fromEnv;
@@ -454,7 +453,6 @@ export type DesktopStatus = { bot: string; running: boolean; ready: boolean; wid
 
 const screenPath = (bot: string) => `/desktop/${encodeURIComponent(bot)}`;
 
-/** The person's bots' screens that are running. */
 export function desktopScreens(config: BoxConfig): Promise<{ screens: DesktopStatus[] }> {
   return call(config, "GET", "/desktop", undefined, 10_000);
 }
@@ -535,7 +533,6 @@ export async function recordingFrame(config: BoxConfig, bot: string, id: string,
   return new Uint8Array(await res.arrayBuffer());
 }
 
-/** The recording's steps, frames and changes as they happen, starting with where it stands. */
 export async function* followRecording(config: BoxConfig, bot: string, id: string, signal: AbortSignal): AsyncGenerator<BoxRecordingEvent> {
   const res = await openBoxStream(config, `${recordingPath(bot)}/stream?id=${encodeURIComponent(id)}`, signal);
   if (!res.body) throw new BoxError("The box sent no stream", 502);

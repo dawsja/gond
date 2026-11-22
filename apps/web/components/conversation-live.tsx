@@ -52,7 +52,6 @@ export function LiveTail({ threadId, isRoom, catchUp, onLanded }: { threadId: st
     });
   };
 
-  // Pictures bots are making here, by picture id.
   const [making, setMaking] = useState<Record<string, { botId: string; aspect: ImageAspect; preview: string | null }>>({});
   const onPicture = (event: Extract<LiveEvent, { topic: "picture" }>) => {
     const forget = () => setMaking((current) => Object.fromEntries(Object.entries(current).filter(([id]) => id !== event.id)));
@@ -75,7 +74,6 @@ export function LiveTail({ threadId, isRoom, catchUp, onLanded }: { threadId: st
 
   const working = activity[threadId] ?? {};
   const drawing = new Set(Object.values(making).map((m) => m.botId));
-  // A bot holding a card the person hasn't answered is waiting on them, whatever step it last named.
   const heldOnYou = useMemo(() => botsWaitingOnYou(approvals, threadId), [approvals, threadId]);
   const workLines = Object.entries(working)
     .filter(([botId]) => !(botId in writing) && !drawing.has(botId))

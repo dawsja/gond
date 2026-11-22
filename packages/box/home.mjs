@@ -10,7 +10,6 @@ const HOME_FILE = fs.existsSync(INSTALLED) ? INSTALLED : LOCAL;
 
 const COLOR = /^#?([0-9a-f]{6})$/i;
 
-/** A bot's name and colour from a request, kept only when they are plain: the page shows them as text and a fill. */
 export function lookOf(body = {}) {
   const name = typeof body.name === "string" ? body.name.replace(/\s+/g, " ").trim().slice(0, 60) : "";
   const color = typeof body.color === "string" ? (COLOR.exec(body.color.trim())?.[1]?.toLowerCase() ?? "") : "";

@@ -22,7 +22,6 @@ function count(n: number, one: string, many: string) {
   return `${n} ${n === 1 ? one : many}`;
 }
 
-/** What goes with a template, and what never does. */
 function Contents({ template }: { template: BotTemplateSummary }) {
   const included = [
     "Name, job and how it works",
@@ -67,7 +66,6 @@ function Who({ template, bot, picture }: { template: BotTemplateSummary; bot?: B
   );
 }
 
-/** A bot's ⋯ → Share as template: a link for anyone signed in here, or a .bot file for anywhere. */
 export function ShareBotDialog({ botId, onClose }: { botId: string; onClose: () => void }) {
   const { botById } = useStore();
   const bot = botById(botId);
@@ -133,7 +131,6 @@ export function ShareBotDialog({ botId, onClose }: { botId: string; onClose: () 
   );
 }
 
-/** Opens what a shared link (`/app?template=…`) offers, and adds the bot on a yes. */
 export function SharedTemplate() {
   const params = useSearchParams();
   const token = params.get("template");

@@ -1,6 +1,3 @@
-// Seeds the throwaway Gond the iPhone screenshot job runs against (.github/workflows/ios-screens.yml):
-// three bots and a conversation with a picture in it, for the account the job registered. Prints the
-// conversation's id. Run from the repository root with the API's GOND_DATA_DIR.
 import { deflateSync } from "node:zlib";
 import { botInputSchema } from "../../../packages/shared/src/index.ts";
 import { createBot } from "../../api/src/data/bots.ts";
@@ -53,7 +50,6 @@ function backupReport(): Uint8Array {
   return Buffer.from(`${pdf}xref\n0 ${offsets.length}\n${offsets.join("")}trailer\n<< /Size ${offsets.length} /Root 1 0 R >>\nstartxref\n${pdf.length}\n%%EOF\n`, "ascii");
 }
 
-/** A 1200 by 800 picture of a sunny backyard, so Quick Look has something to show. */
 function backyard(): Uint8Array {
   const width = 1200;
   const height = 800;

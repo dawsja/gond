@@ -13,7 +13,6 @@ final class SignIn: NSObject {
     private var session: ASWebAuthenticationSession?
     weak var anchor: NSWindow?
 
-    /// `finish` gets the path to load in the web view: the redeem, or the sign-in page with an error.
     func start(server: String, next: String?, finish: @escaping (String) -> Void) {
         let verifier = Self.base64url(Data((0..<32).map { _ in UInt8.random(in: .min ... .max) }))
         let challenge = Self.base64url(Data(SHA256.hash(data: Data(verifier.utf8))))

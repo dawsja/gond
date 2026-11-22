@@ -5,7 +5,6 @@ const typed = (text: string): DraftChange => ({ by: "app", text });
 const page = (text: string | ((text: string) => string)): DraftChange => ({ by: "page", text });
 const run = (changes: DraftChange[], from: Draft = EMPTY_DRAFT) => changes.reduce(changeDraft, from);
 
-// The iPhone app's field takes the page's text only when `rev` goes up.
 describe("changeDraft", () => {
   test("a clear after a send reaches the app after a stale empty echo (typed, deleted, typed again)", () => {
     const before = run(["x", "", "x"].map(typed));

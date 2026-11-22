@@ -19,7 +19,6 @@ type GrokSignIn = { state: "waiting" | "done" | "failed"; url: string | null; co
 
 const POLL_MS = 3000;
 
-/** xAI's mark, ink in both themes. */
 function GrokLogo({ className, size = 16 }: { className?: string; size?: number }) {
   return (
     <svg viewBox="0 0 24 24" style={{ width: rem(size), height: rem(size) }} fill="currentColor" aria-hidden="true" className={cn("shrink-0", className)}>
@@ -37,7 +36,6 @@ export function GrokPlanLine() {
   );
 }
 
-/** "Sign in with Grok": a code to approve on xAI's page, watched here until it is. */
 export function SignInWithGrok({ onDone }: { onDone: () => void }) {
   const [signIn, setSignIn] = useState<GrokSignIn | null>(null);
   const [starting, setStarting] = useState(false);
@@ -126,7 +124,6 @@ export function SignInWithGrok({ onDone }: { onDone: () => void }) {
   );
 }
 
-/** Step 2 for the Grok engine: Sign in with Grok, or the account it signed in. */
 export function GrokAccount({ providers, reload }: { providers: Record<ProviderKind, ProviderMeta | null> | null; reload: () => void }) {
   const provider = providers?.grok ?? null;
   return (

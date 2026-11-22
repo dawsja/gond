@@ -5,15 +5,12 @@ import type { providerInputSchema } from "./schemas.ts";
 export const PROVIDER_KINDS = ["anthropic", "openai", "chatgpt", "grok", "voice"] as const;
 export type ProviderKind = (typeof PROVIDER_KINDS)[number];
 
-/** The APIs a person types a key for their bots; a ChatGPT or Grok plan is signed in to instead. */
 export const KEY_PROVIDER_KINDS = ["anthropic", "openai"] as const satisfies readonly ProviderKind[];
 export type KeyProviderKind = (typeof KEY_PROVIDER_KINDS)[number];
 
-/** A plan a person signs in to, whose tokens Gond keeps and renews; each is an engine of its own. */
 export const PLAN_PROVIDER_KINDS = ["chatgpt", "grok"] as const satisfies readonly ProviderKind[];
 export type PlanProviderKind = (typeof PLAN_PROVIDER_KINDS)[number];
 
-/** What a bot can run on: every kind of key but the voice key, which only the microphone and calls use. */
 export type EngineProviderKind = Exclude<ProviderKind, "voice">;
 
 export function isPlanProvider(kind: ProviderKind): kind is PlanProviderKind {
@@ -71,7 +68,6 @@ export function isOpenAiShaped(kind: ProviderKind): boolean {
 export type ProviderMeta = {
   kind: ProviderKind;
   baseUrl: string;
-  /** The account a plan is signed in with; null for a key. */
   account: { email: string | null; name: string | null } | null;
 
   check: { ok: boolean; detail: string; at: string } | null;
@@ -124,7 +120,6 @@ export const SPEECH_FAMILIES: Record<VoiceProvider, Record<SpeechJob, SpeechFami
   },
 };
 
-/** One job's models, grouped by family, and the one it runs on unless the person picks another. */
 export type SpeechModels = { groups: { name: string; models: string[] }[]; default: string };
 /**
  * What `/api/voice/models` offers: per job, the models the key lists, its default and the one in use; a
@@ -175,15 +170,10 @@ export function callProtocol(provider: VoiceProvider, model: string): "live" | "
   return provider === "openai" && !/^gpt-realtime/.test(model) ? "live" : "realtime";
 }
 
-/** A server of the person's own names its models; OpenAI's and xAI's are only those of `SPEECH_FAMILIES`. */
 export type VoiceSettings = {
-  /** Null without a voice key. */
   using: VoiceProvider | null;
-  /** The microphone's model as picked; null is the default, the newest the key offers. */
   transcribeModel: string | null;
-  /** A call's model as picked; null is the default, the newest the key offers. */
   callModel: string | null;
-  /** The voice a call speaks in, per provider, since each has its own; missing is the provider's default. */
   callVoice: Partial<Record<VoiceProvider, string>>;
 };
 export const CALL_VOICE_ID = /^[a-z0-9_-]{1,64}$/i;
@@ -192,11 +182,6 @@ export const VOICE_MODEL_ID = /^[\w.:/@+-]{1,120}$/;
 export const TRANSCRIBE_MAX_BYTES = 10 * 1024 * 1024;
 export const TRANSCRIBE_MAX_SECONDS = 120;
 
-/**
- * A live call with the primary bot runs on a speaking model with the person's own key, OpenAI's or
- * xAI's, `model` standing in when the key lists none (`speechModels`). It only talks; anything past small
- * talk it hands to the bot's own turn.
- */
 export const CALL_MODELS: Record<VoiceProvider, { model: string; voice: string; label: string }> = {
   xai: { model: "grok-voice-latest", voice: "eve", label: "xAI Grok" },
   openai: { model: "gpt-live-1.1", voice: "marin", label: "OpenAI" },
@@ -238,7 +223,6 @@ export const OPENAI_CALL_VOICES: CallVoice[] = [
 /** The Realtime API's voices; GPT-Live has these and more. */
 const REALTIME_VOICES = new Set(["marin", "cedar", "alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse"]);
 
-/** The voices an OpenAI call model speaks in. */
 export function openAiCallVoices(model: string): CallVoice[] {
   return callProtocol("openai", model) === "realtime" ? OPENAI_CALL_VOICES.filter((voice) => REALTIME_VOICES.has(voice.id)) : OPENAI_CALL_VOICES;
 }
@@ -383,7 +367,6 @@ export function modelSource(engine: Engine, access: EngineAccess, provider: Engi
   return engine === "api" ? `api:${provider ?? ""}` : engine;
 }
 
-/** The model a bot runs on: its own while it was picked where the AI runs now, else the AI's. */
 export function botModelFor(bot: Pick<Bot, "model" | "modelFor"> | null | undefined, source: string): string {
   return bot?.model && bot.modelFor === source ? bot.model : "";
 }

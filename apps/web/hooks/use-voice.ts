@@ -20,7 +20,6 @@ export function useVoice() {
   return { voice, setVoice };
 }
 
-/** The speech models the voice key offers for the microphone and calls, and the ones in use; reloaded when the AI or voice settings change. */
 export function useVoiceModels(using: VoiceProvider | null | undefined) {
   const [models, setModels] = useState<VoiceModelList | null>(null);
   const [failed, setFailed] = useState(false);

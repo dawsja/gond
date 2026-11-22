@@ -7,7 +7,6 @@ import { apiShared } from "@/lib/api";
 
 type Loaded = { federation: Federation; peers: FederationPeer[] };
 
-/** This Gond among other Gonds, kept current by the `spaces` live event; null until it loads. */
 export function useFederation(): { federation: Federation | null; peers: FederationPeer[]; failed: boolean; reload: () => void; set: (loaded: Loaded) => void } {
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [failed, setFailed] = useState(false);

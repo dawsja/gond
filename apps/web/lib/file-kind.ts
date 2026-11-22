@@ -50,7 +50,6 @@ const BY_TYPE: Record<string, FileKind> = {
   "application/vnd.rar": "archive",
 };
 
-/** What a chat file is, for its chip's icon: by its type, else by its name's extension. */
 export function fileKind(file: { name: string; mediaType: string }): FileKind {
   const type = file.mediaType.toLowerCase().split(";")[0]!.trim();
   if (type.startsWith("audio/")) return "audio";

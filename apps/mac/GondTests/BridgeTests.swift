@@ -2,8 +2,6 @@ import JavaScriptCore
 import XCTest
 @testable import Gond
 
-/// The bridge script runs in a bare JavaScript context standing in for a page, so what it does on
-/// your Gond's origin, and on any other, is checked without a web view.
 final class BridgeTests: XCTestCase {
     private let server = "https://gond.example.com"
 

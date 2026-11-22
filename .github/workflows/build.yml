@@ -18,7 +18,6 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io
-  # The release the apps are built for: the pushed tag, or the one a manual run names.
   RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || inputs.tag || '' }}
 
 permissions:
@@ -76,14 +75,12 @@ jobs:
             [ "$(git rev-parse origin/main)" = "$GITHUB_SHA" ] && latest=true
           fi
           changed() { git diff --name-only "$1" "$GITHUB_SHA" | grep -qE "$2"; }
-          # A push or pull request: each app against the commit before. A manual run builds them all.
           if [ "$EVENT" != workflow_dispatch ] && [ -z "$RELEASE_TAG" ] && [ -n "$BASE" ] && git cat-file -e "$BASE^{commit}" 2>/dev/null; then
             changed "$BASE" "$DESKTOP_FILES" || desktop=false
             changed "$BASE" "$ANDROID_FILES" || android=false
             changed "$BASE" "$IOS_FILES" || ios=false
             changed "$BASE" "$MAC_FILES" || mac=false
           fi
-          # A pushed release tag: each app against the release before, carrying that release's build when it didn't change.
           if [[ "$REF" == refs/tags/v* ]]; then
             previous=$(git tag --list 'v*' --sort=-v:refname --merged "$GITHUB_SHA" | grep -vxF "$RELEASE_TAG" | head -n 1)
             if [ -n "$previous" ]; then
@@ -177,8 +174,6 @@ jobs:
         working-directory: apps/desktop/src-tauri
       - run: cargo test
         working-directory: apps/desktop/src-tauri
-      # The bundler signs the installer for the updater (a .sig next to it)
-      # with the repository's key; without it (a fork) it builds unsigned.
       - name: Build unsigned without the signing key
         shell: bash
         env:

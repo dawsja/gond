@@ -11,7 +11,6 @@ export function coverScale(picture: Size, stage: number): number {
   return stage / Math.min(picture.width, picture.height);
 }
 
-/** Keeps the picture covering the whole stage, so the circle never shows an edge. */
 export function clampCrop(crop: Crop, picture: Size, stage: number): Crop {
   const zoom = Math.max(1, crop.zoom);
   const scale = coverScale(picture, stage) * zoom;
@@ -26,7 +25,6 @@ export function clampCrop(crop: Crop, picture: Size, stage: number): Crop {
   };
 }
 
-/** The square of the picture the stage shows, in the picture's own pixels. */
 function cropSource(crop: Crop, picture: Size, stage: number): { x: number; y: number; side: number } {
   const scale = coverScale(picture, stage) * crop.zoom;
   return { x: -crop.x / scale, y: -crop.y / scale, side: stage / scale };

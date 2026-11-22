@@ -40,7 +40,6 @@ type Live = {
   context: AudioContext;
   player: CallPlayer;
   capture: Capture | null;
-  /** The call's socket; null once it fell back to the stream and POSTs. */
   socket: WebSocket | null;
   source: EventSource | null;
   queue: ArrayBuffer[];
@@ -143,7 +142,6 @@ export function CallProvider({ children }: { children: ReactNode }) {
         try {
           onEvent(current, JSON.parse(data) as CallEvent);
         } catch {
-          /* not an event */
         }
       };
       // The SSE stream and a POST per batch of audio, for when something between the page and Gond
@@ -258,7 +256,6 @@ export function useCall(): CallContext {
   return context;
 }
 
-/** "1:31", how long a call has run. */
 export function callClock(startedAt: string, now: number): string {
   const seconds = Math.max(0, Math.floor((now - Date.parse(startedAt)) / 1000));
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;

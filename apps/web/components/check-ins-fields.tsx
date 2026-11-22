@@ -16,7 +16,6 @@ const HOUR_ITEMS = Array.from({ length: 24 }, (_, hour) => ({
   label: new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit", timeZone: "UTC" }).format(Date.UTC(2026, 0, 1, hour)),
 }));
 
-/** The primary bot's check-ins as the Edit dialog holds them: loaded when it opens, saved with it. */
 export function useCheckIns(primary: boolean) {
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [failed, setFailed] = useState(false);

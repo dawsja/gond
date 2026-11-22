@@ -77,7 +77,6 @@ class CallService : Service() {
         private const val EXTRA_BOT = "bot"
         private const val EXTRA_SINCE = "since"
 
-        /** A call is on with `bot` since `startedAt` (ISO), or, with no bot, it's over. */
         fun set(context: Context, bot: String, startedAt: String) {
             val intent = Intent(context, CallService::class.java)
             if (bot.isBlank()) {

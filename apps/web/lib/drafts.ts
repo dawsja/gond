@@ -13,9 +13,7 @@ type Drafts = Readonly<Record<string, string>>;
 const NONE: Drafts = {};
 
 let drafts: Drafts | null = null;
-// What the chat list last saw.
 let published: Drafts = NONE;
-// Conversations whose draft changed here since storage was last written.
 const changed = new Set<string>();
 const listeners = new Set<() => void>();
 let timer: number | null = null;
@@ -31,7 +29,6 @@ function parse(text: string | null): Drafts {
   }
 }
 
-/** What storage holds, or null when it can't be read. */
 function stored(): Drafts | null {
   try {
     return parse(window.localStorage.getItem(KEY));
@@ -80,7 +77,6 @@ function hook() {
   });
 }
 
-/** Writes what changed to storage now, and tells the chat list. */
 export function flushDrafts() {
   if (timer !== null) window.clearTimeout(timer);
   timer = null;
@@ -126,7 +122,6 @@ function snapshot(): Drafts {
   return published;
 }
 
-/** Every saved draft by conversation; none on the server's render, so the list hydrates as it was sent. */
 export function useDrafts(): Readonly<Record<string, string>> {
   return useSyncExternalStore(subscribe, snapshot, () => NONE);
 }

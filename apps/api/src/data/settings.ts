@@ -10,7 +10,6 @@ export function readEngines(json: string | null, legacyModel: string | null): Re
   try {
     stored = json ? (JSON.parse(json) as typeof stored) : {};
   } catch {
-    /* defaults */
   }
   const out = { ...DEFAULT_ENGINES };
   if (legacyModel && MODEL_ID_PATTERN.test(legacyModel)) out.claude = { ...out.claude, model: legacyModel };
@@ -33,7 +32,6 @@ export function getSettings(): Settings {
     const stored = JSON.parse(row?.onboarding ?? "{}") as Partial<Onboarding>;
     onboarding = { done: stored.done === true, templates: Array.isArray(stored.templates) ? stored.templates : [] };
   } catch {
-    /* defaults */
   }
   return {
     onboarding,

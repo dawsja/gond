@@ -21,7 +21,6 @@ COPY packages/shared ./packages/shared
 # Bun's isolated linker puts each workspace's links in its own node_modules
 # (shared's zod lives here, pointing into node_modules/.bun).
 COPY --from=install /app/packages/shared/node_modules ./packages/shared/node_modules
-# The relay's client (Spaces), with its HPKE library linked the same way.
 COPY packages/relay ./packages/relay
 COPY --from=install /app/packages/relay/node_modules ./packages/relay/node_modules
 COPY apps/api ./apps/api

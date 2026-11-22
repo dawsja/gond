@@ -59,7 +59,6 @@ export function PersonAvatar({ name, avatar, size = 24, className }: { name: str
 
 type Face = Parameters<typeof BotAvatar>[0]["bot"];
 
-/** A room's bots as they show: in the room's order, without the hidden ones. */
 export function roomMembers(thread: { members: string[] }, bots: Bot[]): Bot[] {
   return thread.members.flatMap((id) => bots.find((bot) => bot.id === id && !bot.hidden) ?? []);
 }

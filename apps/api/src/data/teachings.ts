@@ -73,7 +73,6 @@ function row(id: string): TeachingRow | null {
   return ensureDatabase().query("SELECT * FROM gond_teachings WHERE id = ?").get(id) as TeachingRow | null;
 }
 
-/** A "Show me how" card nobody started reads as expired, like any card nobody answered. */
 function expired(found: TeachingRow): boolean {
   return found.status === "offered" && Date.now() - Date.parse(found.created_at) > approvalTimeoutMs();
 }
@@ -86,7 +85,6 @@ function build(found: TeachingRow): Teaching {
   return toTeaching(found, frames, slug);
 }
 
-/** A teaching, only for the person it belongs to. */
 export function getTeaching(id: string, userId: string): Teaching | null {
   const found = row(id);
   return found && found.user_id === userId ? build(found) : null;
@@ -98,7 +96,6 @@ export function teachingById(id: string): (Teaching & { userId: string; messageI
   return found ? { ...build(found), userId: found.user_id, messageId: found.message_id, promptId: found.prompt_id } : null;
 }
 
-/** The teaching a hidden prompt asked its bot to look at, if this message is one. */
 export function teachingAskedBy(messageId: string): string | null {
   const found = ensureDatabase().query("SELECT id FROM gond_teachings WHERE prompt_id = ?").get(messageId) as { id: string } | null;
   return found?.id ?? null;
@@ -109,7 +106,6 @@ function teachingChanged(id: string) {
   if (found) emit({ topic: "teaching", userId: found.user_id, teaching: build(found) });
 }
 
-/** The person's teaching still being shown or looked at, if there is one: one at a time. */
 export function openTeaching(userId: string): Teaching | null {
   const found = ensureDatabase()
     .query(`SELECT * FROM gond_teachings WHERE user_id = ? AND status IN (${OPEN_TEACHING.map(() => "?").join(", ")}) ORDER BY created_at DESC LIMIT 1`)
@@ -125,7 +121,6 @@ export function unfinishedTeachings(): (Teaching & { userId: string; promptId: s
   return rows.map((found) => ({ ...build(found), userId: found.user_id, promptId: found.prompt_id }));
 }
 
-/** Whether the prompt that asked a bot to look is answered (or gone), so its turn is over. */
 export function promptDone(messageId: string): boolean {
   const found = ensureDatabase().query("SELECT answered_at FROM gond_messages WHERE id = ?").get(messageId) as { answered_at: string | null } | null;
   return !found || found.answered_at !== null;
@@ -222,7 +217,6 @@ export function deleteTeachingFrames(teachingId: string) {
   ensureDatabase().query("DELETE FROM gond_teaching_frames WHERE teaching_id = ?").run(teachingId);
 }
 
-/** A recording's pictures are kept a week after it ended; the steps and the skill stay. */
 const TEACH_FRAMES_KEEP_DAYS = 7;
 
 export function expireTeachingFrames(at = Date.now()): number {

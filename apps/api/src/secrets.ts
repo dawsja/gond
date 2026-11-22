@@ -21,10 +21,6 @@ function parseKey(raw: string, source: string) {
   return key;
 }
 
-/**
- * The master key: `GOND_SECRET_KEY` when set, otherwise `secret.key` in the
- * data directory, created on first use with 0600 permissions.
- */
 export function masterKey(): Buffer {
   const envKey = env("SECRET_KEY");
   const file = path.join(dataDir(), "secret.key");

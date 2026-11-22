@@ -22,7 +22,6 @@ export function holdLogin(threadId: string, name: string, value: string, { ms = 
   held().set(keyOf(threadId, name), { value, site, until: Date.now() + ms });
 }
 
-/** The card the person picked, for this conversation, under the names a bot types it by. */
 export function holdCard(threadId: string, card: CardDetails) {
   for (const field of Object.keys(CARD_FIELDS) as CardField[]) {
     const value = cardFieldValue(card, field);
@@ -50,12 +49,10 @@ function pages(): Map<string, string> {
   return (holder.__gondPages ??= new Map());
 }
 
-/** The page a bot's browser last showed. */
 export function notePage(botId: string, url: string) {
   pages().set(botId, url);
 }
 
-/** The host of the page a bot's browser last showed, as a person reads it, or null when it shows no web page. */
 export function pageHost(botId: string): string | null {
   const url = pages().get(botId);
   if (!url || !/^https?:\/\//i.test(url)) return null;
@@ -92,7 +89,6 @@ export function siteOnPage(site: string, host: string | null): string {
   return !bare || squash(bare) === squash(host) ? host : `${bare} (${host})`;
 }
 
-/** Where a card's details may be typed: the registrable domain of the host it names, in its note or as its whole name. */
 export function boundSite(site: string | null | undefined): string | null {
   const named = (/\(([^()]*)\)\s*$/.exec(site ?? "")?.[1] ?? site ?? "").trim().toLowerCase();
   const host = named.replace(/^[a-z]+:\/\//, "").replace(/[/?#].*$/, "").replace(/:\d+$/, "");
@@ -114,7 +110,6 @@ export function heldIn(threadId: string): string[] {
   return [...held()].flatMap(([key, hit]) => (key.startsWith(prefix) && Date.now() <= hit.until ? [hit.value] : []));
 }
 
-/** A detail the person changed: what their conversations still held of the old one goes. */
 export function forgetHeldLogin(name: string, threadIds: Iterable<string>) {
   for (const threadId of threadIds) held().delete(keyOf(threadId, name));
 }

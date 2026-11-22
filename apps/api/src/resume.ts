@@ -1,6 +1,3 @@
-// Messages a turn was answering when it was cut off (Gond restarting, the computer going away or
-// updating) or when it failed, and what that turn had already done, so the turn that answers them
-// again is told.
 type Interrupted = { done: string[]; failed: boolean };
 const holder = globalThis as typeof globalThis & { __gondInterrupted?: Map<string, Interrupted> };
 
@@ -11,7 +8,6 @@ function interrupted(): Map<string, Interrupted> {
   return (holder.__gondInterrupted ??= new Map());
 }
 
-/** `failed`: the turn ended with a problem, and the person may ask for it again (Try again). */
 export function noteInterrupted(messageId: string, done: string[] = [], failed = false): void {
   const map = interrupted();
   const had = map.get(messageId);
@@ -24,7 +20,6 @@ export function wasInterrupted(messageId: string): boolean {
   return interrupted().has(messageId);
 }
 
-/** What a re-run hears ahead of its prompt, once; null for a message nothing cut off. */
 export function takeInterrupted(messageId: string): string | null {
   const note = interrupted().get(messageId);
   if (!note) return null;
@@ -41,14 +36,11 @@ export function takeInterrupted(messageId: string): string | null {
 }
 
 type LateAnswer = {
-  /** The card's own words. */
   card: string;
   tool: string;
   answer: "yes" | "always" | "send" | "no" | { changes: string };
-  /** The call as the person left it: their edit of a letter, or as it was asked. */
   input: Record<string, unknown>;
   edited: boolean;
-  /** What the paused turn was answering, in words; null when that is gone. */
   working: string | null;
   done: readonly string[];
 };
@@ -57,11 +49,6 @@ type LateAnswer = {
 const EXACT_CALL_CHARS = 4_000;
 const EDITED_CALL_CHARS = 24_000;
 
-/**
- * The hidden prompt a late answer to a paused card starts the work again with: what ran before the
- * card, what the person said, and that the world may have moved on since, so the bot checks first,
- * never repeats what already happened, and only the very same call goes through without a new card.
- */
 export function lateAnswerText(late: LateAnswer): string {
   const { answer, tool } = late;
   const said = answer === "yes" ? "yes" : answer === "always" ? "yes, and yes from now on to this kind of action" : answer === "send" ? "yes, and to send it now instead of saving it as a draft" : answer === "no" ? "no" : "not like this: they want changes";

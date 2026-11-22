@@ -150,7 +150,6 @@ function ClaudeAccount({ ready, onRefresh }: { ready: Readiness; onRefresh: () =
   );
 }
 
-/** Settings → AI: where the bots run, the account behind it, and the model, in that order. */
 export function AiSteps({ ai, status, onChange, onRefresh }: { ai: AiSettings; status: BoxStatus | null; onChange: (next: AiSettings) => void; onRefresh: () => Promise<void> }) {
   const { providers, reload } = useProviders();
   const params = useSearchParams();

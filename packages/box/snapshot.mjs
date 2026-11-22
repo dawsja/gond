@@ -34,7 +34,6 @@ const parse = (line) => {
 
 const sized = (box) => box && box[2] >= 2 && box[3] >= 2;
 
-/** The row a hidden checkable input sits in: its nearest ancestor with a ref, if that holds no other control. */
 function rowOf(lines, i, parsed) {
   const own = parsed[i];
   for (let j = i - 1; j >= 0; j--) {
@@ -56,7 +55,6 @@ function rowOf(lines, i, parsed) {
   return null;
 }
 
-/** Every control and heading in the snapshot with a ref and a box, hidden checkable inputs standing in for their rows. */
 export function snapshotControls(snapshot) {
   const lines = String(snapshot ?? "").split("\n");
   const parsed = lines.map(parse);
@@ -85,12 +83,6 @@ export function snapshotControls(snapshot) {
   return controls;
 }
 
-/**
- * The page's controls and headings within `view` (CSS pixels), with counts of those above and below it.
- * `unseen` holds refs inside the view that can't be seen there, clipped by a panel that scrolls.
- * `entries` are the lines kept, each with its box and its `key`, the line without where it sits, which
- * is what `listChanges` compares.
- */
 export function compactSnapshot(snapshot, view, unseen = new Set()) {
   const out = [];
   const entries = [];

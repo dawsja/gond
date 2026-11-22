@@ -7,7 +7,6 @@ import { currentModel } from "./engines.ts";
 import { grokAccessToken } from "./grok.ts";
 import { ANTHROPIC_VERSION, authHeaders, upstreamUrl } from "./providers.ts";
 
-/** A key as saved, or for a plan an access token renewed when it's near its end. */
 export async function keyFor(userId: string, kind: ProviderKind): Promise<string | null> {
   if (kind === "chatgpt") return chatGptAccessToken(userId);
   if (kind === "grok") return grokAccessToken(userId);
@@ -65,16 +64,11 @@ export async function modelsFor(userId: string, engine: Engine): Promise<ModelGr
   }
 }
 
-/** The models the engine the bots run on now offers, for picking one bot's own. */
 export async function modelsInUse(userId: string, ai: AiSettings = getAi(userId)): Promise<{ current: ModelCurrent; choices: ModelChoice[] }> {
   const current = currentModel(ai, userId);
   return { current, choices: (await modelsFor(userId, current.engine)).models };
 }
 
-/**
- * The model a bot asked for by id or name, as loosely as people say it ("haiku", "Sonnet 5.5"): an exact
- * id or name first, then the one choice that contains the words. Null when nothing or several match.
- */
 export function matchModel(asked: string, choices: ModelChoice[]): ModelChoice | null {
   const wanted = asked.trim().toLowerCase();
   if (!wanted) return null;

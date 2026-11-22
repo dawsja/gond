@@ -5,12 +5,10 @@ import WebKit
 
 private let shellLog = Logger(subsystem: "io.gond.mac", category: "shell")
 
-/// The web view that shows your Gond, and the `gondMac` bridge its pages talk to.
 @MainActor
 final class WebShell: NSObject {
     /** Kept in step with MCP_LOOPBACK_PORT in packages/shared. */
     static let loopbackPort = 47651
-    /// The only events the app ever raises on the page.
     private static let events: Set<String> = ["gond:native", "gond:native-chrome", "gond:native-sidebar", "gond:download"]
 
     let webView: GondWebView
@@ -93,20 +91,17 @@ final class WebShell: NSObject {
         }
     }
 
-    /// Another Gond's sign-in and pages have no business in this one's web view.
     func forgetEverything() async {
         let store = webView.configuration.websiteDataStore
         await store.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast)
         hasPage = false
     }
 
-    /// The focus is somewhere in the page, so it hears the keys itself.
     var hasFocus: Bool {
         guard let responder = webView.window?.firstResponder as? NSView else { return false }
         return responder === webView || responder.isDescendant(of: webView)
     }
 
-    /// Something of the page's opened over the conversation: the keys go to it, not to the app's composer.
     func focusPage() {
         guard let window = webView.window, !hasFocus else { return }
         _ = window.makeFirstResponder(webView)
@@ -280,7 +275,6 @@ final class WebShell: NSObject {
 
     // MARK: The app's own pieces (NativeUI)
 
-    /// An event the page listens for; only ever the connected Gond's own page hears it.
     func dispatch(_ name: String, _ detail: [String: Any]) {
         guard ownPage, Self.events.contains(name), JSONSerialization.isValidJSONObject(detail),
               let data = try? JSONSerialization.data(withJSONObject: detail) else { return }
@@ -331,7 +325,6 @@ final class WebShell: NSObject {
         webView.evaluateJavaScript("(function(s){\(script)})(document.documentElement.style)", completionHandler: nil)
     }
 
-    /// Where a menu the page asked for opens: at the pointer when it is over that part of the page, else under it.
     func menuPoint(for rect: CGRect?) -> NSPoint {
         if let window = webView.window {
             let pointer = webView.convert(window.mouseLocationOutsideOfEventStream, from: nil)
@@ -384,7 +377,6 @@ final class WebShell: NSObject {
     }
 }
 
-/// The page's web view, with WebKit's own right-click menu kept to what makes sense inside an app.
 final class GondWebView: WKWebView {
     private static let unwanted: Set<String> = [
         "WKMenuItemIdentifierReload", "WKMenuItemIdentifierGoBack", "WKMenuItemIdentifierGoForward",
@@ -397,7 +389,6 @@ final class GondWebView: WKWebView {
     override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
         super.willOpenMenu(menu, with: event)
         let items = menu.items.filter { !Self.unwanted.contains($0.identifier?.rawValue ?? "") }
-        // No separator first, last or twice in a row once those are gone.
         var tidy: [NSMenuItem] = []
         for item in items {
             if item.isSeparatorItem && (tidy.isEmpty || tidy.last?.isSeparatorItem == true) { continue }
@@ -508,7 +499,6 @@ extension WebShell: WKNavigationDelegate {
 }
 
 extension WebShell: WKUIDelegate {
-    /// A link that opens a new window: your Gond's own pages load here, anything else in the browser.
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
         if let url = navigationAction.request.url, url.absoluteString != "about:blank" {
             if ServerURL.sameOrigin(url, server) { webView.load(navigationAction.request) } else { openOutside(url) }
@@ -516,7 +506,6 @@ extension WebShell: WKUIDelegate {
         return nil
     }
 
-    /// A file field on a page (a picture for your profile, a file for a bot): the Mac's own Open panel.
     func webView(_ webView: WKWebView, runOpenPanelWith parameters: WKOpenPanelParameters, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping ([URL]?) -> Void) {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = parameters.allowsMultipleSelection
@@ -555,7 +544,6 @@ extension WebShell: WKUIDelegate {
         alert.beginSheetModal(for: window) { response in completionHandler(response == .alertFirstButtonReturn) }
     }
 
-    /// The microphone, for the composer's voice button and calls, and only for the person's own Gond.
     func webView(_ webView: WKWebView, requestMediaCapturePermissionFor origin: WKSecurityOrigin, initiatedByFrame frame: WKFrameInfo, type: WKMediaCaptureType, decisionHandler: @escaping (WKPermissionDecision) -> Void) {
         let mine = ServerURL.origin(scheme: origin.`protocol`, host: origin.host, port: origin.port) == server
         decisionHandler(type == .microphone && mine && frame.isMainFrame ? .grant : .deny)

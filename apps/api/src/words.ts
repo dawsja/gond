@@ -29,7 +29,6 @@ const WORDS = [
 
 if (WORDS.length !== 256 || new Set(WORDS).size !== 256) throw new Error("The key word list must hold 256 different words");
 
-/** Six words for a Gond's key, the same on every Gond that knows it. */
 export function keyWords(key: string): string[] {
   const hash = createHash("sha256").update(`gond-space-words\n${key}`).digest();
   return [...hash.subarray(0, 6)].map((byte) => WORDS[byte]!);

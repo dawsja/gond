@@ -34,7 +34,6 @@ export function SkillDialog({ skill: initial, onClose, onSaved }: { skill: Skill
   const shownRemoving = useHeld(removing, Boolean(removing));
   const [uploading, setUploading] = useState(false);
   const picker = useRef<HTMLInputElement>(null);
-  // The file as it was opened, so leaving it asks only when it changed.
   const [draftStart, setDraftStart] = useState<Draft | null>(null);
   if ((draft === null) !== (draftStart === null)) setDraftStart(draft);
   const fileDirty = draft !== null && JSON.stringify(draft) !== JSON.stringify(draftStart);

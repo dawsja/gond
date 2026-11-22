@@ -10,7 +10,6 @@ import { toast } from "@/components/ui/toast";
 import { api, post } from "@/lib/api";
 import { describeSchedule, describeTrigger } from "@/lib/schedule";
 
-/** The bot's watches that are on, refetched when a routine changes. */
 export function useWatches(botId: string | null): Routine[] {
   const [watches, setWatches] = useState<Routine[]>([]);
   const load = useCallback(async () => {
@@ -53,7 +52,6 @@ export function noticedRuns(messages: Message[]): Map<string, Noticed> {
   return runs;
 }
 
-/** The line a routine's run leaves: a clock and its name, or for a watch, "<bot> noticed". */
 export function RunMarker({ message, bot }: { message: Message; bot: Bot | null }) {
   const name = routineName(message.body);
   if (!isWatchRun(message.body)) {

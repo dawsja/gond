@@ -58,7 +58,6 @@ test("an agent starts on the session the API names, and on the one kept here whe
   store.remember("b-1--t-1", { user: "u-1", engine: "claude", sessionId: "s-kept", backend: "api:0123456789abcdef" });
   const agent = { id: "b-1--t-1", user: "u-1", engine: "claude", backend: "plan" };
   assert.deepEqual(sessionToStart("4f0c2a8e-1b2c-4d5e-8f90-123456789abc", store, agent), { sessionId: "4f0c2a8e-1b2c-4d5e-8f90-123456789abc", backend: "plan" });
-  // An API from before it kept sessions sends none, so an upgrade resumes every session it had.
   assert.deepEqual(sessionToStart(undefined, store, agent), { sessionId: "s-kept", backend: "api:0123456789abcdef" });
   assert.equal(validSessionId(undefined), true);
   assert.equal(validSessionId("../../etc"), false);

@@ -6,23 +6,6 @@ import { injectSecrets } from "./data/secrets.ts";
 import { postMessage } from "./data/threads.ts";
 import { personOf } from "./data/profiles.ts";
 
-/*
- * Sign-in for HTTP MCP servers, the way the MCP authorization spec lays it
- * out and the way Robinhood's, Linear's and friends work: the server answers
- * 401 and points at its protected-resource metadata; that names an
- * authorization server; Gond registers itself as a client there (RFC 7591)
- * when it can, sends the person through the authorization code flow with
- * PKCE, and keeps the tokens. The proxy adds the bearer token to every
- * request and refreshes it when it runs out. Tokens live encrypted in the
- * database and never reach the box or a bot.
- *
- * Some providers only let local tools sign in, with a redirect to
- * localhost. A server set to `localhost` sends the browser back to
- * MCP_LOOPBACK_CALLBACK instead: the desktop app listens there and hands
- * the code to this Gond's callback, and in a browser the person pastes
- * the address the page landed on (finishMcpLoginFrom).
- */
-
 type ResourceMetadata = { authorization_servers?: string[]; scopes_supported?: string[]; resource?: string };
 type ServerMetadata = { authorization_endpoint?: string; token_endpoint?: string; registration_endpoint?: string; scopes_supported?: string[]; code_challenge_methods_supported?: string[] };
 

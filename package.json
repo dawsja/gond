@@ -16,7 +16,8 @@
     "dev:box": "bun run --filter @gond/box dev",
     "build": "bun run --filter @gond/shared build && bun run --filter @gond/api build && bun run --filter @gond/web build",
     "typecheck": "bun run --filter '*' typecheck",
-    "lint": "bun run --filter '*' lint",
+    "lint": "bun run --filter '*' lint && bun scripts/comment-lint.ts",
+    "lint:comments": "bun scripts/comment-lint.ts",
     "test": "bun run --filter '*' test"
   },
   "packageManager": "bun@1.4.4",

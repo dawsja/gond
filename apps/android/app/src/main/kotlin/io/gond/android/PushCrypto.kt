@@ -15,7 +15,6 @@ import javax.crypto.spec.SecretKeySpec
 object PushCrypto {
     private fun bytes(base64url: String): ByteArray = Base64.getUrlDecoder().decode(base64url)
 
-    /** The notice's JSON, or null when it wasn't sealed for this key. */
     fun open(key: String, sealed: String): String? = try {
         val raw = bytes(sealed)
         if (raw.size < 12 + 16) null

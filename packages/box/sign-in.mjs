@@ -140,7 +140,6 @@ export class SignInJob {
     try {
       this.pty?.kill("SIGHUP");
     } catch {
-      /* already gone */
     }
     this.pty = null;
   }

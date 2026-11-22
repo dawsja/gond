@@ -53,15 +53,12 @@ export function BotDialog({ botId, onClose }: { botId: string | null; onClose: (
   const shown = photo === undefined ? (existing?.avatar ?? null) : (photo?.url ?? null);
   const picture = usePicturePicker("The bot's picture", async (blob) => setPhoto({ blob, url: URL.createObjectURL(blob) }));
   useEffect(() => () => void (photo && URL.revokeObjectURL(photo.url)), [photo]);
-  // Whether this device hears the bot is the device's, kept apart from the bot and saved with it.
   const device = useDeviceNotices();
   const mutedHere = Boolean(existing && device.notices?.mutedBots.includes(existing.id));
   const [here, setHere] = useState<boolean | null>(null);
   const hereOn = here ?? !mutedHere;
   const hereChanged = here !== null && here === mutedHere;
-  // Check-ins are the primary bot's, kept for the profile and saved with the dialog.
   const checkIns = useCheckIns(Boolean(existing?.primary));
-  // What it may do without asking, from Always allow on its cards; a removal is saved with the dialog.
   const rules = useSavedRules(existing?.id ?? null);
   // A bot's own model counts only where the AI runs now, so it is sent only when the person changed it.
   const models = useBotModels();
@@ -116,7 +113,6 @@ export function BotDialog({ botId, onClose }: { botId: string | null; onClose: (
     }
   }
 
-  /** A bot someone shared as a .bot file: made as it is, then opened. */
   async function importBot(file: File) {
     setBusy(true);
     setError(null);
@@ -271,7 +267,6 @@ function pick(bot: Bot): Form {
   return { name: bot.name, title: bot.title, description: bot.description, color: bot.color, expression: bot.expression, shape: bot.shape, approval: bot.approval, notify: bot.notify };
 }
 
-/** A notice setting as a bell: rung when on, struck through when off. */
 function BellField({ title, label, pressed, disabled = false, onPressedChange }: { title: string; label: string; pressed: boolean; disabled?: boolean; onPressedChange: (pressed: boolean) => void }) {
   return (
     <Field orientation="horizontal" data-disabled={disabled || undefined} className="min-h-15">

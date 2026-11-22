@@ -103,7 +103,6 @@ pub async fn check(app: &AppHandle) {
     }
 }
 
-/// The version it downloaded, if it is one not downloaded before.
 async fn fetch(app: &AppHandle, updates: &Updates) -> Result<Option<String>, String> {
     let found = app
         .updater()

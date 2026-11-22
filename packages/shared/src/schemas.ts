@@ -50,7 +50,6 @@ export const approvalDecisionSchema = z.object({
   decision: z.enum(["allow", "deny", "always"]),
   /** On a draft's card: send it rather than leave it saved. */
   send: z.boolean().optional(),
-  /** On an email's card: the letter as the person changed it. */
   edit: emailEditSchema.optional(),
   /** With a deny: what to change, told to the bot. */
   note: z.string().trim().min(1).max(MAX_APPROVAL_NOTE).optional(),

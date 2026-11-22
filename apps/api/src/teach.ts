@@ -25,7 +25,6 @@ import { now } from "./ids.ts";
 import { tellHandedBack } from "./responder.ts";
 import { syncSkills } from "./skills.ts";
 
-/** Something about "Show me how" the person can't do right now, in words they can act on. */
 export class TeachError extends Error {
   constructor(
     message: string,
@@ -35,7 +34,6 @@ export class TeachError extends Error {
   }
 }
 
-// The pictures a bot is shown of a recording: the key moments, as few as tell the story.
 const LOOK_FRAMES = 16;
 const SAVE_EVERY_MS = 350;
 // While the computer is away (an update takes minutes), a recording waits for it rather than losing its pictures.
@@ -66,7 +64,6 @@ function startFailure(error: unknown): TeachError {
   return new TeachError("Couldn't start recording. Try again in a moment.", 502);
 }
 
-/** A bot offers to be shown how, with a card the person starts it from. */
 export function offerTeaching(bot: Bot, thread: Thread): string {
   const id = createTeaching({ userId: bot.userId, botId: bot.id, threadId: thread.id, status: "offered" });
   postCard(id, bot, thread.id);
@@ -78,11 +75,6 @@ function postCard(id: string, bot: Bot, threadId: string) {
   updateTeaching(id, { messageId: card.id });
 }
 
-/**
- * Starts recording: from an offered card, or from a bot's screen (which posts the card in the
- * bot's own conversation first, so the chat says what happened). The screen is the person's
- * while it records, so no bot's batch lands in the middle of what they show.
- */
 export async function startTeaching(userId: string, input: { teachingId: string } | { botId: string }): Promise<Teaching> {
   const box = boxOf(userId);
   let id: string;
@@ -139,7 +131,6 @@ function busy(open: Teaching): TeachError {
   return new TeachError(open.status === "looking" ? `${name} is still looking at what you showed it. Try again in a moment.` : `You're already showing ${name} something. Finish or discard that first.`, 409);
 }
 
-/** Hears the box's steps for a recording until it ends, picking the stream up again if it drops. */
 function follow(id: string): void {
   const { follow: followers } = state();
   if (followers.has(id)) return;
@@ -201,7 +192,6 @@ function flushSteps(id: string) {
   updateTeaching(id, { steps: [...known.values()].sort((a, b) => a.n - b.n) });
 }
 
-/** One event from the box; true once the recording has ended and been finished. */
 async function heard(id: string, event: BoxRecordingEvent): Promise<boolean> {
   if (event.type === "snapshot") {
     const known = stepsOf(id);
@@ -312,7 +302,6 @@ async function giveScreenBack(userId: string, botId: string) {
   void emitDesktop(userId);
 }
 
-/** Drops a recording, wherever it is, and what it caught. */
 export async function discardTeaching(id: string, why = "discarded"): Promise<void> {
   const teaching = teachingById(id);
   if (!teaching || teaching.status === "saved" || teaching.status === "discarded" || teaching.status === "failed") return;
@@ -328,7 +317,6 @@ export async function discardTeaching(id: string, why = "discarded"): Promise<vo
   updateTeaching(id, { status: "discarded", endedWhy: why, endedAt: now(), pausedFor: null });
 }
 
-/** The person hid what they typed outside the browser and let the bot look. */
 export function lookAfterReview(userId: string, id: string, hidden: number[]): Teaching {
   const teaching = getTeaching(id, userId);
   if (!teaching) throw new TeachError("Couldn't find that recording", 404);
@@ -339,7 +327,6 @@ export function lookAfterReview(userId: string, id: string, hidden: number[]): T
   return getTeaching(id, userId)!;
 }
 
-/** The pictures worth showing a bot: the first, each new page or window, and an even spread of the rest. */
 export function keyframes(steps: Pick<TeachStep, "n" | "frame" | "kind" | "skipped" | "hidden">[], max = LOOK_FRAMES): { frame: number; step: number }[] {
   const all = steps.filter((step) => step.frame && !step.skipped && !step.hidden).map((step) => ({ frame: step.frame!, step: step.n, key: step.kind === "navigate" || step.kind === "tab_open" }));
   const unique = all.filter((item, index) => all.findIndex((other) => other.frame === item.frame) === index);
@@ -360,7 +347,6 @@ export function keyframes(steps: Pick<TeachStep, "n" | "frame" | "kind" | "skipp
 
 const clock = (ms: number) => `${Math.floor(ms / 60_000)}:${String(Math.floor((ms % 60_000) / 1000)).padStart(2, "0")}`;
 
-/** The steps as a bot reads them: skipped ones marked, hidden ones left out, notes in their place. */
 function stepLines(teaching: Pick<Teaching, "steps" | "notes">): string {
   const lines: string[] = [];
   for (const step of teaching.steps) {
@@ -386,7 +372,6 @@ function lookPrompt(teaching: Pick<Teaching, "id" | "steps" | "notes" | "endedWh
   ].join("\n\n");
 }
 
-/** Posts the hidden prompt that has the bot look at a recording, with its key moments as pictures. */
 function beginLooking(id: string, note?: string): void {
   const teaching = teachingById(id);
   if (!teaching) return;
@@ -406,7 +391,6 @@ function beginLooking(id: string, note?: string): void {
   updateTeaching(id, { status: "looking", promptId: prompt.id, error: null });
 }
 
-/** A turn asked to look at a recording ended: if it left no draft, the card gets the steps as shown, so nothing is lost. */
 export function lookTurnEnded(messageId: string, failure: string | null = null): void {
   const id = teachingAskedBy(messageId);
   if (!id) return;
@@ -428,7 +412,6 @@ function hostOf(url: string | undefined): string {
   }
 }
 
-/** A draft made from the steps themselves, for when the bot couldn't write one. */
 function draftFromSteps(teaching: Pick<Teaching, "steps" | "notes">): TeachDraft {
   const kept = teaching.steps.filter((step) => !step.skipped && !step.hidden);
   const site = kept.map((step) => hostOf(step.url)).find(Boolean);
@@ -444,7 +427,6 @@ function draftFromSteps(teaching: Pick<Teaching, "steps" | "notes">): TeachDraft
 
 const LIMITS = { name: 60, description: 300, step: 300, steps: 40, items: 10, item: 200, instructions: 20_000 };
 
-/** A draft from a bot's tool call, cut to what the card and a skill can hold; null when it can't be one. */
 export function cleanDraft(input: Record<string, unknown>, stepCount: number): TeachDraft | string {
   const text = (value: unknown, max: number) => (typeof value === "string" ? value.replace(/\s+/g, " ").trim().slice(0, max) : "");
   const name = text(input.name, LIMITS.name);
@@ -464,7 +446,6 @@ export function cleanDraft(input: Record<string, unknown>, stepCount: number): T
   return { name, description: text(input.description, LIMITS.description), steps, changes: list(input.changes), needs: list(input.needs), instructions };
 }
 
-/** The bot's draft of what it was shown, on the card. */
 export function proposeDraft(bot: Bot, input: Record<string, unknown>): string {
   const id = typeof input.teaching === "string" ? input.teaching : "";
   const teaching = teachingById(id);
@@ -504,7 +485,6 @@ export async function saveTeaching(userId: string, id: string): Promise<Teaching
   return getTeaching(id, userId)!;
 }
 
-/** Has the bot do the task now, from its draft, with the person watching. */
 export function tryTeaching(userId: string, id: string): Teaching {
   const teaching = getTeaching(id, userId);
   if (!teaching?.draft) throw new TeachError("Couldn't find that draft", 404);
@@ -549,14 +529,12 @@ export function addNote(userId: string, id: string, text: string): Teaching {
   return getTeaching(id, userId)!;
 }
 
-/** Stop in a conversation drops what is being shown there; how many it dropped. */
 export async function stopTeachingsIn(threadId: string): Promise<number> {
   const open = teachingsIn(threadId, ["offered", "recording", "paused", "review", "looking"]);
   for (const teaching of open) await discardTeaching(teaching.id, "stopped");
   return open.filter((teaching) => teaching.status !== "offered").length;
 }
 
-/** Whether something is being shown in a conversation, for "stop" to stop. */
 export function teachingIn(threadId: string): boolean {
   return teachingsIn(threadId, ["recording", "paused"]).length > 0;
 }
@@ -567,10 +545,6 @@ export async function forgetBotTeachings(botId: string, userId: string): Promise
   deleteTeachingsOf({ botId });
 }
 
-/**
- * At start: a recording the box still makes is followed again, one it ended (or lost) is finished
- * with what it kept, and a bot's look whose turn already ended gets the steps as shown.
- */
 export async function resumeTeachings(): Promise<void> {
   for (const teaching of unfinishedTeachings()) {
     if (teaching.status === "recording" || teaching.status === "paused") {

@@ -11,7 +11,6 @@ import { api } from "@/lib/api";
 
 const ITEMS = REPLY_STYLES.map((value) => ({ value, label: REPLY_STYLE_LABELS[value].title }));
 
-// One answer to the same question in each style, so a pick shows what it changes.
 const SAMPLES: Record<ReplyStyle, string> = {
   default: "Yes, it's up. It answered in 180 ms, and its certificate is good until March.",
   professional: "Yes, the website is up. It responded in 180 ms, and its certificate remains valid until March.",

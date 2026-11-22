@@ -13,7 +13,6 @@ export function handleOf(name: string): string {
 type RoomMember = { id: string; name: string; primary: boolean };
 type RoomLine = { author: string; kind: string; body: string; sentTo?: string[] | null };
 
-/** Who answers a room when nothing says otherwise: the primary bot if it's there, else the first bot. */
 export function roomAnswerer<B extends RoomMember>(members: B[]): B | null {
   return members.find((b) => b.primary) ?? members[0] ?? null;
 }
@@ -25,7 +24,6 @@ export function roomAnswerer<B extends RoomMember>(members: B[]): B | null {
 export const ROOM_MIN_BOTS = 2;
 export const ROOM_MAX_BOTS = 6;
 
-/** A room's name when the person gives it none: its bots, the one that answers first in front ("Pip, Net and Patch", "Pip, Net, Patch and 4 more"). */
 export function roomNameFor(members: RoomMember[]): string {
   const first = roomAnswerer(members);
   const names = (first ? [first, ...members.filter((b) => b !== first)] : members).map((b) => b.name);
@@ -34,7 +32,6 @@ export function roomNameFor(members: RoomMember[]): string {
   return `${names.slice(0, 3).join(", ")} and ${names.length - 3} more`;
 }
 
-// Words that speak to the whole room wherever they stand.
 const PLURAL_YOU = /\b(?:all of you|each of you|every one of you|y'?all|you all|you guys)\b/i;
 // "everyone" speaks to the room unless it is what a verb or a preposition acts on: "tell everyone", "for everyone".
 const EVERYONE = /(?<!\b(?:tell|inform|notify|message|ping|remind|update|let|show|ask|thank|give|send|cc|for|to|with|from|about|on|of)\s+)\b(?:everyone|everybody)\b/i;
@@ -53,11 +50,6 @@ function namedIn<B extends RoomMember>(text: string, members: B[]): B[] {
   return members.filter((b) => handles.includes(handleOf(b.name)) || new RegExp(`(?<![\\w@])${b.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?!\\w)`, "i").test(text));
 }
 
-/**
- * The members a person's message in a room speaks to: those it names, or the room as a whole
- * ("everyone, …", "you guys", "each of you", "hey all", or "both" in a room of two). "Tell
- * everyone" is about the room, not to it.
- */
 export function addressedIn<B extends RoomMember>(text: string, members: B[]): B[] {
   const handles = mentionsIn(text);
   if (handles.includes("everyone") || handles.includes("all") || PLURAL_YOU.test(text) || EVERYONE.test(text) || VOCATIVE.test(text) || SIGN_OFF.test(text) || (members.length === 2 && BOTH.test(text))) return members;

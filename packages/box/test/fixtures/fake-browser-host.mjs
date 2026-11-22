@@ -1,4 +1,3 @@
-// Stands in for browser-host.mjs: answers each line, stalls on "stall", exits on "die".
 import { takeLines } from "../../gond-mcp.mjs";
 
 const state = { pending: "" };

@@ -71,7 +71,6 @@ const BROWSER_SHOWN_MS = 20_000;
 const MAX_FRAME_BYTES = 5 * 1024 * 1024;
 
 const DESKTOP_IDLE_MS = 30 * 60 * 1000;
-// Screens a person's bots keep running at once; each is a display and a Chrome.
 const SCREENS_PER_PERSON = Math.max(1, Number(process.env.GOND_SCREENS_PER_PERSON) || 3);
 // The bots' hold lapses when no batch has come for this long, so a turn the API lost can't keep the person out.
 const BOTS_HOLD_MS = 10 * 60 * 1000;
@@ -87,7 +86,6 @@ const SCREENSHOT_GAP_MS = 300;
 
 const SCREEN_TIMING = ["1", "true", "yes", "on"].includes((process.env.GOND_SCREEN_TIMING ?? "").trim().toLowerCase());
 
-/** Where one screen batch's time went, logged as one line under GOND_SCREEN_TIMING. */
 function screenTimer(target, bot) {
   const started = Date.now();
   let last = started;
@@ -142,7 +140,6 @@ function asUser(account) {
   return account.uid !== undefined ? { uid: account.uid, gid: account.gid } : {};
 }
 
-// Each bot's browser runs on its own screen with its own profile, as the person.
 const browsers = createBrowsers({
   start: (account, bot) => {
     const screen = screenOf(account, bot);
@@ -171,7 +168,6 @@ const browsers = createBrowsers({
   log: (text) => console.warn(`[box] ${text}`),
 });
 
-/** The window at a point on a screen (or the focused one), by its title and class, for a step's "in Terminal". */
 async function windowAt(account, screen, point) {
   const env = displayEnv(screen);
   const run = (argv) => runAsUser(account, ["xdotool", ...argv], { cwd: account.home, timeoutMs: 2_000, env });
@@ -191,7 +187,6 @@ async function windowAt(account, screen, point) {
   return { name: title, cls: isBrowser ? "google-chrome" : "" };
 }
 
-// "Show me how": one recording per screen, of the person's own input and the bot's browser.
 const recordings = createRecordings({
   root: path.join(STATE_DIR, "teach"),
   // Shot as the person into their screen's own folder, read back without following a link, and kept under /state.
@@ -222,10 +217,6 @@ const recordings = createRecordings({
   log: (text) => console.warn(`[box] ${text}`),
 });
 
-/**
- * Hands a path to the account; a no-op when the box isn't root (development).
- * Never through a link, and never to anything outside the home (handOver).
- */
 function own(target, account) {
   if (account.uid === undefined) return;
   try {
@@ -263,10 +254,6 @@ export function inside(root, relative) {
 
 const AGENT_LOGIN_DIRS = [process.env.CLAUDE_CONFIG_DIR || path.join(AGENT_HOME, ".claude")];
 
-/**
- * Resolves a path inside a person's home, for the bots' own use of the
- * box: anywhere under home except the CLIs' logins, and never .git.
- */
 export function insideHome(relative, home = AGENT_HOME, forbidden = AGENT_LOGIN_DIRS) {
   const full = inside(home, relative);
   for (const dir of Array.isArray(forbidden) ? forbidden : [forbidden]) {
@@ -369,7 +356,6 @@ function fileJob(account, job) {
       try {
         parsed = JSON.parse(out);
       } catch {
-        /* crashed */
       }
       reject(fail(parsed?.code ?? null, parsed?.message ?? (err.trim().slice(0, 200) || "The file change failed")));
     });
@@ -478,7 +464,6 @@ export function runAsUser(account, argv, { cwd, timeoutMs, env, onChunk, input, 
       try {
         process.kill(-child.pid, "SIGKILL");
       } catch {
-        /* already gone */
       }
     };
     const timer = setTimeout(() => {
@@ -576,7 +561,6 @@ async function uploadFile(request, account, relative) {
 
 const PREVIEW_MS = 30_000;
 
-/** A model-sized JPEG of a picture in the home, made as the person by ImageMagick. */
 async function imagePreview(account, relative, mediaType) {
   const { fd, real } = openInsideHome(relative, account.home, forbiddenIn(account));
   try {
@@ -812,17 +796,12 @@ export function desktopSize(body) {
   return { width, height };
 }
 
-/** The lowest display no running screen has. */
 export function freeDisplay(used, first = DESKTOP_DISPLAY) {
   let display = first;
   while (used.has(display)) display += 1;
   return display;
 }
 
-/**
- * The screen to stop so another can start when a person has `cap` running: the one used longest
- * ago that nobody watches and no bot or person drives; null when every one is in use.
- */
 export function screenToStop(running, cap, viewers) {
   if (running.length < cap) return undefined;
   return running.filter((screen) => viewers(screen) === 0 && screen.control.holder === "free").sort((a, b) => a.used - b.used)[0] ?? null;
@@ -915,7 +894,6 @@ async function releaseButton(account, screen) {
 }
 
 async function changeControl(account, screen, holder, by = null) {
-  // The bots' turn with the screen is over: nothing they pressed stays down for whoever has it next.
   if (screen.control.holder !== holder && holder !== "bots") await releaseButton(account, screen);
   if (screen.botsHold) clearTimeout(screen.botsHold);
   screen.botsHold = null;
@@ -1121,13 +1099,11 @@ function stopDesktop(account, bot, { suspend = false } = {}) {
   try {
     process.kill(-current.child.pid, "SIGTERM");
   } catch {
-    /* already gone */
   }
   const force = setTimeout(() => {
     try {
       process.kill(-current.child.pid, "SIGKILL");
     } catch {
-      /* already gone */
     }
   }, 5000);
   current.child.once("exit", () => clearTimeout(force));
@@ -1219,7 +1195,6 @@ function streamConnection(request, response, connection) {
   socket.resume();
 }
 
-/** Reads a viewer's input into the recording of its screen: only while it records and the bots don't hold the screen. */
 function teachInput(account, bot, connection, bytes) {
   const wasLost = connection.rfb.lost;
   const events = connection.rfb.feed(bytes);
@@ -1385,7 +1360,6 @@ function readFrame(dir, name) {
   return data?.[0] === 0xff && data[1] === 0xd8 ? data : null;
 }
 
-/** A screenshot's PNG for a bot's batch, which a misplaced folder fails. */
 function readShot(dir, name) {
   const { misplaced, data } = readPlacedFile(dir, name);
   if (misplaced) throw new HttpError(500, "The screenshot folder isn't where it should be");
@@ -1420,7 +1394,6 @@ async function takeScreenshot(account, desktop, signal) {
       try {
         fs.rmSync(file, { force: true });
       } catch {
-        /* the next one overwrites it */
       }
     }
   }
@@ -1475,7 +1448,6 @@ async function runBatch(body, response, account, timer) {
   }
   if (body.since !== undefined && body.since !== null && (typeof body.since !== "string" || body.since.length > 40)) throw new HttpError(400, "since must be the id of an element list");
   if (body.marks !== undefined && typeof body.marks !== "boolean") throw new HttpError(400, "marks must be true or false");
-  // An upload names a file in the person's home, never a sign-in folder or anything outside it.
   for (const step of steps) if (step.type === "upload") step.path = insideHome(step.path.replace(/^~\//, ""), account.home, forbiddenIn(account));
 
   const abort = new AbortController();
@@ -1564,7 +1536,6 @@ function loadToken() {
     const existing = fs.readFileSync(file, "utf8").trim();
     if (existing) return existing;
   } catch {
-    /* generate below */
   }
   const token = randomBytes(32).toString("hex");
   fs.mkdirSync(STATE_DIR, { recursive: true });
@@ -1605,7 +1576,6 @@ function refuseWhileUpdating() {
   if (update && update.finishedAt === null) throw new HttpError(503, "The computer is updating; try again in a few minutes.");
 }
 
-/** Ends an agent and removes what it left on disk; the session is kept for a later resume only when asked. */
 async function closeAgent(id, agent, { keepSession }) {
   agents.delete(id);
   try {
@@ -1711,7 +1681,6 @@ function commandVersion(command, args) {
 
 const homeSizes = createHomeSizes();
 
-/** How full the computer is, and what each person's bots hold of it, for the admin's Shared computer. */
 export async function stats() {
   const [byUid, disk, memory] = await Promise.all([isRoot ? memoryByUid() : null, diskOf(HOMES_DIR), memoryNow()]);
   const people = accounts.list().map((account) => {

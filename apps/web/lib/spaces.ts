@@ -31,7 +31,6 @@ export function inertChoices(messages: Pick<Message, "id" | "author" | "answerin
   return inert;
 }
 
-/** The people and bots on the other Gonds of an open space, for an @ to name; none while it isn't open. */
 export function spaceMentionables(space: ThreadSpace | null | undefined): Mentionable[] {
   if (!space || space.status !== "active") return [];
   return space.members.map((m) => ({
@@ -43,14 +42,12 @@ export function spaceMentionables(space: ThreadSpace | null | undefined): Mentio
   }));
 }
 
-/** "Ada's Gond", "Ada's Gond and Cy's Gond", "Ada's Gond and 2 more". */
 function gondNames(space: ThreadSpace): string {
   const list = space.gonds.map((g) => g.name);
   if (list.length <= 2) return list.join(" and ");
   return `${list[0]} and ${list.length - 1} more`;
 }
 
-/** The line under a space's name: where it stands, or who it's with. */
 export function spaceSubtitle(space: ThreadSpace): string {
   if (space.status === "joining") return "Waiting to be let in";
   if (space.status === "left") return "You left";

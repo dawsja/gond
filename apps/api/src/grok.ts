@@ -18,7 +18,6 @@ const SCOPES = "openid profile email offline_access grok-cli:access api:access";
 const CLI_VERSION = "1.0.52";
 const SIGN_IN_HEADERS = { "x-grok-client-version": CLI_VERSION, "x-grok-client-surface": "headless" };
 
-/** What every call to a Grok plan carries besides the bearer token. */
 export const GROK_PLAN_HEADERS: Record<string, string> = { "X-XAI-Token-Auth": "xai-grok-cli", "x-grok-client-version": CLI_VERSION, "x-grok-client-mode": "interactive" };
 
 // The CLI's own picture calls go straight to api.x.ai with the plan's token and these (grok-build's media_tool_config.rs).
@@ -83,7 +82,6 @@ function finish(userId: string, login: Pending, outcome: { error: string } | nul
   emit({ topic: "ai", userId });
 }
 
-/** Starts a device sign-in, replacing any the person had going, and polls for it in the background. */
 export async function startGrokLogin(userId: string): Promise<GrokSignIn> {
   const old = logins().get(userId);
   if (old?.timer) clearTimeout(old.timer);
@@ -142,7 +140,6 @@ async function poll(userId: string, login: Pending) {
   return finish(userId, login, { error: text(data.error_description) ?? code ?? `Grok answered ${answer.status}.` });
 }
 
-/** Polls the person's sign-in now instead of at its next tick. */
 export async function checkGrokLogin(userId: string): Promise<GrokSignIn | null> {
   const login = logins().get(userId);
   if (login?.state === "waiting") {
@@ -158,7 +155,6 @@ function cancelGrokLogin(userId: string) {
   logins().delete(userId);
 }
 
-/** A live access token for the person's plan, renewed when it's close to running out; null when they must sign in again. */
 export async function grokAccessToken(userId: string): Promise<string | null> {
   const session = planSession(userId, "grok");
   if (!session) return null;
@@ -199,7 +195,6 @@ async function renew(userId: string, session: PlanSession & { accessToken: strin
   return session.expiresAt > Date.now() ? session.accessToken : null;
 }
 
-/** Revokes the refresh token where xAI offers it and forgets the sign-in. */
 export async function signOutGrok(userId: string): Promise<boolean> {
   cancelGrokLogin(userId);
   const session = planSession(userId, "grok");

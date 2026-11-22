@@ -23,7 +23,6 @@ import { api } from "@/lib/api";
 import { describeRoutine } from "@/lib/schedule";
 import { cn } from "@/lib/utils";
 
-/** The bot's screen in the panel: live while a bot or the person uses it and for a while after, asleep otherwise. */
 function ComputerSlot({ thread, bot, screen }: { thread: Thread; bot: Bot; screen?: ScreenProps }) {
   const { desktop } = useStore();
   const driving = Boolean(desktop?.drivers.some((driver) => driver.threadId === thread.id && driver.botId === bot.id));
@@ -58,7 +57,6 @@ function RoutineRow({ routine, onOpen, onChange }: { routine: Routine; onOpen: (
   );
 }
 
-/** Which bot's screen the conversation shows full size, if any. */
 type ScreenProps = { open: string | null; onExpand: (botId: string) => void; onCollapse: () => void };
 
 function RightPanelContent({ thread, bot, screen }: { thread: Thread; bot: Bot | null; screen?: ScreenProps }) {

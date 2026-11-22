@@ -15,7 +15,6 @@ const NOT_IN_SPACES = "NOT done: the person's details stay out of spaces. If the
 const schema = (properties: Record<string, unknown>, required: string[] = []) => ({ type: "object", properties, required, additionalProperties: false });
 const text = (value: unknown, max: number) => (typeof value === "string" ? value.trim().slice(0, max) : "");
 
-/** What a bot reads of the person's details: the readable values, and only the names of the private ones. */
 export function detailsText(records: DetailRecord[]): string {
   if (!records.length) return `The person has no details saved. They add them in ${WHERE}; you can save what they tell you with save_details.`;
   const lines = records.flatMap((record) => [
@@ -25,7 +24,6 @@ export function detailsText(records: DetailRecord[]): string {
   return [`The person's details (${WHERE}), saved and checked by them:`, ...lines, "Use the readable ones as they are. A private one is typed into a web form only with use_details and a type_login action; you never see it, and you never ask for it in a sentence."].join("\n");
 }
 
-/** A name a bot types a held detail by: MAYA_DATE_OF_BIRTH, never one of a card's, and each once per request. */
 export function detailTypeName(record: string, field: string, taken: Set<string>): string {
   const slug = (part: string) => part.toUpperCase().replace(/['’]S\b/g, "S").replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "");
   let base = [slug(record), slug(field)].filter(Boolean).join("_").slice(0, 56).replace(/_+$/, "") || "DETAIL";
@@ -186,7 +184,6 @@ export function detailsTools(context: { bot: Bot; thread: Thread; signal?: Abort
   return tools;
 }
 
-/** "in 86 days", "tomorrow", "today", "3 days ago". */
 function whenText(left: number): string {
   if (left > 1) return `in ${left} days`;
   if (left === 1) return "tomorrow";

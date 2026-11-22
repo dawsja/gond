@@ -3,7 +3,6 @@ import type { botInputSchema } from "./schemas.ts";
 
 export const BOT_EXPRESSIONS = ["happy", "wink", "surprised"] as const;
 export type BotExpression = (typeof BOT_EXPRESSIONS)[number];
-// The cog is the Gond bot and always the default; the rest are other bodies with the same eyes.
 export const BOT_SHAPES = ["cog", "cloud", "circle", "triangle", "tile", "gem", "star", "drop"] as const;
 export type BotShape = (typeof BOT_SHAPES)[number];
 export const BOT_SHAPE_LABELS: Record<BotShape, string> = { cog: "Cog", cloud: "Cloud", circle: "Circle", triangle: "Triangle", tile: "Tile", gem: "Gem", star: "Star", drop: "Drop" };
@@ -32,7 +31,6 @@ export const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
 
 export type Bot = BotInput & {
   id: string;
-  /** A picture the person uploaded, shown in a circle instead of the mascot. */
   avatar: string | null;
 
   userId: string;

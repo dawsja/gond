@@ -30,7 +30,7 @@ class FileChooserTest {
         val dir = Files.createTempDirectory("gond-camera-test").toFile()
         try {
             val utc = TimeZone.getTimeZone("UTC")
-            val at = Date(1_795_306_530_000L) // 2026-11-22 00:15:30 UTC
+            val at = Date(1_795_306_530_000L)
             val first = FileChooser.photoFile(dir, at, utc)
             assertEquals("Photo-20261122-001530.jpg", first.name)
             first.createNewFile()

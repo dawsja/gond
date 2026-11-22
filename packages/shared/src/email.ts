@@ -1,7 +1,6 @@
 import type { EmailEdit } from "./approvals.ts";
 import { appAction, bareToolName } from "./tools.ts";
 
-/** An email a connected app is about to send, read from the action's own input. */
 export type EmailDraft = {
   mode: "send" | "reply" | "forward" | "draft";
   app: string;
@@ -54,7 +53,6 @@ function emailFiles(input: Record<string, unknown>): string[] {
   return out;
 }
 
-/** HTML a bot wrote as an email body, as the words and line breaks a person reads; never markup. */
 export function emailText(body: string): string {
   if (!/<[a-z][\s\S]*>/i.test(body)) return body.trim();
   return body
@@ -103,7 +101,6 @@ export function emailEditable(tool: string): boolean {
   return !tool.startsWith("mcp__") && emailMode(tool) !== null;
 }
 
-/** The app's action that sends a saved draft, and the input naming it, for a draft card's Send. */
 export function sendDraftAction(tool: string): { slug: string; idKey: string } | null {
   if (!emailEditable(tool) || emailMode(tool)?.mode !== "draft") return null;
   const name = tool.toUpperCase();
@@ -125,7 +122,6 @@ export function draftIdOf(result: unknown): string | null {
         try {
           seen.push(JSON.parse(value));
         } catch {
-          /* not JSON */
         }
         continue;
       }
@@ -138,7 +134,6 @@ export function draftIdOf(result: unknown): string | null {
   return null;
 }
 
-/** The address in "Dana Ruiz <dana@ruizdesign.co>", or the text as it is. */
 export function emailAddress(recipient: string): string {
   return /<([^<>\s]+@[^<>\s]+)>/.exec(recipient)?.[1] ?? recipient.trim();
 }
@@ -217,7 +212,6 @@ export function wordDiff(before: string, after: string): DiffPart[] {
   return parts;
 }
 
-/** "Dana Ruiz <dana@ruizdesign.co>" is Dana Ruiz to a person; a bare address stays an address. */
 export function emailName(recipient: string): string {
   const match = /^\s*"?([^"<]+?)"?\s*<[^>]+>\s*$/.exec(recipient);
   return match?.[1]?.trim() || recipient.trim();

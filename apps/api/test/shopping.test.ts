@@ -181,7 +181,6 @@ describe("shopping purchase lifecycle", () => {
     expect(stopCheckoutsIn(preparing.bot.threadId)).toBe(1);
     expect(checkoutRecord(preparing.checkout.id, "shopping-owner").state).toBe("cancelled");
 
-    // A submission already sent to the store can't be taken back by Stop.
     const sent = review();
     const approved = approveCheckout(sent.checkout.id, "shopping-owner", sent.checkout.revision, card, "Visa");
     claimSubmission(approved.id, "shopping-owner", approved.revision);
@@ -202,7 +201,6 @@ describe("shopping purchase lifecycle", () => {
     expect(response.status).toBe(400);
     expect(checkoutRecord(checkout.id, "shopping-owner").state).toBe("review");
     const saved = saveCard("shopping-owner", card, "Checkout Visa");
-    // A saved card pays only with its security code typed for this payment.
     const uncoded = await app("shopping-owner").request(`/api/shopping/${checkout.id}/approve`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ revision: checkout.revision, saved }) });
     expect(uncoded.status).toBe(400);
     const approved = await app("shopping-owner").request(`/api/shopping/${checkout.id}/approve`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ revision: checkout.revision, saved, cvc: "456" }) });

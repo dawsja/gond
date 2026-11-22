@@ -14,7 +14,6 @@ function tempDir(t, name) {
   return dir;
 }
 
-/** Serves `/files/raw` from one home the way the box does, error answers included. */
 async function rawServer(t, home) {
   const account = { home, logins: [path.join(home, ".claude")], browser: path.join(home, ".config/gond-browser"), browsers: path.join(home, ".config/gond-browser-bots"), skills: path.join(home, ".skills") };
   const server = createServer((request, response) => {

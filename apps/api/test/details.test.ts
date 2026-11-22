@@ -66,10 +66,8 @@ describe("your details", () => {
     const number = made.detail.fields.find((f) => f.label === "Number")!;
     expect(number).toMatchObject({ private: true, saved: true, value: null });
 
-    // Edited with the private one left empty: it keeps what it had.
     await app.request(`/api/details/${made.detail.id}`, { method: "PUT", body: JSON.stringify({ kind: "document", label: "Passport", fields: [{ id: number.id, label: "Number", private: true, value: "" }, { label: "Issued by", private: false, value: "Canada" }] }) });
     expect(allSecretValues()).toContain(PASSPORT);
-    // Switched to readable without a new value: it's cleared, never shown.
     const opened = (await (await app.request(`/api/details/${made.detail.id}`, { method: "PUT", body: JSON.stringify({ kind: "document", label: "Passport", fields: [{ id: number.id, label: "Number", private: false, value: "" }] }) })).json()) as { detail: DetailRecord };
     expect(opened.detail.fields[0]).toMatchObject({ private: false, saved: false, value: "" });
     expect(allSecretValues()).not.toContain(PASSPORT);
@@ -86,12 +84,10 @@ describe("your details", () => {
     const tools = detailsTools({ bot, thread, computer: true });
     const ask = { site: "Camp Oak", details: [{ record: "maya's passport", fields: ["Number", "Name on it"] }], reason: "Maya's camp sign-up" };
 
-    // Nothing open in the browser: nowhere to hold them to.
     expect(String(await tools.use_details!.execute(ask, "c1"))).toContain("open the form's page");
     expect(String(await tools.use_details!.execute({ ...ask, details: [{ record: "Maya's passport", fields: ["Visa"] }] }, "c2"))).toContain('has no "Visa"');
 
     notePage(bot.id, "https://www.campoak.org/register");
-    // Even on Always allow, it asks.
     const answer = tools.use_details!.execute(ask, "c3");
     await Bun.sleep(5);
     const card = listMessages(bot.threadId).filter((m) => m.kind === "approval").at(-1)!;
@@ -102,7 +98,6 @@ describe("your details", () => {
     expect(said).toContain("MAYAS_PASSPORT_NUMBER");
     expect(heldLoginFor(thread.id, "MAYAS_PASSPORT_NUMBER")).toEqual({ value: PASSPORT, site: "campoak.org" });
 
-    // The bot reads only that it's there.
     const listed = String(await tools.list_details!.execute({}, "c4"));
     expect(listed).toContain("Number: private");
     expect(listed).not.toContain(PASSPORT);

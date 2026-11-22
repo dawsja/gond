@@ -64,7 +64,6 @@ export function createRfbReader() {
   };
 }
 
-/** A message's full length from its first bytes; 0 while too few have come to tell, -1 for a type this doesn't know. */
 function messageLength(buffer) {
   const type = buffer[0];
   const need = (n) => buffer.length >= n;
@@ -151,7 +150,6 @@ const MODIFIERS = new Map([
   [0xfe03, "Alt"],
 ]);
 
-/** The character a keysym types, or null for one that types none. */
 export function keyChar(keysym) {
   if (keysym >= 0x20 && keysym <= 0x7e) return String.fromCharCode(keysym);
   if (keysym >= 0xa0 && keysym <= 0xff) return String.fromCharCode(keysym);
@@ -160,7 +158,6 @@ export function keyChar(keysym) {
   return null;
 }
 
-/** A key's name for a shortcut ("S" in Ctrl+S, "F5", "Enter"). */
 export function keyName(keysym) {
   if (NAMED.has(keysym)) return NAMED.get(keysym);
   if (keysym >= 0xffbe && keysym <= 0xffd5) return `F${keysym - 0xffbe + 1}`;
@@ -184,12 +181,6 @@ const WHEEL = [
   [64, "right"],
 ];
 
-/**
- * Turns the person's pointer and key events into steps: clicks (a second
- * close by in time and place makes a double click), drags, scrolls run
- * together, typing gathered into one step until something else happens,
- * and shortcuts. `replace` says the step takes the place of the last one.
- */
 export function createInputTracker({ now = Date.now } = {}) {
   let mask = 0;
   let down = null;
@@ -280,7 +271,6 @@ export function createInputTracker({ now = Date.now } = {}) {
       if (event.type === "paste" && event.text) return [...flush(), { step: { kind: "paste", text: event.text.slice(0, 500) } }];
       return [];
     },
-    /** What is typed so far, as a step, when something else (a page's own event, Done) needs the timeline settled. */
     flush,
     pointerAt: () => at,
   };
@@ -299,7 +289,6 @@ function hostOf(url) {
   }
 }
 
-/** What a Google search address searched for, or null. */
 function searchOf(url) {
   try {
     const parsed = new URL(url);
@@ -309,7 +298,6 @@ function searchOf(url) {
   }
 }
 
-/** Two addresses of one page: the same site and path, whatever the query says. */
 export function samePage(a, b) {
   try {
     const x = new URL(a);
@@ -320,7 +308,6 @@ export function samePage(a, b) {
   }
 }
 
-/** A window's title as the app a person would name: the dock, or Terminal without the user and host it adds. */
 export function appName(title) {
   const name = String(title ?? "").trim();
   if (!name) return "";
@@ -334,7 +321,6 @@ export function appName(title) {
 
 const SENSITIVE_LABELS = { password: "Typed a password", code: "Entered a sign-in code", card: "Typed card details" };
 
-/** A step in the words the person and the bot read. */
 export function labelOf(step) {
   const app = step.app ? ` in ${clip(step.app, 40)}` : "";
   switch (step.kind) {
@@ -381,7 +367,6 @@ export function labelOf(step) {
   }
 }
 
-/** The fields a step from the browser's page script may carry, and nothing else, cut to size. */
 export function pageStep(raw) {
   if (!raw || typeof raw !== "object") return null;
   const kinds = new Set(["click", "fill", "select", "check", "enter", "submit", "upload"]);
@@ -401,11 +386,6 @@ export function pageStep(raw) {
   return step;
 }
 
-/**
- * One recording's steps in order, each numbered, timed from the start and
- * labelled. A page's fill of the same field twice in a row keeps the last;
- * past `maxSteps` nothing more is added, and `full` says so.
- */
 export function createTimeline({ startedAt = Date.now(), now = Date.now, maxSteps = TEACH_MAX_STEPS } = {}) {
   const steps = [];
   let full = false;

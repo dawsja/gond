@@ -7,7 +7,6 @@ const EDGE = 28;
 export const REPLY_DISTANCE = 56;
 const MAX = 80;
 
-/** A bubble dragged right on a touch screen follows the finger, and past `REPLY_DISTANCE` it is a reply. */
 export function useSwipeToReply(target: RefObject<HTMLElement | null>, enabled: boolean, onOffset: (px: number) => void, onReply: () => void) {
   const reply = useRef(onReply);
   const offset = useRef(onOffset);
@@ -23,7 +22,6 @@ export function useSwipeToReply(target: RefObject<HTMLElement | null>, enabled: 
     let dx = 0;
     const onStart = (event: TouchEvent) => {
       const touch = event.touches[0];
-      // A drag inside a code block or a wide table scrolls it sideways; it isn't a reply.
       const sideways = event.target instanceof Element && event.target.closest("pre, [data-scroll-x]");
       start = touch && event.touches.length === 1 && touch.clientX > EDGE && !sideways ? { x: touch.clientX, y: touch.clientY } : null;
       dragging = false;

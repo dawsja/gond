@@ -55,7 +55,6 @@ extension RootView {
     }
 }
 
-/// The web view, filling the window under the status bar; it tells the page how much of it the bars cover.
 struct WebContainer: UIViewRepresentable {
     let shell: WebShell
 

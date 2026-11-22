@@ -16,7 +16,6 @@ import { Spinner } from "@/components/ui/spinner";
 import { Toggle } from "@/components/ui/toggle";
 import { api, patch, post } from "@/lib/api";
 
-// Past this many bots, a field narrows the faces by name or job.
 const SEARCH_FROM = 12;
 
 function matches(bot: Bot, query: string): boolean {
@@ -39,7 +38,6 @@ function BotTile({ bot, on, full, onChange }: { bot: Bot; on: boolean; full: boo
   );
 }
 
-/** A new room, or an existing one (`threadId`) renamed and its bots changed. */
 export function RoomDialog({ threadId = null, onClose }: { threadId?: string | null; onClose: () => void }) {
   const { bots, threads, refresh } = useStore();
   const router = useRouter();

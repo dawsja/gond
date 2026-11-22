@@ -5,7 +5,6 @@ import { useEffect, useState } from "react";
 import { JoinSpaceDialog, NewSpaceDialog } from "@/components/spaces/space-dialogs";
 import { api } from "@/lib/api";
 
-/** The person's space defaults, then the dialog, which offers only the bots they let into spaces (Settings → Spaces). */
 function useAllowed(): SpaceDefaults | null {
   const [defaults, setDefaults] = useState<SpaceDefaults | null>(null);
   useEffect(() => {

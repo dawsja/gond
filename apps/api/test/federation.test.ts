@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { normalizeRelayUrl, peerRelayAllowed, relayKey } from "../src/federation.ts";
+import { normalizeRelayUrl, peerRelayAllowed, peerRelayReachable, relayKey } from "../src/federation.ts";
 
 describe("relay addresses", () => {
   test("one relay has one spelling", () => {
@@ -68,5 +68,63 @@ describe("relay addresses", () => {
     expect(peerRelayAllowed("http://RELAY:8791", "http://relay:8791/")).toBe(true);
     expect(peerRelayAllowed("http://127.0.0.1:8792", "http://127.0.0.1:8791")).toBe(false);
     expect(peerRelayAllowed("http://box:8790", null)).toBe(false);
+  });
+
+  test("DNS names resolving to loopback, unspecified, or link-local addresses are blocked", async () => {
+    for (const addresses of [
+      [{ address: "127.0.0.1" }],
+      [{ address: "127.2.3.4" }],
+      [{ address: "0.0.0.0" }],
+      [{ address: "169.254.169.254" }],
+      [{ address: "::1" }],
+      [{ address: "::" }],
+      [{ address: "fe80::1" }],
+      [{ address: "fe80::1%eth0" }],
+      [{ address: "::ffff:127.0.0.1" }],
+      [{ address: "::ffff:169.254.169.254" }],
+      [{ address: "::ffff:7f00:1" }],
+      [{ address: "93.184.216.34" }, { address: "169.254.169.254" }],
+      [],
+    ]) {
+      expect([
+        addresses,
+        await peerRelayReachable("https://relay.attacker.example", "https://api.gond.io", async () => addresses),
+      ]).toEqual([addresses, false]);
+    }
+
+    expect(
+      await peerRelayReachable("https://relay.attacker.example", "https://api.gond.io", async () => {
+        throw new Error("ENOTFOUND");
+      }),
+    ).toBe(false);
+  });
+
+  test("DNS names resolving to public or LAN addresses are allowed, and own relay or IP literals skip DNS", async () => {
+    for (const addresses of [
+      [{ address: "93.184.216.34" }],
+      [{ address: "192.168.1.20" }],
+      [{ address: "10.0.0.5" }],
+      [{ address: "172.16.0.9" }],
+      [{ address: "100.64.1.2" }],
+      [{ address: "fd00::5" }],
+      [{ address: "2001:db8::1" }],
+      [{ address: "::ffff:192.168.1.20" }],
+    ]) {
+      expect([
+        addresses,
+        await peerRelayReachable("https://relay.example.com", "https://api.gond.io", async () => addresses),
+      ]).toEqual([addresses, true]);
+    }
+
+    let lookedUp = 0;
+    const countingLookup = async () => {
+      lookedUp += 1;
+      return [{ address: "127.0.0.1" }];
+    };
+    expect(await peerRelayReachable("http://127.0.0.1:8791/", "http://127.0.0.1:8791", countingLookup)).toBe(true);
+    expect(await peerRelayReachable("http://relay:8791", "http://relay:8791/", countingLookup)).toBe(true);
+    expect(await peerRelayReachable("http://192.168.1.20:8791", "https://api.gond.io", countingLookup)).toBe(true);
+    expect(await peerRelayReachable("http://[fd00::5]:8791", "https://api.gond.io", countingLookup)).toBe(true);
+    expect(lookedUp).toBe(0);
   });
 });

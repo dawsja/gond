@@ -40,10 +40,6 @@ type PushPayload = {
   card?: { id: string; allow: string; deny: string };
 };
 
-/**
- * With more than one profile, a notice says which it is from and opens in it, wherever the device
- * has wandered since.
- */
 export function fromProfile(payload: PushPayload, userId: string): PushPayload {
   const profile = profileOf(userId);
   if (!profile || profileIds(profile.personId).length < 2) return payload;
@@ -51,11 +47,6 @@ export function fromProfile(payload: PushPayload, userId: string): PushPayload {
   return { ...payload, title: `${profile.label} · ${payload.title}`, url };
 }
 
-/**
- * A notice goes everywhere the person set up, whichever profile it is from: every browser and app
- * that turned notifications on, and every phone signed up for push. Nothing goes about the
- * conversation they have in front of them, and nothing from a profile they muted.
- */
 export async function sendPush(raw: PushPayload, userId: string): Promise<number> {
   if (profileOf(userId)?.muted) return 0;
   const payload = fromProfile(raw, userId);

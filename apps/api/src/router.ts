@@ -25,7 +25,6 @@ export function routerPrompt(members: Bot[], lines: string, body: string): strin
   ].join("\n\n");
 }
 
-/** The members a router's answer names (all of them for @everyone), or null when it names none of them. */
 export function parseRoute(text: string, members: Bot[]): Bot[] | null {
   const handles = mentionsIn(text);
   if (handles.includes("everyone") || handles.includes("all")) return members.length ? members : null;
@@ -35,7 +34,6 @@ export function parseRoute(text: string, members: Bot[]): Bot[] | null {
   return byName.length ? byName : null;
 }
 
-/** The model the router asks: Claude Code's smallest on the person's plan, else the key's own small one, else theirs. */
 function routerModel(run: EngineRun): string {
   if (run.native) return run.model;
   return run.access.kind === "plan" ? "haiku" : run.access.smallModel || run.model;
@@ -76,12 +74,6 @@ export async function askOnce(input: { userId: string; speaker: Bot; threadId: s
   }
 }
 
-/**
- * Whom a person's room line that names nobody is for, judged by a one-turn call on the person's own
- * AI from the bots' jobs and the talk so far. Anything short of a clear answer in time (no AI set up,
- * an error, a timeout, a name that isn't in the room) falls back to the rules, `roomTargets`.
- * `before` is the room's messages ahead of it, oldest first (`roomBefore`).
- */
 export async function routeLine(thread: Thread, message: Message, members: Bot[], bots: Bot[], before: Message[]): Promise<{ targets: Bot[]; routed: boolean }> {
   const byRules = () => roomTargets(message.body, members, before);
   const speaker = roomAnswerer(members);

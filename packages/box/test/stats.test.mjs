@@ -71,7 +71,6 @@ test("a home's size is measured in the background and kept until it's old", asyn
   assert.equal(first.bytes, 1000);
   assert.ok(first.at);
   await new Promise((resolve) => setTimeout(resolve, 60));
-  // Old: the last size answers while a new measure runs.
   assert.equal(sizes.of("/home/ada").bytes, 1000);
   assert.equal(measured, 2);
   release();

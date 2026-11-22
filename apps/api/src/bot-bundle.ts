@@ -2,7 +2,6 @@ import { BOT_TEMPLATE_FORMAT, botTemplateSchema, type BotTemplateFile } from "@g
 import { unzipSync, zipSync, type Zippable } from "fflate";
 import { pictureType } from "./images.ts";
 
-/** A `.bot` file: the bot as `bot.json`, its picture, and each skill its routines use as a `.skill`. */
 export type BotBundle = { bot: BotTemplateFile; picture: Uint8Array | null; skills: Map<string, Uint8Array> };
 
 export const MAX_BOT_BUNDLE_BYTES = 40 * 1024 * 1024;

@@ -32,7 +32,6 @@ fn from_connect_page(window: &WebviewWindow) -> bool {
         .unwrap_or(false)
 }
 
-/// Connect or a page of the server: the two that draw the window's title row.
 fn draws_window(window: &WebviewWindow, state: &AppState) -> bool {
     trusted(window, state) || from_connect_page(window)
 }
@@ -349,7 +348,6 @@ pub fn set_frameless(
     Ok(window.is_maximized().unwrap_or(false))
 }
 
-/// The buttons and the drag of a page's own title row. Maximized or not after.
 #[tauri::command]
 pub fn window_action(
     window: WebviewWindow,

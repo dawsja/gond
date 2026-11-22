@@ -116,7 +116,6 @@ test("the shared mark is the mascot on the ink tile, the same figure the desktop
   expect(shared.equals(await readFile(join(root, "apps/desktop/src/logo.svg")))).toBe(true);
 });
 
-// The cog with an ink hole in its centre, as the old mark and every asset drawn from it carried it.
 const oldHole = (text: string) => [...text.matchAll(/<circle\b[^>]*>/g)].some(([tag]) =>
   ["cx", "cy"].every((attr) => new RegExp(`\\b${attr}\\s*=\\s*["']50["']`).test(tag)) && /\br\s*=\s*["']12["']/.test(tag));
 const RETIRED = new Set([
@@ -171,7 +170,6 @@ const face = (image: Pixels, figure: ReturnType<typeof bounds>, eye: (i: number)
   return { eyes: Math.min(...eyes), body: !eye(middle) };
 };
 
-// [path or frame, figure span range as a share of the canvas, tile span floor (0 when the canvas is all ink), eyes checked]
 const icons = join(root, "apps/desktop/src-tauri/icons");
 const res = "apps/android/app/src/main/res";
 const MARK: [number, number] = [0.7, 0.8];

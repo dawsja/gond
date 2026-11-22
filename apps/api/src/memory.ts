@@ -65,16 +65,11 @@ export function isMemoryFile(given: string, botId: string): boolean {
 export const MEMORY_FILES_TEXT =
   "Not done: memory lives in Gond now, not in files on the computer. Read a topic with memory_read, change MEMORY.md with memory_update (team_memory_update for the team's) and a topic with memory_write.";
 
-/** A topic's name for a file found under a bot's memory/ folder or in the team folder, relative to it. */
 export function fileTopic(relative: string): string {
   const name = relative.replace(/\.md$/i, "");
   return MAIN_NAME.test(name) ? `${name}-notes` : name;
 }
 
-/**
- * Two versions of one memory as one, losing neither: the one that holds the other whole, or both, the
- * one from the computer after a heading so the bot can tidy them together.
- */
 export function mergeMemory(existing: string | null, incoming: string): string {
   const have = existing?.trim() ?? "";
   const add = incoming.trim();
@@ -94,7 +89,6 @@ function bytesOf(text: string): number {
   return Buffer.byteLength(text, "utf8");
 }
 
-/** Whole lines from the start (or, with `fromEnd`, the end) of `lines` that fit in `budget` bytes. */
 function linesWithin(lines: string[], budget: number, fromEnd = false): string[] {
   const kept: string[] = [];
   let used = 0;

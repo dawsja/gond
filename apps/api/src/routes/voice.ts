@@ -91,7 +91,6 @@ export function voiceRoutes() {
     return c.json(setCallVoice(who, provider, body.voice === CALL_MODELS[provider].voice ? null : body.voice));
   });
 
-  // A short sample of a voice, said by the provider's own speech with the person's key, so a pick isn't blind.
   app.get("/voice/sample", async (c) => {
     const who = userId(c);
     const id = c.req.query("voice") ?? "";

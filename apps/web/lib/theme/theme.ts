@@ -18,12 +18,10 @@ export function isTheme(value: unknown): value is Theme {
   return typeof value === "string" && (THEMES as readonly string[]).includes(value);
 }
 
-/** System follows the device; Light and Dark hold whatever the device says. */
 export function followsDevice(theme: Theme): boolean {
   return theme === "system";
 }
 
-/** What a saved value means: a theme, the retired one as Dark, anything else as System. */
 export function themeOf(raw: unknown): Theme {
   if (raw === RETIRED_DARK) return "dark";
   return isTheme(raw) ? raw : "system";
@@ -71,7 +69,6 @@ export function applyAccent(accent: string) {
   }
 }
 
-/** Settings → Appearance → Size, each device's own: how much bigger than the design everything is drawn, as the root font size. */
 export const SIZES = ["default", "large"] as const;
 export type Size = (typeof SIZES)[number];
 export const SIZE_LABELS: Record<Size, string> = { default: "Default", large: "Large" };

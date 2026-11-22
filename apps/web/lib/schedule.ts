@@ -12,7 +12,6 @@ function ordinal(n: number): string {
   return `${n}${["th", "st", "nd", "rd"][n % 10] ?? "th"}`;
 }
 
-/** A cron field of plain numbers, ranges and lists ("1-5", "9,17"), expanded and sorted; null for anything else. */
 function numbers(field: string, min: number, max: number): number[] | null {
   const out = new Set<number>();
   for (const part of field.split(",")) {
@@ -37,7 +36,6 @@ function days(field: string): string | null {
   return picked.length === 1 ? `Every ${DAYS[picked[0]!]}` : joinNames(picked.map((d) => `${DAYS[d]}s`));
 }
 
-/** A routine's five-field cron as words a person reads; never the cron itself. */
 export function describeSchedule(cron: string): string {
   const parts = cron.trim().split(/\s+/);
   if (parts.length !== 5) return "On a custom schedule";
@@ -64,13 +62,11 @@ export function describeSchedule(cron: string): string {
   return "On a custom schedule";
 }
 
-/** What starts a routine an app's event runs, in words: "Each time “New Gmail Message” happens in Gmail". */
 export function describeTrigger(trigger: RoutineTrigger): string {
   const app = APP_CATALOG.find((entry) => entry.toolkit === trigger.toolkit)?.name ?? trigger.toolkit.charAt(0).toUpperCase() + trigger.toolkit.slice(1);
   return `Each time “${trigger.name}” happens in ${app}`;
 }
 
-/** When a routine runs, in words: its app's event, a reminder's one time ("Once, Thu, Oct 24, 8:00 AM"), else its schedule. */
 export function describeRoutine(routine: { cron: string; once: boolean; nextRunAt: string | null; trigger?: RoutineTrigger | null }): string {
   if (routine.trigger) return describeTrigger(routine.trigger);
   if (!routine.once) return describeSchedule(routine.cron);

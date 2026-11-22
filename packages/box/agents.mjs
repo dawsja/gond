@@ -51,7 +51,6 @@ export function forgetClaudeVersion() {
   versionLookup = undefined;
 }
 
-/** The CLI's version, null when it can't be read, asked once for every session until an update forgets it. */
 export function claudeVersion({ bin = CLAUDE_BIN, env, uid, gid, timeoutMs = VERSION_TIMEOUT_MS } = {}) {
   versionLookup ??= queryClaude({ bin, args: ["--version"], env, uid, gid, timeoutMs }).then(
     ({ stdout, stderr }) => parseVersion(`${stdout}\n${stderr}`),
@@ -279,12 +278,10 @@ export function backendOf(access) {
   return `api:${createHash("sha256").update(`${access.baseUrl}\n${access.token}`).digest("hex").slice(0, 16)}`;
 }
 
-/** What Claude Code is busy with that it doesn't otherwise say, as the turn's activity line. */
 export function statusLine(event) {
   return event?.type === "system" && event.subtype === "status" && event.status === "compacting" ? "Summarizing the conversation so far" : null;
 }
 
-/** A retry Claude Code would otherwise keep to itself, as the turn's activity line. */
 export function retryLine(event) {
   if (event?.type !== "system" || event.subtype !== "api_retry") return null;
   const count = Number.isFinite(event.attempt) && Number.isFinite(event.max_retries) ? ` (${event.attempt} of ${event.max_retries})` : "";
@@ -694,7 +691,6 @@ export class AgentSession extends BridgedSession {
       try {
         fn();
       } catch {
-        /* already gone */
       }
     }
     this.cleanups = [];

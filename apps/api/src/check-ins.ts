@@ -17,7 +17,6 @@ const HOUR = 60 * 60_000;
 const AROUND_MS = 20 * 60_000;
 // Even with nothing new, a look this long after the last one catches a promise of theirs coming due.
 const LOOK_AGAIN_MS = 20 * HOUR;
-// The first look reads back this far; after that, from the last look.
 const FIRST_LOOK_MS = 24 * HOUR;
 const PROMISES_MS = 3 * 24 * HOUR;
 const LINES_PER_CHAT = 12;
@@ -29,19 +28,16 @@ const CHECK_IN_TIMEOUT_MS = 90_000;
 
 const running = new Map<string, AbortController>();
 
-/** The hour (0 to 23) it is in a time zone. */
 export function hourIn(timezone: string, at: Date): number {
   const hour = new Intl.DateTimeFormat("en-US", { timeZone: timezone, hour: "numeric", hourCycle: "h23" }).format(at);
   return Number(hour) % 24;
 }
 
-/** Whether an hour falls in the quiet hours, which may run over midnight; equal ends mean none. */
 export function inQuietHours(hour: number, from: number, to: number): boolean {
   if (from === to) return false;
   return from < to ? hour >= from && hour < to : hour >= from || hour < to;
 }
 
-/** Whether a check-in is due: on, offered, outside the quiet hours, and its time since the last one has passed. */
 export function isDue(state: Pick<CheckInState, "enabled" | "offeredAt" | "everyHours" | "quietFrom" | "quietTo" | "lastRunAt">, hour: number, now: number): boolean {
   if (!state.enabled || !state.offeredAt) return false;
   if (inQuietHours(hour, state.quietFrom, state.quietTo)) return false;
@@ -55,7 +51,6 @@ type Gathered = {
   timezone: string;
   bot: Bot;
   bots: Bot[];
-  /** Each conversation with something new since the last look, its lines oldest first. */
   chats: { thread: Thread; lines: Message[] }[];
   waiting: Approval[];
   stalled: Delegation[];
@@ -64,7 +59,6 @@ type Gathered = {
   earlier: { body: string; at: string }[];
 };
 
-/** What makes this look different from the last: if nothing changed, there is nothing to say. */
 export function seenOf(gathered: Pick<Gathered, "chats" | "waiting" | "stalled" | "emails">): string {
   const ids = [
     ...gathered.chats.flatMap((chat) => chat.lines.map((m) => m.id)),
@@ -85,7 +79,6 @@ export function unseen<T extends { id: string }>(items: T[], lastSeen: string | 
   return items.filter((item) => !seen.has(item.id));
 }
 
-/** Whether a look is worth asking the model about. */
 export function worthALook(gathered: Gathered, state: Pick<CheckInState, "lastSeen" | "lastLookedAt">, now: number): boolean {
   const seen = seenOf(gathered);
   if (!seen && !gathered.promises.length) return false;
@@ -196,11 +189,6 @@ async function gather(userId: string, bot: Bot, state: CheckInState, now: Date):
   return { readAt, gathered: { now, timezone: userTimezone(userId), bot, bots, chats, waiting, stalled, promises, emails, earlier: earlierCheckIns(bot.threadId) } };
 }
 
-/**
- * A look over the person's bots, loose ends and inbox, outside the turns their bots share: the gathering
- * is plain code, and only when something changed does one tool-less turn on the small model decide
- * whether anything needs them. What it says is posted in the primary bot's conversation as its own.
- */
 export async function checkIn(userId: string, now = new Date()): Promise<"posted" | "quiet" | "skipped"> {
   const bot = getPrimary(userId);
   if (!bot || running.has(userId) || !canRoute(userId)) return "skipped";
@@ -235,7 +223,6 @@ export async function checkIn(userId: string, now = new Date()): Promise<"posted
   }
 }
 
-/** Stop in the primary bot's conversation ends a check-in that is looking. */
 export function stopCheckIn(userId: string): boolean {
   const controller = running.get(userId);
   controller?.abort();
@@ -266,7 +253,6 @@ export function offerCheckIns(userId: string): boolean {
   return true;
 }
 
-/** From the dispatcher, at most once a minute: offers still to make, then each profile's check-in that is due. */
 export function runDueCheckIns(now = new Date()) {
   for (const { userId } of primaryOwners()) {
     try {
@@ -285,7 +271,6 @@ function personAround(userId: string, now: Date): boolean {
   return personLinesSince(userId, new Date(now.getTime() - AROUND_MS).toISOString(), 1).length > 0;
 }
 
-/** What the primary bot's tool and the settings route change. */
 export function checkInsText(name: string, settings: CheckIns, email: boolean): string {
   if (!settings.enabled) return `Check-ins are off. ${name} won't look in until they're turned back on.`;
   const hour = (h: number) => new Intl.DateTimeFormat("en-US", { hour: "numeric", timeZone: "UTC" }).format(new Date(Date.UTC(2026, 0, 1, h)));

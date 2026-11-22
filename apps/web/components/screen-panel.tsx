@@ -11,7 +11,6 @@ import { GondBot } from "@/components/hq/gond-bot";
 import { useStore } from "@/components/store";
 import { cn } from "@/lib/utils";
 
-// How long a closed screen stays live in the panel before the computer goes back to sleep there.
 export const SCREEN_PREVIEW_MS = 2 * 60_000;
 
 const awake = new Set<string>();
@@ -22,7 +21,6 @@ function notifyAwake() {
   for (const listener of awakeListeners) listener();
 }
 
-/** Keeps a bot's screen awake in the panel: `null` while it is open, else for `ms` more. */
 export function wakeScreen(botId: string, ms: number | null) {
   clearTimeout(sleepTimers.get(botId));
   sleepTimers.delete(botId);
@@ -74,7 +72,6 @@ export function useScreenDrivers(threadId: string): Bot[] {
   return [...ids, ...driving.filter((id) => !ids.includes(id))].map((id) => botById(id)).filter((b): b is Bot => Boolean(b));
 }
 
-/** The panel while nobody uses the computer: the bot asleep, and no connection to the desktop. */
 export function SleepingScreen({ bot, onWake }: { bot: Pick<Bot, "name" | "color" | "shape">; onWake: () => void }) {
   return (
     <button

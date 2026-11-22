@@ -3,7 +3,6 @@
 import type { SpeechModels } from "@gond/shared";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-/** The "Something else…" item, for typing the id of a model a server of the person's own serves. */
 export const TYPED_MODEL = "__typed__";
 const TYPED_LABEL = "Something else…";
 
@@ -16,10 +15,6 @@ function ModelName({ id, isDefault }: { id: string; isDefault: boolean }) {
   );
 }
 
-/**
- * The models the voice key offers for one job, listed as the bots' model picker lists its own: by family
- * when there are several, the default marked. `others` are a server's own ids; `typed` adds Something else.
- */
 export function SpeechModelSelect({
   id,
   models,

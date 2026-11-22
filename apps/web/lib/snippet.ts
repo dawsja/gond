@@ -34,7 +34,6 @@ function head(text: string, size = SIDE): string {
   return `${cut.trimEnd()}…`;
 }
 
-/** The words around a search's first match in a message: the whole query, else its first word, cut on word boundaries. */
 export function matchSnippet(text: string, query: string): Snippet {
   const plain = text.replace(/\s+/g, " ").trim();
   const words = query.trim().split(/\s+/).filter(Boolean);
@@ -47,7 +46,6 @@ export function matchSnippet(text: string, query: string): Snippet {
   };
 }
 
-/** What a search hit shows: its words as plain text, or its first file's name when it has none. */
 export function messageSnippet(message: Pick<Message, "body" | "attachments">, query: string): Snippet {
   return matchSnippet(plainMarkdown(message.body) || message.attachments[0]?.name || "", query);
 }

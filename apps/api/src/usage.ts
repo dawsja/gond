@@ -11,13 +11,11 @@ function usageSourceOf(run: Pick<EngineRun, "access" | "native">): UsageSource {
   return run.access.kind === "api" ? "anthropic" : "claude";
 }
 
-/** Records what one call on `run` used, for the bot and conversation it was for. */
 export function usageRecorder(userId: string, botId: string | null, threadId: string | null, run: Pick<EngineRun, "access" | "native">) {
   const source = usageSourceOf(run);
   return (usage: ModelUsage) => recordUsage({ userId, botId, threadId, source, ...usage });
 }
 
-/** A Claude plan's windows from Claude Code's rate limit event: the share used, 0 to 1. */
 export function claudeWindows(limits: Record<string, { used: number; resetsAt: string }>): PlanWindow[] {
   const out: PlanWindow[] = [];
   for (const name of ["session", "weekly"] as const) {
@@ -74,7 +72,6 @@ async function readGrok(userId: string): Promise<void> {
   if (windows.length) savePlanLimits(userId, "grok", windows);
 }
 
-/** Reads the plan again when the last reading is old, one read at a time per person. */
 async function freshGrok(userId: string): Promise<void> {
   const last = planLimits(userId, "grok");
   if (last && Date.now() - Date.parse(last.checkedAt) < GROK_READ_MS) return;

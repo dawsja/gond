@@ -12,11 +12,6 @@ plugins {
  */
 if (file("google-services.json").exists()) apply(plugin = "com.google.gms.google-services")
 
-/*
- * The version comes from package.json, as the desktop app's does: CI writes
- * the release tag there before building. The version code is derived from
- * it so an update always installs over the previous one.
- */
 val packageJson = groovy.json.JsonSlurper().parse(rootProject.file("package.json")) as Map<*, *>
 val appVersion = packageJson["version"] as String
 val versionParts = appVersion.split(".").map { it.filter(Char::isDigit).toIntOrNull() ?: 0 }

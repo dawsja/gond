@@ -129,7 +129,6 @@ const EDGE_FADE_PX = 48
  * position, not CSS scroll timelines, which WebView2 and WebKitGTK drew as
  * a fade that never went away.
  */
-/** `viewport` picks another scroller beside it than a conversation's, as the Chats list does. */
 function MessageScrollerEdges({ top, bottom, viewport: selector = '[data-slot="message-scroller-viewport"]' }: { top: string; bottom: string; viewport?: string }) {
   const ref = React.useRef<HTMLDivElement>(null)
   const [edges, setEdges] = React.useState({ top: 0, bottom: 0 })

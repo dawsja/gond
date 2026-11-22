@@ -70,7 +70,6 @@ test("the bundled fallback has one default and no version a person would have to
   for (const model of FALLBACK_CLAUDE_MODELS) assert.doesNotMatch(`${model.id} ${model.name} ${model.detail}`, /\d/);
 });
 
-/** A fake CLI: `body` is shell run after it read the request, with `$id` its request id. Each launch is logged. */
 function fakeCli(t, body) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "gond-models-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));

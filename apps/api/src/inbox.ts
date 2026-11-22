@@ -14,7 +14,6 @@ type InlineFile = { name: string; mediaType: string; data: string };
 /** `path` is where it was saved in the bot's folder: "" when it couldn't be, null when there is no computer. */
 export type Delivered = { path: string | null; meta: ChatAttachment; shown: boolean };
 
-/** A file name that is one plain path segment, whatever the phone called it. */
 export function safeFileName(name: string): string {
   const base = name.split(/[\\/]/).pop() ?? "";
   const clean = base
@@ -25,7 +24,6 @@ export function safeFileName(name: string): string {
   return clean || "file";
 }
 
-/** Where an attachment lands, relative to the bot's own folder (its working directory). */
 export function inboxPath(meta: Pick<ChatAttachment, "id" | "name">): string {
   return `inbox/${meta.id.replace(/^f-/, "").slice(0, 8)}-${safeFileName(meta.name)}`;
 }
@@ -35,7 +33,6 @@ function sizeLabel(bytes: number): string {
   return `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
 
-/** The lines that tell the bot what came with the message and where it is, so it never has to look. */
 export function attachmentNote(files: Delivered[]): string {
   if (!files.length) return "";
   if (files.every((file) => file.path === null)) {

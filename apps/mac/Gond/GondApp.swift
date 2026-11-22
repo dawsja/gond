@@ -84,7 +84,6 @@ struct RootView: View {
         .toolbarBackgroundVisibility(model.screen == .connect ? .hidden : .automatic, for: .windowToolbar)
         .animation(.easeOut(duration: 0.2), value: model.screen)
         .background(WindowReader { window in model.attach(window) })
-        // SwiftUI's own Quick Look, the panel Finder uses, swiping through what the page sent.
         .quickLookPreview(Binding(get: { ui.preview }, set: { ui.selectPreview($0) }), in: ui.previewFiles)
         .onAppear {
             let open = openWindow
@@ -94,7 +93,6 @@ struct RootView: View {
     }
 }
 
-/// Hands the window this view is in to the model, which colours it and anchors sheets on it.
 private struct WindowReader: NSViewRepresentable {
     let found: (NSWindow) -> Void
 
@@ -119,8 +117,6 @@ private struct WindowReader: NSViewRepresentable {
     }
 }
 
-/// The menu bar: Settings and Change server in the app's menu, New bot in File, Search in View.
-/// While something of the page's is open over the conversation, none of them go.
 struct GondCommands: Commands {
     @ObservedObject var model: AppModel
     @ObservedObject var ui: NativeUI

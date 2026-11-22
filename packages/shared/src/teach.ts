@@ -1,4 +1,3 @@
-/** "Show me how": how long a person can show a bot one task. */
 export const TEACH_MAX_MINUTES = 10;
 
 /**
@@ -9,7 +8,6 @@ export const TEACH_MAX_MINUTES = 10;
 export const TEACH_STATUSES = ["offered", "recording", "paused", "review", "looking", "ready", "saved", "discarded", "failed"] as const;
 export type TeachStatus = (typeof TEACH_STATUSES)[number];
 
-/** One thing the person did while showing a bot, as the computer recorded it. */
 export type TeachStep = {
   n: number;
   /** Milliseconds from the start of the recording. */
@@ -23,17 +21,14 @@ export type TeachStep = {
   frame: number | null;
   /** Typed outside the browser, where a password can't be told from a command. */
   outside?: boolean;
-  /** What was typed or pasted, for a step that typed. */
   text?: string;
   sensitive?: string;
   skipped?: boolean;
   hidden?: boolean;
 };
 
-/** A note the person added while showing, after a step. */
 export type TeachNote = { after: number; text: string; at: number };
 
-/** What the bot made of it: the skill it would save, in the words the card shows. */
 export type TeachDraft = {
   name: string;
   description: string;
@@ -42,7 +37,6 @@ export type TeachDraft = {
   changes: string[];
   /** What it needs from the person, like a saved sign-in. */
   needs: string[];
-  /** The skill's instructions, in full. */
   instructions: string;
 };
 

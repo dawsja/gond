@@ -41,7 +41,6 @@ function asker(name: string): Bot {
   return createBot(botInputSchema.parse({ name, approval: "ask" }), OWNER);
 }
 
-/** A turn answering the person, as the responder sets one up: it ends when a card times out, and its work can start again. */
 function personTurn(message: Pick<Message, "id" | "kind" | "approvalId">, done: string[] = []) {
   const controller = new AbortController();
   endTurnOnExpiry(controller.signal, () => controller.abort("expired"));
@@ -53,7 +52,6 @@ const cardsIn = (threadId: string) => listMessages(threadId).filter((m) => m.kin
 const linesOf = (bot: Bot) => listMessages(bot.threadId).filter((m) => m.author === bot.id && m.kind === "message").map((m) => m.body);
 const promptsIn = (threadId: string) => listMessages(threadId).filter((m) => m.kind === "prompt");
 
-/** Asks for a card in a turn and lets 15 minutes pass with nobody answering. */
 async function unanswered(bot: Bot, message: Pick<Message, "id" | "kind" | "approvalId">, tool: string, input: Record<string, unknown>, done: string[] = []) {
   const turn = personTurn(message, done);
   jest.useFakeTimers();
@@ -95,7 +93,6 @@ describe("a card nobody answered in time", () => {
     expect(prompt.body).toContain("They have answered it now: yes.");
     expect(prompt.body).toContain("check where things stand before you do anything");
     expect(prompt.body).toContain('call Bash again with exactly this input: {"command":"sudo systemctl restart web"');
-    // A second tap changes nothing and starts nothing more.
     expect(decide(approval.id, { decision: "deny" })?.status).toBe("allowed");
     expect(promptsIn(bot.threadId)).toHaveLength(1);
   });
@@ -110,7 +107,6 @@ describe("a card nobody answered in time", () => {
     const resumed = personTurn(prompt);
     const ask = (who: Bot, command: string, signal = resumed.signal) => askApproval({ bot: who, threadId: bot.threadId, tool: "Bash", input: { command, description: "Restart the web service again" }, signal });
 
-    // Not another bot, nor another turn, even with the same command.
     const theirs = ask(other, "sudo systemctl restart web");
     expect(cardsIn(bot.threadId)).toHaveLength(2);
     decide(cardsIn(bot.threadId).at(-1)!.approvalId!, { decision: "deny" });
@@ -334,7 +330,6 @@ describe("answering a paused card", () => {
 
 describe("a bot's turn", () => {
   test("pauses at a card nobody answers, and a late yes starts it again told what ran, letting the same call through once", async () => {
-    // A computer whose bot runs one step, then asks to run a command and waits for the answer.
     const prompts: string[] = [];
     const answers: string[] = [];
     let answered: (content: string) => void = () => undefined;

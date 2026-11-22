@@ -18,10 +18,8 @@ export function isDetailKind(value: unknown): value is DetailKind {
   return typeof value === "string" && (DETAIL_KINDS as readonly string[]).includes(value);
 }
 
-/** How a field's value is typed and checked. */
 export type DetailInputKind = "text" | "date" | "email" | "phone" | "vin";
 
-/** A detail Gond knows: its name, how it's typed and checked, whether it starts private, and other names a bot may give it. */
 export type DetailFieldType = { id: string; label: string; input: DetailInputKind; private: boolean; kind: Exclude<DetailKind, "other">; aliases: readonly string[] };
 
 export const DETAIL_FIELD_TYPES: readonly DetailFieldType[] = [
@@ -44,19 +42,16 @@ export const DETAIL_FIELD_TYPES: readonly DetailFieldType[] = [
   { id: "vin", label: "VIN", input: "vin", private: true, kind: "vehicle", aliases: ["Vehicle identification number"] },
 ];
 
-/** A field the person names: any words, as text. */
 export const CUSTOM_DETAIL = "custom";
 
 export function detailFieldType(id: string): DetailFieldType | null {
   return DETAIL_FIELD_TYPES.find((type) => type.id === id) ?? null;
 }
 
-/** The known detail a name stands for ("DOB", "Phone number"), or null for one of the person's own. */
 export function detailTypeFor(label: string): DetailFieldType | null {
   return DETAIL_FIELD_TYPES.find((type) => [type.label, ...type.aliases].some((name) => sameDetailName(name, label))) ?? null;
 }
 
-/** The fields a new record of each kind starts with; the person adds or removes any. */
 export const DETAIL_PRESETS: Record<DetailKind, readonly { type: string; label?: string }[]> = {
   person: [{ type: "full_name" }, { type: "date_of_birth" }, { type: "phone" }, { type: "email" }, { type: "address" }],
   document: [{ type: "number" }, { type: "name_on_it" }, { type: "issued_by" }],
@@ -87,7 +82,6 @@ export type DetailInput = { kind: DetailKind; label: string; expiresOn: string |
 
 const DAY = /^(\d{4})-(\d{2})-(\d{2})$/;
 
-/** Whether a YYYY-MM-DD names a real day. */
 export function isDay(value: string): boolean {
   const match = DAY.exec(value);
   if (!match) return false;
@@ -112,10 +106,8 @@ export function toDay(value: string): string | null {
 
 const EMAIL = /^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/;
 const PHONE = /^\+?[\d\s().-]+$/;
-// 17 letters and digits, never I, O or Q, which read as 1 and 0.
 const VIN = /^[A-HJ-NPR-Z0-9]{17}$/;
 
-/** A value as its kind of detail keeps it, tidied, or what is wrong with it in a few words; empty is always fine. */
 export function checkDetailValue(input: DetailInputKind, raw: string): { value: string } | { error: string } {
   const value = raw.trim().replace(/\s+/g, " ");
   if (!value) return { value };
@@ -141,7 +133,6 @@ export function checkDetailValue(input: DetailInputKind, raw: string): { value: 
 
 const squash = (text: string) => text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
 
-/** A record the person typed, checked and tidied, or what is wrong with it in words. */
 export function checkDetail(raw: Record<string, unknown>): { detail: DetailInput } | { error: string } {
   const text = (value: unknown) => (typeof value === "string" ? value.trim() : "");
   if (!isDetailKind(raw.kind)) return { error: "Pick what kind of details these are." };
@@ -156,7 +147,6 @@ export function checkDetail(raw: Record<string, unknown>): { detail: DetailInput
   const seen = new Set<string>();
   for (const item of raw.fields) {
     const field = (item && typeof item === "object" ? item : {}) as Record<string, unknown>;
-    // A known detail keeps its own name; one of the person's own is any words, as text.
     const known = detailFieldType(text(field.type));
     const name = known?.label ?? text(field.label);
     const given = text(field.value);
@@ -176,21 +166,17 @@ export function checkDetail(raw: Record<string, unknown>): { detail: DetailInput
   return { detail: { kind: raw.kind, label, expiresOn: expires || null, fields } };
 }
 
-/** The reminders an expiry date gets: so many days before it, and on the day it runs out. */
 export const EXPIRY_STAGES = [90, 30, 7, 0] as const;
 
-/** Days from one YYYY-MM-DD to another, negative once it has passed. */
 export function daysBetween(from: string, to: string): number {
   return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
 }
 
-/** The reminder an expiry date is due for today: the nearest of `EXPIRY_STAGES` it has reached, or null while it's further off. */
 export function expiryStage(expiresOn: string, today: string): number | null {
   const left = daysBetween(today, expiresOn);
   return [...EXPIRY_STAGES].reverse().find((stage) => left <= stage) ?? null;
 }
 
-/** Whether a record's name and a name a bot gave for it are the same, however each is written. */
 export function sameDetailName(a: string, b: string): boolean {
   return squash(a) === squash(b) && squash(a) !== "";
 }

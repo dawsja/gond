@@ -37,7 +37,6 @@ export async function getSessionUser(): Promise<Session> {
   }
 }
 
-/** Where to sign in so the person comes back to `path` afterwards. */
 export function loginHref(path: string): string {
   return `/login?next=${encodeURIComponent(safeNext(path))}`;
 }

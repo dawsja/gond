@@ -7,7 +7,6 @@ export const BOT_TEMPLATE_FORMAT = "gond.bot/1";
 
 export type BotTemplateFile = z.infer<typeof botTemplateSchema>;
 
-/** A template as the person sees it before adding it: who the bot is and what comes with it. */
 export type BotTemplateSummary = Pick<BotTemplateFile, "name" | "title" | "description" | "color" | "expression" | "shape"> & { picture: boolean; skills: string[]; routines: string[] };
 
 export type BotTemplate = {
@@ -21,7 +20,6 @@ export type BotTemplate = {
   routine?: { name: string; cron: string; prompt: string };
 };
 
-/** One entry of a folder in a bot's home, as the Files section lists it. */
 export type BotFileEntry = { name: string; dir: boolean; size: number; modified: string | null };
 
 export const BOT_TEMPLATES: BotTemplate[] = [

@@ -15,7 +15,6 @@ export function changeDesktopControl(botId: string, holder: "person" | "free") {
   });
 }
 
-/** A bot's computer, the primary bot's when none is named. */
 export function ComputerPanel({ botId, onClose }: { botId: string | null; onClose: () => void }) {
   const { boxUpdating, boxUpdate, desktop, bots, botById } = useStore();
   const bot = (botId ? botById(botId) : null) ?? bots.find((b) => b.primary && !b.hidden) ?? null;

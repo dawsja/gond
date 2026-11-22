@@ -35,7 +35,6 @@ type Call = {
   saidTimer: ReturnType<typeof setTimeout> | null;
   // What the person said since the voice last handed something over: the request, for GPT-Live.
   asked: string[];
-  // The open hand-overs, by the hidden prompt each became.
   handed: Map<string, string>;
   lastProgress: { line: string; at: number } | null;
   work: { line: string; since: number } | null;
@@ -68,7 +67,6 @@ export function joinSpeech(sofar: string, next: string): string {
   return /[.!?]$/.test(sofar) && /^[^\s.,!?]/.test(next) ? `${sofar} ${next}` : sofar + next;
 }
 
-/** How a call reads in the chat once it's over. */
 export function callLength(ms: number): string {
   const minutes = Math.round(ms / 60_000);
   return minutes < 1 ? "under a minute" : minutes === 1 ? "1 min" : `${minutes} min`;
@@ -103,7 +101,6 @@ function greetingFor(bot: Bot): string {
   return `Pick up the call as ${bot.name}: one short, friendly line, in the language of the chat so far (English if there is none), then listen.`;
 }
 
-/** The hidden prompt a hand-over becomes: the bot's own turn, whose answer goes back to the voice. */
 function callPrompt(request: string): string {
   const said = request.trim() ? `"${request.trim().slice(0, 2000)}"` : "(what they just said is at the end of the chat above)";
   return [
@@ -133,7 +130,6 @@ function callableBot(thread: Thread): Bot | null {
   return bot?.primary ? bot : null;
 }
 
-/** The person's voice for this provider, unless the OpenAI model the call runs on doesn't speak in it. */
 function callVoice(settings: VoiceSettings, provider: VoiceProvider, model: string): string | undefined {
   const voice = settings.callVoice[provider];
   return provider === "openai" && voice && !openAiCallVoices(model).some((candidate) => candidate.id === voice) ? undefined : voice;
@@ -282,7 +278,6 @@ function settleSaid(call: Call) {
   }
 }
 
-/** The person said goodbye: give the voice a moment to say its own, then hang up. */
 function wrapUp(call: Call) {
   if (call.closing) return;
   const saidBye = call.lastSaid && Date.now() - call.lastSaid.at < GOODBYE_WAIT_MS && SAID_BYE.test(call.lastSaid.text);
@@ -405,12 +400,10 @@ export function endCall(id: string, reason: string | null) {
   calls().delete(id);
 }
 
-/** Ends a person's call, as deleting them or stopping everything does. */
 export function endCallsOf(userId: string) {
   for (const call of [...calls().values()]) if (call.userId === userId) endCall(call.info.id, null);
 }
 
-/** Ends every active voice call on graceful shutdown. */
 export function endAllCalls() {
   for (const call of [...calls().values()]) endCall(call.info.id, "The server is restarting.");
 }

@@ -40,7 +40,6 @@ export const SCREENS_FULL_TEXT =
 class ScreensFull extends Error {}
 
 const screensFull = (error: unknown) => error instanceof BoxError && error.status === 429 && error.code === "screens_full";
-// How long a batch waits for the person to give the screen back before the bot is told to end its turn.
 const HANDBACK_WAIT_MS = 10 * 60 * 1000;
 export const PERSON_HAS_CONTROL_TEXT = `The person has taken control of the mouse and keyboard and kept it for ${HANDBACK_WAIT_MS / 60_000} minutes, so your input was not sent. End your turn: say in a line what you were doing and that you'll carry on when they give the screen back. You'll be told when they do; never fight for the mouse.`;
 export const HANDED_BACK_TEXT =
@@ -242,7 +241,6 @@ export function screenSteps(input: Record<string, unknown>, target: ScreenTarget
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
-/** The ways a dropdown may write a held value: a month as 08, 8, August or Aug, a year as 2028 or 28. */
 function selectOptions(name: string, value: string): string[] {
   if (name.endsWith("_MONTH") && /^\d{2}$/.test(value)) {
     const month = MONTHS[Number(value) - 1] ?? "";
@@ -256,7 +254,6 @@ function usesInput(steps: ScreenStep[]): boolean {
   return steps.some((step) => !LOOK_STEPS.includes(step.type));
 }
 
-/** The words that go with a screenshot: what ran, what failed, what was read, and for the browser where it is and what is on screen. */
 export function screenSummary(result: ScreenResult, steps: number): string {
   const lines: string[] = [];
   if (result.target === "browser") {
@@ -384,7 +381,6 @@ export function computerTool(context: Context): { computer: DriverTool; browser:
     return result;
   };
 
-  /** Posts a batch's last screenshot in the conversation, when the bot asked for it with share. */
   const share = async (result: ScreenResult, caption: string): Promise<string> => {
     if (activeCheckout(bot.id, bot.userId!)?.paymentLabel) return "NOT shared: a payment checkout may contain private card details.";
     if (result.error) return "NOT shared: a step failed, so the screenshot isn't the screen you meant. Fix it and share again.";
@@ -426,7 +422,6 @@ export function computerTool(context: Context): { computer: DriverTool; browser:
     },
   };
 
-  /** Another conversation on this bot's screen, or every screen taken, as words for the model; anything else is thrown on. */
   const screenTrouble = (error: unknown): string => {
     if (error instanceof ScreenBusy) return screenBusyText(error.holder, bot);
     if (error instanceof ScreensFull) return SCREENS_FULL_TEXT;

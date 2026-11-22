@@ -100,7 +100,6 @@ class MainActivity : AppCompatActivity() {
         if (granted) request.grant(request.resources) else request.deny()
     }
     private val notificationsPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
-        // The web app's notifications card reads the state again on this event.
         web.evaluateJavascript("window.dispatchEvent(new Event('gond:notifications'))", null)
     }
 
@@ -293,7 +292,6 @@ class MainActivity : AppCompatActivity() {
                 return@launch
             }
             if (found != server) {
-                // A different Gond: its own sign-in, not the last one's.
                 CookieManager.getInstance().removeAllCookies(null)
                 web.clearHistory()
             }
@@ -383,7 +381,6 @@ class MainActivity : AppCompatActivity() {
                 return
             }
         }
-        // Turned off in the system, or an older Android: the app's notification settings.
         startActivity(Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, packageName))
     }
 
@@ -485,7 +482,6 @@ class MainActivity : AppCompatActivity() {
                 return true
             }
 
-            /** The microphone, for the composer's voice button, and only for the person's own Gond. */
             override fun onPermissionRequest(request: PermissionRequest) {
                 val micOnly = request.resources.toList() == listOf(PermissionRequest.RESOURCE_AUDIO_CAPTURE)
                 if (!micOnly || !ServerUrl.sameOrigin(request.origin.toString(), server)) return request.deny()
@@ -520,7 +516,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Attachments: the phone's download manager, with the session so the API answers.
         web.setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
             if (!ServerUrl.sameOrigin(url, server)) {
                 openOutside(url)
@@ -583,19 +578,16 @@ class MainActivity : AppCompatActivity() {
         private const val PROBE_TIMEOUT_MS = 8_000
         private var shown: java.lang.ref.WeakReference<MainActivity>? = null
 
-        /** The push token changed: the web app signs this phone up with it. */
         fun pushChanged() {
             shown?.get()?.let { activity -> activity.runOnUiThread { activity.web.evaluateJavascript("window.dispatchEvent(new Event('gond:push'))", null) } }
         }
 
-        /** End from the call's notice: the page hangs up. False when there's no page to tell. */
         fun endCall(): Boolean {
             val activity = shown?.get() ?: return false
             activity.runOnUiThread { activity.web.evaluateJavascript("window.dispatchEvent(new Event('gond:call-end'))", null) }
             return true
         }
 
-        /** Kept in step with MCP_LOOPBACK_PORT in packages/shared. */
         private const val LOOPBACK_PORT = 47651
     }
 }

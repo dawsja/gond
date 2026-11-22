@@ -10,7 +10,6 @@ export const STEP_TYPES = [
 ];
 export const BROWSER_ONLY = new Set(["navigate", "back", "forward", "reload", "tab", "new_tab", "close_tab", "fill", "select", "check", "read", "wait_for", "upload", "dialog", "images"]);
 export const LOOK_STEPS = new Set(["screenshot", "wait", "read", "wait_for", "clipboard", "images"]);
-// Steps that can name an element by its ref from the last answer's element list instead of a point.
 const REF_STEPS = new Set(["click", "hold", "mouse_down", "mouse_up", "move", "hover", "drag", "type", "scroll", "fill", "select", "check", "read", "copy", "upload"]);
 const NEEDS_REF = new Set(["fill", "select", "check", "upload"]);
 const TARGETS = ["desktop", "browser"];
@@ -98,7 +97,6 @@ export function humanPath(from, to, { minSteps = POINTER_MIN_STEPS, maxSteps = P
   return points.filter((point, i) => i === 0 || point[0] !== points[i - 1][0] || point[1] !== points[i - 1][1]);
 }
 
-/** The points a drag passes through after the press, ending on its target. */
 export function dragPath(from, to) {
   return humanPath(from, to, { minSteps: DRAG_MIN_STEPS, maxSteps: DRAG_MAX_STEPS, stepPx: DRAG_STEP_PX, bend: 0.035, jitter: 0.9, ease: true });
 }
@@ -241,13 +239,11 @@ function chordParts(text) {
     });
 }
 
-/** One chord ("ctrl+l", "Enter") in xdotool's names. */
 export function xdoKey(text) {
   if (typeof text !== "string" || !text.trim()) throw new ComputerActionError("key needs the key to press");
   return chordParts(text).join("+");
 }
 
-/** One chord in Playwright's names: "ctrl+l" is "Control+l". */
 export function browserKey(text) {
   if (typeof text !== "string" || !text.trim()) throw new ComputerActionError("key needs the key to press");
   return chordParts(text)
@@ -269,7 +265,6 @@ function optionalPoint(step, area) {
   return point(step, "x", "y", area);
 }
 
-/** A navigate step's address: http or https only, and a bare host gets https://. */
 export function normalizeUrl(value) {
   if (typeof value !== "string" || !value.trim()) throw new ComputerActionError("navigate needs url");
   const text = value.trim();
@@ -318,7 +313,6 @@ function siteOf(step, target) {
   return { site: step.site };
 }
 
-/** Whether a page's address is on a site or under it: auth.uber.com is on uber.com, evil.com and uber.com.evil.com aren't. */
 export function onSite(url, site) {
   let page;
   try {
@@ -599,7 +593,6 @@ export function buttonLeftDown(argv, ran, before) {
   return down > up;
 }
 
-/** The desktop's argv for a step, or null for one that runs nothing (a look, a wait). */
 export function xdotoolArgv(step) {
   switch (step.type) {
     case "click": {
@@ -680,7 +673,6 @@ export function batchTimeoutMs(steps) {
   return steps.reduce((total, step) => total + stepTimeoutMs(step), 0) + STEP_TIMEOUT_MS;
 }
 
-/** How long the screen gets to settle after a batch before it is looked at. */
 export function settleMs(steps) {
   return usesInput(steps) ? SETTLE_MS : 0;
 }

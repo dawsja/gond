@@ -19,7 +19,6 @@ export type SecretMeta = {
   requestedBy: string | null;
 
   site: string | null;
-  /** A saved payment card: what it is called and the little of it that may be shown. Null for any other secret. */
   card: CardMeta | null;
   createdAt: string;
   updatedAt: string;
@@ -51,7 +50,6 @@ export type CardMeta = { nickname: string; brand: string; last4: string; expires
 
 export type CardDetails = { number: string; expiry: string; cvc: string; name: string; zip: string };
 
-/** What a bot types from the card the person picked, by these names, as with a sign-in's details. */
 export const CARD_FIELDS = {
   CARD_NUMBER: "the card number",
   CARD_EXPIRY: "the expiry as MM/YY",
@@ -94,7 +92,6 @@ export function cardBrand(number: string): string {
   return "Card";
 }
 
-/** "08/28", "0828", "8/2028" and the like as month and two-digit year; null when it isn't one. */
 export function parseExpiry(value: string): { month: string; year: string } | null {
   const match = /^\s*(\d{1,2})\s*[/\-. ]?\s*(\d{2}|\d{4})\s*$/.exec(value);
   if (!match) return null;
@@ -143,7 +140,6 @@ export function checkCard(input: Partial<Record<keyof CardDetails, unknown>>, pa
   return { card };
 }
 
-/** A card's value for one of the names a bot types it by. */
 export function cardFieldValue(card: CardDetails, field: CardField): string {
   const [month = "", year = ""] = card.expiry.split("/");
   switch (field) {
@@ -164,7 +160,6 @@ export function cardFieldValue(card: CardDetails, field: CardField): string {
   }
 }
 
-/** "Personal Visa", or the card's own name when the person gave none. */
 export function cardLabel(meta: CardMeta): string {
   return meta.nickname || `${meta.brand} ending ${meta.last4}`;
 }
@@ -220,7 +215,6 @@ export const LOGIN_FIELD_LABELS: Record<LoginFieldKind, string> = {
   code: "Code",
 };
 
-/** What a saved sign-in detail is, from the end of its name: "UBER_EATS_PASSWORD" is PASSWORD, a second code CODE_2. */
 export function loginDetailOf(name: string): string | null {
   return /_((?:EMAIL|USERNAME|PHONE|PASSWORD|CODE)(?:_\d+)?)$/.exec(name)?.[1] ?? null;
 }

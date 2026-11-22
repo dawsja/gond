@@ -26,7 +26,6 @@ export function profileOf(id: string): ProfileRow | null {
   return person ? { id, personId: id, label: DEFAULT_PROFILE_LABEL, isDefault: true, icon: null, muted: false, createdAt: String(person.created_at) } : null;
 }
 
-/** A person's profiles, the default first, then in the order they were made. */
 export function profilesOf(personId: string): ProfileRow[] {
   const rows = ensureDatabase().query("SELECT * FROM gond_profiles WHERE person_id = ? AND id != person_id ORDER BY created_at, id").all(personId) as Row[];
   const own = profileOf(personId);
@@ -38,7 +37,6 @@ export function profileIds(personId: string): string[] {
   return [personId, ...rows.map((row) => row.id)];
 }
 
-/** Whether a "user" row is a profile rather than someone who signs in. */
 export function isExtraProfile(userId: string): boolean {
   const row = rowOf(userId);
   return Boolean(row && row.id !== row.person_id);
@@ -76,10 +74,6 @@ export function setProfileMuted(id: string, muted: boolean): void {
   updateProfile(id, { muted });
 }
 
-/**
- * The profile a session has open: the one it picked, if that is still one of its person's; else the
- * one the person used last; else their default.
- */
 export function activeProfile(sessionId: string, personId: string): string {
   const db = ensureDatabase();
   const picked = db.query("SELECT profile_id FROM gond_session_profiles WHERE session_id = ?").get(sessionId) as { profile_id: string } | null;
@@ -106,7 +100,6 @@ export function removeProfileRows(id: string): void {
   });
 }
 
-/** A session that has ended keeps no row. */
 export function forgetEndedSessions(): number {
   const db = ensureDatabase();
   if (!db.query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'session'").get()) return 0;

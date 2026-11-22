@@ -33,7 +33,6 @@ export type ServerRetention = {
 
 export type ServerStorage = {
   db: DatabaseStats;
-  /** Free space on the disk the database and its backups share. */
   freeBytes: number;
   backups: BackupInfo[];
   retention: ServerRetention;

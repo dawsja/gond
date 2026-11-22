@@ -85,7 +85,6 @@ export class Accounts {
         this.records.set(id, { name: record.name, uid: Number(record.uid) || this.agent.uid, slot: Number(record.slot) || 0, admin: Boolean(record.admin) });
       }
     } catch {
-      /* no registry yet */
     }
   }
 
@@ -203,7 +202,6 @@ export class Accounts {
     try {
       stat = fs.lstatSync(account.skills);
     } catch {
-      /* nothing there */
     }
     if (stat?.isSymbolicLink()) {
       if (fs.readlinkSync(account.skills) === account.library) return;
@@ -319,11 +317,6 @@ export class Accounts {
     return removed;
   }
 
-  /**
-   * A person's computer as it was built, but for what is theirs to keep: every
-   * memory, the CLIs' sign-ins and the browser profile. Whatever they or their
-   * bots installed, configured or left lying around goes, processes included.
-   */
   refreshHome(account) {
     if (this.root && account.uid !== undefined && account.uid !== 0) run("pkill", ["-KILL", "-u", String(account.uid)]);
     const removed = clearHome(account.home, homeKeeps(account));
@@ -336,7 +329,6 @@ export class Accounts {
     try {
       for (const entry of fs.readdirSync(this.skillsRoot)) fs.rmSync(path.join(this.skillsRoot, entry), { recursive: true, force: true });
     } catch {
-      /* no mirror yet */
     }
   }
 
@@ -411,7 +403,6 @@ export class Accounts {
 
 const BOT_KEEPS = new Set(["MEMORY.md", "SOUL.md", "memory"]);
 
-/** What `refreshHome` does with each path in a home: keep it, look inside it, or remove it. */
 function homeKeeps(account) {
   const exact = [account.claude, account.browser, account.browsers, account.skills].map((dir) => path.resolve(dir));
   const bots = path.resolve(account.bots);

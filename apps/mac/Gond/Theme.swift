@@ -11,10 +11,8 @@ enum Theme {
     static let destructive = dynamic(light: 0xBD1F1F, dark: 0xF97C7C)
     /// A call's hang-up red, deep enough for a white icon in both themes (`--hangup`).
     static let hangup = dynamic(light: 0xC2301A, dark: 0xC4372B)
-    /// The person's own blue, the default accent: what fills the Connect button.
     static let tint = Color(hex: 0x2F6FD6)
 
-    /// Colours a bot can wear, for the faces above the Connect card.
     static let bots: [UInt32] = [0x2F6FD6, 0x1F9E8F, 0xD2483C]
 
     private static func dynamic(light: UInt32, dark: UInt32) -> Color {
@@ -29,7 +27,6 @@ extension NSColor {
         self.init(srgbRed: CGFloat((hex >> 16) & 0xFF) / 255, green: CGFloat((hex >> 8) & 0xFF) / 255, blue: CGFloat(hex & 0xFF) / 255, alpha: 1)
     }
 
-    /// A CSS colour as the web app reports it: #rgb, #rrggbb or rgb(r, g, b).
     convenience init?(css: String) {
         let value = css.trimmingCharacters(in: .whitespaces).lowercased()
         if value.hasPrefix("#") {
@@ -54,7 +51,6 @@ extension Color {
         self.init(.sRGB, red: Double((hex >> 16) & 0xFF) / 255, green: Double((hex >> 8) & 0xFF) / 255, blue: Double(hex & 0xFF) / 255, opacity: 1)
     }
 
-    /// A colour the page sent, or `fallback` when it can't be read.
     static func css(_ value: String, or fallback: Color) -> Color {
         NSColor(css: value).map { Color(nsColor: $0) } ?? fallback
     }
@@ -76,7 +72,6 @@ extension EnvironmentValues {
 // MARK: Glass
 
 extension View {
-    /// A control in Liquid Glass from macOS 26, interactive so it reacts to the pointer; a material before it.
     @ViewBuilder
     func glassControl<S: Shape>(in shape: S, interactive: Bool = true) -> some View {
         if #available(macOS 26.0, *) {
@@ -88,7 +83,6 @@ extension View {
         }
     }
 
-    /// The main action: glass tinted the person's colour from macOS 26, a filled pill before it.
     @ViewBuilder
     func prominentGlass<S: Shape>(in shape: S, tint: Color) -> some View {
         if #available(macOS 26.0, *) {
@@ -99,7 +93,6 @@ extension View {
     }
 }
 
-/// Glass shapes that sit together blend as one from macOS 26, as Apple's own bars do.
 struct GlassGroup<Content: View>: View {
     @ViewBuilder let content: Content
 
@@ -221,7 +214,6 @@ struct BotFace: View {
     }
 }
 
-/// The shades of one bot colour, mixed as the web app mixes them.
 private struct BotTone {
     let base, top, bottom, rimLight, rimDark, visorTop, visorBottom, eye, glow: Color
 

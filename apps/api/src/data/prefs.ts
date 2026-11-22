@@ -67,7 +67,6 @@ export function setUserAccent(userId: string, accent: Accent) {
 
 type Talk = { style: ReplyStyle; emoji: EmojiLevel };
 
-/** How the person wants every one of their bots to talk to them. */
 export function userTalk(userId: string): Talk {
   const row = ensureDatabase().query("SELECT reply_style, emoji FROM gond_user_prefs WHERE user_id = ?").get(userId) as { reply_style: string | null; emoji: string | null } | null;
   return { style: isReplyStyle(row?.reply_style) ? row.reply_style : "default", emoji: isEmojiLevel(row?.emoji) ? row.emoji : "default" };

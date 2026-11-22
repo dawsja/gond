@@ -59,7 +59,6 @@ export function modelsFromInfo(infos) {
   return models.map(({ target, ...model }) => (model.id === pick?.id ? { ...model, default: true } : model));
 }
 
-/** What the engine lists now, or null when it couldn't say. */
 async function askEngine(engine, { bins = {}, cwd, env, uid, gid, timeoutMs } = {}) {
   if (engine !== "claude") return null;
   const models = modelsFromInfo(await claudeModelInfo({ bin: bins.claude, cwd, env, uid, gid, timeoutMs }));
@@ -70,7 +69,6 @@ function fallbackFor(engine) {
   return engine === "claude" ? FALLBACK_CLAUDE_MODELS.map((model) => ({ ...model })) : [];
 }
 
-/** One uncached look: the engine's own list, or the bundled fallback when it can't say. */
 export async function engineModels(engine, options = {}) {
   return (await askEngine(engine, options)) ?? fallbackFor(engine);
 }
@@ -80,12 +78,6 @@ const MODELS_RETRY_MS = 60 * 1000;
 /** How long the last good list outlives looks that keep failing, so a retired model can't stay listed for good. */
 const LAST_GOOD_MS = 24 * 60 * 60 * 1000;
 
-/**
- * Each account's list, asked again once `ttlMs` has passed. A failed look keeps the last list the CLI gave,
- * for at most `lastGoodMs` after it gave it, else the bundled fallback, and tries again after `retryMs`;
- * callers asking at once share one look. `forget` drops a key's list, or every key starting with a prefix,
- * after a sign-in changes what the CLI would say.
- */
 export function createModelLists({ ask = askEngine, ttlMs = MODELS_TTL_MS, retryMs = MODELS_RETRY_MS, lastGoodMs = LAST_GOOD_MS, now = Date.now } = {}) {
   const lists = new Map();
   const looks = new Map();

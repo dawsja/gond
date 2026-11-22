@@ -6,7 +6,6 @@ import { emit } from "../events.ts";
 import { createProfile, deleteProfile, editProfile, listProfiles } from "../profiles.ts";
 import { readBody } from "./body.ts";
 
-// Another person's profile is as unknown as a missing one.
 function own(c: Context<Env>, id: string) {
   const profile = profileOf(id);
   return profile && personOf(id) === personId(c) ? profile : null;

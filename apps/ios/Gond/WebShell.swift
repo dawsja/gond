@@ -5,7 +5,6 @@ import WebKit
 
 private let shellLog = Logger(subsystem: "io.gond.ios", category: "shell")
 
-/// The web view that shows your Gond, and the `gondMobile` bridge its pages talk to.
 @MainActor
 final class WebShell: NSObject {
     /** Kept in step with MCP_LOOPBACK_PORT in packages/shared. */
@@ -70,7 +69,6 @@ final class WebShell: NSObject {
         webView.load(URLRequest(url: url))
     }
 
-    /// Another Gond's sign-in and pages have no business in this one's web view.
     func forgetEverything() async {
         let store = webView.configuration.websiteDataStore
         await store.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast)
@@ -227,15 +225,15 @@ final class WebShell: NSObject {
 
     // MARK: The app's own pieces (NativeUI)
 
-    /// An event the page listens for; only ever the connected Gond's own page hears it.
     func dispatch(_ name: String, _ detail: [String: Any]) {
-        guard ownPage, let data = try? JSONSerialization.data(withJSONObject: detail) else { return }
+        guard ownPage, let data = try? JSONSerialization.data(withJSONObject: detail, options: [.withoutEscapingSlashes]) else { return }
         let json = String(decoding: data, as: UTF8.self)
         let event = name == "gond:native" ? "gond:native" : "gond:native-chrome"
-        webView.evaluateJavaScript("window.dispatchEvent(new CustomEvent('\(event)', { detail: \(json) }))", completionHandler: nil)
+        webView.evaluateJavaScript("window.dispatchEvent(new CustomEvent('\(event)', { detail: \(json) }))") { _, error in
+            if let error { shellLog.error("dispatch \(event, privacy: .public) failed: \(error.localizedDescription, privacy: .public)") }
+        }
     }
 
-    /// What a part of the page looks like now, for a message lifted into its menu.
     func snapshot(_ rect: CGRect) async -> UIImage? {
         let configuration = WKSnapshotConfiguration()
         configuration.rect = rect
@@ -409,7 +407,6 @@ extension WebShell: WKNavigationDelegate {
 }
 
 extension WebShell: WKUIDelegate {
-    /// A link that opens a new window: your Gond's own pages load here, anything else in Safari.
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
         if let url = navigationAction.request.url, url.absoluteString != "about:blank" {
             if ServerURL.sameOrigin(url, server) { webView.load(navigationAction.request) } else { openOutside(url) }
@@ -421,7 +418,6 @@ extension WebShell: WKUIDelegate {
         completionHandler(nil)
     }
 
-    /// The microphone, for the composer's voice button, and only for the person's own Gond.
     func webView(_ webView: WKWebView, requestMediaCapturePermissionFor origin: WKSecurityOrigin, initiatedByFrame frame: WKFrameInfo, type: WKMediaCaptureType, decisionHandler: @escaping (WKPermissionDecision) -> Void) {
         let mine = ServerURL.origin(scheme: origin.`protocol`, host: origin.host, port: origin.port) == server
         decisionHandler(type == .microphone && mine && frame.isMainFrame ? .grant : .deny)

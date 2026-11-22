@@ -15,7 +15,6 @@ export function systemReminder(text) {
   return `<system-reminder>\nThis part of your instructions changed since this session started. It replaces the earlier copy:\n\n${text}\n</system-reminder>\n\n`;
 }
 
-/** A system prompt's `## ` sections by heading, or null when a heading repeats and sections can't be told apart. */
 function sectionsOf(text) {
   const map = new Map();
   for (const part of text.split(/\n(?=## )/)) {
@@ -54,7 +53,6 @@ export function killTree(child, signal) {
     try {
       child.kill(signal);
     } catch {
-      /* gone */
     }
   }
 }
@@ -70,7 +68,6 @@ function protocolLogger(dir, id) {
       try {
         if (fs.lstatSync(file).size > MAX_LOG_BYTES) fs.renameSync(file, `${file}.1`);
       } catch {
-        /* no file yet */
       }
       const { O_WRONLY, O_APPEND, O_CREAT, O_NOFOLLOW } = fs.constants;
       const fd = fs.openSync(file, O_WRONLY | O_APPEND | O_CREAT | O_NOFOLLOW, 0o600);
@@ -260,7 +257,6 @@ export class BridgedSession {
       try {
         answer(null, "The turn ended");
       } catch {
-        /* the socket is gone */
       }
     }
     this.pendingCalls.clear();
@@ -291,7 +287,6 @@ export class BridgedSession {
     try {
       child.stdin.end();
     } catch {
-      /* closed */
     }
     await new Promise((resolve) => {
       const timer = setTimeout(() => {

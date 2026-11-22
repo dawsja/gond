@@ -68,7 +68,6 @@ export function SayHi({ bot, sent, onSent, onBack, onDone }: { bot: Bot; sent: M
 
   const outcome = sent ? helloOutcome(messages, sent, bot.id) : { replies: [], failure: null };
 
-  // Entering the step sends the hello; coming back to it after the AI step tries the same one again if it couldn't be answered.
   const started = useRef(false);
   useEffect(() => {
     if (started.current) return;

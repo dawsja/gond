@@ -188,7 +188,6 @@ export function useActivity(): Activity {
   return useContext(ActivityContext);
 }
 
-/** `singleFlight` over the latest `run`, with one identity for the component's life. */
 export function useSingleFlight(run: () => Promise<void>): () => Promise<void> {
   const latest = useStableCallback(run);
   return useMemo(() => singleFlight(latest), [latest]);

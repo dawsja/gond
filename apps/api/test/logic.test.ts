@@ -98,15 +98,12 @@ describe("approvals", () => {
     for (const slug of ["GITHUB_CREATE_ISSUE", "GMAIL_FETCH_EMAILS", "NOTION_UPDATE_PAGE", "GMAIL_CREATE_EMAIL_DRAFT"]) expect(mustAsk(slug, {}, bot)).toBe(false);
     expect(mustAsk("GMAIL_CREATE_EMAIL_DRAFT", { recipient_email: "john@example.com", subject: "Hello", body: "Hi John" }, bot)).toBe(true);
     expect(mustAsk("OUTLOOK_CREATE_DRAFT", { to_email: "ann@x.com", subject: "s", body: "b" }, bot)).toBe(true);
-    // An MCP server's tools come lowercase, camelCase or dashed, and still ask.
     for (const tool of ["mcp__gmail__send_email", "mcp__toad__delete_app", "mcp__vercel__deleteProject", "mcp__mail__reply-to-thread", "mcp__shop__cancel_order", "GMAIL_MOVE_TO_TRASH", "mcp__files__purge_bucket"]) expect(mustAsk(tool, {}, bot)).toBe(true);
     for (const tool of ["mcp__gmail__list_messages", "mcp__toad__poll_process", "mcp__vercel__getDeployment", "mcp__notes__sender_stats"]) expect(mustAsk(tool, {}, bot)).toBe(false);
-    // Unlocking a door, a car or an alarm always asks; a smart home's catch-all asks when its input unlocks.
     for (const tool of ["TESLA_UNLOCK_DOORS", "mcp__home__unlock_front_door", "SMARTTHINGS_DISARM_ALARM", "mcp__car__remote_start", "MYQ_OPEN_GARAGE_DOOR"]) expect(mustAsk(tool, {}, bot)).toBe(true);
     expect(mustAsk("mcp__homeassistant__call_service", { domain: "lock", service: "unlock", entity_id: "lock.front" }, bot)).toBe(true);
     expect(mustAsk("mcp__homeassistant__call_service", { domain: "light", service: "turn_on", entity_id: "light.porch" }, bot)).toBe(false);
     expect(mustAsk("TESLA_GET_VEHICLE_DATA", {}, bot)).toBe(false);
-    // Gond's own tools are never an app's action, whatever their names say.
     for (const tool of ["send_file", "delete_routine", "mcp__gond__send_screenshot", "mcp__gond__delete_routine"]) expect(mustAsk(tool, {}, bot)).toBe(false);
     expect(mustAsk("add_mcp_server", { name: "x" }, bot)).toBe(true);
     expect(mustAsk("ask_approval", { summary: "Send the invoice" }, bot)).toBe(true);
@@ -1237,7 +1234,6 @@ describe("a reply as it is written", () => {
     expect(team).toContain("- The office moved.");
     expect(fitMemory("x".repeat(100), 40).text).toContain("x".repeat(40));
 
-    // A memory still waiting on a computer that couldn't hand it over isn't empty: the bot hears not to write over it.
     const unread = systemPromptFor(bot, { ...base, memory: memory.UNREADABLE, teamMemory: memory.UNREADABLE });
     expect(unread).not.toContain("Empty so far");
     expect(unread).toContain("Don't call memory_update this turn");
@@ -1365,11 +1361,9 @@ describe("the computer tool", () => {
     expect(String((screenSteps({ actions: [{ type: "click", label: "Checkout" }] }, "desktop", scale, none) as { error: string }).error)).toContain("x and y");
     expect(screenSteps({ actions: [{ type: "type_login", label: "Password", role: "textbox", name: "site_password" }] }, "browser", null, login)).toEqual({ steps: [{ type: "fill", label: "Password", role: "textbox", text: "pw-1234", secret: true }] });
 
-    // A detail held to a site carries it to the box, which types it only on that site's pages; never on the desktop.
     const bound = (name: string) => (name === "UBER_EATS_PASSWORD" ? { value: "pw-9", site: "uber.com" } : null);
     expect(screenSteps({ actions: [{ type: "type_login", ref: "e3", name: "UBER_EATS_PASSWORD" }] }, "browser", null, bound)).toEqual({ steps: [{ type: "fill", ref: "e3", text: "pw-9", secret: true, site: "uber.com" }] });
     expect(String((screenSteps({ actions: [{ type: "type_login", name: "UBER_EATS_PASSWORD" }] }, "desktop", scale, bound) as { error: string }).error)).toContain("browser tool");
-    // Only a held detail names a site: one the model writes itself is dropped.
     expect(screenSteps({ actions: [{ type: "type", text: "hi", site: "evil.com" }] }, "browser", null, none)).toEqual({ steps: [{ type: "type", text: "hi" }] });
 
     expect(screenSteps({ action: "left_click", coordinate: [10, 20] }, "desktop", scale, none)).toEqual({ steps: [{ type: "click", x: 20, y: 40, button: "left", count: 1 }] });
@@ -1383,7 +1377,6 @@ describe("the computer tool", () => {
     expect(registrableDomain("192.168.6.128")).toBe("192.168.6.128");
     expect(siteOnPage("Uber Eats", "auth.uber.com")).toBe("Uber Eats (auth.uber.com)");
     expect(siteOnPage("amazon.com", "amazon.com")).toBe("amazon.com");
-    // The bot's own note never stands in for the page it actually has open.
     expect(siteOnPage("Uber Eats (ubereats.com)", "evil.com")).toBe("Uber Eats (evil.com)");
     expect(siteOnPage("Uber Eats", null)).toBe("Uber Eats");
     expect(boundSite("Uber Eats (auth.uber.com)")).toBe("uber.com");
@@ -1444,7 +1437,6 @@ describe("the computer tool", () => {
     expect(working).toContain("Downloaded: ~/Downloads/receipt.pdf");
     expect(working).toContain('On screen (ref role "name" @x,y):\ne12 button "Add to cart" @640,410');
     expect(working.endsWith("14 more below; scroll to reach them.")).toBe(true);
-    // A later list says only what changed since the one the bot saw.
     const changed = screenSummary({ ...base, target: "browser", width: 1280, height: 800, url: "https://www.ubereats.com/store/whataburger", title: "Whataburger", done: ["clicked e12"], elements: { id: "l2", text: 'e14 button "Checkout" @1100,80', note: "", changes: { gone: ["e12"], same: 9 } } }, 1);
     expect(changed).toContain('On screen, what changed since your last list (ref role "name" @x,y):\ne14 button "Checkout" @1100,80\nNo longer on screen: e12\nThe other 9 on screen are as listed before, though they may have moved.');
   });
@@ -2284,7 +2276,6 @@ describe("spaces", () => {
     expect(wokenFromAfar("@patch over to you", true, [patch, ledger], rules(false), 0)).toEqual([]);
     expect(wokenFromAfar("@patch over to you", true, [patch, ledger], rules(true), 0).map((b) => b.id)).toEqual(["patch"]);
     expect(wokenFromAfar("@patch over to you", true, [patch, ledger], rules(true), 20)).toEqual([]);
-    // With their people's waking off, naming the bot wakes nothing; only its own person's lines do.
     expect(wokenFromAfar("@patch trains?", false, [patch, ledger], rules(false, false), 0)).toEqual([]);
     expect(wokenFromAfar("hey everyone", false, [patch, ledger], rules(false, false), 0)).toEqual([]);
   });
@@ -2321,7 +2312,6 @@ describe("usage", () => {
     expect(step.text).toBe("Hi");
     expect(step.usage).toEqual({ tokens: { input: 12, output: 25, cacheRead: 900, cacheWrite: 40 }, cost: null });
 
-    // xAI states its cost in ticks on the last chunk, which has no choices.
     const grok = openAiAssembler();
     grok.push({ choices: [{ delta: { content: "Done" }, finish_reason: "stop" }] });
     grok.push({ choices: [], usage: { prompt_tokens: 1000, completion_tokens: 50, prompt_tokens_details: { cached_tokens: 800 }, cost_in_usd_ticks: 37756000 } });
@@ -2347,14 +2337,12 @@ describe("usage", () => {
       { name: "session", left: 58, resetsAt: "2026-10-25T16:10:00.000Z" },
       { name: "weekly", left: 0, resetsAt: "2026-10-29T09:00:00.000Z" },
     ]);
-    // As the Grok CLI's proxy answers: the month's credits, and the week's share when the plan has one.
     const monthly = { config: { monthlyLimit: { val: 1000 }, used: { val: 250 }, billingPeriodEnd: "2026-11-01T00:00:00Z" } };
     const weekly = { config: { currentPeriod: { type: "USAGE_PERIOD_TYPE_WEEKLY" }, creditUsagePercent: 64, billingPeriodEnd: "2026-10-26T00:00:00Z" } };
     expect(grokWindows(monthly, weekly)).toEqual([
       { name: "weekly", left: 36, resetsAt: "2026-10-26T00:00:00.000Z" },
       { name: "monthly", left: 75, resetsAt: "2026-11-01T00:00:00.000Z" },
     ]);
-    // A fresh week leaves the share out.
     expect(grokWindows(null, { config: { currentPeriod: { type: "USAGE_PERIOD_TYPE_WEEKLY" }, billingPeriodEnd: "2026-10-26T00:00:00Z" } })).toEqual([{ name: "weekly", left: 100, resetsAt: "2026-10-26T00:00:00.000Z" }]);
     expect(grokWindows({ config: { monthlyLimit: { val: 0 }, used: { val: 0 } } }, null)).toEqual([]);
   });
@@ -2407,17 +2395,14 @@ describe("calls", () => {
     expect(openai.others).toEqual([]);
     expect(speechModels("openai", "transcribe", ["gpt-transcribe", "gpt-transcribe-2"]).default).toBe("gpt-transcribe-2");
 
-    // A pick holds while the key offers it; once it's gone, or on another provider's key, the default runs.
     expect(chosenModel("openai", "call", "gpt-realtime-2.1", listed, false)).toBe("gpt-realtime-2.1");
     expect(chosenModel("openai", "call", "gpt-live-1.0", listed, false)).toBe("gpt-live-1.2");
     expect(chosenModel("openai", "call", "gpt-realtime-2.1", null, false)).toBe("gpt-realtime-2.1");
     expect(chosenModel("xai", "transcribe", "whisper-1", null, false)).toBe("grok-voice-transcribe-2.0");
-    // A server of one's own keeps any id for the microphone, and adds its other ids.
     expect(chosenModel("openai", "transcribe", "Systran/faster-whisper-small", ["other"], true)).toBe("Systran/faster-whisper-small");
     expect(chosenModel("openai", "call", "my-voice", ["my-voice"], true)).toBe("gpt-live-1.1");
     expect(voiceModelsFrom("openai", ["Systran/faster-whisper-small", "gpt-live-1"], true, { call: null, transcribe: null }).others).toEqual(["Systran/faster-whisper-small"]);
 
-    // xAI: its realtime voices at any version, and its alias only when it lists none.
     expect(speechModels("xai", "call", ["grok-voice-2.0", "grok-voice-3.0", "grok-voice-transcribe-2.0", "grok-4"])).toEqual({ groups: [{ name: "Grok Voice", models: ["grok-voice-3.0", "grok-voice-2.0"] }], default: "grok-voice-3.0" });
     expect(speechModels("xai", "call", ["grok-4"]).default).toBe("grok-voice-latest");
     expect(speechModels("xai", "transcribe", null).default).toBe("grok-voice-transcribe-2.0");
@@ -2468,7 +2453,6 @@ describe("telling an answer on xAI", () => {
     };
     watch.arrived("The flight to Denver leaves at 8:40 for $284.");
     expect(asked).toHaveLength(1);
-    // A reply to something else the person said, while the ask still waits: no second ask.
     asking = true;
     reply("Sure, one moment.");
     expect(asked).toHaveLength(1);
@@ -2497,7 +2481,6 @@ describe("speaking on xAI", () => {
     expect(sent).toEqual([]);
     queue.finished();
     expect(sent).toEqual(["answer"]);
-    // Refused (another reply had just begun): asked again once that one is done.
     queue.refused();
     queue.started();
     queue.finished();
@@ -2506,11 +2489,9 @@ describe("speaking on xAI", () => {
     queue.finished();
     await Bun.sleep(30);
     expect(sent).toEqual(["answer", "answer"]);
-    // Never started at all: asked again after a moment, and not for ever.
     queue.ask({ instructions: "lost" });
     await Bun.sleep(150);
     expect(sent.filter((s) => s === "lost")).toHaveLength(4);
-    // One that never gets said is told, so a silent answer leaves a trace.
     expect(dropped).toEqual(["lost"]);
     queue.stop();
   });

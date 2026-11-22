@@ -12,10 +12,8 @@ import { Field, FieldDescription, FieldTitle } from "@/components/ui/field";
 import { Spinner } from "@/components/ui/spinner";
 import { api } from "@/lib/api";
 
-/** Forgets one of a bot's saved Always allow rules: its next matching action asks again. */
 export const forgetRule = (botId: string, rule: string) => api(`/api/bots/${botId}/rules`, { method: "DELETE", body: JSON.stringify({ rule }) });
 
-/** A bot's saved rules as the Edit dialog holds them: loaded when it opens, kept current, removed on Save. */
 export function useSavedRules(botId: string | null) {
   const [rules, setRules] = useState<string[] | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -71,7 +69,6 @@ export function SavedRulesField({ name, state, disabled }: { name: string; state
   );
 }
 
-/** Takes back an Always allow just given on a card: the rule it saved is forgotten, so the next one asks again. */
 export function UndoAlways({ botId, rule, onUndone }: { botId: string; rule: string; onUndone: () => void }) {
   const [busy, setBusy] = useState(false);
   const undo = () => {

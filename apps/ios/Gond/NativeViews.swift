@@ -4,7 +4,6 @@ import QuickLook
 import SwiftUI
 import UIKit
 
-/// The app's own layer over the web view: a conversation's header and composer, a message's menu, and the wait while pictures open.
 struct NativeLayer: View {
     @ObservedObject var ui: NativeUI
 
@@ -78,8 +77,6 @@ extension EnvironmentValues {
 
 // MARK: The Chats screen's header
 
-/// Your picture (Settings), Search and New, where the page's own sit: a 48-point band below the
-/// status bar (at least 12 points down), 16 points in from the sides.
 struct ChatsHeaderView: View {
     @Environment(\.chromeScale) private var s
     @ObservedObject var ui: NativeUI
@@ -158,7 +155,6 @@ struct ChatsHeaderView: View {
     }
 }
 
-/// The Chats screen's search, an iOS search field in glass with Cancel; what it finds is the page's list.
 private struct ChatsSearchBar: View {
     @Environment(\.chromeScale) private var s
     @ObservedObject var ui: NativeUI
@@ -201,7 +197,6 @@ private struct ChatsSearchBar: View {
 
 // MARK: A Settings page's back button
 
-/// Where the page's own sits (16 points in, at least 16 down), and stays while the page scrolls under it.
 struct SettingsBackView: View {
     @Environment(\.chromeScale) private var s
     @ObservedObject var ui: NativeUI
@@ -228,7 +223,6 @@ struct SettingsBackView: View {
 
 // MARK: A toast
 
-/// A glass capsule just below the status bar: a tick, an i or a warning, the title and a line under it.
 struct ToastView: View {
     let toast: ToastRequest
     let dismiss: () -> Void
@@ -275,7 +269,6 @@ struct ChromeView: View {
     @State private var applied: String?
     @State private var keyboard: CGFloat = 0
     @State private var showsMenu = false
-    /// The composer with what sits on it, which the page keeps a gap of under its own.
     @State private var blockHeight: CGFloat = 44
     @FocusState private var focused: Bool
 
@@ -360,8 +353,6 @@ struct ChromeView: View {
         }
     }
 
-    /// From the screen's bottom edge to the composer's, as the page's own would sit: clear of the
-    /// home indicator, or 12 points over the keyboard while this field has it.
     private func composerBottom(safeBottom: CGFloat) -> CGFloat {
         focused && keyboard > 0 ? keyboard + 12 * s : max(12 * s, safeBottom)
     }
@@ -466,7 +457,6 @@ struct ChromeView: View {
         .padding(8)
     }
 
-    /// The composer and what sits on it: the room's bots to @mention, the files going with it, the quote being answered.
     private var composerBlock: some View {
         VStack(alignment: .leading, spacing: 8 * s) {
             if let mentions = state.mentions, !mentions.isEmpty {
@@ -567,7 +557,6 @@ struct ChromeView: View {
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: state.jump)
     }
 
-    /// The bots' screens in use, a pill each under the header, as the page's were.
     private func screenPills(_ screens: [ChromeState.Screen]) -> some View {
         GlassGroup {
             HStack(spacing: 8 * s) {
@@ -588,7 +577,6 @@ struct ChromeView: View {
         .frame(maxWidth: .infinity)
     }
 
-    /// On a call the composer is the call, as on the page: mute, what is happening and the clock, hang up.
     private func callBar(_ call: ChromeState.Call) -> some View {
         let bot = UIColor(css: call.color).map { Color(uiColor: $0) } ?? Theme.foreground
         return GlassGroup {
@@ -734,7 +722,6 @@ struct ChromeView: View {
     }
 }
 
-/// "1:31", how long the call has run, ticking each second.
 private struct CallClock: View {
     @Environment(\.chromeScale) private var s
     let since: Double
@@ -779,7 +766,6 @@ private struct CallBars: View {
     }
 }
 
-/// "Systems Administrator · working", breathing while a bot works, as the page's shimmer does.
 private struct Subtitle: View {
     @Environment(\.chromeScale) private var s
     let text: String
@@ -795,7 +781,6 @@ private struct Subtitle: View {
     }
 }
 
-/// A bot's face, or a room's two on the diagonal with a +N for the rest, the primary bot's crown, and a space's globe on the top corner as on the page.
 struct FacesView: View {
     let faces: [UIImage]
     let more: Int
@@ -852,7 +837,6 @@ struct FacesView: View {
 
 // MARK: A message's menu
 
-/// Like a long press in Messages: the page dims and blurs, the bubble lifts, the reactions sit above it in a glass capsule and the actions below.
 struct MessageMenuView: View {
     let menu: NativeUI.MessageMenu
     let pick: ([String: String]?) -> Void
@@ -1001,7 +985,6 @@ struct MessageMenuView: View {
 // MARK: Glass
 
 extension View {
-    /// A control in Liquid Glass from iOS 26, interactive so it reacts to a touch; a material before it.
     @ViewBuilder
     func glassControl<S: Shape>(in shape: S, interactive: Bool = true) -> some View {
         if #available(iOS 26.0, *) {
@@ -1014,7 +997,6 @@ extension View {
     }
 }
 
-/// Glass shapes that sit together blend as one from iOS 26, as Apple's own bars do.
 struct GlassGroup<Content: View>: View {
     @ViewBuilder let content: Content
 

@@ -29,11 +29,6 @@ export function getPushDevice(id: string): PushDevice | null {
   return row ? toDevice(row) : null;
 }
 
-/**
- * A phone signing up, or checking in again. The same phone with the same token keeps its keys; a
- * new token, or a phone this server doesn't know, gets new ones, and the token leaves any phone
- * that had it before.
- */
 export function registerPushDevice(userId: string, input: { platform: PushPlatform; token: string; id?: string | null; notices?: DeviceNotices | null }): { id: string; keys: { seal: string; answer: string } | null } {
   const db = ensureDatabase();
   const at = now();

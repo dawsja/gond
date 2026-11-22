@@ -40,7 +40,6 @@ export function botsRoutes() {
 
   app.get("/templates", (c) => c.json({ templates: BOT_TEMPLATES }));
 
-  // A bot as a template: a .bot file to pass on, or a link anyone signed in here can add a copy from.
   app.get("/bots/:id/template", (c) => {
     const bot = ownBot(c, c.req.param("id"));
     if (!bot) return c.json({ error: "Couldn't find that bot" }, 404);
@@ -184,7 +183,6 @@ export function botsRoutes() {
     if (!bot) return c.json({ error: "Couldn't find that bot" }, 404);
     await stopBot(bot);
     await forgetBotTeachings(bot.id, bot.userId);
-    // Its routines go with it, and so do the triggers Composio keeps for them.
     for (const routine of listRoutines(bot.id)) await disarmRoutine(bot.userId, routine.id);
     deleteBot(bot.id);
     void refreshSpaces(bot.userId).catch(() => undefined);

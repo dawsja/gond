@@ -47,7 +47,6 @@ const EMOJI: Record<Exclude<EmojiLevel, "default">, string> = {
   less: "Use no emoji in what you write. Reacting to a message with the react tool is still fine.",
 };
 
-/** The person's own choice of how their bots talk to them; empty when they kept the defaults. */
 export function howToTalk(talk: { style: ReplyStyle; emoji: EmojiLevel }): string {
   const lines = [
     talk.style === "default" ? "" : `Style: ${REPLY_STYLE_LABELS[talk.style].title}. ${STYLES[talk.style]}`,
@@ -60,7 +59,6 @@ export function howToTalk(talk: { style: ReplyStyle; emoji: EmojiLevel }): strin
   ].join("\n");
 }
 
-/** One line for each turn the person will read, so a long session doesn't drift from their choice. */
 // Each style's core rule, said again in every turn the person reads: the name alone drifted, as long
 // answers with lists under Efficient showed.
 const STYLE_RULES: Record<Exclude<ReplyStyle, "default">, string> = {
@@ -137,10 +135,6 @@ function roster(bots: Bot[], self: Bot): string {
     .join("\n");
 }
 
-/**
- * A memory file under a heading that says how full it is, since the bot can't see its limit otherwise:
- * nearly full, it hears to move notes out before anything stops loading; over, that the middle didn't.
- */
 function memorySection(title: string, raw: LoadedMemory, limit: number, topics: string, empty: string, writer: string): string {
   if (raw === UNREADABLE) return `## ${title})\n[It is still on the computer from before memory moved into Gond, and the computer isn't answering, so it isn't shown here, but it is still there. Don't call ${writer} this turn: it moves in the first time the computer answers. If the person asks about something you'd have noted, say your memory can't be read right now.]`;
   if (!raw?.trim()) return `## ${title})\n${empty}`;
@@ -169,9 +163,7 @@ type PromptContext = {
   mcpServers: McpServerNote[];
   logins: string[];
   talk: { style: ReplyStyle; emoji: EmojiLevel };
-  /** In a space: what the bot is told about it, and whether its owner left its memory out there. */
   space?: { note: string; memoryLeftOut: boolean } | null;
-  /** Whether this Gond has a computer; without one the rules say so and leave out what needs it. */
   computer?: boolean;
 };
 

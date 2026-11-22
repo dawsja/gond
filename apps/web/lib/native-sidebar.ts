@@ -8,7 +8,6 @@ import { shortTime } from "@/lib/time";
 
 type Activity = Readonly<Record<string, string>>;
 
-/** A chat's line under its name: what a bot is doing there, else the last thing said, else what the chat is for. */
 export function threadPreview(thread: ThreadRow, bots: Bot[], activity: Activity): string {
   const busyBot = Object.keys(activity)[0];
   if (busyBot) {
@@ -50,7 +49,6 @@ export function pictureFaceKey(url: string): string {
 }
 
 export type SidebarListsInput = {
-  /** The chats as the page's sidebar lists them (`useBotSearch`), pinned first. */
   rows: ThreadRow[];
   query: string;
   bots: Bot[];
@@ -65,7 +63,6 @@ export type SidebarListsInput = {
   now?: Date;
 };
 
-/** The pinned faces and the rows of the Mac app's sidebar, from what the page's own sidebar shows, and every face they name. */
 export function sidebarLists({ rows, query, bots, activity, drafts, pathname, call, ink, membersOf, menuOf, now = new Date() }: SidebarListsInput): { pinned: SidebarTile[]; rows: SidebarRow[]; faces: FaceSpec[] } {
   const faces = new Map<string, FaceSpec>();
   const botOf = (thread: ThreadRow) => (thread.botId ? bots.find((b) => b.id === thread.botId) : undefined);
@@ -99,7 +96,6 @@ export function sidebarLists({ rows, query, bots, activity, drafts, pathname, ca
     const doing = activity[thread.id] ?? {};
     const working = Object.keys(doing).length > 0;
     const calling = call?.threadId === thread.id ? (call.connecting ? "Calling" : "On a call") : null;
-    // The open conversation's row never shows its draft, as on the page.
     const draft = !base.active && !working && !calling ? (drafts[thread.id] ?? "").replace(/\s+/g, " ").trim() : "";
     return {
       ...base,
@@ -115,7 +111,6 @@ export function sidebarLists({ rows, query, bots, activity, drafts, pathname, ca
   return { pinned, rows: lines, faces: [...faces.values()] };
 }
 
-/** "In messages" while searching: who said it (and in which room), when, and the words around the match. */
 export function sidebarHits(hits: Message[], query: string, threads: ThreadRow[], bots: Bot[], now = new Date()): SidebarHit[] {
   return hits.map((hit) => {
     const thread = threads.find((t) => t.id === hit.threadId);
@@ -131,7 +126,6 @@ export function sidebarHits(hits: Message[], query: string, threads: ThreadRow[]
   });
 }
 
-/** Settings' sections under their headings, as the person may open them (`groupedSections` leaves out the admin's for anyone else). */
 export function sidebarSections(groups: ReturnType<typeof groupedSections>, active: string | null): { label: string; items: SidebarSection[] }[] {
   return groups.map((group) => ({
     label: group.label ?? "",
@@ -139,8 +133,157 @@ export function sidebarSections(groups: ReturnType<typeof groupedSections>, acti
   }));
 }
 
-/** The Settings section a path shows: Account at the bare /app/settings, as the page shows it there. */
 export function settingsSectionOf(pathname: string): string | null {
   if (pathname !== "/app/settings" && !pathname.startsWith("/app/settings/")) return null;
   return pathname.split("/")[3] || "account";
+}
+
+export type WatchableImage = {
+  complete: boolean;
+  addEventListener(type: "load" | "error", listener: () => void): void;
+  removeEventListener(type: "load" | "error", listener: () => void): void;
+};
+
+export type WatchableFaceHolder = {
+  dataset: { nativeFace?: string };
+  firstElementChild: Element | null;
+  querySelectorAll(selector: string): Iterable<WatchableImage>;
+};
+
+export type WatchableFaceContainer = {
+  querySelectorAll(selector: string): Iterable<WatchableFaceHolder>;
+};
+
+export type WatchNativeFacesOptions = {
+  container: WatchableFaceContainer;
+  isSent: (key: string) => boolean;
+  isReady: (holder: WatchableFaceHolder) => boolean;
+  renderFace: (element: Element) => Promise<string | null>;
+  onFaces: (faces: Record<string, string>) => void;
+  requestFrame?: (cb: () => void) => number;
+  cancelFrame?: (id: number) => void;
+  observe?: (container: WatchableFaceContainer, onMutate: () => void) => () => void;
+};
+
+function defaultObserve(container: WatchableFaceContainer, onMutate: () => void): () => void {
+  if (typeof MutationObserver === "undefined") return () => {};
+  const observer = new MutationObserver(onMutate);
+  observer.observe(container as unknown as Node, { childList: true, subtree: true });
+  return () => observer.disconnect();
+}
+
+export function watchNativeFaces({
+  container,
+  isSent,
+  isReady,
+  renderFace,
+  onFaces,
+  requestFrame = (cb) => window.requestAnimationFrame(cb),
+  cancelFrame = (id) => window.cancelAnimationFrame(id),
+  observe = defaultObserve,
+}: WatchNativeFacesOptions): () => void {
+  let stopped = false;
+  let frame = 0;
+  const inFlight = new Set<string>();
+  const watched = new Map<WatchableImage, () => void>();
+  const settledImages = new Set<WatchableImage>();
+  let disconnect: (() => void) | null = null;
+
+  const stopWatchingImages = () => {
+    for (const [img, listener] of watched) {
+      img.removeEventListener("load", listener);
+      img.removeEventListener("error", listener);
+    }
+    watched.clear();
+  };
+
+  const stopObserving = () => {
+    disconnect?.();
+    disconnect = null;
+    stopWatchingImages();
+  };
+
+  const schedule = () => {
+    if (stopped || frame) return;
+    frame = requestFrame(paint);
+  };
+
+  const watchImage = (img: WatchableImage) => {
+    if (watched.has(img)) return;
+    const onSettle = () => {
+      img.removeEventListener("load", onSettle);
+      img.removeEventListener("error", onSettle);
+      watched.delete(img);
+      settledImages.add(img);
+      schedule();
+    };
+    watched.set(img, onSettle);
+    img.addEventListener("load", onSettle);
+    img.addEventListener("error", onSettle);
+  };
+
+  const imagesSettled = (holder: WatchableFaceHolder): boolean => {
+    let settled = true;
+    for (const img of holder.querySelectorAll("img")) {
+      if (!img.complete && !settledImages.has(img)) {
+        settled = false;
+        watchImage(img);
+      }
+    }
+    return settled;
+  };
+
+  const hasUnsentHolders = () =>
+    [...container.querySelectorAll("[data-native-face]")].some((holder) => {
+      const key = holder.dataset.nativeFace;
+      return Boolean(key) && !isSent(key!);
+    });
+
+  const paint = () => {
+    frame = 0;
+    if (stopped) return;
+    const pending = [...container.querySelectorAll("[data-native-face]")].filter((holder) => {
+      const key = holder.dataset.nativeFace;
+      return Boolean(key) && !isSent(key!) && !inFlight.has(key!);
+    });
+    const ready: WatchableFaceHolder[] = [];
+    let waiting = 0;
+    for (const holder of pending) {
+      const loaded = isReady(holder);
+      const settled = imagesSettled(holder);
+      if (loaded && settled) ready.push(holder);
+      else waiting += 1;
+    }
+    if (waiting === 0 && ready.length === 0 && inFlight.size === 0) {
+      stopObserving();
+      return;
+    }
+    if (ready.length === 0) return;
+    for (const holder of ready) inFlight.add(holder.dataset.nativeFace!);
+    void Promise.all(
+      ready.map(async (holder) => {
+        const key = holder.dataset.nativeFace!;
+        try {
+          return [key, holder.firstElementChild ? await renderFace(holder.firstElementChild) : null] as const;
+        } finally {
+          inFlight.delete(key);
+        }
+      }),
+    ).then((pairs) => {
+      if (stopped) return;
+      const painted = Object.fromEntries(pairs.filter((pair): pair is readonly [string, string] => Boolean(pair[1])));
+      if (Object.keys(painted).length) onFaces(painted);
+      if (!hasUnsentHolders() && inFlight.size === 0) stopObserving();
+    });
+  };
+
+  disconnect = observe(container, schedule);
+  schedule();
+
+  return () => {
+    stopped = true;
+    if (frame) cancelFrame(frame);
+    frame = 0;
+    stopObserving();
+  };
 }

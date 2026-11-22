@@ -31,7 +31,6 @@ import { useFederation } from "@/components/spaces/use-federation";
 
 const IDLE: Record<string, string> = {};
 
-/** Something new for the person is the bot's color; bots only talking to each other there is a grey one. */
 function UnreadDot({ thread, bot, className }: { thread: ThreadRow; bot: Bot | undefined; className: string }) {
   if (thread.unread > 0) return <span className={cn("rounded-full", className)} style={{ background: bot?.color ?? "var(--foreground)" }} aria-label={`${thread.unread} unread`} />;
   if (thread.unreadTeam) return <span className={cn("rounded-full bg-ash", className)} aria-label="New between bots" />;

@@ -25,7 +25,6 @@ export const DESKTOP_CONTROL_LABELS: Record<DesktopControl, string> = {
 
 export type DesktopDriver = { botId: string; threadId: string };
 
-/** One bot's screen on the computer: every bot has its own, started when it or the person first needs it. */
 export type ScreenState = {
   botId: string;
   running: boolean;
@@ -36,13 +35,11 @@ export type ScreenState = {
   control: DesktopControl;
 };
 
-/** The person's bots' screens that are running, and which conversations have a bot at one. */
 export type DesktopState = {
   screens: ScreenState[];
   drivers: DesktopDriver[];
 };
 
-/** A bot's screen as the state has it, asleep when it isn't running. */
 export function screenOf(desktop: DesktopState | null | undefined, botId: string): ScreenState {
   return desktop?.screens.find((screen) => screen.botId === botId) ?? { botId, running: false, ready: false, width: null, height: null, viewers: 0, control: "free" };
 }

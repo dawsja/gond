@@ -53,7 +53,6 @@ export function pushRoutes() {
     return c.json({ notices });
   });
 
-  // A phone signing up for push, or checking in as it opens. New keys come back only when it needs them.
   app.put("/push/devices", async (c) => {
     const body = await readBody(c);
     if (body.platform !== "android" && body.platform !== "ios") return c.json({ error: "Push works in the Android and iPhone apps" }, 400);

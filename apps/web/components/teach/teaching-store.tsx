@@ -60,7 +60,6 @@ function useTeachingState(): TeachingState {
   return state;
 }
 
-/** The person's recording still under way or being looked at, if any. */
 export function useOpenTeaching(): Teaching | null {
   return useTeachingState().open;
 }
@@ -69,7 +68,6 @@ export function usePutTeaching(): (teaching: Teaching) => void {
   return useTeachingState().put;
 }
 
-/** One card's teaching: loaded once, then kept current by its live events. */
 export function useTeaching(id: string | null): { teaching: Teaching | null; failed: boolean; reload: () => void } {
   const { byId, put } = useTeachingState();
   const [failed, setFailed] = useState(false);
@@ -91,7 +89,6 @@ export function useTeaching(id: string | null): { teaching: Teaching | null; fai
 
 const noTick = () => () => undefined;
 
-/** A recording's time so far, counting on between its events while it records. */
 export function useRecordingMs(teaching: Teaching | null): number {
   const { seenAt } = useTeachingState();
   const running = teaching?.status === "recording";

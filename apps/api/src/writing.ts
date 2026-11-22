@@ -18,10 +18,6 @@ const realTimers: Timers = {
   },
 };
 
-/**
- * The words of a reply on their way to the person, at most one update every `WRITING_INTERVAL_MS`.
- * Nothing shows while the text could still be `NOTHING_NEW`, which posts nothing.
- */
 export function createWriting(send: (text: string | null) => void, redact: (text: string) => string, timers: Timers = realTimers) {
   let latest: string | null = null;
   let shown = false;

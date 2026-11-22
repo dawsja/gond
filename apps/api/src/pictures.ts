@@ -16,7 +16,6 @@ export type ImageReference = { name: string; mediaType: string; data: Uint8Array
 type MadeImage = { data: Uint8Array; mediaType: "image/png" | "image/jpeg" | "image/webp"; source: ImageSource; usage?: StepUsage | null };
 type ImageRequest = { prompt: string; aspect: ImageAspect; references: ImageReference[]; signal?: AbortSignal; onPreview?: (picture: MadeImage) => void };
 
-/** The person's first way to make pictures, in `IMAGE_SOURCES` order; null when they have none. */
 export async function imageAccess(userId: string): Promise<ImageAccess | null> {
   for (const source of IMAGE_SOURCES) {
     if (source === "grok") {
@@ -56,7 +55,6 @@ export function imageUsage(source: ImageSource, raw: unknown): StepUsage | null 
   return tokens.input || tokens.output || tokens.cacheRead || ticks ? { tokens, cost: ticks } : null;
 }
 
-/** One event of OpenAI's streamed images API: a rough preview, the finished picture, or a failure. */
 export function imageStreamEvent(event: unknown): { kind: "partial" | "final"; b64: string } | { kind: "error"; message: string } | null {
   const { type, b64_json, error } = (event ?? {}) as { type?: unknown; b64_json?: unknown; error?: { message?: unknown } };
   if (typeof type !== "string") return null;
@@ -73,7 +71,6 @@ function errorText(body: unknown): string {
   return text.replace(/\s+/g, " ").trim().slice(0, 200);
 }
 
-/** A refusal in words the bot can pass on. */
 export function imageRefusal(source: ImageSource, status: number, body: unknown): string {
   const said = errorText(body);
   const where = IMAGE_MODELS[source].label;
@@ -139,7 +136,6 @@ export async function createImage(access: ImageAccess, request: ImageRequest): P
     try {
       payload = JSON.parse(raw);
     } catch {
-      /* plain text */
     }
     throw new Error(imageRefusal(access.source, res.status, payload));
   }
@@ -183,7 +179,6 @@ type Preview = { threadId: string; data: Uint8Array; mediaType: string };
 const holder = globalThis as typeof globalThis & { __gondPicturePreviews?: Map<string, Preview> };
 const previews = () => (holder.__gondPicturePreviews ??= new Map());
 
-/** The latest rough preview of a picture being made, kept in memory only while it is made. */
 export function keepPreview(id: string, preview: Preview | null) {
   if (preview) previews().set(id, preview);
   else previews().delete(id);

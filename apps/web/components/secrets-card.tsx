@@ -24,13 +24,11 @@ type Forgetting = { title: string; names: string[]; detail: string };
 
 type Changing = { title: string; fields: { name: string; label: string; hidden: boolean }[] };
 
-/** "UBER_EATS_PASSWORD" is the Uber Eats password: its kind is the name's last word. */
 function detailOf(secret: SecretMeta): Changing["fields"][number] {
   const kind = /_(EMAIL|USERNAME|PHONE|PASSWORD|CODE)(?:_\d+)?$/.exec(secret.name)?.[1]?.toLowerCase() as LoginFieldKind | undefined;
   return { name: secret.name, label: kind ? LOGIN_FIELD_LABELS[kind] : secret.name, hidden: !kind || kind === "password" || kind === "code" };
 }
 
-/** New values for saved secrets, typed in place of what is there; what is there is never shown. */
 function ChangeDialog({ changing, onClose, onSaved }: { changing: Changing; onClose: () => void; onSaved: () => void }) {
   const [values, setValues] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
@@ -94,7 +92,6 @@ function ChangeDialog({ changing, onClose, onSaved }: { changing: Changing; onCl
   );
 }
 
-/** A new card, or new details for a saved one; with `card`, every field may stay empty to keep what it had. */
 function CardDialog({ card, onClose, onSaved }: { card: SecretMeta | null; onClose: () => void; onSaved: () => void }) {
   const [values, setValues] = useState<CardValues>({ ...EMPTY_CARD, nickname: card?.card?.nickname ?? "" });
   const [busy, setBusy] = useState(false);
@@ -227,14 +224,12 @@ function CardsCard({ secrets, loadFailed, onReload, onForget }: { secrets: Secre
 
 const PART_ORDER = ["number", "expiry", "cvc", "zip", "name"] as const;
 
-/** "A, B and 2 others": a long list of names says only the first two. */
 function fewNames(names: string[]): string {
   if (names.length <= 2) return names.join(" and ");
   const rest = names.length - 2;
   return `${names.slice(0, 2).join(", ")} and ${rest} ${rest === 1 ? "other" : "others"}`;
 }
 
-// A name like BACKUP_ENCRYPTION_PASSWORD has no spaces, so it may break after each underscore.
 function breakable(text: string) {
   return text.split(/(?<=_)/).flatMap((part, i) => (i ? [<wbr key={i} />, part] : [part]));
 }

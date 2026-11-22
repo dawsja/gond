@@ -1,8 +1,5 @@
 name: iPhone screenshots
 
-# Runs the iPhone app in a simulator against a throwaway Gond with a seeded conversation and keeps
-# screenshots of the app's own glass (the header, the composer, the menus, a confirm, Quick Look) in
-# light and dark, for review of a change to them. The screenshots are this run's artifact.
 on:
   pull_request:
     paths:

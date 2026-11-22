@@ -1,4 +1,3 @@
-/** Runs `tick` every `ms` while the page is shown, and once as it's shown again; a hidden page polls nothing. */
 export function pollWhileShown(tick: () => void, ms: number): () => void {
   const timer = window.setInterval(() => {
     if (!document.hidden) tick();

@@ -41,7 +41,6 @@ export function getPeer(key: string): PeerRow | null {
   return ensureDatabase().query("SELECT key, box, sig, name, relay_url, blocked, last_seen FROM gond_peers WHERE key = ?").get(key) as PeerRow | null;
 }
 
-/** Records a Gond met through an invite, a join or a space; its name and relay follow what it last said. */
 export function savePeer(peer: { key: string; box: string; sig: string; name: string; relayUrl: string }) {
   ensureDatabase()
     .query(
@@ -70,7 +69,6 @@ function peerChecked(userId: string, key: string): boolean {
   return Boolean(ensureDatabase().query("SELECT 1 FROM gond_peer_checks WHERE user_id = ? AND peer_key = ?").get(userId, key));
 }
 
-/** Every Gond this one knows, with whether the asking person checked its words. */
 export function listPeers(userId: string): FederationPeer[] {
   const rows = ensureDatabase()
     .query(
@@ -127,7 +125,6 @@ export function addSpaceGond(spaceId: string, peerKey: string) {
   ensureDatabase().query("INSERT OR IGNORE INTO gond_space_gonds (space_id, peer_key) VALUES (?, ?)").run(spaceId, peerKey);
 }
 
-/** Takes a Gond out of a space, with everyone who was there from it. */
 export function removeSpaceGond(spaceId: string, peerKey: string) {
   transaction((db) => {
     db.query("DELETE FROM gond_space_gonds WHERE space_id = ? AND peer_key = ?").run(spaceId, peerKey);
@@ -137,7 +134,6 @@ export function removeSpaceGond(spaceId: string, peerKey: string) {
 
 export type MemberInput = { id: string; kind: "person" | "bot"; name: string; color: string | null };
 
-/** The people and bots another Gond has in a space, as that Gond last said. */
 export function setGondMembers(spaceId: string, peerKey: string, members: MemberInput[]) {
   transaction((db) => {
     db.query("DELETE FROM gond_space_members WHERE space_id = ? AND peer_key = ?").run(spaceId, peerKey);
@@ -147,7 +143,6 @@ export function setGondMembers(spaceId: string, peerKey: string, members: Member
   });
 }
 
-/** A member as the Gond it is from declared it in a space; null for anyone that Gond never named there. */
 export function declaredMember(spaceId: string, peerKey: string, memberId: string): MemberInput | null {
   const row = ensureDatabase().query("SELECT member_id, kind, name, color FROM gond_space_members WHERE space_id = ? AND peer_key = ? AND member_id = ?").get(spaceId, peerKey, memberId) as { member_id: string; kind: "person" | "bot"; name: string; color: string | null } | null;
   return row ? { id: row.member_id, kind: row.kind, name: row.name, color: row.color } : null;
@@ -180,7 +175,6 @@ export function memberOfAuthor(threadId: string, author: string): (SpaceMember &
   return row ? { id: row.member_id, kind: row.kind, name: row.name, color: row.color, gond: row.peer_key, gondName: row.gond_name || "another Gond" } : null;
 }
 
-/** Who a line from another Gond is by, in any space: "Sam (Sam's Gond)", for an export or a notice. */
 export function remoteName(author: string): string | null {
   if (!author.startsWith(REMOTE_AUTHOR)) return null;
   const [prefix, ...rest] = author.slice(REMOTE_AUTHOR.length).split(":");
@@ -190,7 +184,6 @@ export function remoteName(author: string): string | null {
   return row ? `${row.name} (${row.gond || "another Gond"})` : null;
 }
 
-/** The Gonds in a space, `verified` as the space's own person checked them. */
 export function gondsOf(space: Pick<SpaceRow, "id" | "host_key" | "user_id">): SpaceGond[] {
   return spaceGonds(space.id).map((key) => {
     const peer = getPeer(key);
@@ -198,7 +191,6 @@ export function gondsOf(space: Pick<SpaceRow, "id" | "host_key" | "user_id">): S
   });
 }
 
-/** What a conversation needs to draw a space; null for any other conversation. */
 export function threadSpace(threadId: string, ownKey: string | null): ThreadSpace | null {
   const space = spaceOfThread(threadId);
   if (!space) return null;
@@ -228,7 +220,6 @@ export function setSpaceDefaults(userId: string, defaults: SpaceDefaults) {
     .run(userId, defaults.level, defaults.bots ? JSON.stringify(defaults.bots) : ALL_BOTS, now());
 }
 
-/** A bot's rules in a space; one with none yet has the owner's default level, memory and other bots off. */
 export function ruleOf(spaceId: string, botId: string, userId: string): SpaceRule {
   const row = ensureDatabase().query("SELECT level, memory, people_wake, bots_wake, relay FROM gond_space_rules WHERE space_id = ? AND bot_id = ?").get(spaceId, botId) as { level: SpaceLevel; memory: number; people_wake: number; bots_wake: number; relay: number } | null;
   return row
@@ -242,7 +233,6 @@ export function setRule(spaceId: string, rule: SpaceRule) {
     .run(spaceId, rule.botId, rule.level, rule.memory ? 1 : 0, rule.peopleWake ? 1 : 0, rule.botsWake ? 1 : 0, rule.relay ? 1 : 0);
 }
 
-/** Puts every bot on Always allow in a space back to asking first; the bots it changed. */
 export function endAlwaysAllow(spaceId: string): string[] {
   const rows = ensureDatabase().query("UPDATE gond_space_rules SET level = 'act' WHERE space_id = ? AND level = 'full' RETURNING bot_id").all(spaceId) as { bot_id: string }[];
   return rows.map((r) => r.bot_id);
@@ -252,12 +242,10 @@ export function saveInvite(input: { hash: string; spaceId: string; userId: strin
   ensureDatabase().query("INSERT INTO gond_space_invites (hash, space_id, user_id, expires_at, created_at) VALUES (?, ?, ?, ?, ?)").run(input.hash, input.spaceId, input.userId, input.expiresAt, now());
 }
 
-/** The invites to a space nobody has used yet and that are still good, by hash, for the relay to forget. */
 export function openInvites(spaceId: string): string[] {
   return (ensureDatabase().query("SELECT hash FROM gond_space_invites WHERE space_id = ? AND used_by IS NULL AND expires_at > ?").all(spaceId, now()) as { hash: string }[]).map((r) => r.hash);
 }
 
-/** Spends an invite for one Gond: the space it opens, or null when it's unknown, used or out of date. */
 export function takeInvite(hash: string, spaceId: string, by: string): string | null {
   return transaction((db) => {
     const row = db.query("SELECT space_id, expires_at, used_by FROM gond_space_invites WHERE hash = ?").get(hash) as { space_id: string; expires_at: string; used_by: string | null } | null;
@@ -282,7 +270,6 @@ export function lineOfMessage(messageId: string): string | null {
   return row?.line_id ?? null;
 }
 
-/** Whether an envelope from this Gond arrived before; the first time also marks it, so a resent one is dropped. */
 export function firstSight(peerKey: string, envelopeId: string): boolean {
   const changes = ensureDatabase().query("INSERT OR IGNORE INTO gond_space_seen (peer_key, envelope_id, at) VALUES (?, ?, ?)").run(peerKey, envelopeId, now()).changes;
   return changes > 0;
@@ -321,7 +308,6 @@ export function outboxLater(id: string, nextAt: string) {
   ensureDatabase().query("UPDATE gond_space_outbox SET attempts = attempts + 1, next_at = ? WHERE id = ?").run(nextAt, id);
 }
 
-/** What waits for Gonds on this relay goes on the next flush, however long its backoff was. */
 export function outboxDueNow(relayUrl: string) {
   ensureDatabase().query("UPDATE gond_space_outbox SET next_at = ? WHERE peer_key IN (SELECT key FROM gond_peers WHERE relay_url = ?)").run(now(), relayUrl);
 }

@@ -57,7 +57,6 @@ test("browser steps are the browser's alone", () => {
   ]);
   rejects([{ type: "tab", index: -1 }], /tab needs index/, "browser");
   rejects([{ type: "tab" }], /tab needs index/, "browser");
-  // A page's photos, for product cards: the browser's to list, and only a look.
   assert.deepEqual(browser({ type: "images" }), [{ type: "images" }]);
   rejects([{ type: "images" }], /is for the browser tool/);
   assert.equal(describeStep({ type: "images" }), "listed the page's photos");
@@ -167,7 +166,6 @@ test("a drag travels in small moves and ends on its target, however far it goes"
   assert.ok(far.every(([x, y]) => x >= 0 && y >= 0), "on the screen");
   assert.ok(far.every(([x, y], i) => i === 0 || Math.abs(y - far[i - 1][1]) < 60), "small steps, not a jump");
   assert.ok(far.some(([x], i) => i > 0 && x !== far[i - 1][0]), "a hand wanders a little");
-  // The same places make the same path, so a test or a replay can follow it.
   assert.deepEqual(dragPath([100, 50], [100, 2050]), far);
 });
 

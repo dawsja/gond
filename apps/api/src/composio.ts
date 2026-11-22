@@ -190,7 +190,6 @@ async function authConfigFor(client: Composio, toolkit: string, name: string): P
   }
 }
 
-/** The person's live account for an app in Composio, under whichever auth config made it. */
 async function activeAccountFor(client: Composio, userId: string, toolkit: string): Promise<string | null> {
   const active = await client.connectedAccounts.list({ userIds: [composioUserId(userId)], toolkitSlugs: [toolkit], statuses: ["ACTIVE"] });
   return active.items[0]?.id ?? null;
@@ -335,7 +334,6 @@ function triggerTypeOf(item: { slug: string; name: string; description: string; 
   return { slug: item.slug, name: item.name, description: item.description, instructions: item.instructions ?? null, toolkit: item.toolkit.slug.toLowerCase(), app: item.toolkit.name, config: item.config ?? {} };
 }
 
-/** The events in one of the person's apps that can start a routine (Composio's trigger types). */
 export async function triggerTypes(userId: string, toolkit: string): Promise<TriggerType[]> {
   const answer = await (await sdk(userId)).triggers.listTypes({ toolkits: [toolkit.toLowerCase()], limit: 100 });
   return answer.items.map(triggerTypeOf);
@@ -345,7 +343,6 @@ export async function triggerType(userId: string, slug: string): Promise<Trigger
   return triggerTypeOf(await (await sdk(userId)).triggers.getType(slug));
 }
 
-/** Has Composio watch the person's app for an event, on their connected account; the trigger's id. */
 export async function startTrigger(userId: string, toolkit: string, slug: string, config: Record<string, unknown>): Promise<string> {
   const client = await sdk(userId);
   let account = getConnection(userId, toolkit);

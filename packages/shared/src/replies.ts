@@ -1,7 +1,6 @@
 /** A bot answers a routine run with this when there is nothing worth telling the person; the run then leaves no trace in the chat. */
 export const QUIET_REPLY = "NOTHING_NEW";
 
-/** The routine's name from the message a run posts (`[Routine: Inbox] …`, or `[Watch: Flight UA 418] …` for a watch). */
 export function routineName(body: string): string | null {
   return /^\[(?:Routine|Watch): ([^\]\n]+)\]/.exec(body)?.[1]?.trim() || null;
 }
@@ -42,13 +41,11 @@ export function plainMarkdown(text: string): string {
     })
     .replace(/^[ \t]*::choices\[([^\]\n]*)\](?:\{[^}\n]*\})?[ \t]*$/gm, (_, options: string) => options.split("|").map((option) => option.trim()).filter(Boolean).join(" or ") + "?")
     .replace(/^[ \t]*:::[^\n]*$/gm, "")
-    // A code fence and its language go; the code stays.
     .replace(/^[ \t]*(?:```|~~~)[^\n]*$/gm, "")
     .replace(/!\[([^\]\n]*)\]\([^)\s]*(?:\s+"[^"\n]*")?\)/g, "$1")
     .replace(/\[([^\]\n]+)\]\([^)\s]*(?:\s+"[^"\n]*")?\)/g, "$1")
     .replace(/<((?:https?:\/\/|mailto:)[^>\s]+)>/g, "$1")
     .replace(/<\/?[a-zA-Z][a-zA-Z0-9-]*(?:\s[^<>\n]*)?\/?>/g, " ")
-    // A table: its separator row (or a rule) goes, and its cells read one after another.
     .replace(/^[ \t]*[|:\- \t]*-[|:\- \t]*$/gm, "")
     .replace(/^[ \t]*\|(.*?)\|?[ \t]*$/gm, (_, cells: string) => cells.split("|").map((cell) => cell.trim()).filter(Boolean).join(" · "))
     .replace(/^[ \t]*(?:>[ \t]?)+/gm, "")

@@ -1,10 +1,3 @@
-// The bots' browser for one person, run as that person. It holds one
-// Playwright persistent context (Chrome on their desktop, a profile in their
-// home) for as long as the box keeps it, and runs batches of steps that
-// server.mjs has already checked with parseSteps. One JSON object per line:
-// in, { id, op: "run", steps } or { id, op: "close" }; out, { id, result }
-// or { id, error }.
-
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -80,7 +73,6 @@ export const clipText = (text, max = MAX_READ_CHARS) => (text.length > max ? `${
 
 const centerOf = (box) => (box ? [Math.round(box.x + box.width / 2), Math.round(box.y + box.height / 2)] : null);
 
-// A hand, not a cursor that jumps: small moves along a shallow curve, with a short pause between.
 async function glide(current, from, to) {
   const start = from ?? [Math.max(0, to[0] - 48), Math.max(0, to[1] - 32)];
   for (const [x, y] of humanPath(start, to)) {
@@ -102,9 +94,6 @@ async function holdAt(current, at, ms) {
   }
   if (ms > 0) await current.mouse.move(at[0], at[1]);
 }
-
-/** An element's middle, after scrolling it into view, so a press-and-hold lands on it. */
-
 
 /** A sign-in detail held to a site goes only into a page of that site, checked again just before it is typed. */
 function heldTo(current, step) {
@@ -211,7 +200,6 @@ export function photosOf() {
       seen.add(url.href);
       out.push({ src: url.href, alt: String(alt ?? "").trim().slice(0, 80), width, height });
     } catch {
-      /* not an address */
     }
   };
   for (const meta of document.querySelectorAll('meta[property="og:image"], meta[property="og:image:secure_url"], meta[name="twitter:image"]')) add(meta.content, "", 0, 0);
@@ -223,13 +211,11 @@ export function photosOf() {
   return out.slice(0, 12);
 }
 
-/** The page's photos as lines a bot reads: address, size and what the page calls it. */
 export function photoLines(photos) {
   if (!photos.length) return "No photos on this page.";
   return photos.map((p, i) => `${i + 1}. ${p.src}${p.width ? ` (${p.width}×${p.height})` : ""}${p.alt ? ` ${JSON.stringify(p.alt)}` : ""}`).join("\n");
 }
 
-/** Waits for the DOM to stop changing for a moment, or SETTLE_MAX_MS, whichever comes first. */
 function quiet({ quietMs, maxMs }) {
   return new Promise((resolve) => {
     let timer = null;
@@ -290,7 +276,6 @@ export function createBrowser({ launch, fill = null, onTeach = () => undefined, 
   const downloads = new Map();
   const saving = [];
   const adopting = [];
-  // The last lists sent, by id, so the next batch can say only what changed since the one its bot saw.
   const lists = new Map();
   let listCount = 0;
   const remember = (list) => {
@@ -303,7 +288,6 @@ export function createBrowser({ launch, fill = null, onTeach = () => undefined, 
     return id;
   };
 
-  // While someone shows a bot how, what they do in its browser is reported (`record`).
   let teaching = false;
   let teachReady = false;
   const taught = (event) => {
@@ -481,7 +465,6 @@ export function createBrowser({ launch, fill = null, onTeach = () => undefined, 
     }
   };
 
-  // Each step answers with text for the model when it read something.
   const runStep = async (step) => {
     const current = await page();
     const dialog = dialogHere();
@@ -761,11 +744,6 @@ export function createBrowser({ launch, fill = null, onTeach = () => undefined, 
     }
   };
 
-  /**
-   * `view`: "both" (screenshot and element list), "image" or "text"; `owner`: the bot whose tabs the batch
-   * runs in; `zoom`: a part of the page to answer with; `since`: the list the bot last saw, so this one
-   * says only what changed; `marks`: whether the screenshot labels the listed elements with their refs.
-   */
   const run = async (steps, { view = "both", format = "jpeg", owner = "", zoom = null, since = null, marks = true } = {}) => {
     const done = [];
     const outputs = [];
@@ -854,7 +832,6 @@ export function createBrowser({ launch, fill = null, onTeach = () => undefined, 
     await current?.close().catch(() => undefined);
   };
 
-  // A fresh browser opens on its bot's homepage; a page someone is already on is left as it is.
   const show = async (home) => {
     await open();
     await Promise.all(adopting.splice(0));
@@ -880,7 +857,6 @@ export function createBrowser({ launch, fill = null, onTeach = () => undefined, 
   return { run, show, record, close, opened: () => context !== null };
 }
 
-/** Waits for a page's size to hold still after its window changed, at most a second and a half. */
 async function settleSize(page) {
   let last = "";
   for (let waited = 0; waited < 1_500; waited += 100) {
@@ -891,7 +867,6 @@ async function settleSize(page) {
   }
 }
 
-/** Maximizes the window a page is in unless it already is (or is full screen); true when it changed. */
 async function maximizeWindow(context, page) {
   if (typeof context?.newCDPSession !== "function") return false;
   const cdp = await context.newCDPSession(page);
@@ -907,7 +882,6 @@ async function maximizeWindow(context, page) {
   }
 }
 
-// The dock's strip at the bottom of the screen, which a window is centred above.
 const DOCK_PX = 60;
 
 /** A fresh screen's browser: 70% of the screen, centred above the dock, until a bot uses it and it is maximized. */
@@ -934,7 +908,6 @@ function lockOf(target) {
   return at > 0 ? { host: target.slice(0, at), pid: Number(target.slice(at + 1)) } : null;
 }
 
-/** The pid of a Chrome on this host already holding the profile (its SingletonLock reads "host-pid"), if it is alive. */
 export async function profileHolder(profile, { readlink = fs.readlink, alive = isAlive, hostname = os.hostname() } = {}) {
   const lock = lockOf(await readlink(path.join(profile, "SingletonLock")).catch(() => null));
   if (!lock || lock.host !== hostname) return null;
@@ -1009,7 +982,6 @@ function main() {
       } catch {
         continue;
       }
-      // One batch at a time: two bots of the person's share this browser, as they share the desktop.
       queue = queue.then(async () => {
         try {
           if (message.op === "record") send({ id: message.id, result: await browser.record(message.on === true) });

@@ -20,7 +20,6 @@ import type { SessionUser } from "@/lib/session";
 import { useNativeSidebar } from "@/lib/native-ui";
 import { downloadRevealer, macShell, shellBridge, type DesktopDownload } from "@/lib/shell";
 
-// Opened now and then, so they load when first opened rather than with every page.
 const BotDialog = dynamic(() => import("@/components/bot-dialog").then((m) => m.BotDialog));
 const RoomDialog = dynamic(() => import("@/components/room-dialog").then((m) => m.RoomDialog));
 const InviteSpaceDialog = dynamic(() => import("@/components/spaces/space-dialogs").then((m) => m.InviteSpaceDialog));

@@ -3,8 +3,6 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-/** A real API on a fresh data directory, beside a stand-in OIDC provider that signs in whoever a code names. */
-
 const SETUP_TOKEN = "link-test-token";
 
 const people: Record<string, { sub: string; email: string; name: string }> = {
@@ -55,7 +53,6 @@ export async function startGond() {
   const post = (route: string, body: unknown, cookie = "") =>
     fetch(`${url}${route}`, { method: "POST", headers: { "Content-Type": "application/json", Origin: url, Cookie: cookie }, body: JSON.stringify(body) });
 
-  /** Starts a sign-in or a link at the provider and comes back as `who`, as a browser would: the address it lands on, and its cookies. */
   async function viaProvider(start: string, body: unknown, who: string, cookie = ""): Promise<{ location: string; cookies: string[] }> {
     const begun = await post(start, { ...(body as object), disableRedirect: true }, cookie);
     expect(begun.ok).toBe(true);
@@ -69,7 +66,6 @@ export async function startGond() {
 
   const me = async (cookie: string) => ((await (await fetch(`${url}/api/me`, { headers: { Cookie: cookie } })).json()) as { user: { id: string } }).user.id;
 
-  /** Registers the local account and points Gond at the provider, signed in as that account. */
   async function setUp(): Promise<string> {
     const registered = await post("/api/register", { token: SETUP_TOKEN, username: "dawson", password: "a-long-test-password", confirm: "a-long-test-password" });
     expect(registered.ok).toBe(true);

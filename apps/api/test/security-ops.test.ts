@@ -33,7 +33,6 @@ describe("Backups, retention, cleanup and shutdown", () => {
     const base = new Date("2026-11-20T12:00:00Z");
 
     const making = createBackup("pre-update", base);
-    // The copy is a worker's: the API's own connection answers while it runs.
     expect((ensureDatabase().query("SELECT 1 AS one").get() as { one: number }).one).toBe(1);
     const b1 = await making;
     const b2 = await createBackup("pre-update", new Date(base.getTime() + 1_000));
@@ -51,7 +50,6 @@ describe("Backups, retention, cleanup and shutdown", () => {
     snap.close();
     expect(row?.id).toBe(1);
 
-    // A copy an earlier run left half made is cleared before the next one.
     const partial = path.join(backupsDir(), "gond-2026-11-19T120000Z-manual.db.tmp");
     writeFileSync(partial, "half");
     await createBackup("manual", new Date(base.getTime() + 4_000));
@@ -68,9 +66,7 @@ describe("Backups, retention, cleanup and shutdown", () => {
     const saved = [backup("new-update", "pre-update", "2026-11-03"), backup("old-update", "pre-update", "2026-11-02"), backup("manual", "manual", "2026-11-01")];
     expect(roomFor(HEADROOM + 100 * MB, 100 * MB, saved, "pre-update")).toEqual([]);
     expect(roomFor(HEADROOM + 20 * MB, 100 * MB, saved, "pre-update")).toEqual(["old-update"]);
-    // Removing the older one still isn't enough: nothing goes.
     expect(roomFor(HEADROOM, 300 * MB, saved, "pre-update")).toBeNull();
-    // A manual backup never removes an update's.
     expect(roomFor(HEADROOM, 50 * MB, saved, "manual")).toBeNull();
   });
 

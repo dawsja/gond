@@ -35,11 +35,9 @@ export const threadChanged = (threadId: string, cleared?: true) => {
 export const approvalsChanged = (userId: string | null | undefined) => {
   if (userId) emit({ topic: "approvals", userId });
 };
-/** Something in one profile's settings changed (routines, secrets, apps, MCP servers). */
 export const settingsChanged = (userId: string | null | undefined) => {
   if (userId) emit({ topic: "settings", userId });
 };
-/** A change to the whole server's settings, which every page reloads. */
 export const serverSettingsChanged = () => emit({ topic: "settings" });
 
 export const skillsChanged = (userId: string | null | undefined) => {

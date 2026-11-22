@@ -8,8 +8,6 @@ services:
     #   dockerfile: apps/web/Dockerfile
     restart: unless-stopped
     ports:
-      # Reachable only from this machine. Put a reverse proxy with HTTPS in
-      # front of it for remote access (see README).
       - "${GOND_PORT:-3000}:3000"
     environment:
       - APP_URL=${APP_URL:-http://localhost:3000}
@@ -26,14 +24,12 @@ services:
     environment:
       # Must match the address you open in the browser.
       - APP_URL=${APP_URL:-http://localhost:3000}
-      # Optional; passed through only when set in your shell or .env file.
       - GOND_SECRET_KEY
       - GOND_SETUP_TOKEN
       - BETTER_AUTH_SECRET
       - COMPOSIO_API_KEY
       - COMPOSIO_TOOLKITS
       - GOND_APPROVAL_TIMEOUT_MINUTES
-      # The box, where every bot has its computer. Required.
       - GOND_BOX_URL=http://box:8787
       # Where the box reaches this API: your HTTP MCP servers go through it.
       - GOND_API_INTERNAL_URL=http://api:8790
@@ -46,10 +42,6 @@ services:
       - gond-data:/data
       # The box writes its access token here on first start.
       - gond-box-state:/box-state:ro
-      # Settings → Team → Update pulls the newest box image from GHCR and
-      # recreates the box through this socket. Whoever can use it can control
-      # Docker on this machine, so it is the one thing here with host access;
-      # remove this line to keep updates to in-place patching only.
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       - box

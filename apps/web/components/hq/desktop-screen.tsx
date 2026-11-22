@@ -72,7 +72,6 @@ const HELP: { heading: string; rows: HelpRow[] }[] = [
   },
 ];
 
-/** A page of its own over the screen, like a settings page: it scrolls, and only the close button floats. */
 function HelpPage({ onClose }: { onClose: () => void }) {
   return (
     <div role="dialog" aria-modal="true" aria-labelledby="desktop-help-title" className="absolute inset-0 z-20 bg-background">
@@ -155,7 +154,6 @@ function statusLine(report: DesktopReport, control: DesktopControl, driver: stri
   return control === "bots" ? `${driver} is using it` : DESKTOP_CONTROL_LABELS[control];
 }
 
-/** The phone's controls, floating over the screen like a conversation's: nothing but the pills covers it. */
 function PhoneControls({
   title,
   icon,
@@ -190,9 +188,7 @@ function PhoneControls({
   onHelp: () => void;
   onPaste: () => void;
   onTeach?: () => void;
-  /** While the person shows the bot how: its steps and controls, in place of taking control. */
   teach?: ReactNode;
-  /** The recording's state, in place of who has the screen. */
   teachStatus?: ReactNode;
   onStop?: () => void;
   onClose: () => void;
@@ -354,11 +350,6 @@ function PhoneControls({
   );
 }
 
-/**
- * The live screen at its full size: a window with a toolbar on a wide
- * screen, and on a phone the desktop on the page with floating pills, the
- * clipboard and the keyboard in the corners, and a pinch to zoom.
- */
 export function DesktopScreen({
   botId,
   title,
@@ -390,7 +381,6 @@ export function DesktopScreen({
   const open = useOpenTeaching();
   const putTeaching = usePutTeaching();
   const bot = botById(botId);
-  // Showing this bot how: the screen stays the person's until Done, wherever they go meanwhile.
   const showing = open && open.botId === botId && (open.status === "recording" || open.status === "paused") ? open : null;
   const [takeOver, setTakeOver] = useState(false);
   const startTeaching = useCallback(async () => {
@@ -458,7 +448,6 @@ export function DesktopScreen({
   );
 }
 
-/** A bot's whole computer, opened from its panel: the screen as the page, with Stop. */
 export function BoxDesktop({ bot, onClose, control, onControlChange }: { bot: Bot; onClose: () => void; control: DesktopControl; onControlChange: (holder: "person" | "free") => void }) {
   const [stopping, setStopping] = useState(false);
   const stopDesktop = useCallback(async () => {

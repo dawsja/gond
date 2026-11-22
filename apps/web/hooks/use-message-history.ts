@@ -11,7 +11,6 @@ import { singleFlight } from "@/lib/single-flight";
 /** One page: the newest `limit`, the `limit` before `before`, or what came `from` a time on, lines stamped then included. */
 export type PageQuery = { before?: string; from?: string; limit: number };
 
-// A catch-up after a long time away reads on in pages this size until it's current.
 const CATCH_UP = 200;
 const CATCH_UP_ROUNDS = 5;
 
@@ -58,7 +57,6 @@ export function useMessageHistory(fetchPage: (query: PageQuery) => Promise<Messa
     }
   });
 
-  /** Reads again the approvals shown that can still change (waiting, or paused and still answerable), and any that didn't load. */
   const refreshApprovals = useStableCallback(async () => {
     hydrate(shown.current);
     const open = [...approvals.values()].filter((a): a is Approval => a !== null && (a.status === "pending" || isPaused(a))).map((a) => a.id);
@@ -94,7 +92,6 @@ export function useMessageHistory(fetchPage: (query: PageQuery) => Promise<Messa
       if (messages.length < CATCH_UP) return;
     }
   });
-  // Several events can ask at once; they share one read, and one more after it.
   const catchUp = useMemo(() => singleFlight(catchUpNow), [catchUpNow]);
 
   const loadEarlier = useStableCallback((limit: number = page): Promise<boolean> => {

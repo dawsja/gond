@@ -17,7 +17,6 @@ function clock(seconds: number) {
 
 type VoiceInput = ReturnType<typeof useVoiceInput>;
 
-/** Talking instead of typing: the recorder, its transcription into the draft, and what the button says. */
 export function useVoiceInput(threadId: string, onText: (text: string) => void) {
   const { voice } = useVoice();
   const [transcribing, setTranscribing] = useState(false);

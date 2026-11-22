@@ -24,7 +24,6 @@ final class ScreensTests: XCTestCase {
         // WebKit's features the runner's graphics can't take (the job says which).
         if let off = env["GOND_SCREENS_WEBKIT_OFF"] { base["GOND_SCREENS_WEBKIT_OFF"] = off }
 
-        // A conversation: the toolbar, the composer, the menu, a confirm, the sidebar searching.
         launch(base, label: "conversation", path: "/app/t/\(thread)")
         if wait(for: "composer.field", timeout: 60) {
             Thread.sleep(forTimeInterval: 3)
@@ -95,7 +94,6 @@ final class ScreensTests: XCTestCase {
         }
         app.terminate()
 
-        // A room: the bots to @mention sit on the composer.
         if let room = env["GOND_SCREENS_ROOM"], !room.isEmpty {
             launch(base, label: "room", path: "/app/t/\(room)")
             if wait(for: "composer.field", timeout: 60) {
@@ -108,14 +106,12 @@ final class ScreensTests: XCTestCase {
             app.terminate()
         }
 
-        // Settings: its sections in the sidebar.
         launch(base, label: "settings", path: "/app/settings/appearance")
         if !wait(for: "sidebar.back", timeout: 60) { print("[screens] Settings' sections never showed") }
         Thread.sleep(forTimeInterval: 3)
         shot("settings")
         app.terminate()
 
-        // Connect.
         var connect = base
         connect["GOND_SCREENS_CONNECT"] = "1"
         launch(connect, label: "connect", path: nil)
@@ -154,7 +150,6 @@ final class ScreensTests: XCTestCase {
         element(id).waitForExistence(timeout: timeout)
     }
 
-    /// The window as it is now, kept with the run and, for the job, written out as `<name>-<appearance>.png`.
     private func shot(_ step: String) {
         Thread.sleep(forTimeInterval: 1.2)
         let name = "\(step)-\(appearance)"

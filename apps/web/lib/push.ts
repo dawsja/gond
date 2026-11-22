@@ -61,7 +61,6 @@ export async function disablePush(): Promise<void> {
   await subscription.unsubscribe();
 }
 
-// The apps get notices as live events rather than Web Push, so which bots this one hears about is kept on it.
 const SHELL_NOTICES = "gond-shell-notices";
 
 export function shellNotices(): DeviceNotices {
@@ -79,7 +78,6 @@ function setShellNotices(notices: DeviceNotices) {
   } catch {}
 }
 
-/** What this browser or app is told about; null when this browser has no subscription to choose for. */
 export async function deviceNotices(inShell: boolean): Promise<DeviceNotices | null> {
   if (inShell) return shellNotices();
   const subscription = await currentSubscription();
@@ -112,7 +110,6 @@ function phonePush(): { token: string | null; device: string | null } | null {
   }
 }
 
-/** Whether this phone gets its notices as push, so the page leaves showing them to the app. */
 export function phonePushOn(): boolean {
   return Boolean(phonePush()?.device) && !shellNotificationsOff();
 }

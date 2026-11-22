@@ -31,7 +31,6 @@ function pcm(samples: ArrayLike<number>): ArrayBuffer {
 
 const tone = (from: number, count: number, hz = 440, amp = 0.5) => Array.from({ length: count }, (_, i) => amp * Math.sin((2 * Math.PI * hz * (from + i)) / RATE));
 
-/** Plays `frames` output frames one at a time, delivering a 20 ms chunk whenever `due` says so, and keeps where each was read. */
 function run(p: ReturnType<typeof player>, sampleRate: number, frames: number, due: (frame: number) => boolean, state = { sent: 0 }) {
   const out: number[] = [];
   const at: number[] = [];

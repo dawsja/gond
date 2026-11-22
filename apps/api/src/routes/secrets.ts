@@ -26,7 +26,6 @@ export function secretsRoutes() {
     if (body.decline) return c.json({ request: answerSecretRequest(request.id, "declined") });
     if (request.target === "card") {
       if (shoppingPreviewOnly()) return c.json({ error: "Purchases are disabled on this Gond" }, 403);
-      // A saved card the person picked, or one typed in now; either way only this conversation holds it, for a few minutes.
       let picked: { card: CardDetails; label: string } | null = null;
       if (typeof body.saved === "string") {
         const saved = readCard(userId(c), body.saved);
@@ -51,7 +50,6 @@ export function secretsRoutes() {
     try {
       if (request.target === "login") {
         const values = (body.values && typeof body.values === "object" ? body.values : {}) as Record<string, unknown>;
-        // A saved sign-in the person picked fills what it covers; its values never leave the API.
         const site = typeof body.saved === "string" ? body.saved : null;
         const savedNames = site ? listSecrets(userId(c)).filter((s) => s.site === site).map((s) => s.name) : [];
         if (site && !savedNames.length) return c.json({ error: "Couldn't find that saved sign-in" }, 404);

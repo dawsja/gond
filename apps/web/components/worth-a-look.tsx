@@ -123,10 +123,6 @@ function useMarkSeen(close: () => void) {
   };
 }
 
-/**
- * What needs the person and what the bots noticed, as one pill above the list: on a phone it opens
- * a sheet, in the sidebar a popover.
- */
 export function WorthALook({ as, className }: { as: "sheet" | "popover"; className?: string }) {
   const { approvals, noticed, faces } = useWorthALook();
   const [open, setOpen] = useState(false);
@@ -177,7 +173,6 @@ export function WorthALook({ as, className }: { as: "sheet" | "popover"; classNa
   );
 }
 
-/** Worth a look as a dialog: on a phone from its pill, in the Mac app from its sidebar's line. */
 export function WorthALookDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const { noticed } = useWorthALook();
   const close = () => onOpenChange(false);
@@ -201,7 +196,6 @@ export function WorthALookDialog({ open, onOpenChange }: { open: boolean; onOpen
   );
 }
 
-/** The line the pill shows, for the Mac app's sidebar; null when there's nothing. */
 export function useWorthALookLine(): { label: string; count: number } | null {
   const { approvals, noticed } = useWorthALook();
   const total = approvals.length + noticed.length;

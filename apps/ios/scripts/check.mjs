@@ -1,8 +1,3 @@
-// A quick check without Xcode, for what would drift from the rest of Gond
-// unnoticed: the bridge offers every method the web app's GondMobile type
-// names, the MCP loopback port matches packages/shared, ServerURL is tested
-// on every address the Android app's tests use, and the microphone has its
-// reason. Xcode, in CI, does the rest.
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

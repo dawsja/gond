@@ -133,7 +133,6 @@ function byMessage(files: FileRow[]): Map<string, Set<string>> {
   return out;
 }
 
-/** A message's attachments with these marked removed; anything unreadable is left as it was. */
 export function markRemoved(attachments: string, ids: Set<string>): string {
   try {
     const list = JSON.parse(attachments) as unknown;

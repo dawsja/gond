@@ -42,7 +42,6 @@ const STATE_LABELS: Record<Federation["state"], { label: string; tone: "ok" | "w
 
 type Loaded = { federation: Federation; peers: FederationPeer[] };
 
-/** Settings → Other Gonds, the admin's: Spaces on or off, this Gond's name and words, its relay, who may invite, and the Gonds it knows. */
 export function OtherGondsSection() {
   const { federation, peers, failed: loadFailed, reload, set } = useFederation();
   const [name, setName] = useState<string | null>(null);
@@ -243,7 +242,6 @@ function PeerRow({ peer, onChange }: { peer: FederationPeer; onChange: (loaded: 
   );
 }
 
-/** Settings → Spaces, everyone's: what their bots may do in a space they join, and which may join at all. */
 export function SpaceDefaultsCard() {
   const { bots } = useStore();
   const { federation } = useFederation();

@@ -1,12 +1,9 @@
-/** What pasting onto a bot's screen does; pure, so the choices are tested. */
-
 export type PasteCode = "KeyV" | "Insert";
 
 export function isPasteCode(code: string): code is PasteCode {
   return code === "KeyV" || code === "Insert";
 }
 
-/** What a paste chord on the screen does: nothing, a word that a bot holds it, or a paste. */
 export function pasteChordAction({ connected, viewOnly, canTakeControl }: { connected: boolean; viewOnly: boolean; canTakeControl: boolean }): "ignore" | "held" | "paste" {
   if (!connected) return "ignore";
   if (viewOnly) return canTakeControl ? "held" : "ignore";

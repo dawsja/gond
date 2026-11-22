@@ -80,7 +80,6 @@ export function eventsRoutes() {
           try {
             controller.close();
           } catch {
-            /* closed */
           }
         };
         c.req.raw.signal.addEventListener("abort", () => cleanup(), { once: true });

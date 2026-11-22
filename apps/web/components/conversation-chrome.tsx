@@ -50,7 +50,6 @@ export function ConversationChrome({ avatarKey, menu, composer, mentions, onEven
 // How many times, a quarter second apart, a face waits for a picture still loading before it is drawn without it.
 const PICTURE_TRIES = 20;
 
-/** Each room member's face from the page's unseen copies, by bot id, as PNGs. */
 function useMentionFaces(key: string): Record<string, string> {
   const [faces, setFaces] = useState<Record<string, string>>({});
   useEffect(() => {
@@ -154,12 +153,10 @@ export function useCovered(): boolean {
   return covered;
 }
 
-/** The person's own colour as the page paints Send, for the app's send button. */
 function useTint(): string {
   return useTokenHex("--tint-solid");
 }
 
-/** A colour token as #rrggbb, read again when the theme or the accent changes. */
 export function useTokenHex(token: string): string {
   const [hex, setHex] = useState("");
   useEffect(() => {

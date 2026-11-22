@@ -148,7 +148,6 @@ const STRICT_TOOLS = new Set(["request_login", "type_secret", "forget_secret", "
 const EVERY_TIME_TOOLS = new Set(["use_details"]);
 const MONEY_ACTION = /(^|_)(PAY|PAYS|PAYMENT|PAYMENTS|PAYOUT|TRANSFER|PURCHASE|BUY|CHECKOUT|CHARGE|REFUND|ORDER)(_|$)/;
 
-/** Whether a card may wait for a late answer: never a sign-in, a secret, a server's keys or money. */
 export function answerableLate(tool: string, input: Record<string, unknown>): boolean {
   if (STRICT_TOOLS.has(tool) || physicalAccess(tool, input)) return false;
   if (tool === "ask_approval") return input.kind !== "purchase" && !input.total;
@@ -156,7 +155,6 @@ export function answerableLate(tool: string, input: Record<string, unknown>): bo
   return !MONEY_ACTION.test(appAction(tool).action);
 }
 
-/** What makes two calls the same action: the fields whatever their order, empty ones aside, and for a command only the command. */
 function actionKey(tool: string, input: Record<string, unknown>): string {
   return JSON.stringify(canonical(tool === "Bash" ? { command: input.command, background: input.run_in_background === true } : input));
 }
@@ -196,15 +194,10 @@ export function cardExpired(bot: Pick<Bot, "id">, threadId: string, signal?: Abo
   if (signal) enders.get(signal)?.();
 }
 
-/**
- * What a bot hears when its card timed out: the person was already told (`tellCardExpired`), so the
- * turn ends quietly rather than going on without them or asking again unprompted.
- */
 export function expiredText(card: string): string {
   return `NOT done: nobody answered the card ${card} in time, so it expired, and the person has been told so in the chat. Don't ask again: if this was a teammate's errand, say in your answer that the person didn't answer the card; otherwise answer exactly ${QUIET_REPLY}.`;
 }
 
-/** What a bot hears when the person wrote to it while its card waited: their line reaches it straight after. */
 export function setAsideText(card: string): string {
   return `NOT done: the person wrote to you while the card ${card} waited, so it was set aside unanswered and nothing ran. Their message comes next: read it and do what it says. If they still want this done, call it again and a new card goes up.`;
 }
@@ -292,7 +285,6 @@ function reachesEngine(given: string, bot?: Pick<Bot, "id">): boolean {
   return clean.split("/").includes("..") && /(?:^|\/)\.claude(?:\.json)?(?:\/|$)/.test(clean);
 }
 
-/** A shell command, a file read or a file change that reaches into the CLI's own settings and sign-ins in the home. */
 export function touchesEngine(tool: string, input: Record<string, unknown>, bot?: Pick<Bot, "id">): boolean {
   if (tool === "Bash") return typeof input.command === "string" && ENGINE_IN_COMMAND.test(input.command);
   if (!FILE_TOOLS.has(tool) && !FILE_READS.has(tool)) return false;
@@ -305,7 +297,6 @@ export const SCRIPTED_SCREEN_TEXT =
 
 const SCREEN_SCRIPTING = /\b(xdotool|ydotool|wtype|pyautogui|pynput)\b|--remote-debugging-(port|pipe)|connect_?over_?cdp|connectOverCDP/i;
 
-/** A shell command or a file that would drive the screen itself instead of through the browser and computer tools. */
 export function scriptsTheScreen(tool: string, input: Record<string, unknown>): boolean {
   const texts: unknown[] =
     tool === "Bash"
@@ -324,7 +315,6 @@ export async function requestApproval(input: { bot: Bot; threadId: string; tool:
   return (await askApproval(input)).decision;
 }
 
-/** The email card this one redrafts: the bot's last in the conversation, if the person sent it back with changes. */
 function redrafting(botId: string, threadId: string, tool: string): Approval["revises"] {
   if (!emailMode(tool)) return null;
   const last = listApprovals({ threadId, limit: 10 }).find((a) => a.botId === botId && emailDraftOf(a.tool, a.input));
@@ -372,7 +362,6 @@ export function answerableOnPhone(approval: Pick<Approval, "tool" | "input">): b
 
 const buttonLabel = (value: unknown, fallback: string) => (typeof value === "string" && value.trim() ? value.trim().slice(0, 24) : fallback);
 
-/** Cards sent to phones with buttons, by id, with the person whose phones have them. */
 function onPhones(): Map<string, string> {
   const holder = globalThis as typeof globalThis & { __gondCardsOnPhones?: Map<string, string> };
   holder.__gondCardsOnPhones ??= new Map();
@@ -391,7 +380,6 @@ function offPhones(id: string, card?: Pick<Approval, "botId" | "tool" | "input">
   void withdrawFromPhones(person, `card-${id}`);
 }
 
-/** Paused cards that can't be answered any more read as expired, and come off the phones. How many. */
 function unpause(where: Parameters<typeof unpauseApprovals>[0]): number {
   return offPhonesAll(unpauseApprovals(where));
 }
@@ -401,17 +389,14 @@ function offPhonesAll(cards: Approval[]): number {
   return cards.length;
 }
 
-/** The person wrote in the conversation or stopped it: its paused cards can't be answered any more. How many closed. */
 export function retirePausedCards(threadId: string): number {
   return unpause({ threadId });
 }
 
-/** Paused cards asked more than `LATE_ANSWER_HOURS` ago come off the phones; from the dispatcher's minute. */
 export function retireLapsedCards(at = Date.now()): number {
   return offPhonesAll(lapsePausedApprovals(at));
 }
 
-/** Whether a conversation holds a card that can still be answered late, so "stop" there has something to stop. */
 export function hasPausedCards(threadId: string): boolean {
   return pausedApprovals(threadId).length > 0;
 }
@@ -462,7 +447,6 @@ function postCard(input: { bot: Bot; threadId: string; tool: string; input: Reco
   });
 }
 
-/** Why an answer can't apply to this card, or null when it can. */
 export function answerProblem(approval: Approval, given: ApprovalAnswer): string | null {
   const email = emailDraftOf(approval.tool, approval.input);
   if (given.send && (given.decision !== "allow" || !sendDraftAction(approval.tool))) return "Only a draft's card can send it";
@@ -476,7 +460,6 @@ export function answerProblem(approval: Approval, given: ApprovalAnswer): string
 
 const emailAddressOf = (who: string) => /<([^<>]+)>/.exec(who)?.[1]?.trim() ?? who.trim();
 
-/** What an answer does to its card: the rule an Always saves, the letter as the person left it, the note on a no. */
 function answerOf(approval: Approval, given: ApprovalAnswer) {
   const { decision } = given;
   const rule = decision === "always" && approval.tool !== "ask_approval" ? ruleFor(approval.tool, approval.input) : null;
@@ -539,7 +522,6 @@ function decideLate(approval: Approval, given: ApprovalAnswer): Approval | null 
   return resolved;
 }
 
-/** The work a paused card stopped, in words for the bot: what it was answering. */
 function workingOn(message: Message | null): string | null {
   if (!message) return null;
   const words = plainMarkdown(message.body).replace(/\s+/g, " ").trim();

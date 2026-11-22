@@ -35,7 +35,6 @@ function toMeta(row: Row): ProviderMeta {
   try {
     check = row.last_check ? (JSON.parse(row.last_check) as ProviderMeta["check"]) : null;
   } catch {
-    /* no check */
   }
   const session = isPlanProvider(row.kind as ProviderKind) ? sessionOf(row) : null;
   return { kind: row.kind as ProviderKind, baseUrl: row.base_url, account: session ? { email: session.email, name: session.name } : null, check, updatedAt: row.updated_at };

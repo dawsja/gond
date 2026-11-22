@@ -78,7 +78,6 @@ function McpSignInCard({ message, bot }: { message: Message; bot: Bot | undefine
   try {
     host = server?.url ? new URL(server.url).host : "";
   } catch {
-    /* not a URL */
   }
 
   const by = bot?.name ?? "A bot";

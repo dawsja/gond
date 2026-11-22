@@ -53,7 +53,6 @@ function boxErrorResponse(c: Context<Env>, error: unknown) {
 
 type Answer = Response | Promise<Response>;
 
-/** A route that needs the person's computer: it answers for a missing one, and passes on what the box refused. */
 function withBox(run: (c: Context<Env>, box: BoxConfig) => Answer) {
   return async (c: Context<Env>) => {
     const box = requireBox(c);
@@ -66,7 +65,6 @@ function withBox(run: (c: Context<Env>, box: BoxConfig) => Answer) {
   };
 }
 
-/** A route about one of the person's own bots, named by `param`; anyone else's is a 404 before the computer is asked. */
 function withBot(param: "bot" | "id", run: (c: Context<Env>, box: BoxConfig, bot: Bot) => Answer) {
   return async (c: Context<Env>) => {
     const bot = ownBot(c, c.req.param(param) ?? "");
@@ -88,7 +86,6 @@ function withEngine(run: (c: Context<Env>, box: BoxConfig, engine: CliEngine) =>
   };
 }
 
-/** A screen connection's id from the path, or the 400 to answer. */
 function connectionOf(c: Context<Env>): string | Response {
   const id = c.req.param("id") ?? "";
   return STREAM_ID.test(id) ? id : c.json({ error: "That screen connection isn't valid" }, 400);
@@ -108,7 +105,6 @@ function botFilePath(botId: string, relative: string): string | null {
   return `${botHome(botId)}/${clean}`;
 }
 
-// Every bot has a screen of its own; each route names it, and answers 404 for anyone else's bot.
 const screenSize = (body: { width?: unknown; height?: unknown }) => ({ width: Number(body.width) || 1280, height: Number(body.height) || 800 });
 
 export function boxRoutes() {

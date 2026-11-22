@@ -16,12 +16,10 @@ import { leaveAllSpaces } from "./spaces.ts";
 
 const ICON_ERROR = "Pick one of the icons on offer";
 
-/** A profile's conversations with something new from a bot, for the switcher's badge. */
 export const UNREAD_CONVERSATIONS = `SELECT COUNT(*) AS n FROM gond_threads t WHERE t.user_id = ?
   AND NOT EXISTS (SELECT 1 FROM gond_bots b WHERE b.thread_id = t.id AND b.hidden = 1)
   AND EXISTS (SELECT 1 FROM gond_messages m WHERE m.thread_id = t.id AND ${UNREAD_LINES} AND m.from_thread_id IS NULL AND m.created_at > COALESCE(t.last_read_at, ''))`;
 
-/** What waits in a profile: conversations with something new, and cards that need the person. */
 function waiting(userId: string): { unread: number; needsYou: number } {
   const db = ensureDatabase();
   const unread = db.query(UNREAD_CONVERSATIONS).get(userId) as { n: number };
@@ -37,7 +35,6 @@ export function listProfiles(personId: string): Profile[] {
   return profilesOf(personId).map(toProfile);
 }
 
-/** A new profile starts empty, as a new person does, in the first colour none of the others wears. */
 export function createProfile(personId: string, label: string, icon: string | null = null): Profile | { error: string } {
   const profiles = profilesOf(personId);
   if (profiles.length >= MAX_PROFILES) return { error: `You can have up to ${MAX_PROFILES} profiles. Delete one to make another.` };
@@ -51,7 +48,6 @@ export function createProfile(personId: string, label: string, icon: string | nu
   return toProfile(row);
 }
 
-/** Any profile's name and icon change, the default's too; null takes the icon off. */
 export function editProfile(id: string, change: { label?: string; icon?: string | null }): Profile | { error: string } {
   const profile = profileOf(id);
   if (!profile) return { error: "Couldn't find that profile" };
@@ -67,12 +63,6 @@ export function editProfile(id: string, change: { label?: string; icon?: string 
   return toProfile(profileOf(id)!);
 }
 
-/**
- * Everything a profile is goes, as when a person is removed: what runs stops, its spaces hear it
- * leave, its plan sign-ins and app connections are given up where they were made, every row of it
- * goes, and so does its account on the computer with every file in it. A default profile is the
- * person, removed only with them.
- */
 export async function deleteProfile(id: string): Promise<void> {
   const profile = profileOf(id);
   if (!profile || profile.isDefault) return;
@@ -100,7 +90,6 @@ async function wipe(id: string): Promise<void> {
   if (box) await removeBoxAccount(box, id).catch((error: unknown) => console.warn(`[gond] could not remove ${id}'s account on the box: ${error instanceof Error ? error.message : error}`));
 }
 
-/** A person's other profiles, gone before the person is. */
 async function deleteProfilesOf(personId: string): Promise<void> {
   for (const profile of profilesOf(personId)) if (!profile.isDefault) await deleteProfile(profile.id);
 }

@@ -9,10 +9,8 @@ enum Theme {
     static let destructive = dynamic(light: 0xBD1F1F, dark: 0xF97C7C)
     /// A phone's hang-up red, deep enough for a white icon in both themes (`--hangup`).
     static let hangup = dynamic(light: 0xC2301A, dark: 0xC4372B)
-    /// The person's own blue, the default accent: what fills the Connect button.
     static let tint = Color(hex: 0x2F6FD6)
 
-    /// Colours a bot can wear, for the faces behind the Connect card.
     static let bots: [Color] = [Color(hex: 0x2F6FD6), Color(hex: 0x1F9E8F), Color(hex: 0xD2483C)]
 
     private static func dynamic(light: UInt32, dark: UInt32) -> Color {
@@ -25,7 +23,6 @@ extension UIColor {
         self.init(red: CGFloat((hex >> 16) & 0xFF) / 255, green: CGFloat((hex >> 8) & 0xFF) / 255, blue: CGFloat(hex & 0xFF) / 255, alpha: 1)
     }
 
-    /// A CSS colour as the web app reports it: #rgb, #rrggbb or rgb(r, g, b).
     convenience init?(css: String) {
         let value = css.trimmingCharacters(in: .whitespaces).lowercased()
         if value.hasPrefix("#") {
@@ -144,7 +141,6 @@ struct BotFace: View {
     }
 }
 
-/// The shades of one bot colour, mixed as the web app mixes them.
 private struct BotTone {
     let base, top, bottom, rimLight, rimDark, visorTop, visorBottom, eye, glow: Color
 

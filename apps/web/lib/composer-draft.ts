@@ -17,7 +17,6 @@ export function changeDraft(draft: Draft, change: DraftChange): Draft {
   return { text, rev: draft.rev + 1 };
 }
 
-/** What a failed send puts back: the unsent text, ahead of anything typed while it was on its way. */
 export function unsentBack(current: string, unsent: string): string {
   return current.trim() ? `${unsent}\n${current}` : unsent;
 }

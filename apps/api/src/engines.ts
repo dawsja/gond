@@ -35,7 +35,6 @@ export function currentModel(ai: AiSettings, userId: string): ModelCurrent {
   };
 }
 
-/** How a turn runs: on the person's AI, and on `bot`'s own model when it picked one there. */
 export function engineRun(ai: AiSettings, userId: string, bot?: Pick<Bot, "model" | "modelFor"> | null): EngineRun {
   const engine = ai.engine;
   const config = ai.engines[engine];

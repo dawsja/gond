@@ -13,7 +13,6 @@ import { syncSkills } from "./skills.ts";
 import { greet } from "./templates.ts";
 import { syncSoul } from "./responder.ts";
 
-/** A bot as a `.bot` bundle: its job, look, approval level and routines, with the skills those use and its picture. */
 export function bundleOf(bot: Bot): BotBundle {
   const skills = new Map<string, Uint8Array>();
   // A reminder is about the person's own day, and an app's event about their own account, not the bot's job.
@@ -91,7 +90,6 @@ export async function addFromBundle(bundle: BotBundle, userId: string): Promise<
   return getBot(bot.id) ?? bot;
 }
 
-/** The link token for a bot's template, made the first time it is shared. */
 export function shareToken(botId: string): string {
   const db = ensureDatabase();
   const row = db.query("SELECT token FROM gond_bot_shares WHERE bot_id = ?").get(botId) as { token: string } | null;
@@ -101,7 +99,6 @@ export function shareToken(botId: string): string {
   return token;
 }
 
-/** The bot a link shares, as it is now; null for a link that was never made or whose bot is gone. */
 export function sharedBot(token: string): Bot | null {
   if (!/^[\w-]{10,64}$/.test(token)) return null;
   const row = ensureDatabase().query("SELECT bot_id FROM gond_bot_shares WHERE token = ?").get(token) as { bot_id: string } | null;

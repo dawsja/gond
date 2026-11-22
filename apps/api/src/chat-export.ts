@@ -56,7 +56,6 @@ const CARD_OUTCOME: Record<NonNullable<Approval["outcome"]>, string> = { sent: "
 
 type ExportChat = { id: string; kind: "bot" | "room"; name: string; members: { id: string; name: string }[] };
 
-/** What a chat's lines need from outside them: names, where each file went in the zip, and how a card ended. */
 type ExportContext = {
   nameOf: (author: MessageAuthor) => string;
   chatName: (threadId: string) => string | null;
@@ -83,7 +82,6 @@ function cardLine(message: Message, context: ExportContext): string {
   return `_Card: ${context.redact(message.body)}${how ? ` (${how}${note})` : ""}_`;
 }
 
-/** A chat as Markdown that reads the way it does in Gond: a heading per day, who spoke and when, and what they said. */
 export function chatMarkdown(chat: ExportChat, messages: Message[], context: ExportContext): string {
   const day = formatter(context.timeZone, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
   const time = formatter(context.timeZone, { hour: "numeric", minute: "2-digit" });
@@ -132,7 +130,6 @@ function redactDeep(value: unknown, redact: (text: string) => string): unknown {
   return value;
 }
 
-/** A chat in full, for another app: every line with who wrote it, its reactions, its quote, its files and how a card ended. */
 function chatJson(chat: ExportChat, messages: Message[], context: ExportContext, exportedAt: string): string {
   const doc = {
     format: FORMAT,
@@ -253,7 +250,6 @@ export function exportFileName(createdAt: string, userId: string): string {
   return `${exportFolder(createdAt, userTimezone(userId))}.zip`;
 }
 
-/** Gathers the chats into a zip; null when the person deleted the export before it was done. */
 async function buildExport(job: ExportJob, label: string): Promise<Uint8Array | null> {
   const timeZone = userTimezone(job.userId);
   const exportedAt = new Date().toISOString();
@@ -319,7 +315,6 @@ async function buildExport(job: ExportJob, label: string): Promise<Uint8Array | 
   }
 }
 
-/** Runs an export to the end in the background: the zip kept to download, or a line saying why not. */
 export async function runExport(job: ExportJob, label: string): Promise<void> {
   try {
     const data = await buildExport(job, label);

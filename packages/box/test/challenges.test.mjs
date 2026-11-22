@@ -35,13 +35,11 @@ function chromePath() {
       for (const relative of ["chrome-linux64/chrome", "chrome-linux/chrome"]) found.push(path.join(cache, entry, relative));
     }
   } catch {
-    /* no cache */
   }
   let bundled = null;
   try {
     bundled = chromium.executablePath();
   } catch {
-    /* no bundled browser */
   }
   return [process.env.CHROME_BIN, bundled, ...found].filter((candidate) => candidate && fsSync.existsSync(candidate))[0] ?? null;
 }
@@ -142,7 +140,6 @@ test("match one icon passes", { skip }, async () => {
   try {
     await recordChallenge(base, "match", async ({ page, browser, run }) => {
       const target = await page.evaluate(() => document.body.dataset.targetIcon);
-      // The model can ask for just the picture grid when the icons are small on a full screenshot.
       const zoomed = await browser.run(steps([{ type: "screenshot" }]), { view: "image", zoom: { x: 320, y: 120, width: 440, height: 330 } });
       assert.deepEqual(zoomed.zoom, { x: 320, y: 120, width: 440, height: 330 });
       assert.equal(zoomed.width, 440);
@@ -202,7 +199,6 @@ test("a slider the bot won't guess at is handed to the person, who completes it"
   const { server, base } = await serveFixture();
   try {
     await recordChallenge(base, "handoff", async ({ page }) => {
-      // The bot stops instead of guessing, and the person takes the mouse: this is the hand-off path.
       await page.evaluate(() => {
         const banner = document.createElement("div");
         banner.id = "handoffBanner";

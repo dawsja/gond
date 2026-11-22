@@ -204,7 +204,6 @@ function TableView({ table, doc }: { table: Table; doc: Doc }) {
   const [head, ...rows] = table.children;
   const { columns, wrap } = useMemo(() => layoutOf(table), [table]);
   const { ref, edges, roomy, scroll } = useSideScroll();
-  // The first column stays put while the rest scroll, so a row keeps its name.
   const pinned = (c: number) => c === 0 && cn("sticky left-0 z-[1]", edges.start && "shadow-[inset_-1px_0_0_var(--color-border)]");
   return (
     <div className="flex flex-col gap-1">

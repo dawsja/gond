@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// The app's one screen of its own: where your Gond is. Everything after it is your Gond's web app.
 struct ConnectView: View {
     @ObservedObject var model: AppModel
     @FocusState private var typing: Bool
@@ -13,7 +12,6 @@ struct ConnectView: View {
                     Text("Gond").font(.system(size: 18, weight: .bold))
                 }
                 .accessibilityElement(children: .combine)
-                // The team stands above the words, never behind them.
                 team.padding(.top, 28)
                 Text("Where is your Gond?")
                     .font(.system(size: 34, weight: .bold))
@@ -46,7 +44,6 @@ struct ConnectView: View {
         .onAppear { typing = true }
     }
 
-    /// Three bots' faces, standing together like the team you're about to reach.
     private var team: some View {
         HStack(alignment: .top, spacing: -14) {
             BotFace(hex: Theme.bots[0]).frame(width: 150).rotationEffect(.degrees(-10))
