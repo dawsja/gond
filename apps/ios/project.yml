@@ -42,6 +42,7 @@ targets:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
+        NSCameraUsageDescription: Gond uses the camera when you take a photo to send to your bots.
         NSMicrophoneUsageDescription: Gond uses the microphone when you talk to your bots instead of typing.
         NSLocalNetworkUsageDescription: Gond connects to your Gond, which may run on your home network.
         # A Gond is self-hosted, often at a plain-http address on a home network.

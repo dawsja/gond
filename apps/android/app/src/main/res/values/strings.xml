@@ -17,6 +17,8 @@
     <string name="connect_error_generic">Something went wrong. Try again.</string>
     <string name="download_started">Downloading %1$s</string>
     <string name="no_app_for_link">Nothing on this phone can open that link.</string>
+    <string name="no_camera_app">No camera app found on this phone.</string>
+    <string name="camera_failed">Couldn\'t open the camera.</string>
     <string name="notifications_channel">Bots</string>
     <string name="notifications_channel_description">When a bot finishes a job for you or needs your input.</string>
     <string name="answer_failed">Couldn\'t answer the card</string>

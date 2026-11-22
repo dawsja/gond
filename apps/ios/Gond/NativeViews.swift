@@ -641,6 +641,9 @@ struct ChromeView: View {
         GlassGroup {
             HStack(alignment: .bottom, spacing: 10 * s) {
                 Menu {
+                    if UIImagePickerController.isSourceTypeAvailable(.camera) {
+                        Button { ui.takePhoto() } label: { Label("Take Photo", systemImage: "camera") }
+                    }
                     Button { ui.pickPhotos() } label: { Label("Photo Library", systemImage: "photo.on.rectangle") }
                     Button { ui.pickFiles() } label: { Label("Files", systemImage: "folder") }
                 } label: {

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { fileKind } from "../lib/file-kind";
+import { fileKind, isPreviewableImage } from "../lib/file-kind";
 
 const file = (name: string, mediaType = "application/octet-stream") => ({ name, mediaType });
 
@@ -26,5 +26,23 @@ describe("fileKind", () => {
   test("anything else is a plain file", () => {
     expect(fileKind(file("setup.exe"))).toBe("other");
     expect(fileKind(file("no extension"))).toBe("other");
+  });
+});
+
+describe("isPreviewableImage", () => {
+  test("accepts standard photo formats", () => {
+    expect(isPreviewableImage({ type: "image/jpeg" })).toBe(true);
+    expect(isPreviewableImage({ type: "image/png" })).toBe(true);
+    expect(isPreviewableImage({ type: "image/webp" })).toBe(true);
+    expect(isPreviewableImage({ type: "image/gif" })).toBe(true);
+    expect(isPreviewableImage({ mediaType: "IMAGE/JPEG; charset=binary" })).toBe(true);
+  });
+
+  test("rejects svg, heic, and non-images", () => {
+    expect(isPreviewableImage({ type: "image/svg+xml" })).toBe(false);
+    expect(isPreviewableImage({ type: "image/heic" })).toBe(false);
+    expect(isPreviewableImage({ type: "image/heif" })).toBe(false);
+    expect(isPreviewableImage({ type: "application/pdf" })).toBe(false);
+    expect(isPreviewableImage({ type: "" })).toBe(false);
   });
 });

@@ -1,3 +1,4 @@
+import AVFoundation
 import Combine
 import os
 import PhotosUI
@@ -398,31 +399,98 @@ final class NativeUI: ObservableObject {
 
     // MARK: Attaching
 
+    private static let maxFiles = 6
+
+    private var remainingFileSlots: Int {
+        max(0, Self.maxFiles - (chrome?.files?.count ?? 0))
+    }
+
+    func takePhoto() {
+        guard remainingFileSlots > 0 else {
+            send(["type": "notice", "text": "At most \(Self.maxFiles) files per message."])
+            return
+        }
+        guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
+            send(["type": "notice", "text": "No camera is available on this phone."])
+            return
+        }
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized:
+            presentCamera()
+        case .notDetermined:
+            Task {
+                if await AVCaptureDevice.requestAccess(for: .video) {
+                    presentCamera()
+                }
+            }
+        case .denied:
+            guard let top = UIApplication.shared.topViewController else { return }
+            let alert = UIAlertController(
+                title: "Camera access is off",
+                message: "Allow Gond to use the camera in Settings to take a photo.",
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+            alert.addAction(UIAlertAction(title: "Open Settings", style: .default) { _ in
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            })
+            top.present(alert, animated: true)
+        case .restricted:
+            UIApplication.shared.topViewController?.showNotice("Camera access is restricted on this phone.")
+        @unknown default:
+            presentCamera()
+        }
+    }
+
+    private func presentCamera() {
+        guard let top = UIApplication.shared.topViewController else { return }
+        let picker = UIImagePickerController()
+        picker.sourceType = .camera
+        picker.mediaTypes = [UTType.image.identifier]
+        picker.cameraCaptureMode = .photo
+        let session = AttachPicker { [weak self] files in self?.attach(files) }
+        attaching = session
+        picker.delegate = session
+        top.present(picker, animated: true)
+    }
+
     func pickPhotos() {
+        let slots = remainingFileSlots
+        guard slots > 0 else {
+            send(["type": "notice", "text": "At most \(Self.maxFiles) files per message."])
+            return
+        }
+        guard let top = UIApplication.shared.topViewController else { return }
         var configuration = PHPickerConfiguration()
         configuration.filter = .images
-        configuration.selectionLimit = 10
+        configuration.selectionLimit = slots
         let picker = PHPickerViewController(configuration: configuration)
         let session = AttachPicker { [weak self] files in self?.attach(files) }
         attaching = session
         picker.delegate = session
-        UIApplication.shared.topViewController?.present(picker, animated: true)
+        top.present(picker, animated: true)
     }
 
     func pickFiles() {
+        guard remainingFileSlots > 0 else {
+            send(["type": "notice", "text": "At most \(Self.maxFiles) files per message."])
+            return
+        }
+        guard let top = UIApplication.shared.topViewController else { return }
         // Any file: Gond keeps every type, and the page and the API decide how each is shown.
         let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.item], asCopy: true)
         picker.allowsMultipleSelection = true
         let session = AttachPicker { [weak self] files in self?.attach(files) }
         attaching = session
         picker.delegate = session
-        UIApplication.shared.topViewController?.present(picker, animated: true)
+        top.present(picker, animated: true)
     }
 
     private func attach(_ files: [AttachPicker.File]) {
         attaching = nil
-        let limit = 20 * 1024 * 1024
-        let fitting = files.filter { $0.data.count <= limit }
+        let fitting = files.filter { $0.data.count <= CameraPhoto.maxBytes }
         if fitting.count < files.count { send(["type": "notice", "text": "A file over 20 MB was left out."]) }
         guard !fitting.isEmpty else { return }
         send(["type": "attach", "files": fitting.map { ["name": $0.name, "type": $0.type, "data": $0.data.base64EncodedString()] }])
@@ -434,9 +502,28 @@ final class NativeUI: ObservableObject {
     }
 }
 
-/// The photo library or Files, for the composer's paperclip; what comes back goes to the page as its own files.
-private final class AttachPicker: NSObject, PHPickerViewControllerDelegate, UIDocumentPickerDelegate {
-    struct File {
+/// Naming and JPEG encoding for a photo taken directly from the iPhone camera.
+enum CameraPhoto {
+    static let maxBytes = 20 * 1024 * 1024
+
+    static func name(for date: Date = Date(), timeZone: TimeZone = .current) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = timeZone
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        return "Photo-\(formatter.string(from: date)).jpg"
+    }
+
+    static func jpegData(from image: UIImage, limit: Int = maxBytes) -> Data? {
+        guard let data = image.jpegData(compressionQuality: 0.9) else { return nil }
+        if data.count <= limit { return data }
+        return image.jpegData(compressionQuality: 0.7) ?? data
+    }
+}
+
+/// The camera, photo library or Files, for the composer's paperclip; what comes back goes to the page as its own files.
+private final class AttachPicker: NSObject, PHPickerViewControllerDelegate, UIDocumentPickerDelegate, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+    struct File: Sendable {
         let name: String
         let type: String
         let data: Data
@@ -448,10 +535,30 @@ private final class AttachPicker: NSObject, PHPickerViewControllerDelegate, UIDo
         self.done = done
     }
 
+    func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+        picker.dismiss(animated: true)
+        guard let image = (info[.editedImage] ?? info[.originalImage]) as? UIImage else {
+            Task { @MainActor in done([]) }
+            return
+        }
+        Task { @MainActor in
+            let file = await Task.detached(priority: .userInitiated) { () -> File? in
+                guard let jpeg = CameraPhoto.jpegData(from: image) else { return nil }
+                return File(name: CameraPhoto.name(), type: "image/jpeg", data: jpeg)
+            }.value
+            done(file.map { [$0] } ?? [])
+        }
+    }
+
+    func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+        picker.dismiss(animated: true)
+        Task { @MainActor in done([]) }
+    }
+
     func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
         picker.dismiss(animated: true)
         let providers = results.map(\.itemProvider)
-        Task {
+        Task { @MainActor in
             var files: [File] = []
             for provider in providers {
                 if let file = await Self.load(provider) { files.append(file) }
@@ -467,7 +574,11 @@ private final class AttachPicker: NSObject, PHPickerViewControllerDelegate, UIDo
             let type = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
             return File(name: url.lastPathComponent, type: type, data: data)
         }
-        Task { done(files) }
+        Task { @MainActor in done(files) }
+    }
+
+    func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+        Task { @MainActor in done([]) }
     }
 
     /// A GIF or PNG as it is (a GIF keeps moving); anything else, HEIC included, as a JPEG every browser and bot can read.

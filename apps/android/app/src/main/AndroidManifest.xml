@@ -20,6 +20,9 @@
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="mailto" />
         </intent>
+        <intent>
+            <action android:name="android.media.action.IMAGE_CAPTURE" />
+        </intent>
     </queries>
 
     <application
@@ -79,5 +82,15 @@
         <receiver
             android:name=".AnswerReceiver"
             android:exported="false" />
+        <!-- Temporary photos taken from the camera for chat attachments. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/camera_paths" />
+        </provider>
     </application>
 </manifest>

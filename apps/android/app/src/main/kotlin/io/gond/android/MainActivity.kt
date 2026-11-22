@@ -3,6 +3,7 @@ package io.gond.android
 import android.Manifest
 import android.app.DownloadManager
 import android.content.ActivityNotFoundException
+import android.content.ClipData
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.Configuration
@@ -11,6 +12,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.provider.MediaStore
 import android.util.Base64
 import android.view.View
 import android.view.inputmethod.EditorInfo
@@ -30,6 +32,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.core.graphics.Insets
 import androidx.core.graphics.toColorInt
 import androidx.core.net.toUri
@@ -43,6 +46,7 @@ import io.gond.android.databinding.ActivityMainBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
@@ -58,13 +62,30 @@ class MainActivity : AppCompatActivity() {
         private set
     private var connecting = false
     private var pendingFiles: ValueCallback<Array<Uri>>? = null
+    private var pendingCameraFile: File? = null
+    private var pendingCameraUri: Uri? = null
     private var lastInsets: WindowInsetsCompat? = null
     private var ownPage = false
     private var pendingMic: PermissionRequest? = null
 
     private val pickFiles = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        pendingFiles?.onReceiveValue(chosenFiles(result.resultCode, result.data))
+        val callback = pendingFiles
         pendingFiles = null
+        callback?.onReceiveValue(chosenFiles(result.resultCode, result.data))
+    }
+    private val takePhoto = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val callback = pendingFiles
+        val file = pendingCameraFile
+        val uri = pendingCameraUri
+        pendingFiles = null
+        pendingCameraFile = null
+        pendingCameraUri = null
+        if (result.resultCode == RESULT_OK && file != null && uri != null && file.length() > 0L) {
+            callback?.onReceiveValue(arrayOf(uri))
+        } else {
+            file?.delete()
+            callback?.onReceiveValue(null)
+        }
     }
     // parseResult reads only the intent's data, so a pick of several (in its ClipData) would come back as one.
     private fun chosenFiles(resultCode: Int, data: Intent?): Array<Uri>? {
@@ -479,8 +500,14 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onShowFileChooser(view: WebView, callback: ValueCallback<Array<Uri>>, params: FileChooserParams): Boolean {
+                pendingCameraFile?.delete()
+                pendingCameraFile = null
+                pendingCameraUri = null
                 pendingFiles?.onReceiveValue(null)
                 pendingFiles = callback
+                if (FileChooser.wantsCameraPhoto(params.isCaptureEnabled, params.acceptTypes)) {
+                    return launchCamera()
+                }
                 return try {
                     val intent = params.createIntent().addCategory(Intent.CATEGORY_OPENABLE)
                     if (params.mode == FileChooserParams.MODE_OPEN_MULTIPLE) intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
@@ -510,6 +537,40 @@ class MainActivity : AppCompatActivity() {
             }
             getSystemService(DownloadManager::class.java)?.enqueue(request)
             Toast.makeText(this, getString(R.string.download_started, name), Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun launchCamera(): Boolean {
+        var file: File? = null
+        return try {
+            val dir = File(cacheDir, "camera").apply { mkdirs() }
+            FileChooser.pruneOldPhotos(dir)
+            val created = FileChooser.photoFile(dir).also { it.createNewFile() }
+            file = created
+            val uri = FileProvider.getUriForFile(this, "${BuildConfig.APPLICATION_ID}.fileprovider", created)
+            val intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE).apply {
+                putExtra(MediaStore.EXTRA_OUTPUT, uri)
+                clipData = ClipData.newRawUri("", uri)
+                addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            pendingCameraFile = created
+            pendingCameraUri = uri
+            takePhoto.launch(intent)
+            true
+        } catch (_: ActivityNotFoundException) {
+            file?.delete()
+            pendingCameraFile = null
+            pendingCameraUri = null
+            pendingFiles = null
+            Toast.makeText(this, R.string.no_camera_app, Toast.LENGTH_SHORT).show()
+            false
+        } catch (_: Exception) {
+            file?.delete()
+            pendingCameraFile = null
+            pendingCameraUri = null
+            pendingFiles = null
+            Toast.makeText(this, R.string.camera_failed, Toast.LENGTH_SHORT).show()
+            false
         }
     }
 

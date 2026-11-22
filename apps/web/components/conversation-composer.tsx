@@ -1,18 +1,20 @@
 "use client";
 
 import type { Bot, Message, ThreadSpace } from "@gond/shared";
-import { ArrowUp, ListEnd, Paperclip, X } from "lucide-react";
-import { useCallback, useEffect, useImperativeHandle, useRef, useState, type ClipboardEvent, type ComponentProps, type FormEvent, type KeyboardEvent, type Ref } from "react";
+import { ArrowUp, Camera, Folder, Image as ImageIcon, ListEnd, Paperclip, X } from "lucide-react";
+import { useCallback, useEffect, useImperativeHandle, useRef, useState, type ChangeEvent, type ClipboardEvent, type ComponentProps, type FormEvent, type KeyboardEvent, type Ref, type RefObject } from "react";
 import { CallComposer } from "@/components/call/call-controls";
 import type { CallView } from "@/components/call/call-provider";
 import { ConversationChrome } from "@/components/conversation-chrome";
 import { formatBytes } from "@/lib/bytes";
+import { isPreviewableImage } from "@/lib/file-kind";
 import { ReplyingTo } from "@/components/reply-quote";
 import { matchMentions, matchSkills, MentionFace, SlashMenu, slashQuery, useSkillsLibrary, type Mentionable } from "@/components/slash-menu";
 import { TeachPillFor } from "@/components/teach/teach-controls";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Attachment, AttachmentAction, AttachmentActions, AttachmentContent, AttachmentDescription, AttachmentGroup, AttachmentMedia, AttachmentTitle } from "@/components/ui/attachment";
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group";
 import { Marker, MarkerContent } from "@/components/ui/marker";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -25,6 +27,7 @@ import { composerLayout } from "@/lib/composer-layout";
 import { flushDrafts, readDraft, saveDraft } from "@/lib/drafts";
 import { filesFrom, type ChromeEvent } from "@/lib/native-ui";
 import { historyStep } from "@/lib/sent-history";
+import { isPhoneShell, useNativeShell } from "@/lib/shell";
 import { cn } from "@/lib/utils";
 
 export const MAX_FILES = 6;
@@ -41,6 +44,40 @@ type ChromeHeader = Omit<ComponentProps<typeof ConversationChrome>, "files" | "r
 function spaceNotice(space: ThreadSpace): string {
   if (space.status === "joining") return `Waiting for ${space.gonds.find((g) => g.host)?.name ?? "the other Gond"} to let you in. What you write meanwhile stays here.`;
   return `This space is ${space.status === "left" ? "one you left" : "closed"}, so what you write here stays here and no bot answers.`;
+}
+
+/** Thumbnail for a photo about to be sent, falling back to a paperclip for other files or unreadable images. */
+function ComposerFileMedia({ file }: { file: File }) {
+  const previewable = isPreviewableImage(file);
+  const [preview, setPreview] = useState<{ file: File; url: string } | null>(null);
+  const [broken, setBroken] = useState<File | null>(null);
+
+  useEffect(() => {
+    if (!previewable) return;
+    let active = true;
+    const url = URL.createObjectURL(file);
+    void Promise.resolve().then(() => {
+      if (active) setPreview({ file, url });
+    });
+    return () => {
+      active = false;
+      URL.revokeObjectURL(url);
+    };
+  }, [file, previewable]);
+
+  if (previewable && preview?.file === file && broken !== file) {
+    return (
+      <AttachmentMedia variant="image">
+        {/* eslint-disable-next-line @next/next/no-img-element -- local object URL for a file about to be sent */}
+        <img src={preview.url} alt="" onError={() => setBroken(file)} />
+      </AttachmentMedia>
+    );
+  }
+  return (
+    <AttachmentMedia variant="icon">
+      <Paperclip />
+    </AttachmentMedia>
+  );
 }
 
 /**
@@ -117,6 +154,11 @@ export function Composer({
   const [focusRev, setFocusRev] = useState(0);
   const skills = useSkillsLibrary();
   const [slash, setSlash] = useState<{ kind: "skill" | "bot"; query: string; start: number; selected: number } | null>(null);
+  const shell = useNativeShell();
+  const phone = touch || isPhoneShell(shell);
+  const cameraInput = useRef<HTMLInputElement>(null);
+  const photoInput = useRef<HTMLInputElement>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
 
   const textarea = useRef<HTMLTextAreaElement>(null);
   // A message past one line takes the pill's full width, its buttons on a row of their own beneath;
@@ -161,6 +203,7 @@ export function Composer({
     if (!added.length) return;
     const room = MAX_FILES - files.length;
     if (added.length > room) setNotice(`At most ${MAX_FILES} files per message.`);
+    else if (notice) setNotice(null);
     if (room > 0) setFiles([...files, ...added.slice(0, room)]);
   });
 
@@ -288,21 +331,48 @@ export function Composer({
     focus();
   };
 
+  function openPicker(input: RefObject<HTMLInputElement | null>) {
+    if (files.length >= MAX_FILES) {
+      setNotice(`At most ${MAX_FILES} files per message.`);
+      return;
+    }
+    input.current?.click();
+  }
+
+  function onPickFiles(event: ChangeEvent<HTMLInputElement>) {
+    attach([...(event.target.files ?? [])]);
+    event.target.value = "";
+  }
+
   const placeholder = reply ? `Reply to ${reply.name}` : hint;
-  // At the pill's start on one line, first in the row beneath once the message stacks.
-  const attachButton = (
-    <Tooltip>
-      <TooltipTrigger render={<InputGroupButton variant="ghost" size="icon-sm" aria-label="Attach files" render={<label />} nativeButton={false} className={cn("cursor-pointer rounded-full", below && "mr-auto")} />}>
+  // At the pill's start on one line, first in the row beneath once the message stacks. On phones,
+  // offer the camera alongside the photo library and files; on desktop, go straight to files.
+  const attachButton = phone ? (
+    <DropdownMenu>
+      <DropdownMenuTrigger render={<InputGroupButton type="button" variant="ghost" size="icon-sm" aria-label="Attach files" className={cn("rounded-full", below && "mr-auto")} />}>
         <Paperclip aria-hidden="true" className="size-[18px]" />
-        <input
-          type="file"
-          multiple
-          className="sr-only"
-          onChange={(e) => {
-            attach([...(e.target.files ?? [])]);
-            e.target.value = "";
-          }}
-        />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent side="top" align="start" sideOffset={8} className="w-52">
+        <DropdownMenuGroup>
+          <DropdownMenuItem onClick={() => openPicker(cameraInput)}>
+            <Camera aria-hidden="true" />
+            Take photo
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => openPicker(photoInput)}>
+            <ImageIcon aria-hidden="true" />
+            Photo library
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => openPicker(fileInput)}>
+            <Folder aria-hidden="true" />
+            Files
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  ) : (
+    <Tooltip>
+      <TooltipTrigger render={<InputGroupButton type="button" variant="ghost" size="icon-sm" aria-label="Attach files" onClick={() => openPicker(fileInput)} className={cn("rounded-full", below && "mr-auto")} />}>
+        <Paperclip aria-hidden="true" className="size-[18px]" />
       </TooltipTrigger>
       <TooltipContent>Attach files</TooltipContent>
     </Tooltip>
@@ -319,6 +389,9 @@ export function Composer({
         style={nativeChrome ? { paddingBottom: "var(--native-composer-bottom, max(0.75rem, var(--safe-bottom)))" } : undefined}
         className={cn("pointer-events-none absolute inset-x-0 bottom-0 z-20 px-3 pt-2.5 pb-[calc(var(--safe-bottom)+8px)] sm:px-4 sm:pt-3 wide:px-[max(1.5rem,calc((100%-46rem)/2))] wide:pb-5 [&>*]:pointer-events-auto", nativeChrome && "transition-[padding] duration-250 ease-out")}
       >
+        <input ref={cameraInput} type="file" accept="image/*" capture="environment" className="sr-only" tabIndex={-1} aria-hidden="true" onChange={onPickFiles} />
+        <input ref={photoInput} type="file" accept="image/*" multiple className="sr-only" tabIndex={-1} aria-hidden="true" onChange={onPickFiles} />
+        <input ref={fileInput} type="file" multiple className="sr-only" tabIndex={-1} aria-hidden="true" onChange={onPickFiles} />
         {chips.length && !nativeChrome ? (
           // One row a thumb swipes along on a phone, however many bots; on a wide screen they wrap.
           <div className="-mx-3 mb-2 flex max-w-[calc(100%+1.5rem)] gap-1.5 overflow-x-auto overscroll-x-contain px-3 py-1 sm:-mx-4 sm:max-w-[calc(100%+2rem)] sm:px-4 wide:mx-0 wide:max-w-full wide:flex-wrap wide:overflow-visible wide:px-0">
@@ -333,9 +406,7 @@ export function Composer({
           <AttachmentGroup className="mb-2">
             {files.map((file, i) => (
               <Attachment key={`${file.name}-${i}`} size="sm" state="idle">
-                <AttachmentMedia variant="icon">
-                  <Paperclip />
-                </AttachmentMedia>
+                <ComposerFileMedia file={file} />
                 <AttachmentContent>
                   <AttachmentTitle>{file.name}</AttachmentTitle>
                   <AttachmentDescription>{formatBytes(file.size)}</AttachmentDescription>

@@ -64,3 +64,9 @@ export function fileKind(file: { name: string; mediaType: string }): FileKind {
   if (type.startsWith("text/")) return "document";
   return "other";
 }
+
+/** Whether a local file can be shown as a thumbnail in the composer before sending (never an SVG, and not HEIC/HEIF which non-Safari browsers can't decode). */
+export function isPreviewableImage(file: { type?: string; mediaType?: string }): boolean {
+  const type = (file.type ?? file.mediaType ?? "").toLowerCase().split(";")[0]!.trim();
+  return type.startsWith("image/") && type !== "image/svg+xml" && type !== "image/heic" && type !== "image/heif";
+}
