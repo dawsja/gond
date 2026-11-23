@@ -85,7 +85,6 @@ final class ScreensTests: XCTestCase {
             throw XCTSkip("Screenshots run against a seeded Gond: bun run screens")
         }
         let folder = env["GOND_SCREENS_DIR"].map { URL(fileURLWithPath: $0) }
-        // The job sets the simulator's appearance and runs this once for each.
         let name = env["GOND_SCREENS_APPEARANCE"] ?? "light"
         do {
             let app = XCUIApplication()

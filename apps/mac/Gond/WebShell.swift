@@ -171,7 +171,6 @@ final class WebShell: NSObject {
     }
 
     #if DEBUG
-    /// The page's errors and warnings in the app's log, for the screenshot job.
     private static let consoleScript = """
     (function () {
       function send(level, args) {
@@ -332,7 +331,6 @@ final class WebShell: NSObject {
     }
 
     #if DEBUG
-    /// The seeded session the screenshot job signs in with, as `name=value`.
     func setCookie(_ pair: String, for server: String) async {
         let parts = pair.split(separator: "=", maxSplits: 1).map(String.init)
         guard parts.count == 2, let host = URL(string: server)?.host,
@@ -641,8 +639,6 @@ struct WebContainer: NSViewRepresentable {
 }
 
 #if DEBUG
-/// What the screenshot job needs to tell why a page doesn't show as it should: the page's own view of
-/// itself, the web view's place in the window and a snapshot WebKit paints apart from the window.
 extension WebShell {
     func probe() async {
         Screens.note("web view \(NSStringFromRect(webView.frame)) in \(NSStringFromRect(webView.window?.frame ?? .zero)), toolbar \(insetTop), app page \(appPage), \(webView.url?.path ?? "no page")")

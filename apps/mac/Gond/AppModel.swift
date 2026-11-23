@@ -26,7 +26,6 @@ enum Screens {
     static var appearance: String? { env["GOND_SCREENS_APPEARANCE"] }
     static var connect: Bool { env["GOND_SCREENS_CONNECT"] == "1" }
     static var active: Bool { server != nil || connect }
-    /// Where the job keeps its screenshots, which the app (not sandboxed, unlike the test runner) can write to.
     static var folder: URL? { env["GOND_SCREENS_DIR"].flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0) } }
     static var label: String { env["GOND_SCREENS_LABEL"].flatMap { $0.isEmpty ? nil : $0 } ?? "app" }
 

@@ -132,7 +132,6 @@ final class WebShell: NSObject {
     }
 
     #if DEBUG
-    /// The page's errors and warnings in the app's log, for the screenshot job.
     private static let consoleScript = """
     (function () {
       function send(level, args) {
@@ -270,7 +269,6 @@ final class WebShell: NSObject {
     }
 
     #if DEBUG
-    /// The seeded session the screenshot job signs in with, as `name=value`.
     func setCookie(_ pair: String, for server: String) async {
         let parts = pair.split(separator: "=", maxSplits: 1).map(String.init)
         guard parts.count == 2, let host = URL(string: server)?.host,

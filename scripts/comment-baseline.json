@@ -3521,20 +3521,12 @@
         "preview": "A path on the connected Gond, fetched by the page itself in a world of the ap..."
       },
       {
-        "hash": "e6a73346be912daa",
-        "preview": "The page's errors and warnings in the app's log, for the screenshot job."
-      },
-      {
         "hash": "e80e43f0edb18364",
         "preview": "A provisional load that becomes a download leaves the current page and its ch..."
       },
       {
         "hash": "e964e24d2c02899a",
         "preview": "The push token or device changed: the page reads the state again and signs th..."
-      },
-      {
-        "hash": "ea67e0f26ba3da07",
-        "preview": "The seeded session the screenshot job signs in with, as `name=value`."
       }
     ],
     "apps/ios/GondNotifications/NotificationService.swift": [
@@ -3560,10 +3552,6 @@
       }
     ],
     "apps/ios/GondUITests/ScreensTests.swift": [
-      {
-        "hash": "02b4714c0953e3b0",
-        "preview": "The job sets the simulator's appearance and runs this once for each."
-      },
       {
         "hash": "1e2d3c4f3da0019a",
         "preview": "The dimmed page under the menu; a tap in the status bar goes to iOS, not the ..."
@@ -3661,10 +3649,6 @@
       {
         "hash": "3edf0266a72f45f9",
         "preview": "Once, when the window first shows; it may close and open again while the app ..."
-      },
-      {
-        "hash": "5834221ae3abd19b",
-        "preview": "Where the job keeps its screenshots, which the app (not sandboxed, unlike the..."
       },
       {
         "hash": "6c9c58ef21e65a07",
@@ -4019,10 +4003,6 @@
         "preview": "Kept in step with MCP_LOOPBACK_PORT in packages/shared."
       },
       {
-        "hash": "cf8d3f0b18c893d1",
-        "preview": "What the screenshot job needs to tell why a page doesn't show as it should: t..."
-      },
-      {
         "hash": "d02c669c8144627c",
         "preview": "Where the app's composer sits, so the page keeps its own (unseen) under it an..."
       },
@@ -4047,16 +4027,8 @@
         "preview": "A path on the connected Gond, fetched by the page itself in a world of the ap..."
       },
       {
-        "hash": "e6a73346be912daa",
-        "preview": "The page's errors and warnings in the app's log, for the screenshot job."
-      },
-      {
         "hash": "e80e43f0edb18364",
         "preview": "A provisional load that becomes a download leaves the current page and its ch..."
-      },
-      {
-        "hash": "ea67e0f26ba3da07",
-        "preview": "The seeded session the screenshot job signs in with, as `name=value`."
       },
       {
         "hash": "f314594b9ce87f83",
