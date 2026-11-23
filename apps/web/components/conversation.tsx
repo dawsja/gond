@@ -68,7 +68,7 @@ import { keep } from "@/lib/keep";
 import { editUnread, retryTurn, unsend } from "@/lib/message-actions";
 import { notReadYet } from "@/lib/message-state";
 import { sentHistory } from "@/lib/sent-history";
-import { askNative, useNativeApp, useNativeCallBar, useNativeSidebar, useNativeUi, type NativeMenuItem } from "@/lib/native-ui";
+import { askNative, useNativeApp, useNativeCallBar, useNativeUi, type NativeMenuItem } from "@/lib/native-ui";
 import { cn } from "@/lib/utils";
 
 const ExchangeDialog = dynamic(() => import("@/components/exchange-dialog").then((m) => m.ExchangeDialog));
@@ -745,7 +745,6 @@ export function Conversation({ threadId }: { threadId: string }) {
   // a call's bar too; an app too old to draw one leaves the chrome to the page for a call.
   const nativeCallBar = useNativeCallBar();
   const nativeChrome = useNativeUi() && (!onCall || nativeCallBar);
-  const nativeSidebar = useNativeSidebar();
   const composer = useRef<ComposerHandle>(null);
   const [canJump, setCanJump] = useState(false);
   const [jumpRev, setJumpRev] = useState(0);
@@ -1273,9 +1272,8 @@ export function Conversation({ threadId }: { threadId: string }) {
           onHeight={setComposerHeight}
           onChromeEvent={(event) => {
             if (event.type === "back") router.push("/app");
-            // The Mac app's Details shows or hides the panel beside the chat, as the page's own button does, where there is room for it.
             else if (event.type === "details") {
-              if (nativeSidebar && window.matchMedia("(width >= 64rem)").matches) setPanel((p) => !p);
+              if (document.documentElement.dataset.shell === "mac") setPanel((p) => !p);
               else openPill();
             }
             else if (event.type === "menu") actions.flat().find((action) => action.id === event.id)?.run();

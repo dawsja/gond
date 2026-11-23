@@ -223,7 +223,8 @@ The address rules are mirrored in each app with the same tests.
   - The toolbar and composer take the iPhone's `ChromeState` and send the
     same `ChromeEvent`s; `column` is the chat's stretch of the web view,
     which the details panel narrows, so the composer sits over the chat.
-    Details shows the panel beside the chat where it fits, else the sheet.
+    Details shows or hides the panel beside the chat at every width, never
+    the phone's sheet.
   - Only `/app` pages run under the toolbar: its height comes from the
     window's content layout rect and reaches the page as
     `--shell-inset-top` before first paint. WebKit's own content insets
