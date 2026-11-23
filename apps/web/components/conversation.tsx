@@ -24,6 +24,8 @@ import { canReact, react, ReactionBadges, ReactionPicker } from "@/components/re
 import { pollInterval, useLiveEvents } from "@/components/hq/live-events";
 import { ChoicesContext } from "@/components/chat-blocks";
 import { ImageViewer } from "@/components/image-viewer";
+import { PdfViewer, type ViewerPdf } from "@/components/pdf-viewer";
+import { isPdfAttachment } from "@/lib/pdf-viewer";
 import { Markdown } from "@/components/markdown";
 import { PictureFall, type PictureReveal } from "@/components/picture-making";
 import { NoticedLinks, noticedRuns, RunMarker, useWatches, WatchesContext, type Noticed } from "@/components/noticed";
@@ -242,7 +244,7 @@ function quoteText(message: Message): string {
   return plainMarkdown(message.body).slice(0, 280) || message.attachments[0]?.name || "";
 }
 
-const Line = memo(function Line({ message, threadId, bots, other, bot, approval, isRoom, space, editing, latestHandOff, stops, touch, picks, closedBy, inert, sentTo, noticed, reveal, highlighted, unread, onPick, onView, onDecide, onOpenExchange, onEdit, onUnsend, onSelectText, onReacted, onReply, onJump }: { message: Message; threadId: string; bots: Bot[]; other: ThreadRow | undefined; bot: Bot | null; approval: Approval | null | undefined; isRoom: boolean; space: ThreadSpace | null; editing: boolean; latestHandOff: boolean; stops: boolean; touch: boolean; picks: string; closedBy: string | null; inert: boolean; sentTo: string | undefined; noticed: Noticed | undefined; reveal: PictureReveal | undefined; highlighted: boolean; unread: string | undefined; onPick: (option: string, from: Message) => Promise<void>; onView: (attachmentId: string) => void; onDecide: (id: string, answer: ApprovalAnswer) => Promise<void>; onOpenExchange: (withThreadId: string) => void; onEdit: (message: Message | null, text?: string) => Promise<boolean>; onUnsend: (message: Message) => void; onSelectText: (text: string) => void; onReacted: (message: Message) => void; onReply: (message: Message) => void; onJump: (id: string) => void }) {
+const Line = memo(function Line({ message, threadId, bots, other, bot, approval, isRoom, space, editing, latestHandOff, stops, touch, picks, closedBy, inert, sentTo, noticed, reveal, highlighted, unread, onPick, onView, onViewPdf, onDecide, onOpenExchange, onEdit, onUnsend, onSelectText, onReacted, onReply, onJump }: { message: Message; threadId: string; bots: Bot[]; other: ThreadRow | undefined; bot: Bot | null; approval: Approval | null | undefined; isRoom: boolean; space: ThreadSpace | null; editing: boolean; latestHandOff: boolean; stops: boolean; touch: boolean; picks: string; closedBy: string | null; inert: boolean; sentTo: string | undefined; noticed: Noticed | undefined; reveal: PictureReveal | undefined; highlighted: boolean; unread: string | undefined; onPick: (option: string, from: Message) => Promise<void>; onView: (attachmentId: string) => void; onViewPdf: (file: ViewerPdf) => void; onDecide: (id: string, answer: ApprovalAnswer) => Promise<void>; onOpenExchange: (withThreadId: string) => void; onEdit: (message: Message | null, text?: string) => Promise<boolean>; onUnsend: (message: Message) => void; onSelectText: (text: string) => void; onReacted: (message: Message) => void; onReply: (message: Message) => void; onJump: (id: string) => void }) {
   const mine = message.author === "you";
   const bubble = useRef<HTMLDivElement>(null);
   const nativeApp = useNativeApp();
@@ -454,7 +456,11 @@ const Line = memo(function Line({ message, threadId, bots, other, bot, approval,
                     </Attachment>
                   ) : (
                   <Attachment key={file.id} size="sm">
-                    <AttachmentTrigger render={<a href={`/api/attachments/${file.id}`} target="_blank" rel="noreferrer" aria-label={`Open ${file.name}`} />} />
+                    {isPdfAttachment(file) && !nativeApp ? (
+                      <AttachmentTrigger onClick={() => onViewPdf({ id: file.id, name: file.name })} aria-label={`View ${file.name}`} />
+                    ) : (
+                      <AttachmentTrigger render={<a href={`/api/attachments/${file.id}`} target="_blank" rel="noreferrer" aria-label={`Open ${file.name}`} />} />
+                    )}
                     <AttachmentMedia variant="icon">
                       <FileKindIcon kind={fileKind(file)} />
                     </AttachmentMedia>
@@ -557,6 +563,7 @@ type HistoryProps = {
   watches: Routine[];
   onPick: (option: string, from: Message) => Promise<void>;
   onView: (attachmentId: string) => void;
+  onViewPdf: (file: ViewerPdf) => void;
   onDecide: (id: string, answer: ApprovalAnswer) => Promise<void>;
   onOpenExchange: (withThreadId: string) => void;
   onEdit: (message: Message | null, text?: string) => Promise<boolean>;
@@ -790,6 +797,7 @@ export function Conversation({ threadId }: { threadId: string }) {
   const [sent, setSent] = useState<string | null>(null);
   const [selectText, setSelectText] = useState<string | null>(null);
   const [viewing, setViewing] = useState<string | null>(null);
+  const [viewingPdf, setViewingPdf] = useState<ViewerPdf | null>(null);
 
   const [reveals, setReveals] = useState<Record<string, PictureReveal>>({});
   const onLanded = useCallback((reveal: PictureReveal) => {
@@ -1212,6 +1220,7 @@ export function Conversation({ threadId }: { threadId: string }) {
                   watches={watches}
                   onPick={onPick}
                   onView={setViewing}
+                  onViewPdf={setViewingPdf}
                   onDecide={onDecide}
                   onOpenExchange={setExchange}
                   onEdit={onEdit}
@@ -1295,6 +1304,7 @@ export function Conversation({ threadId }: { threadId: string }) {
       {calling.confirm}
       <SelectTextDialog text={selectText} onClose={() => setSelectText(null)} />
       <ImageViewer images={pictures} openId={viewing} onOpenId={setViewing} />
+      <PdfViewer file={viewingPdf} onClose={() => setViewingPdf(null)} />
 
       {exchange ? <ExchangeDialog key={exchange} threadId={threadId} withThreadId={exchange} onClose={() => setExchange(null)} /> : null}
     </div>
