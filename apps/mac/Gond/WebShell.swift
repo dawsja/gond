@@ -35,9 +35,6 @@ final class WebShell: NSObject {
         configuration.mediaTypesRequiringUserActionForPlayback = []
         // Safari's own words first, so the sites a sign-in passes through treat this as Safari.
         configuration.applicationNameForUserAgent = "Version/26.0 Safari/605.1.15 Gond/\(AppInfo.version) (macOS)"
-        #if DEBUG
-        Self.turnOff(Screens.webKitOff, in: configuration.preferences)
-        #endif
         let web = GondWebView(frame: .zero, configuration: configuration)
         Self.keepContentUnderToolbar(web)
         webView = web
@@ -647,28 +644,6 @@ struct WebContainer: NSViewRepresentable {
 /// What the screenshot job needs to tell why a page doesn't show as it should: the page's own view of
 /// itself, the web view's place in the window and a snapshot WebKit paints apart from the window.
 extension WebShell {
-    /// WebKit's feature switches by key (as Safari's Feature Flags lists them), turned off before the web view is made.
-    static func turnOff(_ keys: [String], in preferences: WKPreferences) {
-        guard !keys.isEmpty else { return }
-        let list = NSSelectorFromString("_features")
-        let set = NSSelectorFromString("_setEnabled:forFeature:")
-        let preferencesClass = WKPreferences.self as AnyObject
-        guard preferencesClass.responds(to: list), preferences.responds(to: set),
-              let features = preferencesClass.perform(list)?.takeUnretainedValue() as? [NSObject] else {
-            Screens.note("webkit features: can't be listed")
-            return
-        }
-        typealias Setter = @convention(c) (AnyObject, Selector, Bool, AnyObject) -> Void
-        let setter = unsafeBitCast(preferences.method(for: set), to: Setter.self)
-        var off: [String] = []
-        for feature in features {
-            guard let key = feature.value(forKey: "key") as? String, keys.contains(key) else { continue }
-            setter(preferences, set, false, feature)
-            off.append(key)
-        }
-        Screens.note("webkit features off: \(off.joined(separator: ",")) of \(keys.joined(separator: ","))")
-    }
-
     func probe() async {
         Screens.note("web view \(NSStringFromRect(webView.frame)) in \(NSStringFromRect(webView.window?.frame ?? .zero)), toolbar \(insetTop), app page \(appPage), \(webView.url?.path ?? "no page")")
         do {

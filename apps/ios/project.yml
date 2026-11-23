@@ -128,7 +128,6 @@ schemes:
     test:
       targets:
         - GondTests
-  # Screenshots for review, against a seeded Gond (.github/workflows/ios-screens.yml); never part of `Gond`'s tests.
   GondScreens:
     build:
       targets:

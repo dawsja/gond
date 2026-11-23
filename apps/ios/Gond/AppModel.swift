@@ -39,7 +39,6 @@ final class AppModel: ObservableObject {
 
     init() {
         #if DEBUG
-        // The screenshot job (.github/workflows/ios-screens.yml) points a debug build at a seeded Gond.
         if let server = ProcessInfo.processInfo.environment["GOND_SCREENS_SERVER"] { Prefs.server = server }
         #endif
         let saved = Prefs.server

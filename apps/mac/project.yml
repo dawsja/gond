@@ -97,7 +97,6 @@ schemes:
     test:
       targets:
         - GondTests
-  # Screenshots for review, against a seeded Gond (.github/workflows/mac-screens.yml); never part of `Gond`'s tests.
   GondScreens:
     build:
       targets:

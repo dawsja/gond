@@ -18,7 +18,6 @@ enum AppInfo {
 }
 
 #if DEBUG
-/// The screenshot job (.github/workflows/mac-screens.yml) points a debug build at a seeded Gond.
 enum Screens {
     private static var env: [String: String] { ProcessInfo.processInfo.environment }
     static var server: String? { env["GOND_SCREENS_SERVER"] }
@@ -30,8 +29,6 @@ enum Screens {
     /// Where the job keeps its screenshots, which the app (not sandboxed, unlike the test runner) can write to.
     static var folder: URL? { env["GOND_SCREENS_DIR"].flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0) } }
     static var label: String { env["GOND_SCREENS_LABEL"].flatMap { $0.isEmpty ? nil : $0 } ?? "app" }
-    /// WebKit features to turn off, for a runner whose graphics WebKit can't use.
-    static var webKitOff: [String] { (env["GOND_SCREENS_WEBKIT_OFF"] ?? "").split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty } }
 
     private static let log = Logger(subsystem: "io.gond.mac", category: "screens")
 

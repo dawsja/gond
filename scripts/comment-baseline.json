@@ -127,24 +127,6 @@
         "preview": "Nested code first, each keeping its own entitlements, then the app with the a..."
       }
     ],
-    ".github/workflows/mac-screens.yml": [
-      {
-        "hash": "353f1afc8d655691",
-        "preview": "The runner's screen is small: the Dock out of the way gives the window the wh..."
-      },
-      {
-        "hash": "533b6daf79249dfd",
-        "preview": "The app sets its own appearance from the environment; the system's too keeps ..."
-      },
-      {
-        "hash": "818c4fdee0acfc58",
-        "preview": "A Mac UI test drives the app through accessibility, which macOS allows only a..."
-      },
-      {
-        "hash": "892b5830dca2f229",
-        "preview": "The runner is a VM whose paravirtual GPU can't take WebKit's accelerated draw..."
-      }
-    ],
     "apps/android/app/build.gradle.kts": [
       {
         "hash": "10e10058b0089918",
@@ -3279,10 +3261,6 @@
         "preview": "The page follows the system, so the app mustn't pin a scheme: the web view wo..."
       },
       {
-        "hash": "6b6fa008a249a8bf",
-        "preview": "The screenshot job (.github/workflows/ios-screens.yml) points a debug build a..."
-      },
-      {
         "hash": "c4e1bf6fb5609780",
         "preview": "Dismissing a full-screen sheet (such as the camera or Safari) fires RootView...."
       }
@@ -3587,10 +3565,6 @@
         "preview": "The job sets the simulator's appearance and runs this once for each."
       },
       {
-        "hash": "0e16e861f5e63856",
-        "preview": "Screenshots of the app's own glass over a seeded Gond, in light and dark, for..."
-      },
-      {
         "hash": "1e2d3c4f3da0019a",
         "preview": "The dimmed page under the menu; a tap in the status bar goes to iOS, not the ..."
       },
@@ -3641,10 +3615,6 @@
         "preview": "The Xcode project is generated from this file (`xcodegen generate`), so no .x..."
       },
       {
-        "hash": "5ed2795150472720",
-        "preview": "Screenshots for review, against a seeded Gond (.github/workflows/ios-screens...."
-      },
-      {
         "hash": "757ac62a0d6dfcd3",
         "preview": "The app delegate hands Firebase the APNs token itself (Push.swift)."
       },
@@ -3685,10 +3655,6 @@
         "preview": "A clicked notification: the window comes forward and its conversation opens, ..."
       },
       {
-        "hash": "3b658e12b4e4d4f2",
-        "preview": "WebKit features to turn off, for a runner whose graphics WebKit can't use."
-      },
-      {
         "hash": "3bd66f891e8de6ca",
         "preview": "Connect over the page, which stays as it is behind it for Back."
       },
@@ -3711,10 +3677,6 @@
       {
         "hash": "a409daabe97a3834",
         "preview": "The page draws everything a shortcut would open, so nothing goes while someth..."
-      },
-      {
-        "hash": "a83edadc7f9b532b",
-        "preview": "The screenshot job (.github/workflows/mac-screens.yml) points a debug build a..."
       },
       {
         "hash": "bfdb071dc0a94ea9",
@@ -4077,10 +4039,6 @@
         "preview": "The window toolbar's height, which the web app's screens sit under and pad as..."
       },
       {
-        "hash": "dcbbe51aaca387d6",
-        "preview": "WebKit's feature switches by key (as Safari's Feature Flags lists them), turn..."
-      },
-      {
         "hash": "df039e3a5932a5cc",
         "preview": "* `gondMac` is defined only in the connected Gond's own pages (the script che..."
       },
@@ -4121,14 +4079,6 @@
       {
         "hash": "754d3d5928f61026",
         "preview": "Off the button to an empty stretch of the toolbar, or its tooltip shows in th..."
-      },
-      {
-        "hash": "808e0e5b40642721",
-        "preview": "Screenshots of the app's own glass over a seeded Gond, in light and dark, for..."
-      },
-      {
-        "hash": "cff183e7b3b475d7",
-        "preview": "WebKit's features the runner's graphics can't take (the job says which)."
       },
       {
         "hash": "d2442966cf372ef1",
@@ -4183,10 +4133,6 @@
       {
         "hash": "ce6758b972394a75",
         "preview": "The unit and UI tests load into a debug build, which library validation would..."
-      },
-      {
-        "hash": "df400d16c321cfed",
-        "preview": "Screenshots for review, against a seeded Gond (.github/workflows/mac-screens...."
       }
     ],
     "apps/mac/scripts/check.mjs": [

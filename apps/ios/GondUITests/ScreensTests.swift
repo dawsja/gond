@@ -1,7 +1,5 @@
 import XCTest
 
-/// Screenshots of the app's own glass over a seeded Gond, in light and dark, for review
-/// (.github/workflows/ios-screens.yml). Skipped anywhere the job hasn't set the server up.
 final class ScreensTests: XCTestCase {
     override func setUp() {
         continueAfterFailure = true
@@ -84,7 +82,7 @@ final class ScreensTests: XCTestCase {
     func testScreens() throws {
         let env = ProcessInfo.processInfo.environment
         guard let server = env["GOND_SCREENS_SERVER"], let cookie = env["GOND_SCREENS_COOKIE"], let thread = env["GOND_SCREENS_THREAD"] else {
-            throw XCTSkip("Screenshots run in CI against a seeded Gond")
+            throw XCTSkip("Screenshots run against a seeded Gond: bun run screens")
         }
         let folder = env["GOND_SCREENS_DIR"].map { URL(fileURLWithPath: $0) }
         // The job sets the simulator's appearance and runs this once for each.
@@ -164,14 +162,10 @@ final class ScreensTests: XCTestCase {
                 shot("5-picture")
                 Thread.sleep(forTimeInterval: 3)
                 shot("5b-picture-later")
-                var closed = false
-                for label in ["Done", "Close"] where app.buttons[label].exists {
-                    app.buttons[label].tap()
-                    closed = true
-                    break
-                }
-                if !closed { app.swipeDown(velocity: .fast) }
-                Thread.sleep(forTimeInterval: 1.5)
+                app.terminate()
+                app.launch()
+                _ = details.waitForExistence(timeout: 60)
+                Thread.sleep(forTimeInterval: 2)
             }
 
             let field = app.textFields["chrome.field"].exists ? app.textFields["chrome.field"] : app.textViews["chrome.field"]

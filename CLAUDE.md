@@ -196,10 +196,14 @@ The address rules are mirrored in each app with the same tests.
     (`APPLE_TEAM_ID`, `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8`) and
     uploads to TestFlight (the release's version, the run number as
     build); without the secrets or on a PR it builds unsigned. It is
-    never on the GitHub release. `ios-screens.yml` runs a debug build in
-    a simulator against a throwaway Gond seeded by
-    `scripts/screens-seed.ts` (`GOND_SCREENS_*` hooks exist only in debug
-    builds) and keeps light and dark screenshots.
+    never on the GitHub release.
+  - Take screenshots on a Mac, never in CI. `bun run screens [ios|mac]`
+    (`scripts/screens.ts`) starts a throwaway Gond seeded by
+    `apps/ios/scripts/screens-seed.ts`, then runs each app's
+    `GondScreens` UI tests in light and dark, the iPhone's in a
+    simulator. The `GOND_SCREENS_*` hooks exist only in debug builds. The
+    script needs Xcode and XcodeGen. The Mac run moves the real pointer
+    and types, so leave the Mac alone until it ends.
 - `apps/mac`: Swift and SwiftUI, macOS 15 and up, in place of Tauri on
   the Mac. Connect is native (`ConnectView.swift`), then a `WKWebView`
   (`WebShell.swift`) with the app's own sidebar, toolbar and composer,
@@ -236,11 +240,8 @@ The address rules are mirrored in each app with the same tests.
     Store Connect key (`ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8`) are all
     there and it isn't a pull request; ad hoc otherwise. The repository
     variable `MAC_NOTARIZE` set to `off` skips notarizing, the dmg still
-    signed. The release gets the dmg. `mac-screens.yml` keeps light and dark screenshots against a
-    seeded Gond (`GOND_SCREENS_*` hooks exist only in debug builds). Its
-    runner's GPU can't take WebKit's accelerated drawing, so that job alone
-    sets `GOND_SCREENS_WEBKIT_OFF` (read by debug builds only); a real Mac
-    keeps WebKit's defaults.
+    signed. The release gets the dmg. Take its screenshots with
+    `bun run screens mac`, as for the iPhone.
 - **The apps are built only when they change, each on its own, never just
   because Gond ships.** A web or API change reaches them without a build.
   The `changes` job in `build.yml` compares a push with the commit before

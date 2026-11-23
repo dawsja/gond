@@ -1,7 +1,5 @@
 import XCTest
 
-/// Screenshots of the app's own glass over a seeded Gond, in light and dark, for review
-/// (.github/workflows/mac-screens.yml). Skipped anywhere the job hasn't set the server up.
 final class ScreensTests: XCTestCase {
     private var app: XCUIApplication!
     private var appearance = "light"
@@ -14,15 +12,13 @@ final class ScreensTests: XCTestCase {
     func testScreens() throws {
         let env = ProcessInfo.processInfo.environment
         guard let server = env["GOND_SCREENS_SERVER"], let cookie = env["GOND_SCREENS_COOKIE"], let thread = env["GOND_SCREENS_THREAD"] else {
-            throw XCTSkip("Screenshots run in CI against a seeded Gond")
+            throw XCTSkip("Screenshots run against a seeded Gond: bun run screens")
         }
         appearance = env["GOND_SCREENS_APPEARANCE"] ?? "light"
         folder = env["GOND_SCREENS_DIR"].flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0) }
         var base = ["GOND_SCREENS_SERVER": server, "GOND_SCREENS_COOKIE": cookie, "GOND_SCREENS_APPEARANCE": appearance]
         // The app isn't sandboxed, so it writes what it saw beside the screenshots; this runner can't.
         if let folder { base["GOND_SCREENS_DIR"] = folder.path }
-        // WebKit's features the runner's graphics can't take (the job says which).
-        if let off = env["GOND_SCREENS_WEBKIT_OFF"] { base["GOND_SCREENS_WEBKIT_OFF"] = off }
 
         launch(base, label: "conversation", path: "/app/t/\(thread)")
         if wait(for: "composer.field", timeout: 60) {
