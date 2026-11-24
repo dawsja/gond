@@ -74,7 +74,7 @@ jobs:
           elif [ -n "$RELEASE_TAG" ]; then
             [ "$(git rev-parse origin/main)" = "$GITHUB_SHA" ] && latest=true
           fi
-          changed() { git diff --name-only "$1" "$GITHUB_SHA" | grep -qE "$2"; }
+          changed() { git diff --name-only "$1" "$GITHUB_SHA" | grep -v '\.md$' | grep -qE "$2"; }
           if [ "$EVENT" != workflow_dispatch ] && [ -z "$RELEASE_TAG" ] && [ -n "$BASE" ] && git cat-file -e "$BASE^{commit}" 2>/dev/null; then
             changed "$BASE" "$DESKTOP_FILES" || desktop=false
             changed "$BASE" "$ANDROID_FILES" || android=false
