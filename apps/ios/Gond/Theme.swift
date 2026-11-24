@@ -7,8 +7,6 @@ enum Theme {
     static let foreground = dynamic(light: 0x16181D, dark: 0xEDEDED)
     static let muted = dynamic(light: 0x5B6170, dark: 0xA1A1A1)
     static let destructive = dynamic(light: 0xBD1F1F, dark: 0xF97C7C)
-    /// A phone's hang-up red, deep enough for a white icon in both themes (`--hangup`).
-    static let hangup = dynamic(light: 0xC2301A, dark: 0xC4372B)
     static let tint = Color(hex: 0x2F6FD6)
 
     static let bots: [Color] = [Color(hex: 0x2F6FD6), Color(hex: 0x1F9E8F), Color(hex: 0xD2483C)]

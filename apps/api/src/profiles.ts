@@ -1,6 +1,5 @@
 import { ACCENTS, isProfileIcon, MAX_PROFILES, profileLabelError, type Profile } from "@gond/shared";
 import { boxConfig, removeBoxAccount } from "./box.ts";
-import { endCallsOf } from "./calls.ts";
 import { signOutChatGpt } from "./chatgpt.ts";
 import { disconnect, forgetComposioCache } from "./composio.ts";
 import { ensureDatabase } from "./db/init.ts";
@@ -78,7 +77,6 @@ export async function removePerson(personId: string): Promise<void> {
 }
 
 async function wipe(id: string): Promise<void> {
-  endCallsOf(id);
   await stopAll(id).catch(() => undefined);
   leaveAllSpaces(id);
   await signOutGrok(id).catch(() => false);

@@ -2,7 +2,7 @@
 
 import { handleOf, joinNames, plainMarkdown, REACTIONS, roomTargets, type Approval, type ApprovalAnswer, type Bot, type ChatAttachment, type Message, type ReactionEmoji, type Routine, type Thread, type ThreadSpace } from "@gond/shared";
 import { inertChoices, remoteMember, spaceMentionables, spaceSubtitle } from "@/lib/spaces";
-import { ChevronLeft, Copy, CornerUpLeft, Download, Eye, EllipsisVertical, File as FileIcon, FileArchive, FileHeadphone, FilePlay, FileSpreadsheet, FileText, FileX, ImageOff, Lock, Monitor, PanelRight, Paperclip, Pencil, Phone, RotateCcw, TextSelect, Undo2 } from "lucide-react";
+import { ChevronLeft, Copy, CornerUpLeft, Download, Eye, EllipsisVertical, File as FileIcon, FileArchive, FileHeadphone, FilePlay, FileSpreadsheet, FileText, FileX, ImageOff, Lock, Monitor, PanelRight, Paperclip, Pencil, RotateCcw, TextSelect, Undo2 } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -11,8 +11,6 @@ import { ApprovalCard } from "@/components/approval-card";
 import { ControlCard, handOffOpen } from "@/components/control-card";
 import { QuoteInBubble } from "@/components/reply-quote";
 import { BotAvatar, RoomAvatar, roomMembers } from "@/components/bot-avatar";
-import { CallButton, callLabel, useDial } from "@/components/call/call-controls";
-import { useCall } from "@/components/call/call-provider";
 import { Composer, MAX_FILES, type ComposerHandle, type Replying } from "@/components/conversation-composer";
 import { LiveTail } from "@/components/conversation-live";
 import { LoadEarlier } from "@/components/load-earlier";
@@ -68,7 +66,7 @@ import { keep } from "@/lib/keep";
 import { editUnread, retryTurn, unsend } from "@/lib/message-actions";
 import { notReadYet } from "@/lib/message-state";
 import { sentHistory } from "@/lib/sent-history";
-import { askNative, useNativeApp, useNativeCallBar, useNativeUi, type NativeMenuItem } from "@/lib/native-ui";
+import { askNative, useNativeApp, useNativeUi, type NativeMenuItem } from "@/lib/native-ui";
 import { cn } from "@/lib/utils";
 
 const ExchangeDialog = dynamic(() => import("@/components/exchange-dialog").then((m) => m.ExchangeDialog));
@@ -739,12 +737,7 @@ export function Conversation({ threadId }: { threadId: string }) {
   const { bots, threads, approvals, refresh, boxUpdating, desktop } = useStore();
   const activity = useActivity();
   const router = useRouter();
-  const { call, end: hangUp, toggleMute } = useCall();
-  const onCall = call?.info.threadId === threadId ? call : null;
-  // In the iPhone and Mac apps the header and the composer are the app's own, in Liquid Glass (`ConversationChrome`),
-  // a call's bar too; an app too old to draw one leaves the chrome to the page for a call.
-  const nativeCallBar = useNativeCallBar();
-  const nativeChrome = useNativeUi() && (!onCall || nativeCallBar);
+  const nativeChrome = useNativeUi();
   const composer = useRef<ComposerHandle>(null);
   const [canJump, setCanJump] = useState(false);
   const [jumpRev, setJumpRev] = useState(0);
@@ -900,8 +893,6 @@ export function Conversation({ threadId }: { threadId: string }) {
   const bot = info?.bot ?? null;
   const space = thread?.space ?? null;
   const answering = info?.answering;
-  const callable = bot?.primary ? bot : undefined;
-  const calling = useDial(threadId, callable);
   const watches = useWatches(bot?.id ?? null);
   const roomBots = useMemo(() => (isRoom && thread ? roomMembers(thread, bots) : []), [isRoom, thread, bots]);
   const roomDrivers = useScreenDrivers(threadId);
@@ -1070,16 +1061,13 @@ export function Conversation({ threadId }: { threadId: string }) {
   };
   // A bot's chat names its bot before the conversation's details load, so the menu is never a room's.
   const rowBot = bot ?? (row?.botId ? bots.find((b) => b.id === row.botId) : undefined);
-  const botActions = row && (row.kind === "room" || rowBot) ? threadActions({ thread: row, bot: rowBot, bots, onOpen: openShellDialog, onAsk: setAsk, refresh }) : [];
-  // The iPhone and Mac apps' headers have no room for the phone circle, so there the call is first in the menu.
-  const actions = nativeChrome && callable && !onCall ? [[{ id: "call", label: `Call ${callable.name}`, icon: Phone, symbol: "phone", run: calling.dial }], ...botActions] : botActions;
-  const status = boxUpdating ? " · the computer is updating, replies wait" : onCall ? " · on a call" : busy ? " · working" : waitingOnYou ? " · waiting on you" : watches.length ? ` · watching ${watches.length === 1 ? "1 thing" : `${watches.length} things`}` : "";
+  const actions = row && (row.kind === "room" || rowBot) ? threadActions({ thread: row, bot: rowBot, bots, onOpen: openShellDialog, onAsk: setAsk, refresh }) : [];
+  const status = boxUpdating ? " · the computer is updating, replies wait" : busy ? " · working" : waitingOnYou ? " · waiting on you" : watches.length ? ` · watching ${watches.length === 1 ? "1 thing" : `${watches.length} things`}` : "";
   const hint = busy && !isRoom ? "Add to it, or say stop" : bot ? `Message ${bot.name}` : space ? "Message the space" : answersNext.length ? `${joinNames(answersNext)} ${answersNext.length > 1 ? "answer" : "answers"} next` : "Message the room";
 
   return (
     <div className="flex min-h-0 flex-1">
-      {/* What the floating header takes at the top; in the Mac app the header is its toolbar, already in the inset. */}
-      <section data-native-column="" className="relative flex min-w-0 flex-1 flex-col [--header-top:calc(64px+var(--safe-top)+var(--call-pill-space))] mac:[--header-top:var(--safe-top)]" style={{ "--composer-h": `${composerHeight}px` } as CSSProperties} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
+      <section data-native-column="" className="relative flex min-w-0 flex-1 flex-col [--header-top:calc(64px+var(--safe-top))] mac:[--header-top:var(--safe-top)]" style={{ "--composer-h": `${composerHeight}px` } as CSSProperties} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
         {dropping ? (
           <div className="pointer-events-none absolute inset-0 z-30 flex bg-background/92 p-3 pt-[calc(12px+var(--safe-top))] pb-[max(12px,var(--safe-bottom))]">
             <div className="flex flex-1 flex-col items-center justify-center gap-3 rounded-3xl border-2 border-dashed border-primary-edge-focus text-center">
@@ -1111,7 +1099,6 @@ export function Conversation({ threadId }: { threadId: string }) {
           </Button>
           <span className="flex-1" />
 
-          {callable ? <CallButton threadId={threadId} bot={callable} /> : null}
           <Tooltip>
             <TooltipTrigger render={<Button size="icon-xl" aria-label="Toggle details" aria-pressed={panel} onClick={() => setPanel((p) => !p)} className={cn("pointer-events-auto hidden xwide:inline-flex", panel && "bg-primary-hover")} />}>
               <PanelRight aria-hidden="true" />
@@ -1142,7 +1129,7 @@ export function Conversation({ threadId }: { threadId: string }) {
           ) : null}
         </header>
         {driving.length && !screen && !nativeChrome ? (
-          <div className="pointer-events-none absolute inset-x-0 top-[calc(64px+var(--safe-top)+var(--call-pill-space))] z-20 flex flex-wrap justify-center gap-2 px-3 wide:hidden">
+          <div className="pointer-events-none absolute inset-x-0 top-[calc(64px+var(--safe-top))] z-20 flex flex-wrap justify-center gap-2 px-3 wide:hidden">
             {driving.map((b) => (
               <Button key={b.id} size="lg" onClick={() => setScreen(b.id)} className="pointer-events-auto">
                 {driving.length > 1 ? <BotAvatar bot={b} size={20} /> : <Monitor data-icon="inline-start" aria-hidden="true" />}
@@ -1245,14 +1232,12 @@ export function Conversation({ threadId }: { threadId: string }) {
           busy={busy}
           hint={hint}
           label={bot ? `Message ${bot.name}` : "Message the room"}
-          bot={bot}
           space={space}
           chips={chips}
           mentionable={mentionable}
           reply={reply}
           sentLines={sentLines}
           paused={paused}
-          call={onCall}
           chrome={{
             thread: threadId,
             avatarKey: JSON.stringify((bot ? [bot] : roomBots).map((b) => [b.id, b.color, b.shape, b.avatar, b.expression])),
@@ -1262,7 +1247,6 @@ export function Conversation({ threadId }: { threadId: string }) {
             more: bot ? 0 : Math.max(0, roomBots.length - 2),
             jump: canJump,
             screens: driving.length && !screen ? driving.map((b) => ({ id: b.id, label: driving.length > 1 ? `${b.name}'s screen` : "Watching the screen" })) : [],
-            call: onCall ? { label: callLabel(onCall, bot ?? undefined), since: Date.parse(onCall.info.startedAt), connecting: onCall.phase === "connecting", muted: onCall.muted, speaking: onCall.speaking, color: bot?.color ?? "" } : null,
             primary: Boolean(bot?.primary),
             space: Boolean(space),
             menu: actions,
@@ -1280,8 +1264,6 @@ export function Conversation({ threadId }: { threadId: string }) {
             else if (event.type === "cancel-reply") setReplying(null);
             else if (event.type === "jump") setJumpRev((n) => n + 1);
             else if (event.type === "screen") setScreen(event.id);
-            else if (event.type === "call-mute") toggleMute();
-            else if (event.type === "call-end") hangUp();
           }}
         />
       </section>
@@ -1299,7 +1281,6 @@ export function Conversation({ threadId }: { threadId: string }) {
         </div>
       ) : null}
       <ThreadConfirms ask={ask} onClose={() => setAsk(null)} />
-      {calling.confirm}
       <SelectTextDialog text={selectText} onClose={() => setSelectText(null)} />
       <ImageViewer images={pictures} openId={viewing} onOpenId={setViewing} />
       <PdfViewer file={viewingPdf} onClose={() => setViewingPdf(null)} />

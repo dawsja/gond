@@ -31,8 +31,6 @@ struct ChromeState: Decodable, Equatable {
         let canSend: Bool
         let sending: Bool
         let later: Bool
-        let voice: String
-        let seconds: Int
     }
 
     struct Mention: Decodable, Equatable, Identifiable {
@@ -57,16 +55,6 @@ struct ChromeState: Decodable, Equatable {
         let label: String
     }
 
-    struct Call: Decodable, Equatable {
-        let label: String
-        /// When it was picked up, in milliseconds since 1970, so the clock ticks here.
-        let since: Double
-        let connecting: Bool
-        let muted: Bool
-        let speaking: Bool
-        let color: String
-    }
-
     let thread: String
     let title: String
     let subtitle: String
@@ -84,7 +72,6 @@ struct ChromeState: Decodable, Equatable {
     let replying: Replying?
     let jump: Bool?
     let screens: [Screen]?
-    let call: Call?
     let composer: Composer
 }
 

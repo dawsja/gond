@@ -24,7 +24,6 @@ export type GondMobile = {
   present?(kind: string, request: string): void;
   /** A conversation's header and composer, drawn by the iPhone app from this state; null takes them away. */
   chrome?(state: string): void;
-  /** What else this iPhone app draws, which an older one doesn't: "call" for a call's bar, "scale" for its chrome at the page's size. */
   features?(): string[];
 
   /** How much bigger the page's design is drawn on this phone (`SIZE_SCRIPT`), so the iPhone app draws its chrome to match. */
@@ -41,16 +40,6 @@ export type GondPush = {
   pushState(): string;
   /** The server's answer to signing up (`{ id, seal, answer }`), or null to sign the phone out. */
   setPushDevice(json: string | null): void;
-};
-
-/**
- * The Android app's word that a call is on (`CallService.kt`), so it keeps going with the app in the
- * background and shows a notice saying so. Kept off GondMobile: the iPhone keeps a call through its
- * audio background mode and needs nothing.
- */
-export type GondCall = {
-  /** The bot's name and when the call started; an empty name ends it. */
-  setCall(bot: string, startedAt: string): void;
 };
 
 export type GondDesktop = {
@@ -97,7 +86,6 @@ export type DesktopWindow = Required<Pick<GondDesktop, "minimize" | "toggleMaxim
 export type GondMac = {
   platform(): "macos";
   version(): string;
-  /** "call" (the composer draws a call), "scale" (chrome at the page's size), "sidebar" (draws the sidebar). */
   features(): string[];
   changeServer(): void;
   signIn(next: string): void;
@@ -143,11 +131,6 @@ export function mobileShell(): GondMobile | null {
 export function pushBridge(): GondPush | null {
   const mobile = mobileShell() as (GondMobile & Partial<GondPush>) | null;
   return mobile && typeof mobile.pushState === "function" && typeof mobile.setPushDevice === "function" ? (mobile as GondMobile & GondPush) : null;
-}
-
-export function callBridge(): GondCall | null {
-  const mobile = mobileShell() as (GondMobile & Partial<GondCall>) | null;
-  return mobile && typeof mobile.setCall === "function" ? (mobile as GondMobile & GondCall) : null;
 }
 
 export function desktopShell(): GondDesktop | null {

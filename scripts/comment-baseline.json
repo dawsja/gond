@@ -145,10 +145,6 @@
       {
         "hash": "c768ac4cc3841581",
         "preview": "singleTask so a notification opens the running app; configuration changes are..."
-      },
-      {
-        "hash": "da98bc4e9d3818c5",
-        "preview": "The composer's voice button; WebView wants both for getUserMedia."
       }
     ],
     "apps/android/app/src/main/kotlin/io/gond/android/AnswerReceiver.kt": [
@@ -159,28 +155,6 @@
       {
         "hash": "98152739f0019053",
         "preview": "The server's words are written for the person (\"That card was already answere..."
-      }
-    ],
-    "apps/android/app/src/main/kotlin/io/gond/android/CallService.kt": [
-      {
-        "hash": "1342e97d05ee94a5",
-        "preview": "Not allowed from the background; the page asks only while it is in front."
-      },
-      {
-        "hash": "4f645357615cf5f0",
-        "preview": "The page hangs up, then ends this through the bridge; with no page, nothing i..."
-      },
-      {
-        "hash": "747db2df515751bb",
-        "preview": "Refused (the microphone taken back, or the app no longer in front): the call ..."
-      },
-      {
-        "hash": "ddab0d367aaacebf",
-        "preview": "* A call with a bot, kept going while the app is in the background. Android *..."
-      },
-      {
-        "hash": "f861ade137599cbd",
-        "preview": "Without the microphone Android refuses the service, and one that never comes ..."
       }
     ],
     "apps/android/app/src/main/kotlin/io/gond/android/GondBridge.kt": [
@@ -221,10 +195,6 @@
       {
         "hash": "d7442b23655be5e7",
         "preview": "Your Gond's pages draw under the status and navigation bars, the way a native..."
-      },
-      {
-        "hash": "dc28de636e4a37f9",
-        "preview": "The page that held the call goes with the activity."
       },
       {
         "hash": "dea4a449c9ce048c",
@@ -679,68 +649,10 @@
         "preview": "The box made a new token (its state volume was reset): only a token that chan..."
       }
     ],
-    "apps/api/src/calls.ts": [
-      {
-        "hash": "0da0379c39b05b48",
-        "preview": "The voice's last settled line, so a goodbye it already said isn't waited for ..."
-      },
-      {
-        "hash": "12d16f6b4aa775d6",
-        "preview": "A line that only closes the call (\"that's all\", \"ok thanks, bye\", \"bye Patch\"..."
-      },
-      {
-        "hash": "42a70a330e01188a",
-        "preview": "A pause this long ends what one side was saying, and it goes into the chat."
-      },
-      {
-        "hash": "45d46cf8d7aec464",
-        "preview": "Only the primary bot takes calls: it is the one that knows the team and hands..."
-      },
-      {
-        "hash": "5a619725edb4dc56",
-        "preview": "Set once the person has said goodbye: the call ends after the voice's own goo..."
-      },
-      {
-        "hash": "7e4748961c8d7fae",
-        "preview": "A turn answering a hand-over speaks its answer, so nothing streams into the c..."
-      },
-      {
-        "hash": "806c0b861df665f7",
-        "preview": "A hand-over whose turn ended with nothing for the voice to say still gets an ..."
-      },
-      {
-        "hash": "8d6977b5e66c3424",
-        "preview": "Fragments of speech, joined: two sentences said apart still read as two (\"Han..."
-      },
-      {
-        "hash": "99ba858e6b321db1",
-        "preview": "What the person said since the voice last handed something over: the request,..."
-      },
-      {
-        "hash": "a75d097120f52917",
-        "preview": "* A turn that answers a request handed over on a call gives its answer to the..."
-      },
-      {
-        "hash": "b955f5b30e8764cd",
-        "preview": "One line per call, once it's over: while it runs, the header and the composer..."
-      },
-      {
-        "hash": "c49943e49e5d57a1",
-        "preview": "Full duplex: the voice can answer before the person finishes, and the rest of..."
-      },
-      {
-        "hash": "e1116db600d9f98f",
-        "preview": "A page that stops listening (a reload, a lost connection) ends the call after..."
-      }
-    ],
     "apps/api/src/chat-export.ts": [
       {
         "hash": "26e16f5fc03b53ee",
         "preview": "* Writes a zip to a temporary file as it is made, a file at a time, so a long..."
-      },
-      {
-        "hash": "282f083ff25ad740",
-        "preview": "What was said on a call stays the bot's, as in Gond itself."
       },
       {
         "hash": "53a222c7bc5a570c",
@@ -1295,10 +1207,6 @@
         "preview": "What happened to a conversation, for Spaces to pass on: a message posted, or ..."
       },
       {
-        "hash": "82588516cb8a65c8",
-        "preview": "A line with `from_thread_id` is bots talking to each other (a teammate's mess..."
-      },
-      {
         "hash": "8338546407ece614",
         "preview": "* The statement for a page of `listMessages`. With `includeSent` it reads the..."
       },
@@ -1329,14 +1237,6 @@
       {
         "hash": "d280282dc5a818be",
         "preview": "A routed line that every bot it is for took mid-answer: it needs no turn of i..."
-      },
-      {
-        "hash": "db7bf52ba8d81cb4",
-        "preview": "Said on a call: kept for the bot, never shown, previewed, counted or searched."
-      },
-      {
-        "hash": "e0deeb46e03aa747",
-        "preview": "* `shown` is what the person sees: what was said on a call stays the bot's. `..."
       },
       {
         "hash": "e7a04b4e652b72dd",
@@ -1381,16 +1281,6 @@
       {
         "hash": "b0a3463c7c37bf35",
         "preview": "* A person, or one of their profiles: a profile has the person's name, addres..."
-      }
-    ],
-    "apps/api/src/data/voice.ts": [
-      {
-        "hash": "94d0a05b4bcc7512",
-        "preview": "The person's picks as saved, null being the default; `speechModel` says what ..."
-      },
-      {
-        "hash": "e2f89b9bf7875d6f",
-        "preview": "Null or empty puts a job back on the default, so it moves to each newer model..."
       }
     ],
     "apps/api/src/db/init.ts": [
@@ -2293,10 +2183,6 @@
         "preview": "The CLI session to resume: this agent's own on this run. Without one the box ..."
       },
       {
-        "hash": "5b866a14f8baaf41",
-        "preview": "Only an answer bound for the person is shown as it is written; one for a team..."
-      },
-      {
         "hash": "6ab8aa15f14b0b7f",
         "preview": "What this turn finished, in words, for the turn that answers again if this on..."
       },
@@ -2327,10 +2213,6 @@
       {
         "hash": "8b62dc2b043dbe4c",
         "preview": "A card this turn waits on can be answered late, which starts its work again; ..."
-      },
-      {
-        "hash": "8b6be60c18cc5809",
-        "preview": "\"stop\" in the chat is Stop: everything halts, nothing reads the message as a ..."
       },
       {
         "hash": "933f1b9b6e7bc3ce",
@@ -2477,32 +2359,6 @@
         "preview": "Only bytes that really are a picture show in the page; anything else, SVG inc..."
       }
     ],
-    "apps/api/src/routes/calls.ts": [
-      {
-        "hash": "04ca6f7b13bbd4a9",
-        "preview": "The voice goes down as the bytes themselves, a third smaller than base64 in J..."
-      },
-      {
-        "hash": "5b2e8b65d24cc139",
-        "preview": "A proxy may say the socket's scheme (ws, wss) where the page's origin has htt..."
-      },
-      {
-        "hash": "6cc7fa35067b39b5",
-        "preview": "* The call's own socket: the microphone up and the voice down as raw PCM, and..."
-      },
-      {
-        "hash": "7a26fe0d3b6dd179",
-        "preview": "Browsers send the cookie with a WebSocket from any site, so the origin is che..."
-      },
-      {
-        "hash": "bda0413f2a19cd95",
-        "preview": "The socket is the open profile's, as every route is: a call belongs to the pr..."
-      },
-      {
-        "hash": "f92fb8aa2ca356bf",
-        "preview": "A tenth of a second of audio is 4.8 KB; anything near this is not a microphone."
-      }
-    ],
     "apps/api/src/routes/details.ts": [
       {
         "hash": "68887a1df834badf",
@@ -2531,10 +2387,6 @@
       {
         "hash": "65c090d3e80d0fc0",
         "preview": "Whole, with its length: a gateway that waits on a chunked upload would leave ..."
-      },
-      {
-        "hash": "e00415e6648b808f",
-        "preview": "The voice key is the API's own, for the microphone and calls; nothing on the ..."
       }
     ],
     "apps/api/src/routes/mcp.ts": [
@@ -2667,20 +2519,6 @@
       {
         "hash": "6405dec86cce9c38",
         "preview": "The admin's alone (app.ts): whether this server's token count goes to the pub..."
-      }
-    ],
-    "apps/api/src/routes/voice.ts": [
-      {
-        "hash": "342a5de10ca4e5a3",
-        "preview": "xAI says which voices it has; OpenAI has no list to ask, so its are written d..."
-      },
-      {
-        "hash": "6b64196cf298eca5",
-        "preview": "Both APIs read the format from the file name, and Bun's multipart parser drop..."
-      },
-      {
-        "hash": "ba692f977004c2d0",
-        "preview": "Of OpenAI's models only GPT Transcribe takes hints; a server of the person's ..."
       }
     ],
     "apps/api/src/secrets.ts": [
@@ -2961,68 +2799,6 @@
         "preview": "What the person's bots run on now, read without failing when it isn't set up."
       }
     ],
-    "apps/api/src/voice-link.ts": [
-      {
-        "hash": "0238dfb42e361e93",
-        "preview": "An ask is still on its way, so the next reply may tell it yet."
-      },
-      {
-        "hash": "2f2d60c06c56ebc5",
-        "preview": "Bun's WebSocket takes headers, so the key goes upstream from here and never t..."
-      },
-      {
-        "hash": "30ed93912020d661",
-        "preview": "One append to GPT-Live takes up to 500 tokens."
-      },
-      {
-        "hash": "4b2d1d9d5eccb9be",
-        "preview": "* A realtime voice speaks one response at a time and refuses a response.creat..."
-      },
-      {
-        "hash": "74740547644192e0",
-        "preview": "Wait for session.closed so the minutes are settled, but not for ever."
-      },
-      {
-        "hash": "80b6f85444a0c535",
-        "preview": "The words of an answer that any telling of it in other words would still say:..."
-      },
-      {
-        "hash": "91823f2ad6ec9807",
-        "preview": "the person's last words stand in"
-      },
-      {
-        "hash": "a173fc3fb9f90a1e",
-        "preview": "An error came back: if an ask was waiting to start, it was the one refused."
-      },
-      {
-        "hash": "be74c02bd317cb22",
-        "preview": "The Realtime events, xAI's and OpenAI's alike, with the hand-over as a functi..."
-      },
-      {
-        "hash": "bfdb33ad34b263fd",
-        "preview": "The quiet answer to a hand-over itself, for a voice whose hand-over is a func..."
-      },
-      {
-        "hash": "dda670abd0ccfde5",
-        "preview": "Called when the voice hands a request over: a realtime voice's function call ..."
-      },
-      {
-        "hash": "e7436f8b13541974",
-        "preview": "Said now, with what to say in this one response's own instructions, so the vo..."
-      },
-      {
-        "hash": "e8c94d3596df0511",
-        "preview": "Where the bot's work stands, for the voice to know without saying it."
-      },
-      {
-        "hash": "eff4d961c21ac102",
-        "preview": "* Makes sure the voice tells an answer once it comes in. Asked to, xAI's voic..."
-      },
-      {
-        "hash": "f443e65660fad0ae",
-        "preview": "GPT-Live with client delegation: it asks for help with an id only, and the re..."
-      }
-    ],
     "apps/api/src/words.ts": [
       {
         "hash": "9aedd22ed6d92b6b",
@@ -3059,10 +2835,6 @@
       {
         "hash": "47e3c9de3f9cf51a",
         "preview": "Every update rewrites the row, so a change to anything else must keep the model."
-      },
-      {
-        "hash": "4a13afd010572152",
-        "preview": "Neither server lists its models, so each runs on its provider's own."
       },
       {
         "hash": "4d4d0a238b1c48d7",
@@ -3123,10 +2895,6 @@
       {
         "hash": "610bd1b239d0c786",
         "preview": "This prompt is shared by every engine and guest, so it must not name Claude-o..."
-      },
-      {
-        "hash": "6a9fd7fc89e4abe7",
-        "preview": "A new major version may talk differently, and the transcription-only models n..."
       },
       {
         "hash": "753193126bb3fa1b",
@@ -3195,10 +2963,6 @@
       {
         "hash": "3af559c392148c17",
         "preview": "Where the bundled pages live: wry serves the app protocol as a host on Windows."
-      },
-      {
-        "hash": "60753f494202fd70",
-        "preview": "WebKitGTK ships with media capture off, so getUserMedia isn't there for the c..."
       },
       {
         "hash": "60a0c51ce738a170",
@@ -3287,10 +3051,6 @@
         "preview": "Quick Look still draws them while it slides away; they go once it's long gone."
       },
       {
-        "hash": "328fae06f13ddc76",
-        "preview": "When it was picked up, in milliseconds since 1970, so the clock ticks here."
-      },
-      {
         "hash": "3818cdf8666553bc",
         "preview": "Files picked while the web view was reloading (for example after the camera t..."
       },
@@ -3355,10 +3115,6 @@
       {
         "hash": "96f7c9d8a20bc627",
         "preview": "The page's text just put in the field, which isn't sent back to it."
-      },
-      {
-        "hash": "e0edb0224e2d0d25",
-        "preview": "The call's five bars, in the person's colour while they talk and the bot's wh..."
       },
       {
         "hash": "e51592c6a14b8950",
@@ -3434,10 +3190,6 @@
       }
     ],
     "apps/ios/Gond/Theme.swift": [
-      {
-        "hash": "3292d9bd21175d18",
-        "preview": "A phone's hang-up red, deep enough for a white icon in both themes (`--hangup`)."
-      },
       {
         "hash": "35c554d994606b5f",
         "preview": "A bot's face as the web app draws it (apps/web/components/hq/gond-bot.tsx): t..."
@@ -3613,10 +3365,6 @@
       {
         "hash": "a7323168ebbe8d41",
         "preview": "Icon Composer's Liquid Glass icon; one file to Xcode, which also draws the fl..."
-      },
-      {
-        "hash": "f5ed03859bbb3c50",
-        "preview": "A card answered elsewhere comes as a background push that takes its notificat..."
       }
     ],
     "apps/ios/scripts/screens-seed.ts": [
@@ -3705,14 +3453,6 @@
         "preview": "A picture with words beside it (copied from a page) pastes the words, as ever..."
       },
       {
-        "hash": "bd3c872bfc46431f",
-        "preview": "The page's own change (sent, a mention, a dictation); never in the middle of ..."
-      },
-      {
-        "hash": "e0edb0224e2d0d25",
-        "preview": "The call's five bars, in the person's colour while they talk and the bot's wh..."
-      },
-      {
         "hash": "f8d00d4d31244b0b",
         "preview": "Over the page's column: where it says that is, else centred, at most 46rem wi..."
       }
@@ -3777,14 +3517,6 @@
       {
         "hash": "2e0827173fc4b704",
         "preview": "PNG data URLs by face key, only those the page hasn't sent before in its life."
-      },
-      {
-        "hash": "328fae06f13ddc76",
-        "preview": "When it was picked up, in milliseconds since 1970, so the clock ticks here."
-      },
-      {
-        "hash": "514c3496bb63d8ea",
-        "preview": "\"text\", \"working\", \"draft\" or \"call\"."
       },
       {
         "hash": "757e746c9a37337e",
@@ -3951,10 +3683,6 @@
       {
         "hash": "aae2df4163650465",
         "preview": "The web app's tokens (apps/web/app/globals.css), so Connect and the app's own..."
-      },
-      {
-        "hash": "c9d355173f2ac7cd",
-        "preview": "A call's hang-up red, deep enough for a white icon in both themes (`--hangup`)."
       }
     ],
     "apps/mac/Gond/WebShell.swift": [
@@ -4095,10 +3823,6 @@
         "preview": "What a bot sends is marked as downloaded, so the Mac checks a program before ..."
       },
       {
-        "hash": "5fa4e6ac3140c330",
-        "preview": "Not sandboxed: it is downloaded directly, not from the App Store. The hardene..."
-      },
-      {
         "hash": "7e300b6d3d721bb4",
         "preview": "The Xcode project is generated from this file (`xcodegen generate`), so no .x..."
       },
@@ -4169,10 +3893,6 @@
       {
         "hash": "aee3b3812d0729da",
         "preview": "Hover is a solid step toward the ink, never see-through, so a pill floating o..."
-      },
-      {
-        "hash": "b926f6ee7ff71331",
-        "preview": "A phone's hang-up red, deep enough for a white icon in both themes."
       },
       {
         "hash": "b9726f0358b2f0d3",
@@ -4301,46 +4021,6 @@
         "preview": "* The model one bot runs on, from the models the person's AI offers. Shown on..."
       }
     ],
-    "apps/web/components/call-voice-card.tsx": [
-      {
-        "hash": "b0e67eb8772c8ded",
-        "preview": "Picking the default saves none, so calls move to each newer model the key off..."
-      }
-    ],
-    "apps/web/components/call/call-provider.tsx": [
-      {
-        "hash": "4d7064c6fa8f7383",
-        "preview": "* The microphone goes up in order: on the socket as each chunk comes, or, whe..."
-      },
-      {
-        "hash": "82b159177ea66388",
-        "preview": "Whether the bot is talking is the player's to say; read it often enough for t..."
-      },
-      {
-        "hash": "ae85b128140860b3",
-        "preview": "The microphone is running, which the Android app needs before it can keep the..."
-      },
-      {
-        "hash": "c9e722e9aeb166d9",
-        "preview": "The SSE stream and a POST per batch of audio, for when something between the ..."
-      },
-      {
-        "hash": "d4154cc8d6e944ed",
-        "preview": "Switching apps mid-call leaves it running: the Android app holds it with a no..."
-      },
-      {
-        "hash": "eb051122829b523b",
-        "preview": "Let a goodbye play out before the speaker goes quiet."
-      },
-      {
-        "hash": "f0776156070641b6",
-        "preview": "Made inside the tap, before anything is awaited, or Safari keeps it silent."
-      },
-      {
-        "hash": "f19c4979696a63a6",
-        "preview": "Without the socket, a tenth of a second per request at least, as before it: a..."
-      }
-    ],
     "apps/web/components/card-form.tsx": [
       {
         "hash": "719ce6fe3878fc0d",
@@ -4418,10 +4098,6 @@
       }
     ],
     "apps/web/components/conversation-chrome.tsx": [
-      {
-        "hash": "21c6274a8da84db7",
-        "preview": "* A conversation's header and composer in the iPhone and Mac apps: the page k..."
-      },
       {
         "hash": "2dfe0e62dc1effc4",
         "preview": "The faces in the page's (unseen) header pill, front one first, as PNGs."
@@ -4573,10 +4249,6 @@
         "preview": "In a room the option goes to the bot that offered it, as the person would say..."
       },
       {
-        "hash": "93a383fc32c0613e",
-        "preview": "What the floating header takes at the top; in the Mac app the header is its t..."
-      },
-      {
         "hash": "94991bcbe5c7f3f0",
         "preview": "Long enough for the last square of a landed picture to fall away."
       },
@@ -4605,16 +4277,8 @@
         "preview": "One object per watch and place, so a line a run noticed keeps its props as la..."
       },
       {
-        "hash": "df99f41328b79b3a",
-        "preview": "In the iPhone and Mac apps the header and the composer are the app's own, in ..."
-      },
-      {
         "hash": "e24f400be98f3ffb",
         "preview": "Keeps the newest message in view when the composer grows (the keyboard under ..."
-      },
-      {
-        "hash": "eabfc14d61ee2bc9",
-        "preview": "The iPhone and Mac apps' headers have no room for the phone circle, so there ..."
       },
       {
         "hash": "ee71b691f7584bb5",
@@ -4799,10 +4463,6 @@
         "preview": "One observer for every face. A face hidden by CSS or scrolled out of view nev..."
       },
       {
-        "hash": "5d7c9bf7493ca973",
-        "preview": "What the bot is doing right now, set by Gond and never stored: working, on a ..."
-      },
-      {
         "hash": "749a570edaf9d811",
         "preview": "The glow, sheen and catch-lights blur into mud below this, and each glow is a..."
       },
@@ -4902,10 +4562,6 @@
       }
     ],
     "apps/web/components/native-sidebar.tsx": [
-      {
-        "hash": "32ac1f5eef1bf85f",
-        "preview": "As the page's CallBar: only away from the call's own chat, whose composer is ..."
-      },
       {
         "hash": "43ac1f40e87a99d4",
         "preview": "Until the theme's colours are read, a room's face would be painted in the wro..."
@@ -5225,10 +4881,6 @@
       {
         "hash": "35613a9be2a9b4ec",
         "preview": "Text that opens something (a product's title): it underlines on hover and foc..."
-      },
-      {
-        "hash": "72d3a2bb13cb2581",
-        "preview": "Ending a call, the one solid red: every phone draws hang-up this way."
       }
     ],
     "apps/web/components/ui/calendar.tsx": [
@@ -5343,20 +4995,10 @@
         "preview": "Tells the API which conversation this window shows, so a notice skips what th..."
       }
     ],
-    "apps/web/components/voice-card.tsx": [
-      {
-        "hash": "1a74ab6cc0f83b8e",
-        "preview": "An empty pick, or the default's own id, follows each newer model the key offers."
-      }
-    ],
     "apps/web/components/window-controls.tsx": [
       {
         "hash": "235deb1b1c108982",
         "preview": "* The desktop app's title bar, which the page draws since its window has no f..."
-      },
-      {
-        "hash": "abf29022e3664930",
-        "preview": "Windows' close turns red under the pointer; the hang-up red is the one solid ..."
       }
     ],
     "apps/web/components/work-log.tsx": [
@@ -5419,12 +5061,6 @@
         "preview": "A reload makes every page still on its way stale."
       }
     ],
-    "apps/web/hooks/use-recorder.ts": [
-      {
-        "hash": "34e0037f094b304b",
-        "preview": "Both transcription APIs take webm and mp4; Safari records only mp4."
-      }
-    ],
     "apps/web/hooks/use-swipe-to-reply.ts": [
       {
         "hash": "0091c7ccd605aeaa",
@@ -5441,36 +5077,6 @@
       {
         "hash": "32fabce598c12566",
         "preview": "Up a unit before rounding could show 1024 of this one."
-      }
-    ],
-    "apps/web/lib/call-audio.ts": [
-      {
-        "hash": "31e553bed4c86f07",
-        "preview": "The voice as base64, from the stream the call falls back to."
-      },
-      {
-        "hash": "3383285e6d6eae09",
-        "preview": "When the last of its words ends: speaking and draining mean words, not the si..."
-      },
-      {
-        "hash": "47b0554b24f3d141",
-        "preview": "The call's rate from whatever the device gives, the same steps as `public/cal..."
-      },
-      {
-        "hash": "bbd05112d51a49ad",
-        "preview": "already done"
-      },
-      {
-        "hash": "d66d9e22ec6e81db",
-        "preview": "Without the worklet: a little runway so audio that arrives in bursts still pl..."
-      },
-      {
-        "hash": "e5fdd7d85c412119",
-        "preview": "A node only runs while something pulls it, and some engines pull only what re..."
-      },
-      {
-        "hash": "f77db5733d5ea350",
-        "preview": "Quieter than this (about -48 dB) is silence, which GPT-Live streams the whole..."
       }
     ],
     "apps/web/lib/choices.ts": [
@@ -5497,12 +5103,6 @@
       {
         "hash": "bb5c70dba7035148",
         "preview": "A card of questions is answered as a whole, never by one of its rows."
-      }
-    ],
-    "apps/web/lib/composer-draft.ts": [
-      {
-        "hash": "935554d12dfd757f",
-        "preview": "* The composer's text and how many times the page changed it itself. In the i..."
       }
     ],
     "apps/web/lib/composer-layout.ts": [
@@ -5653,16 +5253,8 @@
         "preview": "Whether every picture in a face has loaded: until one has, its avatar shows t..."
       },
       {
-        "hash": "4fd4d3784606c9ee",
-        "preview": "Whether the app draws a call's bar in the composer's place; an older one does..."
-      },
-      {
         "hash": "57e1657c73595a8b",
         "preview": "Something of the page's is open over the conversation (a sheet, a dialog, a m..."
-      },
-      {
-        "hash": "5a633e5af2905bc1",
-        "preview": "Goes up when the page changed the text itself (sent, a mention, a dictation),..."
       },
       {
         "hash": "5f53ca409f34a7cd",
@@ -5731,14 +5323,6 @@
       {
         "hash": "e037bf89c55aceeb",
         "preview": "Where the conversation sits across the web view, in CSS pixels: the Mac app c..."
-      },
-      {
-        "hash": "ee60a1b0756bdc11",
-        "preview": "On a call with the bot, which takes the composer's place; `since` is when it ..."
-      },
-      {
-        "hash": "eec40caabe4061c2",
-        "preview": "A call going on in another chat; `since` is when it was picked up, in millise..."
       },
       {
         "hash": "f05abafbdd943312",
@@ -5811,20 +5395,12 @@
         "preview": "How much bigger the page's design is drawn on this phone (`SIZE_SCRIPT`), so ..."
       },
       {
-        "hash": "41bdfcf647f88758",
-        "preview": "* The Android app's word that a call is on (`CallService.kt`), so it keeps go..."
-      },
-      {
         "hash": "447cb7dcb3ae3e37",
         "preview": "* The page draws the window's title row (`WindowControls`), said by the theme..."
       },
       {
         "hash": "4729ede468855cac",
         "preview": "Shows a finished download in its folder, by the id its `gond:download` event ..."
-      },
-      {
-        "hash": "6ca07a347f72eca0",
-        "preview": "What else this iPhone app draws, which an older one doesn't: \"call\" for a cal..."
       },
       {
         "hash": "6f79b6aae92d1b35",
@@ -5835,16 +5411,8 @@
         "preview": "The desktop and Mac apps' word that a download finished (`gond:download`); nu..."
       },
       {
-        "hash": "8f4d1927ea6af28b",
-        "preview": "The bot's name and when the call started; an empty name ends it."
-      },
-      {
         "hash": "a50ba4da08eba231",
         "preview": "* A phone app's push (`Push.kt`, `Push.swift`): its Firebase token and the de..."
-      },
-      {
-        "hash": "c615e2529ff4aa7e",
-        "preview": "\"call\" (the composer draws a call), \"scale\" (chrome at the page's size), \"sid..."
       },
       {
         "hash": "ef2d4ca920b55c13",
@@ -5921,76 +5489,10 @@
         "preview": "Next takes plugins only by name; a relative one isn't found from where it eva..."
       }
     ],
-    "apps/web/public/call-capture.js": [
-      {
-        "hash": "24257328276963dc",
-        "preview": "Linear interpolation across the block boundary: index -1 is the last sample o..."
-      },
-      {
-        "hash": "76a8f2a28a8eeae6",
-        "preview": "Its output stays silent; it is connected only so the engine keeps running it."
-      },
-      {
-        "hash": "eae393110c1630d8",
-        "preview": "The microphone at the call's rate: mono 16-bit PCM at 24 kHz, posted every 20..."
-      }
-    ],
-    "apps/web/public/call-player.js": [
-      {
-        "hash": "03efff78331e7cc8",
-        "preview": "More words this soon after running dry mean the network was late, not that a ..."
-      },
-      {
-        "hash": "280d8c4bfecd929a",
-        "preview": "Positions count samples at 24 kHz since the call began; `pos` is where playba..."
-      },
-      {
-        "hash": "35402b04392f9fdf",
-        "preview": "The bot's voice as one stream: mono 16-bit PCM at 24 kHz in, the context's ow..."
-      },
-      {
-        "hash": "49ce89c9fece9f4c",
-        "preview": "A sample split across two deltas: its first byte waits for the rest rather th..."
-      },
-      {
-        "hash": "4d693c146f0ac9b0",
-        "preview": "Running dry within this much of loud audio cut a word off."
-      },
-      {
-        "hash": "778065803e60abdd",
-        "preview": "A windowed-sinc (Blackman) table, one row of taps per fraction of a sample, e..."
-      },
-      {
-        "hash": "82a4f345097c9c58",
-        "preview": "Silence plays only as a pause inside what it is saying; once that is done, th..."
-      },
-      {
-        "hash": "8bbe692a675880fd",
-        "preview": "Loud audio still to play, in samples; the last few taps play only once more c..."
-      },
-      {
-        "hash": "aa83d46eaa1ed5e6",
-        "preview": "Grows the ring so what is waiting, the taps behind it and `count` more all fit."
-      },
-      {
-        "hash": "f77db5733d5ea350",
-        "preview": "Quieter than this (about -48 dB) is silence, which GPT-Live streams the whole..."
-      }
-    ],
-    "apps/web/test/call-player.test.ts": [
-      {
-        "hash": "30c8be3a3e267124",
-        "preview": "A 440 Hz tone at half scale moves at most about 0.03 a frame; a cut to zero w..."
-      }
-    ],
     "apps/web/test/composer-layout.browser.mjs": [
       {
         "hash": "7acfe0ac0d80e6d4",
         "preview": "An empty render alone is not enough: the next draft must not inherit the old ..."
-      },
-      {
-        "hash": "f4a911561d315f09",
-        "preview": "The caller supplies a Playwright page open to a seeded conversation, with no ..."
       }
     ],
     "apps/web/test/composer-layout.test.ts": [
@@ -7239,22 +6741,6 @@
         "preview": "* Where a bot's pictures are made, best first: a Grok plan is already paid fo..."
       },
       {
-        "hash": "0e468518154d86bd",
-        "preview": "* GPT-Live's voices, from OpenAI's docs, since its API has no list to ask (xA..."
-      },
-      {
-        "hash": "61500b9a90c7a711",
-        "preview": "* The speech models a voice key runs come from its own model list, never from..."
-      },
-      {
-        "hash": "675e0c320db1c6a8",
-        "preview": "What a call's stream tells the page: its audio and how it ends. The words are..."
-      },
-      {
-        "hash": "76d8f69bfbb7a8ff",
-        "preview": "Higher versions first (`gpt-live-1.1` before `gpt-live-1`), a plain id before..."
-      },
-      {
         "hash": "954a5416bd403ef5",
         "preview": "* Where a model id means something: the engine and the plan or API behind it...."
       },
@@ -7263,28 +6749,8 @@
         "preview": "A plan's token answers on the Grok CLI's proxy, not the developer API, which ..."
       },
       {
-        "hash": "9fcc6ba94a70d1eb",
-        "preview": "* Whose speech endpoints the person's voice key reaches: xAI's own (`stt`, `r..."
-      },
-      {
-        "hash": "a563e81a655bb2e2",
-        "preview": "The Realtime API's voices; GPT-Live has these and more."
-      },
-      {
         "hash": "b0b19f4a35feeff0",
         "preview": "Each shape as xAI's `aspect_ratio` and OpenAI's `size`, and as columns and ro..."
-      },
-      {
-        "hash": "b73f62dd56bcfc95",
-        "preview": "* The model a job runs on: the person's pick while the key still offers it, e..."
-      },
-      {
-        "hash": "c09712030c844f92",
-        "preview": "Both sides of a call are mono 16-bit PCM at this rate."
-      },
-      {
-        "hash": "c9d686af9a287eb9",
-        "preview": "* How a call talks: GPT-Live's own session, full duplex, or the Realtime API,..."
       },
       {
         "hash": "da9b25decd43470f",
@@ -7293,10 +6759,6 @@
       {
         "hash": "de650344b86b57b9",
         "preview": "A model id, or none; `[1m]` at the end is Claude Code's own mark for a model'..."
-      },
-      {
-        "hash": "ea5c2c4054417b45",
-        "preview": "* What `/api/voice/models` offers: per job, the models the key lists, its def..."
       },
       {
         "hash": "ee663e4fade1179d",
@@ -7465,10 +6927,6 @@
         "preview": "The message this one answers, quoted: who wrote it and its first words, or it..."
       },
       {
-        "hash": "60191eea8c5b2b88",
-        "preview": "Said out loud on a call: the person's words as heard, or what the bot's voice..."
-      },
-      {
         "hash": "68784f46a2ea5bd1",
         "preview": "* A person's line no bot has read yet (not claimed, answered or steered into ..."
       },
@@ -7551,10 +7009,6 @@
       {
         "hash": "322754d6eb046639",
         "preview": "* Who a person's message in a room is for: whoever it names; else whom the pe..."
-      },
-      {
-        "hash": "542c8efac8caa64b",
-        "preview": "The members a line names, by @handle or by name as a word in any case (\"Patch..."
       },
       {
         "hash": "77408794bc3ba41e",

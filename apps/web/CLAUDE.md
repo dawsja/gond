@@ -66,7 +66,7 @@ commit, things that stay true) hold here too.
     `--gold-coin`, `bg-gold-coin`, its ring `--surface`, the colour of
     whatever it sits on; an svg in it is sized inline, since `Button`
     resizes svgs without a size class), status tones (`--tone-ok`,
-    `-warn`, `-bad`, `-info`), hang-up (`variant="hangup"`, `--hangup`,
+    `-warn`, `-bad`, `-info`), window close (`--window-close`,
     the one solid red), diffs (`bg-diff-added`, `bg-diff-removed`).
 - **No scrollbars, no blur, no side fades.** `globals.css` hides every
   scrollbar (the shells' own views too); never style one. shadcn's
@@ -140,8 +140,7 @@ commit, things that stay true) hold here too.
   putting its bots on the cog; `toBot` and `botTemplateSchema` read a
   shape they don't know as the cog. `mood` is set by Gond, never
   stored or picked: `thinking` while it works (work lines, Chats rows
-  and pinned faces), `talking`
-  while its voice speaks on a call (`call.speaking`), `glad` as an
+  and pinned faces), `glad` as an
   answered card folds (`GLAD_MS`). The box homepage and the iPhone's
   Connect faces draw the same 3D cog. A bot may wear a picture instead
   (`usePicturePicker`, a 512 px PNG or a GIF as is, `gond_bot_avatars`,
@@ -322,7 +321,7 @@ One line each: where to start, and what must not change.
   Changes post one line (`roomChange`). A room pins like a bot.
 - **Who a room line goes to** is `roomTargets` in shared, used by both
   `targetsFor` and the composer so they never disagree. In order: whom it
-  names (an @handle, a bot's name as a word since voice types no @, or
+  names (an @handle, a bot's name as a word, or
   the room as a whole, `addressedIn`, but never "tell everyone"); else
   whom the person's own last line named; else, while bots work
   (`working`, `workingIn`), them and those that answered since the person
@@ -346,7 +345,7 @@ One line each: where to start, and what must not change.
   member is said in the room as an @mention. A `::choices` tap in a room
   goes as `@handle option` to the bot that offered it.
 - **The composer**: one pill, attach (a paperclip) at its start. A message past one
-  line moves its buttons (attach to the left, Later, the mic and Send to
+  line moves its buttons (attach to the left, Later and Send to
   the right) to a row beneath (`stacked`), held until it's empty so
   the wider text can't flip it back. `lib/composer-layout.ts` gates it on
   the draft: empty is always inline, even without a resize notification.
@@ -424,34 +423,6 @@ One line each: where to start, and what must not change.
   `src/usage-sharing.ts`: while on, about hourly, the whole server's tokens
   since it was turned on (`serverTokens`, one number) go signed to the
   relay; nothing else does.
-- **Voice input** (`voice-button.tsx`, `hooks/use-recorder.ts`,
-  `/api/transcribe`, `voice-card.tsx`): the text lands in the draft and
-  is never sent for them. Only the voice key can transcribe; without one
-  the mic is dimmed and says where to add one. Always the
-  system's default input. `Permissions-Policy` allows the microphone for
-  the app's own origin only. The model is picked from `SpeechModelSelect`
-  (`voice-models.tsx`), the bots' model picker's dropdown: the key's own
-  ids, the default marked, no descriptions or prices.
-- **Calls** (`components/call/`, `CallProvider` in `call-provider.tsx`):
-  only the primary bot, only its own chat (`CallButton`; on iPhone "Call"
-  in ⋯, `useDial`). The `AudioContext` is made in the tap, before any
-  await, or Safari stays silent. Mic as 24 kHz PCM from an AudioWorklet
-  (`public/call-capture.js`, `lib/call-audio.ts`; ScriptProcessor
-  fallback; wired through a silent gain since some engines only run what
-  reaches the speakers), played by `CallPlayer` as one stream through
-  `public/call-player.js` (its own resampler, a cushion that grows when
-  audio runs late, fades over gaps), never a buffer per chunk: the joins
-  click at 44.1 kHz. One WebSocket
-  `/api/calls/:id/socket`, falling back to SSE and POSTs. No mic or
-  speaker setting. The model is picked in `call-voice-card.tsx`. In the call's chat the composer is `CallComposer`;
-  elsewhere `CallPill` (sets `--call-pill-space`) or `CallBar`. Leaving
-  the chat never hangs up, nor does leaving the app (Android's
-  `CallService`, the iPhone's `audio` background mode, without which
-  WebKit stops the mic); one call at a time. A call is heard, never
-  read: one line "Call · 5 min"; what was said is `Message.spoken`, kept
-  for the bot and left out of the messages route, previews, unread,
-  search and exports. Voice pick: `call-voice-card.tsx`
-  (`OPENAI_CALL_VOICES`, `/api/voice/sample`, `call_voice`).
 - **Watches and "worth a look"** (`components/noticed.tsx`,
   `worth-a-look.tsx`): `RunMarker`, "Why you're seeing this", "Less like
   this" (`POST /api/threads/:id/messages/:id/less`). Nothing from the

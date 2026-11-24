@@ -1,7 +1,7 @@
 "use client";
 
 import type { Bot, Teaching, TeachStep } from "@gond/shared";
-import { Check, ChevronDown, ChevronUp, Lock, MessageSquarePlus, Mic, Pause, Play, SendHorizontal, X } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Lock, MessageSquarePlus, Pause, Play, SendHorizontal, X } from "lucide-react";
 import { Fragment, useEffect, useRef, useState, type FormEvent } from "react";
 import { BotAvatar } from "@/components/bot-avatar";
 import { Confirm } from "@/components/confirm-dialog";
@@ -11,7 +11,6 @@ import { clock, useOpenTeaching, usePutTeaching, useRecordingMs } from "@/compon
 import { Button } from "@/components/ui/button";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { useVoiceInput, VoiceButton } from "@/components/voice-button";
 import { patch, post } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -56,7 +55,6 @@ function NoteField({ teaching, onDone }: { teaching: Teaching; onDone: () => voi
   const { note } = useTeachActions(teaching);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
-  const voice = useVoiceInput(teaching.threadId, (heard) => setText((current) => (current ? `${current} ${heard}` : heard)));
   const send = async (event?: FormEvent) => {
     event?.preventDefault();
     if (!text.trim() || busy) return;
@@ -77,7 +75,6 @@ function NoteField({ teaching, onDone }: { teaching: Teaching; onDone: () => voi
       <InputGroup>
         <InputGroupInput value={text} onChange={(event) => setText(event.target.value)} placeholder="The newest bill is always on top" aria-label="Note" />
         <InputGroupAddon align="inline-end">
-          <VoiceButton input={voice} />
           <InputGroupButton type="submit" size="icon-sm" variant="tint" aria-label="Add the note" disabled={!text.trim() || busy}>
             <SendHorizontal />
           </InputGroupButton>
@@ -215,7 +212,7 @@ export function TeachSteps({ teaching, className, onCollapse }: { teaching: Teac
 function NoteRow({ text }: { text: string }) {
   return (
     <li className="flex items-start gap-2 rounded-xl bg-tint-wash px-2.5 py-2 text-[13px] text-tint-ink">
-      <Mic className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+      <MessageSquarePlus className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
       <span className="[overflow-wrap:anywhere]">Your note: &ldquo;{text}&rdquo;</span>
     </li>
   );

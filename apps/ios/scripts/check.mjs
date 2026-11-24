@@ -28,7 +28,7 @@ for (const [, input] of android.matchAll(/(?:candidates|reason|sameOrigin)\("([^
 }
 
 const project = read("apps/ios/project.yml");
-for (const key of ["NSCameraUsageDescription", "NSMicrophoneUsageDescription", "NSLocalNetworkUsageDescription", "UILaunchScreen"]) {
+for (const key of ["NSCameraUsageDescription", "NSLocalNetworkUsageDescription", "UILaunchScreen"]) {
   if (!project.includes(`${key}:`)) problems.push(`apps/ios/project.yml: ${key} is missing`);
 }
 const iconDir = path.join(ios, "AppIcon.icon");

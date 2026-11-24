@@ -1,10 +1,8 @@
 "use client";
 
-import type { Bot, Message, ThreadSpace } from "@gond/shared";
+import type { Message, ThreadSpace } from "@gond/shared";
 import { ArrowUp, Camera, Folder, Image as ImageIcon, ListEnd, Paperclip, X } from "lucide-react";
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type ChangeEvent, type ClipboardEvent, type ComponentProps, type FormEvent, type KeyboardEvent, type Ref, type RefObject } from "react";
-import { CallComposer } from "@/components/call/call-controls";
-import type { CallView } from "@/components/call/call-provider";
 import { ConversationChrome } from "@/components/conversation-chrome";
 import { formatBytes } from "@/lib/bytes";
 import { isPreviewableImage } from "@/lib/file-kind";
@@ -18,7 +16,6 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem,
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group";
 import { Marker, MarkerContent } from "@/components/ui/marker";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { useVoiceInput, VoiceButton } from "@/components/voice-button";
 import { useComposerDraft } from "@/hooks/use-composer-draft";
 import { useStableCallback } from "@/hooks/use-stable-callback";
 import { api } from "@/lib/api";
@@ -84,14 +81,12 @@ export function Composer({
   busy,
   hint,
   label,
-  bot,
   space,
   chips,
   mentionable,
   reply,
   sentLines,
   paused,
-  call,
   chrome,
   onCancelReply,
   onSent,
@@ -105,7 +100,6 @@ export function Composer({
   busy: boolean;
   hint: string;
   label: string;
-  bot: Bot | null;
   space: ThreadSpace | null;
   chips: Mentionable[];
   mentionable: Mentionable[];
@@ -113,7 +107,6 @@ export function Composer({
   /** The person's sent lines, newest first, for Up and Down (`sentHistory`). */
   sentLines: string[];
   paused: boolean;
-  call: CallView | null;
   chrome: ChromeHeader;
   onCancelReply: () => void;
   onSent: (message: Message) => void;
@@ -306,15 +299,6 @@ export function Composer({
     }
   }
 
-  const dictated = useCallback(
-    (text: string) => {
-      setDraft((d) => `${d}${d && !/\s$/.test(d) ? " " : ""}${text}`);
-      if (!touch) textarea.current?.focus();
-    },
-    [touch, setDraft],
-  );
-  const voice = useVoiceInput(threadId, dictated);
-
   const mention = (who: Mentionable) => {
     setDraft((d) => `${d}${d && !d.endsWith(" ") ? " " : ""}@${who.handle} `);
     focus();
@@ -420,9 +404,12 @@ export function Composer({
           </Marker>
         ) : null}
         {reply && !nativeChrome ? <ReplyingTo name={reply.name} color={reply.color} text={reply.text} onCancel={onCancelReply} /> : null}
-        {call ? (
-          <CallComposer call={call} bot={bot ?? undefined} className={cn(nativeChrome && "invisible")} />
-        ) : (
+        <div
+          className={cn(!nativeChrome && "-mx-3 -mt-2 -mb-[calc(var(--safe-bottom)+8px)] px-3 pt-2 pb-[calc(var(--safe-bottom)+8px)] sm:-mx-4 sm:px-4 wide:m-0 wide:p-0")}
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget && document.activeElement === textarea.current) e.preventDefault();
+          }}
+        >
           <div className="relative flex items-end gap-2.5">
             {slash ? <SlashMenu kind={slash.kind} skills={skills} people={mentionable} query={slash.query} selected={slash.selected} onPickSkill={(skill) => insertSkill(skill.slug)} onPickPerson={insertMention} /> : null}
             <InputGroup variant="pill" className={cn("min-h-11 rounded-[22px] px-1.5 wide:shadow-subtle-3", nativeChrome && "invisible overflow-hidden")} style={nativeChrome ? { height: "var(--native-composer-height, 2.75rem)" } : undefined}>
@@ -463,7 +450,6 @@ export function Composer({
                     <TooltipContent>Send after it finishes</TooltipContent>
                   </Tooltip>
                 ) : null}
-                <VoiceButton input={voice} />
                 <Tooltip>
                   <TooltipTrigger render={<InputGroupButton type="submit" variant="tint" size="icon-sm" aria-label="Send" disabled={sending || (!draft.trim() && !files.length)} className="rounded-full" />}>
                     <ArrowUp aria-hidden="true" />
@@ -473,7 +459,7 @@ export function Composer({
               </InputGroupAddon>
             </InputGroup>
           </div>
-        )}
+        </div>
       </form>
       {nativeChrome ? (
         <ConversationChrome
@@ -489,8 +475,6 @@ export function Composer({
             canSend: !sending && Boolean(draft.trim() || files.length),
             sending,
             later: busy && Boolean(draft.trim()) && !files.length,
-            voice: voice.transcribing ? "working" : voice.recording ? "recording" : voice.ready ? "idle" : "off",
-            seconds: voice.seconds,
           }}
           onEvent={(event) => {
             if (event.type === "text") {
@@ -499,7 +483,6 @@ export function Composer({
               if (notice) setNotice(null);
               trackSlash(event.value, event.value.length);
             } else if (event.type === "send") void send(undefined, Boolean(event.later));
-            else if (event.type === "voice") void voice.toggle();
             else if (event.type === "attach") void filesFrom(event.files).then(attach, () => setNotice("Couldn't attach that file."));
             else if (event.type === "notice") setNotice(event.text);
             else if (event.type === "mention") {

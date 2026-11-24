@@ -5,7 +5,6 @@ import android.app.DownloadManager
 import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.Color
 import android.net.Uri
@@ -17,7 +16,6 @@ import android.util.Base64
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.webkit.CookieManager
-import android.webkit.PermissionRequest
 import android.webkit.URLUtil
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
@@ -66,7 +64,6 @@ class MainActivity : AppCompatActivity() {
     private var pendingCameraUri: Uri? = null
     private var lastInsets: WindowInsetsCompat? = null
     private var ownPage = false
-    private var pendingMic: PermissionRequest? = null
 
     private val pickFiles = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val callback = pendingFiles
@@ -93,11 +90,6 @@ class MainActivity : AppCompatActivity() {
         val clip = data.clipData
         if (clip != null && clip.itemCount > 0) return Array(clip.itemCount) { clip.getItemAt(it).uri }
         return data.data?.let { arrayOf(it) }
-    }
-    private val micPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        val request = pendingMic ?: return@registerForActivityResult
-        pendingMic = null
-        if (granted) request.grant(request.resources) else request.deny()
     }
     private val notificationsPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
         web.evaluateJavascript("window.dispatchEvent(new Event('gond:notifications'))", null)
@@ -159,11 +151,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        if (shown?.get() === this) {
-            shown = null
-            // The page that held the call goes with the activity.
-            CallService.set(this, "", "")
-        }
+        if (shown?.get() === this) shown = null
         web.destroy()
         super.onDestroy()
     }
@@ -482,19 +470,6 @@ class MainActivity : AppCompatActivity() {
                 return true
             }
 
-            override fun onPermissionRequest(request: PermissionRequest) {
-                val micOnly = request.resources.toList() == listOf(PermissionRequest.RESOURCE_AUDIO_CAPTURE)
-                if (!micOnly || !ServerUrl.sameOrigin(request.origin.toString(), server)) return request.deny()
-                if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) return request.grant(request.resources)
-                pendingMic?.deny()
-                pendingMic = request
-                micPermission.launch(Manifest.permission.RECORD_AUDIO)
-            }
-
-            override fun onPermissionRequestCanceled(request: PermissionRequest) {
-                if (pendingMic == request) pendingMic = null
-            }
-
             override fun onShowFileChooser(view: WebView, callback: ValueCallback<Array<Uri>>, params: FileChooserParams): Boolean {
                 pendingCameraFile?.delete()
                 pendingCameraFile = null
@@ -580,12 +555,6 @@ class MainActivity : AppCompatActivity() {
 
         fun pushChanged() {
             shown?.get()?.let { activity -> activity.runOnUiThread { activity.web.evaluateJavascript("window.dispatchEvent(new Event('gond:push'))", null) } }
-        }
-
-        fun endCall(): Boolean {
-            val activity = shown?.get() ?: return false
-            activity.runOnUiThread { activity.web.evaluateJavascript("window.dispatchEvent(new Event('gond:call-end'))", null) }
-            return true
         }
 
         private const val LOOPBACK_PORT = 47651

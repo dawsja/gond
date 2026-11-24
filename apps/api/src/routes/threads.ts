@@ -57,7 +57,7 @@ export function threadsRoutes() {
   app.get("/threads/:id/messages", (c) => {
     const id = c.req.param("id");
     if (!ownsThread(c, id)) return c.json({ error: "Couldn't find that conversation" }, 404);
-    const messages = listMessages(id, { after: c.req.query("after") ?? null, from: c.req.query("from") ?? null, before: c.req.query("before") ?? null, limit: Number(c.req.query("limit")) || 200, includeSent: true, shown: true, prompts: false });
+    const messages = listMessages(id, { after: c.req.query("after") ?? null, from: c.req.query("from") ?? null, before: c.req.query("before") ?? null, limit: Number(c.req.query("limit")) || 200, includeSent: true, prompts: false });
     return c.json({ messages });
   });
 

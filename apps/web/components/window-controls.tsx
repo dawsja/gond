@@ -62,8 +62,7 @@ function WindowButton({ label, run, onDone, closes, children }: { label: string;
             size="icon-lg"
             aria-label={label}
             onClick={() => void run().then(onDone, failed(`Couldn't ${label.toLowerCase()} the window`))}
-            // Windows' close turns red under the pointer; the hang-up red is the one solid red there is.
-            className={closes ? "h-full w-10 hover:bg-hangup hover:text-white" : "h-full w-10"}
+            className={closes ? "h-full w-10 hover:bg-window-close hover:text-white" : "h-full w-10"}
           />
         }
       >

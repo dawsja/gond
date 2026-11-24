@@ -1,10 +1,3 @@
-/**
- * The composer's text and how many times the page changed it itself. In the iPhone app the field is
- * the app's own: what the person types there arrives as an `app` change and never raises `rev`; every
- * change the page makes (a send, a mention, a dictation, a recalled or restored draft) raises it, and
- * that is the only signal the app takes the page's text on. Nothing compares texts to guess which side
- * made a change: an app echo and a page change can be the same string (an empty field most of all).
- */
 export type Draft = { text: string; rev: number };
 
 export type DraftChange = { by: "app"; text: string } | { by: "page"; text: string | ((text: string) => string) };

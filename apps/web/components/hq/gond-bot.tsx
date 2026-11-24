@@ -5,8 +5,7 @@ import { BODIES, BODY_STROKE, COG, EYE, EYES, type GondBotShape } from "@/compon
 import { rem } from "@/lib/utils";
 
 type GondBotExpression = "happy" | "wink" | "surprised";
-/** What the bot is doing right now, set by Gond and never stored: working, on a call, or pleased for a moment. */
-export type GondBotMood = "thinking" | "talking" | "glad";
+export type GondBotMood = "thinking" | "glad";
 
 type GondBotProps = {
   color?: string;

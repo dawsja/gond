@@ -21,9 +21,6 @@ import { McpCard } from "@/components/mcp-card";
 import { NotificationsSection } from "@/components/notifications-section";
 import { OidcCard } from "@/components/oidc-card";
 import { UsageSection } from "@/components/usage-section";
-import { VoiceCard } from "@/components/voice-card";
-import { VoiceKeyCard } from "@/components/voice-key-card";
-import { CallVoiceCard } from "@/components/call-voice-card";
 import { SecretsCard } from "@/components/secrets-card";
 import { DetailsCard } from "@/components/details-card";
 import { OtherGondsSection, SpaceDefaultsCard } from "@/components/spaces/spaces-settings";
@@ -229,15 +226,6 @@ export function SettingsPage({ user, section, index = false }: { user: SessionUs
     case "usage":
       body = <UsageSection />;
       break;
-    case "voice":
-      body = (
-        <>
-          <VoiceKeyCard />
-          <VoiceCard />
-          <CallVoiceCard />
-        </>
-      );
-      break;
     case "computer":
       body = <HomeResetCard />;
       break;
@@ -286,7 +274,7 @@ export function SettingsPage({ user, section, index = false }: { user: SessionUs
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
-      <div className="mx-auto flex w-full max-w-4xl flex-col gap-5 px-4 pt-[calc(max(16px,var(--safe-top))+var(--call-pill-space)*2)] pb-[calc(32px+var(--safe-bottom))] wide:px-6 wide:py-8 mac:pt-(--safe-top) wide:desktop:pt-16">
+      <div className="mx-auto flex w-full max-w-4xl flex-col gap-5 px-4 pt-[max(16px,var(--safe-top))] pb-[calc(32px+var(--safe-bottom))] wide:px-6 wide:py-8 mac:pt-(--safe-top) wide:desktop:pt-16">
 
         <div className="flex h-11 items-center gap-3 wide:hidden">
           <Button size="icon-xl" aria-label={index ? "Back to chats" : "All settings"} render={<Link href={back} />} nativeButton={false} className={cn(native && "invisible")}>

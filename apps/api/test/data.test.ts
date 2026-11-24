@@ -1,9 +1,12 @@
 import type { ProviderKind } from "@gond/shared";
 import { afterAll, beforeAll, describe, expect, jest, test } from "bun:test";
+import type { Hono, MiddlewareHandler } from "hono";
 import { unzipSync, zipSync } from "fflate";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+
+type TestEnv = { Variables: { session: { user: { id: string }; session?: { id: string } }; profile?: string } };
 
 let dir = "";
 beforeAll(async () => {
@@ -12,12 +15,12 @@ beforeAll(async () => {
   await seedUsers(["u-admin", "admin"]);
 });
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function asPerson<T extends { use: (...args: any[]) => unknown }>(app: T, id: string): T {
-  app.use("*", async (c: { set: (key: string, value: unknown) => void }, next: () => Promise<void>) => {
+function asPerson<T extends Hono>(app: T, id: string): T {
+  const middleware: MiddlewareHandler<TestEnv> = async (c, next) => {
     c.set("session", { user: { id } });
     await next();
-  });
+  };
+  app.use("*", middleware);
   return app;
 }
 
@@ -534,15 +537,15 @@ describe("data", () => {
     const a = createBot(botInputSchema.parse({ name: "Pages A" }), "u-admin");
     const b = createBot(botInputSchema.parse({ name: "Pages B" }), "u-admin");
     const db = ensureDatabase();
-    const line = db.query("INSERT INTO gond_messages (id, thread_id, author, kind, body, from_thread_id, answered_at, spoken, created_at) VALUES (?, ?, ?, ?, 'x', ?, 'x', ?, ?)");
+    const line = db.query("INSERT INTO gond_messages (id, thread_id, author, kind, body, from_thread_id, answered_at, created_at) VALUES (?, ?, ?, ?, 'x', ?, 'x', ?)");
     for (let i = 0; i < 40; i++) {
       const at = `2026-03-01T00:00:${String(Math.floor(i / 3)).padStart(2, "0")}.000Z`;
       const [thread, from] = i % 5 === 0 ? [b.threadId, a.threadId] : i % 7 === 0 ? [a.threadId, a.threadId] : i % 9 === 0 ? [b.threadId, null] : [a.threadId, null];
-      line.run(`pg-${i}`, thread, i % 2 ? a.id : "you", i % 11 === 0 ? "prompt" : "message", from, i % 13 === 0 ? 1 : 0, at);
+      line.run(`pg-${i}`, thread, i % 2 ? a.id : "you", i % 11 === 0 ? "prompt" : "message", from, at);
     }
-    const all = db.query("SELECT rowid AS r, id, kind, created_at FROM gond_messages WHERE id LIKE 'pg-%' AND (thread_id = ? OR from_thread_id = ?) AND spoken = 0 ORDER BY created_at, rowid").all(a.threadId, a.threadId) as { id: string; kind: string; created_at: string }[];
+    const all = db.query("SELECT rowid AS r, id, kind, created_at FROM gond_messages WHERE id LIKE 'pg-%' AND (thread_id = ? OR from_thread_id = ?) ORDER BY created_at, rowid").all(a.threadId, a.threadId) as { id: string; kind: string; created_at: string }[];
     const ids = (rows: { id: string }[]) => rows.map((row) => row.id);
-    const page = (options: Parameters<typeof listMessages>[1]) => ids(listMessages(a.threadId, { includeSent: true, shown: true, limit: 7, ...options }));
+    const page = (options: Parameters<typeof listMessages>[1]) => ids(listMessages(a.threadId, { includeSent: true, limit: 7, ...options }));
     expect(page({})).toEqual(ids(all.slice(-7)));
     const cut = all[20]!.created_at;
     expect(page({ before: cut })).toEqual(ids(all.filter((m) => m.created_at < cut).slice(-7)));
@@ -1509,73 +1512,6 @@ describe("data", () => {
     deleteProvider("u-model", "anthropic");
   });
 
-  test("voice transcribes through its own key, never the bots', on xAI's own endpoint when it points at xAI", async () => {
-    const { saveProvider, deleteProvider } = await import("../src/data/providers.ts");
-    const { getVoice, setVoice } = await import("../src/data/voice.ts");
-    const { voiceRoutes } = await import("../src/routes/voice.ts");
-    const { Hono } = await import("hono");
-    const seen: { path: string; auth: string | null; model: unknown; name: string | null }[] = [];
-    const upstream = Bun.serve({
-      port: 0,
-      async fetch(request) {
-        // Neither server lists its models, so each runs on its provider's own.
-        if (request.method === "GET") return new Response("Not found", { status: 404 });
-        const form = await request.formData();
-        const file = form.get("file");
-        seen.push({ path: new URL(request.url).pathname, auth: request.headers.get("authorization"), model: form.get("model"), name: file instanceof File ? file.name : null });
-        return Response.json({ text: " hello there " });
-      },
-    });
-    const restore = routeHost("api.x.ai", upstream.port);
-    const app = asPerson(new Hono(), "u-voice");
-    app.route("/api", voiceRoutes());
-    const send = (name = "voice.webm", bytes = 10) => {
-      const form = new FormData();
-      form.set("file", new File([new Uint8Array(bytes)], name));
-      return app.request("/api/transcribe", { method: "POST", body: form });
-    };
-    try {
-      expect(getVoice("u-voice")).toEqual({ using: null, transcribeModel: null, callModel: null, callVoice: {} });
-      expect((await send()).status).toBe(409);
-      saveProvider("u-voice", "openai", { baseUrl: `http://127.0.0.1:${upstream.port}/v1`, apiKey: "sk-bots-key-123456" });
-      expect(getVoice("u-voice").using).toBeNull();
-      expect((await send()).status).toBe(409);
-
-      saveProvider("u-voice", "voice", { baseUrl: `http://127.0.0.1:${upstream.port}/v1`, apiKey: "sk-voice-key-123456" });
-      expect(getVoice("u-voice").using).toBe("openai");
-      const heard = await send("voice.mp4");
-      expect(await heard.json()).toEqual({ text: "hello there" });
-      expect(seen[0]).toEqual({ path: "/v1/audio/transcriptions", auth: "Bearer sk-voice-key-123456", model: "gpt-transcribe", name: "recording.mp4" });
-
-      const local = await app.request("/api/voice", { method: "PUT", body: JSON.stringify({ transcribeModel: "Systran/faster-whisper-small" }) });
-      expect(await local.json()).toMatchObject({ using: "openai", transcribeModel: "Systran/faster-whisper-small" });
-      await send();
-      expect(seen[1]!.model).toBe("Systran/faster-whisper-small");
-      expect((await app.request("/api/voice", { method: "PUT", body: JSON.stringify({ transcribeModel: "bad model" }) })).status).toBe(400);
-      expect((await app.request("/api/voice", { method: "PUT", body: JSON.stringify({}) })).status).toBe(400);
-      expect(setVoice("u-voice", { transcribeModel: "" }).transcribeModel).toBeNull();
-      const realtime = await app.request("/api/voice", { method: "PUT", body: JSON.stringify({ callModel: "gpt-realtime-2.1" }) });
-      expect(await realtime.json()).toMatchObject({ callModel: "gpt-realtime-2.1", transcribeModel: null });
-      expect((await app.request("/api/voice", { method: "PUT", body: JSON.stringify({ callModel: "gpt-image-2" }) })).status).toBe(400);
-      expect(setVoice("u-voice", { callModel: "gpt-live-1" }).callModel).toBe("gpt-live-1");
-
-      setVoice("u-voice", { transcribeModel: "Systran/faster-whisper-small" });
-      saveProvider("u-voice", "voice", { baseUrl: "https://api.x.ai/v1", apiKey: "xai-voice-key-123456" });
-      expect(getVoice("u-voice").using).toBe("xai");
-      await send();
-      expect(seen[2]).toEqual({ path: "/v1/stt", auth: "Bearer xai-voice-key-123456", model: "grok-voice-transcribe-2.0", name: "recording.webm" });
-
-      expect((await send("page.html")).status).toBe(400);
-      expect((await app.request("/api/transcribe", { method: "POST", body: new FormData() })).status).toBe(400);
-      expect((await send("voice.webm", 11 * 1024 * 1024)).status).toBe(413);
-    } finally {
-      restore();
-      upstream.stop(true);
-      deleteProvider("u-voice", "voice");
-      deleteProvider("u-voice", "openai");
-    }
-  });
-
   test("a person's turn after a teammate's message hears that its answer reaches only the person", async () => {
     const { createBot } = await import("../src/data/bots.ts");
     const { postMessage, getThread } = await import("../src/data/threads.ts");
@@ -1632,15 +1568,10 @@ describe("data", () => {
       const other = await app.request("/api/llm/openai/responses", { method: "POST", headers: { authorization: `Bearer ${providerProxyToken("u-other", "openai")}` }, body: "{}" });
       expect(other.status).toBe(200);
       expect(seen[2]).toMatchObject({ path: "/other/responses", auth: "Bearer sk-other-key-123456" });
-
-      saveProvider("u-admin", "voice", { baseUrl: `http://127.0.0.1:${upstream.port}/voice`, apiKey: "sk-voice-only-123456" });
-      expect((await app.request("/api/llm/voice/audio/transcriptions", { method: "POST", headers: { authorization: `Bearer ${providerProxyToken("u-admin", "voice")}` }, body: "{}" })).status).toBe(404);
-      expect(seen).toHaveLength(3);
     } finally {
       upstream.stop(true);
       deleteProvider("u-admin", "openai");
       deleteProvider("u-admin", "anthropic");
-      deleteProvider("u-admin", "voice");
       deleteProvider("u-other", "openai");
     }
   });
@@ -5849,245 +5780,14 @@ describe("usage", () => {
   });
 });
 
-describe("call voices", () => {
-  test("a call's voice is picked from the provider's own list, sampled with the person's key, and kept per provider", async () => {
-    const { saveProvider } = await import("../src/data/providers.ts");
-    const { getVoice } = await import("../src/data/voice.ts");
-    const { voiceRoutes } = await import("../src/routes/voice.ts");
-    const { Hono } = await import("hono");
-    const said: { path: string; body: unknown }[] = [];
-    const upstream = Bun.serve({
-      port: 0,
-      async fetch(request) {
-        const path = new URL(request.url).pathname;
-        if (path === "/v1/models") return Response.json({ data: [{ id: "gpt-live-1" }, { id: "gpt-realtime-2.1-mini" }, { id: "my-whisper" }] });
-        if (path.endsWith("/models")) return new Response("Not found", { status: 404 });
-        if (path === "/x/v1/tts/voices") return Response.json({ voices: [{ voice_id: "eve", name: "Eve", language: "en" }, { voice_id: "ara", name: "Ara", language: "en" }, { voice_id: "../bad", name: "Bad" }] });
-        said.push({ path, body: await request.json() });
-        return new Response(new Uint8Array([0xff, 0xfb, 1, 2]), { headers: { "content-type": "audio/mpeg" } });
-      },
-    });
-    const restore = routeHost("api.x.ai", upstream.port);
-    const app = asPerson(new Hono(), "u-voices");
-    app.route("/api", voiceRoutes());
-    try {
-      expect(await (await app.request("/api/voice/voices")).json()).toEqual({ provider: null, voices: [], chosen: null });
-      saveProvider("u-voices", "voice", { baseUrl: "https://api.x.ai/x/v1", apiKey: "xai-voices-key-123456" });
-
-      expect(await (await app.request("/api/voice/voices")).json()).toEqual({ provider: "xai", voices: [{ id: "eve", name: "Eve", detail: null }, { id: "ara", name: "Ara", detail: null }], chosen: "eve" });
-      expect((await app.request("/api/voice/call-voice", { method: "PUT", body: JSON.stringify({ voice: "ara" }) })).status).toBe(200);
-      expect(getVoice("u-voices").callVoice).toEqual({ xai: "ara" });
-      expect((await app.request("/api/voice/call-voice", { method: "PUT", body: JSON.stringify({ voice: "../etc" }) })).status).toBe(400);
-
-      const sample = await app.request("/api/voice/sample?voice=ara");
-      expect(sample.headers.get("content-type")).toBe("audio/mpeg");
-      expect(said[0]).toMatchObject({ path: "/x/v1/tts", body: { voice_id: "ara", language: "en" } });
-
-      saveProvider("u-voices", "voice", { baseUrl: `http://127.0.0.1:${upstream.port}/v1`, apiKey: "sk-voices-key-123456" });
-      const openai = (await (await app.request("/api/voice/voices")).json()) as { provider: string; voices: { id: string }[]; chosen: string };
-      expect(openai.provider).toBe("openai");
-      expect(openai.chosen).toBe("marin");
-      expect(openai.voices.map((v) => v.id)).toContain("cedar");
-      await app.request("/api/voice/sample?voice=cedar");
-      expect(said[1]).toMatchObject({ path: "/v1/audio/speech", body: { voice: "cedar", model: "gpt-4o-mini-tts" } });
-      await app.request("/api/voice/call-voice", { method: "PUT", body: JSON.stringify({ voice: "marin" }) });
-      expect(getVoice("u-voices").callVoice).toEqual({ xai: "ara" });
-
-      const modelList = async () => (await (await app.request("/api/voice/models")).json()) as import("@gond/shared").VoiceModelList;
-      const models = await modelList();
-      expect(models.call).toEqual({ groups: [{ name: "GPT-Live", models: ["gpt-live-1"] }, { name: "GPT-Realtime", models: ["gpt-realtime-2.1-mini"] }], default: "gpt-live-1", chosen: "gpt-live-1" });
-      expect(models.transcribe).toMatchObject({ default: "gpt-transcribe", chosen: "gpt-transcribe" });
-      expect(models).toMatchObject({ others: ["my-whisper"], own: true });
-      await app.request("/api/voice/call-voice", { method: "PUT", body: JSON.stringify({ voice: "quartz" }) });
-      expect(((await (await app.request("/api/voice/voices")).json()) as { chosen: string }).chosen).toBe("quartz");
-      await app.request("/api/voice", { method: "PUT", body: JSON.stringify({ callModel: "gpt-realtime-2.1-mini" }) });
-      const realtime = (await (await app.request("/api/voice/voices")).json()) as { voices: { id: string }[]; chosen: string };
-      expect(realtime.chosen).toBe("marin");
-      expect(realtime.voices.map((v) => v.id)).not.toContain("quartz");
-      expect((await modelList()).call.chosen).toBe("gpt-realtime-2.1-mini");
-      await app.request("/api/voice", { method: "PUT", body: JSON.stringify({ callModel: "" }) });
-      expect(getVoice("u-voices").callModel).toBeNull();
-      expect((await modelList()).call.chosen).toBe("gpt-live-1");
-    } finally {
-      restore();
-      upstream.stop(true);
-    }
-  });
-});
-
-describe("calls", () => {
-  async function until(check: () => boolean, ms = 4000) {
-    const end = Date.now() + ms;
-    while (!check()) {
-      if (Date.now() > end) throw new Error("timed out");
-      await Bun.sleep(20);
-    }
-  }
-
-  test("a call relays the person's words, hands requests to the bot's turn, speaks its answer and hangs up on goodbye", async () => {
-    await seedUsers(["u-caller", "user"]);
-    const { createBot } = await import("../src/data/bots.ts");
-    const { getThread, listMessages } = await import("../src/data/threads.ts");
-    const { saveProvider } = await import("../src/data/providers.ts");
-    const { startCall, listen, answerOnCall, callOf } = await import("../src/calls.ts");
-    const { botInputSchema } = await import("@gond/shared");
-
-    const received: { type: string; [key: string]: unknown }[] = [];
-    let auth = "";
-    let socket: { send: (data: string) => void } | null = null;
-    const fake = Bun.serve({
-      port: 0,
-      fetch(req, server) {
-        auth = req.headers.get("authorization") ?? "";
-        return server.upgrade(req) ? undefined : new Response("no", { status: 400 });
-      },
-      websocket: {
-        open(ws) {
-          socket = ws;
-        },
-        message(ws, data) {
-          const event = JSON.parse(String(data)) as { type: string };
-          received.push(event);
-          if (event.type === "session.update") ws.send(JSON.stringify({ type: "session.updated" }));
-          if (event.type === "response.create") {
-            ws.send(JSON.stringify({ type: "response.created" }));
-            ws.send(JSON.stringify({ type: "response.done" }));
-          }
-        },
-      },
-    });
-    const say = (event: object) => socket!.send(JSON.stringify(event));
-    const restore = routeHost("api.x.ai", fake.port);
-    try {
-      const bot = createBot(botInputSchema.parse({ name: "Patch Caller", title: "Travel" }), "u-caller");
-      saveProvider("u-caller", "voice", { baseUrl: "https://api.x.ai/v1", apiKey: "xai-test-key-1234567890" });
-      const thread = getThread(bot.threadId)!;
-      expect(bot.primary).toBe(true);
-      const helper = createBot(botInputSchema.parse({ name: "Ledger Caller", title: "Books" }), "u-caller");
-      expect(await startCall(getThread(helper.threadId)!, "u-caller")).toMatchObject({ ok: false, status: 400 });
-      const started = await startCall(thread, "u-caller");
-      if (!started.ok) throw new Error(started.error);
-      const events: { type: string }[] = [];
-      listen(started.call.id, (event) => events.push(event));
-
-      await until(() => events.some((e) => e.type === "ready"));
-      expect(auth).toBe("Bearer xai-test-key-1234567890");
-      const session = received.find((e) => e.type === "session.update") as unknown as { session: { tools: { name: string }[] } };
-      expect(session.session.tools.map((t) => t.name)).toEqual(["ask_bot", "bot_status", "end_call"]);
-
-      say({ type: "conversation.item.input_audio_transcription.completed", transcript: "Find me a flight to Denver on Friday" });
-      await until(() => listMessages(thread.id).some((m) => m.author === "you" && m.spoken));
-      expect(listMessages(thread.id).find((m) => m.author === "you" && m.spoken)!.body).toBe("Find me a flight to Denver on Friday");
-
-      say({ type: "response.function_call_arguments.done", name: "ask_bot", call_id: "c1", arguments: JSON.stringify({ request: "A nonstop flight to Denver on Friday morning" }) });
-      await until(() => listMessages(thread.id).some((m) => m.kind === "prompt"));
-      const prompt = listMessages(thread.id).find((m) => m.kind === "prompt")!;
-      expect(prompt.body).toContain("A nonstop flight to Denver on Friday morning");
-      expect(received.some((e) => e.type === "conversation.item.create" && (e.item as { call_id?: string }).call_id === "c1")).toBe(true);
-
-      expect(answerOnCall(prompt.id, "**Found** one at $284.")).toBe(true);
-      expect(answerOnCall(prompt.id, "again")).toBe(false);
-      await until(() => received.some((e) => e.type === "conversation.item.create" && JSON.stringify(e).includes("Found one at $284.")));
-      await until(() => received.some((e) => e.type === "response.create" && JSON.stringify(e).includes("in your own words") && JSON.stringify(e).includes("Found one at $284.")));
-      expect(listMessages(thread.id).some((m) => m.author === bot.id && m.body.includes("$284"))).toBe(false);
-
-      say({ type: "response.function_call_arguments.done", name: "bot_status", call_id: "c2", arguments: "{}" });
-      await until(() => received.some((e) => e.type === "conversation.item.create" && (e.item as { call_id?: string }).call_id === "c2"));
-      expect(JSON.stringify(received.at(-2) ?? {}) + JSON.stringify(received.at(-1) ?? {})).toContain("isn't working on anything");
-
-      say({ type: "conversation.item.input_audio_transcription.completed", transcript: "Ok thanks, bye!" });
-      say({ type: "response.output_audio_transcript.delta", delta: "Bye, safe travels." });
-      say({ type: "response.output_audio_transcript.done" });
-      await until(() => events.some((e) => e.type === "ended"));
-      const lines = listMessages(thread.id);
-      expect(lines.some((m) => m.author === bot.id && m.spoken && m.body === "Bye, safe travels.")).toBe(true);
-      expect(lines.at(-1)!.body).toBe("Call · under a minute");
-      expect(lines.filter((m) => m.kind === "event")).toHaveLength(1);
-      expect(getThread(thread.id)!.lastMessage).toBeNull();
-      expect(listMessages(thread.id, { shown: true }).filter((m) => m.kind !== "prompt").map((m) => m.body)).toEqual(["Call · under a minute"]);
-      expect(callOf("u-caller")).toBeNull();
-    } finally {
-      restore();
-      fake.stop(true);
-    }
-  });
-
-  test("a call's socket checks the origin and the person, and carries the audio both ways as bytes", async () => {
-    await seedUsers(["u-socket", "user"], ["u-socket-other", "user"]);
-    const { createBot } = await import("../src/data/bots.ts");
-    const { getThread } = await import("../src/data/threads.ts");
-    const { saveProvider } = await import("../src/data/providers.ts");
-    const { startCall, endCall } = await import("../src/calls.ts");
-    const { callSocket, upgradeCallSocket } = await import("../src/routes/calls.ts");
-    const { botInputSchema } = await import("@gond/shared");
-
-    const heard: string[] = [];
-    const voice = Bun.serve({
-      port: 0,
-      fetch: (req, server) => (server.upgrade(req) ? undefined : new Response("no", { status: 400 })),
-      websocket: {
-        message(ws, data) {
-          const event = JSON.parse(String(data)) as { type: string; audio?: string };
-          if (event.type === "session.update") ws.send(JSON.stringify({ type: "session.updated" }));
-          if (event.type === "response.create") ws.send(JSON.stringify({ type: "response.output_audio.delta", delta: Buffer.from([1, 0, 2, 0]).toString("base64") }));
-          if (event.type === "input_audio_buffer.append" && event.audio) heard.push(event.audio);
-        },
-      },
-    });
-    let person = "u-socket";
-    const gond = Bun.serve<import("../src/routes/calls.ts").CallSocketData>({
-      port: 0,
-      fetch: async (req, server) => (await upgradeCallSocket(req, server, async () => person)) ?? new Response("not a socket", { status: 418 }),
-      websocket: callSocket,
-    });
-    const restore = routeHost("api.x.ai", voice.port);
-    try {
-      const bot = createBot(botInputSchema.parse({ name: "Patch Socket" }), "u-socket");
-      saveProvider("u-socket", "voice", { baseUrl: "https://api.x.ai/v1", apiKey: "xai-socket-key-1234567890" });
-      const started = await startCall(getThread(bot.threadId)!, "u-socket");
-      if (!started.ok) throw new Error(started.error);
-      const url = `http://127.0.0.1:${gond.port}/api/calls/${started.call.id}/socket`;
-      const upgrade = (origin: string) => fetch(url, { headers: { upgrade: "websocket", connection: "Upgrade", "sec-websocket-version": "13", "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==", origin } });
-      expect((await upgrade("https://evil.example")).status).toBe(403);
-      person = "u-socket-other";
-      expect((await upgrade(`http://127.0.0.1:${gond.port}`)).status).toBe(404);
-      person = "u-socket";
-
-      const socket = new WebSocket(url.replace("http:", "ws:"), { headers: { origin: `http://127.0.0.1:${gond.port}` } } as unknown as string[]);
-      socket.binaryType = "arraybuffer";
-      const events: string[] = [];
-      const audio: number[][] = [];
-      socket.onmessage = (message) => (typeof message.data === "string" ? events.push(JSON.parse(message.data).type) : audio.push([...new Uint8Array(message.data as ArrayBuffer)]));
-      await until(() => events.includes("ready"));
-      await until(() => audio.length > 0);
-      expect(audio[0]).toEqual([1, 0, 2, 0]);
-      socket.send(new Uint8Array([9, 0, 8, 0]));
-      socket.send(new Uint8Array([7]));
-      await until(() => heard.length > 0);
-      expect(heard).toEqual([Buffer.from([9, 0, 8, 0]).toString("base64")]);
-      endCall(started.call.id, null);
-      await until(() => events.includes("ended"));
-    } finally {
-      restore();
-      gond.stop(true);
-      voice.stop(true);
-    }
-  });
-
-  test("an answer for a call that has ended goes into the chat instead", async () => {
-    const { answerOnCall } = await import("../src/calls.ts");
-    expect(answerOnCall("m-not-on-a-call", "Hello")).toBe(false);
-  });
-});
-
 describe("profiles", () => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  function asProfile<T extends { use: (...args: any[]) => unknown }>(app: T, person: string, profile: string): T {
-    app.use("*", async (c: { set: (key: string, value: unknown) => void }, next: () => Promise<void>) => {
+  function asProfile<T extends Hono>(app: T, person: string, profile: string): T {
+    const middleware: MiddlewareHandler<TestEnv> = async (c, next) => {
       c.set("session", { user: { id: person }, session: { id: `s-${person}` } });
       c.set("profile", profile);
       await next();
-    });
+    };
+    app.use("*", middleware);
     return app;
   }
 

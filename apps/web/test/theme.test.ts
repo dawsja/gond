@@ -111,7 +111,7 @@ test("the Mac app is marked before first paint and hears the size it draws its c
   const mock = browser("light", false);
   mock.saved.set("gond-size", "large");
   const scales: number[] = [];
-  Object.assign(mock.globals.window, { gondMac: { platform: () => "macos", features: () => ["call", "scale", "sidebar"], setScale: (scale: number) => scales.push(scale) } });
+  Object.assign(mock.globals.window, { gondMac: { platform: () => "macos", features: () => ["scale", "sidebar"], setScale: (scale: number) => scales.push(scale) } });
   runInNewContext(THEME_INIT_SCRIPT, mock.globals);
   expect(mock.attributes.get("data-shell")).toBe("mac");
   expect(scales).toEqual([1.15]);

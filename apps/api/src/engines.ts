@@ -1,4 +1,4 @@
-import { DEFAULT_MODEL, ENGINE_LABELS, PROVIDER_LABELS, botModelFor, isCliEngine, isPlanProvider, modelSource, type AiSettings, type Bot, type Engine, type EngineProviderKind, type ModelCurrent } from "@gond/shared";
+import { DEFAULT_MODEL, ENGINE_LABELS, PROVIDER_LABELS, botModelFor, isCliEngine, isPlanProvider, modelSource, type AiSettings, type Bot, type Engine, type ModelCurrent, type ProviderKind } from "@gond/shared";
 import type { BoxAccess } from "./box.ts";
 import { getProvider, planSession, providerBaseUrl, providerProxyToken } from "./data/providers.ts";
 import { apiInternalUrl } from "./mcp.ts";
@@ -6,7 +6,7 @@ import type { NativeAccess } from "./native.ts";
 
 export type EngineRun = { engine: Engine; model: string; access: BoxAccess; native?: NativeAccess };
 
-export function providerFor(engine: Engine, userId: string): EngineProviderKind {
+export function providerFor(engine: Engine, userId: string): ProviderKind {
   const info = ENGINE_LABELS[engine];
   return info.providers.find((kind) => getProvider(userId, kind)) ?? info.provider;
 }
@@ -18,7 +18,7 @@ export class EngineSetupError extends Error {
   }
 }
 
-function apiKindOf(ai: AiSettings, userId: string): EngineProviderKind {
+function apiKindOf(ai: AiSettings, userId: string): ProviderKind {
   const config = ai.engines[ai.engine];
   const info = ENGINE_LABELS[ai.engine];
   return config.provider && info.providers.includes(config.provider) ? config.provider : providerFor(ai.engine, userId);

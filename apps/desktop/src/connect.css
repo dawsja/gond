@@ -20,7 +20,7 @@
   --primary-edge: #d2d6dd;
   --primary-edge-focus: #bfc4cd;
   --tint-solid: #2c62ba;
-  --hangup: #c2301a;
+  --window-close: #c2301a;
   --shadow: 0 16px 40px rgba(15, 23, 42, 0.12), 0 0 0 1px rgba(15, 23, 42, 0.04);
   --primary-hover: color-mix(in oklch, var(--primary), var(--foreground) 8%);
   color-scheme: light;
@@ -38,7 +38,7 @@
     --primary-edge: #2a2a2a;
     --primary-edge-focus: #424242;
     --tint-solid: #2b61b9;
-    --hangup: #c4372b;
+    --window-close: #c4372b;
     --shadow: 0 16px 40px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.04);
     color-scheme: dark;
   }
@@ -109,7 +109,7 @@ header {
 }
 
 .window button[data-window="close"]:hover {
-  background: var(--hangup);
+  background: var(--window-close);
   color: #ffffff;
 }
 

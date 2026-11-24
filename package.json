@@ -23,6 +23,7 @@
   },
   "packageManager": "bun@1.4.4",
   "devDependencies": {
-    "sharp": "0.35.5"
+    "sharp": "0.35.5",
+    "wrangler": "^4.168.0"
   }
 }

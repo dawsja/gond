@@ -18,7 +18,6 @@ final class NativeStateTests: XCTestCase {
          "newItems":[{"id":"new-bot","label":"New bot","symbol":"sparkles"}],
          "me":{"name":"Sam","face":null,"initial":"S","profile":null,"active":false},
          "profileMenu":[[{"id":"settings","label":"Settings","symbol":"gearshape"}]],
-         "call":{"label":"On a call with Patch","since":1700000000000,"muted":true,"color":"#2f6fd6"},
          "sections":[]}
         """)
         XCTAssertFalse(state.settings)
@@ -30,7 +29,6 @@ final class NativeStateTests: XCTestCase {
         XCTAssertEqual(state.rows.first?.menu.first?.first?.destructive, false)
         XCTAssertEqual(state.look?.count, 2)
         XCTAssertNil(state.me.face)
-        XCTAssertEqual(state.call?.muted, true)
     }
 
     func testASidebarMissingFieldsStillDraws() throws {
@@ -57,9 +55,7 @@ final class NativeStateTests: XCTestCase {
         XCTAssertEqual(state.composer.text, "hi")
         XCTAssertEqual(state.composer.textRev, 3)
         XCTAssertTrue(state.composer.canSend)
-        XCTAssertEqual(state.composer.voice, "off")
         XCTAssertTrue(state.mentions.isEmpty)
-        XCTAssertNil(state.call)
         XCTAssertNil(state.column)
     }
 

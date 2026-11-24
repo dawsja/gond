@@ -21,7 +21,6 @@ describe("the Mac app's sidebar", () => {
       activity: { room: { cy: "Reading the brief" } },
       drafts: { cy: "  half a\n thought ", bo: "unseen" },
       pathname: "/app/t/bo",
-      call: { threadId: "dee", connecting: false },
       ink: "#16181d",
       membersOf: (thread) => thread.members.map((id) => bots.find((b) => b.id === id)!),
       menuOf: () => [[{ id: "delete", label: "Delete bot", symbol: "trash", destructive: true }]],
@@ -36,7 +35,7 @@ describe("the Mac app's sidebar", () => {
     expect(Object.keys(byId)).toEqual(["bo", "cy", "dee", "room"]);
     expect(byId.bo).toMatchObject({ active: true, unread: null, previewKind: "text", preview: "You: hi", job: "bo's job" });
     expect(byId.cy).toMatchObject({ previewKind: "draft", preview: "half a thought" });
-    expect(byId.dee).toMatchObject({ previewKind: "call", preview: "On a call", unread: "team" });
+    expect(byId.dee).toMatchObject({ previewKind: "text", preview: "You: hi", unread: "team" });
     expect(byId.room).toMatchObject({ previewKind: "working", preview: "cy: Reading the brief", working: true, job: "", unread: "you", color: "#16181d", title: "Launch" });
     expect(byId.bo!.time).not.toBe("");
   });

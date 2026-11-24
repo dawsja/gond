@@ -274,8 +274,7 @@ async function buildExport(job: ExportJob, label: string): Promise<Uint8Array | 
         const messages: Message[] = [];
         for (let after = 0; ; ) {
           const page = messagesInOrder(thread.id, { afterRowid: after, since: job.since });
-          // What was said on a call stays the bot's, as in Gond itself.
-          messages.push(...page.messages.filter((m) => !m.spoken));
+          messages.push(...page.messages);
           if (page.messages.length < 500) break;
           after = page.last;
           await breathe();

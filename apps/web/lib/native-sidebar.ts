@@ -55,7 +55,6 @@ export type SidebarListsInput = {
   activity: Readonly<Record<string, Activity>>;
   drafts: Readonly<Record<string, string>>;
   pathname: string;
-  call: { threadId: string; connecting: boolean } | null;
   /** The page's text colour, a room's unread dot as the page's sidebar draws it. */
   ink: string;
   membersOf: (thread: ThreadRow) => Bot[];
@@ -63,7 +62,7 @@ export type SidebarListsInput = {
   now?: Date;
 };
 
-export function sidebarLists({ rows, query, bots, activity, drafts, pathname, call, ink, membersOf, menuOf, now = new Date() }: SidebarListsInput): { pinned: SidebarTile[]; rows: SidebarRow[]; faces: FaceSpec[] } {
+export function sidebarLists({ rows, query, bots, activity, drafts, pathname, ink, membersOf, menuOf, now = new Date() }: SidebarListsInput): { pinned: SidebarTile[]; rows: SidebarRow[]; faces: FaceSpec[] } {
   const faces = new Map<string, FaceSpec>();
   const botOf = (thread: ThreadRow) => (thread.botId ? bots.find((b) => b.id === thread.botId) : undefined);
   const pinnedRows = query.trim() ? [] : rows.filter((thread) => botOf(thread)?.pinned || (thread.kind === "room" && thread.pinned));
@@ -95,16 +94,15 @@ export function sidebarLists({ rows, query, bots, activity, drafts, pathname, ca
     const base = common(thread, bot);
     const doing = activity[thread.id] ?? {};
     const working = Object.keys(doing).length > 0;
-    const calling = call?.threadId === thread.id ? (call.connecting ? "Calling" : "On a call") : null;
-    const draft = !base.active && !working && !calling ? (drafts[thread.id] ?? "").replace(/\s+/g, " ").trim() : "";
+    const draft = !base.active && !working ? (drafts[thread.id] ?? "").replace(/\s+/g, " ").trim() : "";
     return {
       ...base,
       title: thread.name || bot?.name || "Room",
       job: bot?.title && thread.kind !== "room" ? bot.title : "",
       pinned: Boolean(bot?.pinned || thread.pinned),
       time: thread.lastMessage ? shortTime(thread.lastMessage.at, now) : "",
-      preview: calling ?? (draft || threadPreview(thread, bots, doing)),
-      previewKind: calling ? "call" : draft ? "draft" : working ? "working" : "text",
+      preview: draft || threadPreview(thread, bots, doing),
+      previewKind: draft ? "draft" : working ? "working" : "text",
       working,
     };
   });

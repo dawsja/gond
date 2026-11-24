@@ -2,7 +2,7 @@ import type { z } from "zod";
 import { DEFAULT_MODEL, type Bot } from "./bots.ts";
 import type { providerInputSchema } from "./schemas.ts";
 
-export const PROVIDER_KINDS = ["anthropic", "openai", "chatgpt", "grok", "voice"] as const;
+export const PROVIDER_KINDS = ["anthropic", "openai", "chatgpt", "grok"] as const;
 export type ProviderKind = (typeof PROVIDER_KINDS)[number];
 
 export const KEY_PROVIDER_KINDS = ["anthropic", "openai"] as const satisfies readonly ProviderKind[];
@@ -10,8 +10,6 @@ export type KeyProviderKind = (typeof KEY_PROVIDER_KINDS)[number];
 
 export const PLAN_PROVIDER_KINDS = ["chatgpt", "grok"] as const satisfies readonly ProviderKind[];
 export type PlanProviderKind = (typeof PLAN_PROVIDER_KINDS)[number];
-
-export type EngineProviderKind = Exclude<ProviderKind, "voice">;
 
 export function isPlanProvider(kind: ProviderKind): kind is PlanProviderKind {
   return (PLAN_PROVIDER_KINDS as readonly string[]).includes(kind);
@@ -51,18 +49,11 @@ export const PROVIDER_LABELS: Record<ProviderKind, { name: string; short: string
     defaultUrl: GROK_API_URL,
     keyHint: "",
   },
-  voice: {
-    name: "Voice key",
-    short: "voice",
-    detail: "OpenAI's API or xAI's, for the microphone and calls. Your bots never use it.",
-    defaultUrl: "https://api.openai.com/v1",
-    keyHint: "sk-… or xai-…",
-  },
 };
 
 /** Bearer auth and OpenAI's paths; a plan talks the Responses API on them, a key chat completions. */
 export function isOpenAiShaped(kind: ProviderKind): boolean {
-  return kind === "openai" || kind === "chatgpt" || kind === "grok" || kind === "voice";
+  return kind === "openai" || kind === "chatgpt" || kind === "grok";
 }
 
 export type ProviderMeta = {
@@ -75,17 +66,6 @@ export type ProviderMeta = {
 };
 export type ProviderInput = z.infer<typeof providerInputSchema>;
 
-/**
- * Whose speech endpoints the person's voice key reaches: xAI's own (`stt`, `realtime`, `tts`) when it
- * points at xAI, OpenAI's anywhere else.
- */
-export const VOICE_PROVIDERS = ["xai", "openai"] as const;
-export type VoiceProvider = (typeof VOICE_PROVIDERS)[number];
-export const VOICE_MODELS: Record<VoiceProvider, { path: string; model: string; label: string }> = {
-  xai: { path: "stt", model: "grok-voice-transcribe-2.0", label: "xAI Grok" },
-  openai: { path: "audio/transcriptions", model: "gpt-transcribe", label: "OpenAI" },
-};
-
 export function isXaiUrl(url: string): boolean {
   try {
     return new URL(url).hostname.toLowerCase() === "api.x.ai";
@@ -93,146 +73,6 @@ export function isXaiUrl(url: string): boolean {
     return false;
   }
 }
-
-/**
- * The speech models a voice key runs come from its own model list, never from a list Gond keeps: every
- * version of a family Gond can talk to is offered, newest first, and the newest of the first family the
- * key lists is the default. A family's pattern pins the major version Gond knows, since a new one may
- * talk differently; xAI's realtime voice keeps one protocol, so any version of it is offered. When the key
- * lists none of them, or won't say, the provider's model in `VOICE_MODELS` or `CALL_MODELS` stands in.
- */
-export type SpeechJob = "call" | "transcribe";
-export type SpeechFamily = { name: string; pattern: RegExp };
-export const SPEECH_FAMILIES: Record<VoiceProvider, Record<SpeechJob, SpeechFamily[]>> = {
-  openai: {
-    call: [
-      { name: "GPT-Live", pattern: /^gpt-live-1(?:\.\d+)*$/ },
-      { name: "GPT-Realtime", pattern: /^gpt-realtime-2(?:\.\d+)*(?:-mini)?$/ },
-    ],
-    transcribe: [
-      { name: "GPT Transcribe", pattern: /^gpt-transcribe(?:-\d+(?:\.\d+)*)?$/ },
-      { name: "GPT-4o and Whisper", pattern: /^(?:gpt-4o(?:-mini)?-transcribe|whisper-1)$/ },
-    ],
-  },
-  xai: {
-    call: [{ name: "Grok Voice", pattern: /^grok-voice-\d+(?:\.\d+)*$/ }],
-    transcribe: [{ name: "Grok Voice Transcribe", pattern: /^grok-voice-transcribe-\d+(?:\.\d+)*$/ }],
-  },
-};
-
-export type SpeechModels = { groups: { name: string; models: string[] }[]; default: string };
-/**
- * What `/api/voice/models` offers: per job, the models the key lists, its default and the one in use; a
- * server of the person's own (`own`) adds its other ids (`others`) and takes any id for the microphone.
- */
-export type VoiceModelList = { call: SpeechModels & { chosen: string }; transcribe: SpeechModels & { chosen: string }; others: string[]; own: boolean };
-
-const versionOf = (id: string) => (id.match(/\d+/g) ?? []).map(Number);
-
-/** Higher versions first (`gpt-live-1.1` before `gpt-live-1`), a plain id before its `-mini`. */
-function newerFirst(a: string, b: string): number {
-  const [x, y] = [versionOf(a), versionOf(b)];
-  for (let i = 0; i < Math.max(x.length, y.length); i++) {
-    const step = (y[i] ?? -1) - (x[i] ?? -1);
-    if (step) return step;
-  }
-  return a.length - b.length || a.localeCompare(b);
-}
-
-export function speechModels(provider: VoiceProvider, job: SpeechJob, listed: readonly string[] | null): SpeechModels {
-  const families = SPEECH_FAMILIES[provider][job];
-  const groups = families
-    .map(({ name, pattern }) => ({ name, models: [...new Set((listed ?? []).filter((id) => pattern.test(id)))].sort(newerFirst) }))
-    .filter((group) => group.models.length);
-  if (groups.length) return { groups, default: groups[0]!.models[0]! };
-  const fallback = job === "call" ? CALL_MODELS[provider].model : VOICE_MODELS[provider].model;
-  return { groups: [{ name: families[0]!.name, models: [fallback] }], default: fallback };
-}
-
-/**
- * The model a job runs on: the person's pick while the key still offers it, else the default. A server
- * of the person's own keeps any id for the microphone and any family's for calls, since it may not list
- * them; a list that couldn't be read keeps a pick of the provider's own families.
- */
-export function chosenModel(provider: VoiceProvider, job: SpeechJob, pick: string | null, listed: readonly string[] | null, own: boolean): string {
-  const offered = speechModels(provider, job, listed);
-  if (!pick) return offered.default;
-  const ours = SPEECH_FAMILIES[provider][job].some(({ pattern }) => pattern.test(pick));
-  if (own) return job === "transcribe" || ours ? pick : offered.default;
-  return ours && (listed === null || listed.includes(pick)) ? pick : offered.default;
-}
-
-/**
- * How a call talks: GPT-Live's own session, full duplex, or the Realtime API, which takes turns and
- * hands work over by a function call, as xAI's does.
- */
-export function callProtocol(provider: VoiceProvider, model: string): "live" | "realtime" {
-  return provider === "openai" && !/^gpt-realtime/.test(model) ? "live" : "realtime";
-}
-
-export type VoiceSettings = {
-  using: VoiceProvider | null;
-  transcribeModel: string | null;
-  callModel: string | null;
-  callVoice: Partial<Record<VoiceProvider, string>>;
-};
-export const CALL_VOICE_ID = /^[a-z0-9_-]{1,64}$/i;
-export type CallVoice = { id: string; name: string; detail: string | null };
-export const VOICE_MODEL_ID = /^[\w.:/@+-]{1,120}$/;
-export const TRANSCRIBE_MAX_BYTES = 10 * 1024 * 1024;
-export const TRANSCRIBE_MAX_SECONDS = 120;
-
-export const CALL_MODELS: Record<VoiceProvider, { model: string; voice: string; label: string }> = {
-  xai: { model: "grok-voice-latest", voice: "eve", label: "xAI Grok" },
-  openai: { model: "gpt-live-1.1", voice: "marin", label: "OpenAI" },
-};
-/**
- * GPT-Live's voices, from OpenAI's docs, since its API has no list to ask (xAI's does: `GET /v1/tts/voices`).
- * Marin and Cedar first: OpenAI's best, and Marin its default.
- */
-export const OPENAI_CALL_VOICES: CallVoice[] = [
-  { id: "marin", name: "Marin", detail: null },
-  { id: "cedar", name: "Cedar", detail: null },
-  ...["alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse"].map((id) => ({ id, name: id[0]!.toUpperCase() + id.slice(1), detail: null })),
-  ...(
-    [
-      ["quartz", "Australian, feminine"],
-      ["ripple", "Australian, masculine"],
-      ["vesper", "British, masculine"],
-      ["willow", "Irish, feminine"],
-      ["stone", "Irish, masculine"],
-      ["gleam", "North American, feminine"],
-      ["meridian", "North American, masculine"],
-      ["delta", "Southern U.S., feminine"],
-      ["cinder", "Southern U.S., masculine"],
-      ["beacon", "Filipino, masculine"],
-      ["bossa", "Portuguese, feminine"],
-      ["tempo", "Portuguese, masculine"],
-      ["nuri", "German, feminine"],
-      ["juni", "German, feminine"],
-      ["flitz", "German, masculine"],
-      ["brise", "French, feminine"],
-      ["sillage", "French, masculine"],
-      ["nira", "Hindi, feminine"],
-      ["harema", "Japanese, feminine"],
-      ["shida", "Japanese, masculine"],
-      ["noeul", "Korean, feminine"],
-    ] as const
-  ).map(([id, detail]) => ({ id, name: id[0]!.toUpperCase() + id.slice(1), detail })),
-];
-/** The Realtime API's voices; GPT-Live has these and more. */
-const REALTIME_VOICES = new Set(["marin", "cedar", "alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse"]);
-
-export function openAiCallVoices(model: string): CallVoice[] {
-  return callProtocol("openai", model) === "realtime" ? OPENAI_CALL_VOICES.filter((voice) => REALTIME_VOICES.has(voice.id)) : OPENAI_CALL_VOICES;
-}
-
-/** Both sides of a call are mono 16-bit PCM at this rate. */
-export const CALL_SAMPLE_RATE = 24_000;
-export const CALL_MAX_MINUTES = 60;
-export type CallInfo = { id: string; threadId: string; botId: string; provider: VoiceProvider; startedAt: string };
-/** What a call's stream tells the page: its audio and how it ends. The words are never shown; a call is heard. */
-export type CallEvent = { type: "ready" } | { type: "audio"; data: string } | { type: "interrupt" } | { type: "ended"; reason: string | null };
 
 /**
  * Where a bot's pictures are made, best first: a Grok plan is already paid for, then the OpenAI-compatible
@@ -283,9 +123,9 @@ export type EngineInfo = {
 
   signInAt: string;
 
-  provider: EngineProviderKind;
+  provider: ProviderKind;
 
-  providers: readonly EngineProviderKind[];
+  providers: readonly ProviderKind[];
 
   defaultModel: string;
 
@@ -362,7 +202,7 @@ export type ModelList = { groups: ModelGroup[]; current?: ModelCurrent };
  * kept with the source it was picked on, so moving the AI elsewhere never sends an id the new one
  * doesn't know.
  */
-export function modelSource(engine: Engine, access: EngineAccess, provider: EngineProviderKind | null): string {
+export function modelSource(engine: Engine, access: EngineAccess, provider: ProviderKind | null): string {
   if (isCliEngine(engine)) return `${engine}:${access}`;
   return engine === "api" ? `api:${provider ?? ""}` : engine;
 }
@@ -371,7 +211,7 @@ export function botModelFor(bot: Pick<Bot, "model" | "modelFor"> | null | undefi
   return bot?.model && bot.modelFor === source ? bot.model : "";
 }
 
-export type EngineSettings = { access: EngineAccess; model: string; provider?: EngineProviderKind | null };
+export type EngineSettings = { access: EngineAccess; model: string; provider?: ProviderKind | null };
 
 /** A model id, or none; `[1m]` at the end is Claude Code's own mark for a model's 1M-token context. */
 export const MODEL_ID_PATTERN = /^(?:[A-Za-z0-9._:/-]{1,120}(?:\[1m\])?)?$/;

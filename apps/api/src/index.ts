@@ -1,6 +1,5 @@
 import { createApp } from "./app.ts";
 import { getAuth } from "./auth.ts";
-import { endAllCalls } from "./calls.ts";
 import { apiPort } from "./config.ts";
 import { ensureDatabase } from "./db/init.ts";
 import { checkpointAndCloseDb } from "./db/sqlite.ts";
@@ -13,7 +12,6 @@ import { startMemoryMoves } from "./memory-moves.ts";
 import { resumeTeachings } from "./teach.ts";
 import { startFederation, stopFederation } from "./federation.ts";
 import { allowKnownGonds, startSpaces } from "./spaces.ts";
-import { callSocket, upgradeCallSocket, type CallSocketData } from "./routes/calls.ts";
 
 ensureDatabase();
 await getAuth();
@@ -30,14 +28,10 @@ void startFederation()
   .catch((error: unknown) => console.error("[gond] connecting to other Gonds failed:", error));
 
 const app = createApp();
-const server = Bun.serve<CallSocketData>({
+const server = Bun.serve({
   port: apiPort(),
   hostname: process.env.HOST || "0.0.0.0",
-  async fetch(request, server) {
-    const upgraded = await upgradeCallSocket(request, server);
-    return upgraded === null ? app.fetch(request) : upgraded;
-  },
-  websocket: callSocket,
+  fetch: app.fetch,
 
   idleTimeout: 0,
 });
@@ -58,7 +52,6 @@ async function shutdown(signal: string) {
     stopDispatcher();
     stopUsageSharing();
     stopFederation();
-    endAllCalls();
     await Promise.race([server.stop(false), Bun.sleep(3_000)]);
   } catch (error) {
     console.warn(`[gond] Error while shutting down: ${error instanceof Error ? error.message : error}`);

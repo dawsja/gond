@@ -452,7 +452,7 @@ commit, things that stay true) hold here too.
   false`, tools in one `gond` namespace, `strict: false`); the proxy
   passes only `responses` and `models`. `planError` words its refusals.
   Use OpenAI's wording and mark (`ChatGptLogo`, nowhere else). No image
-  generation, no voice. It is why there is no Codex engine; old settings
+  generation. It is why there is no Codex engine; old settings
   naming Codex read back without it (`readEnabled`, `toAi`).
 - **Grok plan** (`src/grok.ts`, `grok-plan.tsx`): reuses the open-source
   Grok CLI's public client (device flow RFC 8628 against auth.x.ai with
@@ -482,53 +482,8 @@ commit, things that stay true) hold here too.
   documented API, so a failed read keeps the last one.
 - **xAI is an OpenAI-compatible key**, not a kind of its own: chat
   goes the OpenAI way, and a key at `api.x.ai` (`isXaiUrl`) reaches xAI's
-  own speech and images endpoints (`voiceProvider`, the `xai` image
-  source). Saved xAI keys were folded in by `foldXaiKeys`.
-- **The voice key** (the `voice` row of `gond_providers`,
-  `voice-key-card.tsx` in Settings → Voice) is what the microphone, calls
-  and call voices run on, OpenAI's or xAI's by its address; Settings → AI
-  is only the bots'. No engine takes it (`EngineProviderKind`), and the
-  LLM proxy refuses it, so nothing on the computer reaches it.
-  `VOICE_KEYS` copied each person's OpenAI-compatible key into it.
-- **Voice models** (`SPEECH_FAMILIES`, `speechModels`, `chosenModel` in
-  shared; `src/speech-models.ts`; `GET /api/voice/models`): come from the
-  voice key's own `/models`, OpenAI's or xAI's, kept ten minutes
-  (`listedModels`); Gond keeps no list of them. Every version of a family
-  it can talk to is offered, newest first, and the newest is the default.
-  A family's pattern pins the major version Gond knows (a new one may talk
-  differently), except xAI's realtime voice. A saved pick of null is the
-  default and follows each newer model; picking the default item saves
-  null. A pick runs only while the key offers it, so a shutdown or a move
-  to another provider's key falls back to the default. A key that lists
-  none, or won't say, runs on `VOICE_MODELS` and `CALL_MODELS`. A server
-  of the person's own (`own`) adds its other ids and takes any id for the
-  microphone.
-- **Transcription** (`src/routes/voice.ts`, `src/data/voice.ts`,
-  `voiceProvider`, `VOICE_MODELS`): the person's voice key, through
-  `upstreamUrl` and `authHeaders`, on xAI's `stt` when it points at xAI. The format comes from the file's
-  extension (Bun's multipart parser drops a part's type). Audio is never
-  stored or logged.
-- **Calls** (`src/calls.ts`, `src/voice-link.ts`, `src/routes/calls.ts`):
-  `POST /api/threads/:id/call` takes only the primary bot's own chat
-  (`callableBot`, so the route decides, not the button). On OpenAI the
-  call's model picks the protocol (`callProtocol`): GPT-Live's own session, or the
-  Realtime API (`realtimeLink`, `realtimeSession`, the path xAI takes,
-  transcribing the person with `gpt-transcribe`), whose voices are fewer
-  (`openAiCallVoices`). The API holds
-  the provider socket with the person's voice key (`CALL_MODELS`), so the key
-  never reaches the page. `upgradeCallSocket` runs ahead of Hono and
-  checks the Origin (a WebSocket carries the cookie from any site), the
-  session and ownership. Events are read by `readLiveEvent` /
-  `readXaiEvent` (pure, tested). xAI drops a `response.create` sent while
-  one runs, so asks go through `SpeakQueue`; `AnswerWatch` and
-  `tellsAnswer` check the voice said the answer. The voice only talks:
-  anything past small talk becomes a hidden prompt (`callPrompt`)
-  answered as a normal turn, routed back to the voice (`answerOnCall`,
-  `closeCallTurn`, `handedOnCall`) or posted if the call ended. Speech is
-  kept `spoken` and never sent to a page. A spoken "stop" is Stop;
-  `endsCall` and xAI's `end_call` hang up. Ends at `ORPHAN_MS` without a
-  listener, `CALL_MAX_MINUTES`, or the person's deletion; lives in memory,
-  so a restart ends it.
+  own images endpoint (the `xai` image source). Saved xAI keys were
+  folded in by `foldXaiKeys`.
 - **Pictures** (`src/pictures.ts`, `create_image`): on the owner's plan or
   key, `imageAccess` taking the first of `IMAGE_SOURCES` they have (Grok plan, SuperGrok only,
   with `GROK_MEDIA_HEADERS`; the OpenAI-compatible key on xAI's images
@@ -825,8 +780,8 @@ commit, things that stay true) hold here too.
   `removed` on its message in the same transaction that deletes it
   (`markRemoved`), so the chat draws "Removed to save space", the viewer
   skips it and a bot hears it's gone; its message stays.
-  `SIGTERM`/`SIGINT` stop the dispatcher, usage sharing, federation and
-  calls, drain HTTP and run `checkpointAndCloseDb` (`index.ts`).
+  `SIGTERM`/`SIGINT` stop the dispatcher, usage sharing and federation,
+  drain HTTP and run `checkpointAndCloseDb` (`index.ts`).
 
 ## Spaces
 

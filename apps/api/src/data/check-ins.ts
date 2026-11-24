@@ -71,7 +71,7 @@ export function primaryOwners(): { userId: string; botId: string }[] {
 
 export function personLinesIn(threadId: string): { said: number; waiting: number } {
   const row = ensureDatabase()
-    .query("SELECT COUNT(*) AS said, COUNT(CASE WHEN answered_at IS NULL THEN 1 END) AS waiting FROM gond_messages WHERE thread_id = ? AND author = 'you' AND kind = 'message' AND spoken = 0")
+    .query("SELECT COUNT(*) AS said, COUNT(CASE WHEN answered_at IS NULL THEN 1 END) AS waiting FROM gond_messages WHERE thread_id = ? AND author = 'you' AND kind = 'message'")
     .get(threadId) as { said: number; waiting: number };
   return { said: Number(row.said), waiting: Number(row.waiting) };
 }
@@ -81,7 +81,7 @@ export type PersonLine = { threadId: string; body: string; at: string };
 export function personLinesSince(userId: string, since: string, limit = 30): PersonLine[] {
   return ensureDatabase()
     .query(
-      "SELECT m.thread_id AS threadId, m.body, m.created_at AS at FROM gond_messages m JOIN gond_threads t ON t.id = m.thread_id WHERE t.user_id = ? AND m.author = 'you' AND m.kind = 'message' AND m.spoken = 0 AND m.created_at > ? ORDER BY m.created_at DESC LIMIT ?",
+      "SELECT m.thread_id AS threadId, m.body, m.created_at AS at FROM gond_messages m JOIN gond_threads t ON t.id = m.thread_id WHERE t.user_id = ? AND m.author = 'you' AND m.kind = 'message' AND m.created_at > ? ORDER BY m.created_at DESC LIMIT ?",
     )
     .all(userId, since, limit) as PersonLine[];
 }

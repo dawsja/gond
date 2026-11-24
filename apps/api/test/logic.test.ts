@@ -1882,7 +1882,7 @@ describe("message indexes", () => {
     runMigrations(db);
     const plan = (sql: string) => (db.query(`EXPLAIN QUERY PLAN ${sql}`).all() as { detail: string }[]).map((row) => row.detail).join(" | ");
     for (const cursor of [{}, { before: "x" }, { after: "x" }, { from: "x" }]) {
-      const page = plan(messagePage("t", { includeSent: true, shown: true, prompts: false, ...cursor }).sql);
+      const page = plan(messagePage("t", { includeSent: true, prompts: false, ...cursor }).sql);
       expect(page).toContain("USING INDEX gond_messages_thread (thread_id=?");
       expect(page).toContain("USING INDEX gond_messages_from (from_thread_id=?");
       expect(page).not.toContain("MULTI-INDEX OR");
@@ -2009,7 +2009,7 @@ describe("xAI keys", () => {
     db.query("INSERT INTO gond_user_ai (user_id, engine, enabled, engines, updated_at) VALUES ('u1', 'api', '[\"api\"]', ?, ?)").run(JSON.stringify({ api: { access: "api", model: "grok-5", provider: "xai" } }), at);
     db.query("INSERT INTO gond_usage (user_id, source, model, created_at) VALUES ('u1', 'xai', 'grok-5', ?)").run(at);
     runMigrations(db);
-    const keys = db.query("SELECT id, user_id, kind, base_url, proxy_token FROM gond_providers WHERE kind != 'voice' ORDER BY id").all();
+    const keys = db.query("SELECT id, user_id, kind, base_url, proxy_token FROM gond_providers ORDER BY id").all();
     expect(keys).toEqual([
       { id: "p1", user_id: "u1", kind: "openai", base_url: "https://api.x.ai/v1", proxy_token: "token-p1" },
       { id: "p3", user_id: "u2", kind: "openai", base_url: "https://api.openai.com/v1", proxy_token: "token-p3" },
@@ -2037,7 +2037,7 @@ describe("voice keys", () => {
     key("p2", "u2", "openai", "https://api.openai.com/v1");
     key("p3", "u2", "voice", "http://whisper.lan/v1");
     key("p4", "u3", "anthropic", "https://api.anthropic.com");
-    runMigrations(db);
+    runMigrations(db, VOICE_KEYS_VERSION);
     const voices = db.query("SELECT user_id, base_url, api_key, proxy_token, last_check FROM gond_providers WHERE kind = 'voice' ORDER BY user_id").all() as { user_id: string; base_url: string; api_key: string; proxy_token: string; last_check: string }[];
     expect(voices.map(({ user_id, base_url, api_key, last_check }) => ({ user_id, base_url, api_key, last_check }))).toEqual([
       { user_id: "u1", base_url: "https://api.x.ai/v1", api_key: "sealed-p1", last_check: '{"ok":true}' },
@@ -2045,6 +2045,32 @@ describe("voice keys", () => {
     ]);
     expect(voices[0]!.proxy_token).not.toBe("token-p1");
     expect(db.query("SELECT COUNT(*) AS n FROM gond_providers WHERE kind = 'openai'").get()).toEqual({ n: 2 });
+  });
+
+  test("the final migration removes voice keys, spoken lines, the spoken column and voice prefs while rebuilding the unread index", async () => {
+    const { Database } = await import("bun:sqlite");
+    const { runMigrations, VOICE_GONE_VERSION } = await import("../src/db/migrations.ts");
+    const db = new Database(":memory:", { strict: true });
+    runMigrations(db, VOICE_GONE_VERSION - 1);
+    const at = "2026-11-24T00:00:00Z";
+    db.query("INSERT INTO gond_providers (id, user_id, kind, base_url, api_key, proxy_token, created_at, updated_at) VALUES ('p-openai', 'u1', 'openai', 'https://api.openai.com/v1', 'sealed', 'tok-o', ?, ?)").run(at, at);
+    db.query("INSERT INTO gond_providers (id, user_id, kind, base_url, api_key, proxy_token, created_at, updated_at) VALUES ('p-voice', 'u1', 'voice', 'https://api.openai.com/v1', 'sealed', 'tok-v', ?, ?)").run(at, at);
+    db.query("INSERT INTO gond_threads (id, kind, bot_id, name, user_id, created_at, updated_at) VALUES ('t1', 'bot', 'b1', 'Bot', 'u1', ?, ?)").run(at, at);
+    db.query("INSERT INTO gond_messages (id, thread_id, author, kind, body, attachments, depth, spoken, created_at) VALUES ('m-typed', 't1', 'you', 'message', 'typed hello', '[]', 0, 0, ?)").run(at);
+    db.query("INSERT INTO gond_messages (id, thread_id, author, kind, body, attachments, depth, spoken, created_at) VALUES ('m-spoken', 't1', 'you', 'message', 'spoken secret', '[]', 0, 1, ?)").run(at);
+    db.query("INSERT INTO gond_user_prefs (user_id, timezone, voice, voice_model, call_voice, call_model, updated_at) VALUES ('u1', 'America/Chicago', 'openai', 'whisper-1', '{\"openai\":\"marin\"}', 'gpt-live-1', ?)").run(at);
+    runMigrations(db);
+    expect(db.query("SELECT id, kind FROM gond_providers ORDER BY id").all()).toEqual([{ id: "p-openai", kind: "openai" }]);
+    expect(db.query("SELECT id, body FROM gond_messages ORDER BY id").all()).toEqual([{ id: "m-typed", body: "typed hello" }]);
+    expect(db.query("SELECT rowid FROM gond_messages_fts WHERE gond_messages_fts MATCH '\"spoken secret\"'").all()).toEqual([]);
+    const msgCols = (db.query("PRAGMA table_info(gond_messages)").all() as { name: string }[]).map((c) => c.name);
+    expect(msgCols).not.toContain("spoken");
+    const prefCols = (db.query("PRAGMA table_info(gond_user_prefs)").all() as { name: string }[]).map((c) => c.name);
+    for (const col of ["voice", "voice_model", "call_voice", "call_model"]) expect(prefCols).not.toContain(col);
+    expect(db.query("SELECT timezone FROM gond_user_prefs WHERE user_id = 'u1'").get()).toEqual({ timezone: "America/Chicago" });
+    const unreadIdx = db.query("SELECT sql FROM sqlite_master WHERE type = 'index' AND name = 'gond_messages_unread'").get() as { sql: string } | null;
+    expect(unreadIdx?.sql).toBeTruthy();
+    expect(unreadIdx!.sql).not.toContain("spoken");
   });
 });
 
@@ -2166,7 +2192,7 @@ describe("chat export files", () => {
     const { chatMarkdown, exportLabel } = await import("../src/chat-export.ts");
     expect(exportLabel(null, "all")).toBe("All chats, all time");
     expect(exportLabel("Patch", "week")).toBe("Patch, the last 7 days");
-    const base = { threadId: "t1", attachments: [], depth: 0, approvalId: null, fromThreadId: null, steered: false, spoken: false, note: null, sentTo: null, reactions: [], replyTo: null };
+    const base = { threadId: "t1", attachments: [], depth: 0, approvalId: null, fromThreadId: null, steered: false, note: null, sentTo: null, reactions: [], replyTo: null };
     const md = chatMarkdown(
       { id: "t1", kind: "bot", name: "Patch", members: [] },
       [
@@ -2345,155 +2371,6 @@ describe("usage", () => {
     ]);
     expect(grokWindows(null, { config: { currentPeriod: { type: "USAGE_PERIOD_TYPE_WEEKLY" }, billingPeriodEnd: "2026-10-26T00:00:00Z" } })).toEqual([{ name: "weekly", left: 100, resetsAt: "2026-10-26T00:00:00.000Z" }]);
     expect(grokWindows({ config: { monthlyLimit: { val: 0 }, used: { val: 0 } } }, null)).toEqual([]);
-  });
-});
-
-describe("calls", () => {
-  test("a line that only closes the call hangs up, one that asks for more doesn't", async () => {
-    const { endsCall } = await import("../src/calls.ts");
-    for (const line of ["Bye", "Goodbye!", "OK thanks, bye.", "That's all", "that's it, thanks", "Thank you so much, that's all for now", "Bye Patch", "Hang up", "End the call please", "Alright, talk to you later", "I'm done"]) expect(endsCall(line, "Patch")).toBe(true);
-    for (const line of ["That's all I need, now book it", "bye the way can you check", "Is that all?", "Goodbye message for the team", "Find me a flight"]) expect(endsCall(line, "Patch")).toBe(false);
-  });
-
-  test("each voice's events read as the same signals", async () => {
-    const { readLiveEvent, readRealtimeEvent } = await import("../src/voice-link.ts");
-    expect(readLiveEvent({ type: "session.started" })).toEqual([{ kind: "ready" }]);
-    expect(readLiveEvent({ type: "session.input_transcript.delta", delta: "Find me" })).toEqual([{ kind: "heard", text: "Find me", final: false }]);
-    expect(readLiveEvent({ type: "session.delegation.created", delegation: { id: "item_1", type: "delegation", target: "client" } })).toEqual([{ kind: "delegate", id: "item_1", request: null }]);
-    expect(readLiveEvent({ type: "session.closed", reason: "expired" })).toEqual([{ kind: "closed", reason: "expired" }]);
-    expect(readRealtimeEvent({ type: "response.function_call_arguments.done", name: "ask_bot", call_id: "c1", arguments: '{"request":"Book it"}' })).toEqual([{ kind: "delegate", id: "c1", request: "Book it" }]);
-    expect(readRealtimeEvent({ type: "response.function_call_arguments.done", name: "ask_bot", call_id: "c1", arguments: "{oops" })).toEqual([{ kind: "delegate", id: "c1", request: null }]);
-    expect(readRealtimeEvent({ type: "response.function_call_arguments.done", name: "end_call", call_id: "c3", arguments: "{}" })).toEqual([{ kind: "hang-up", id: "c3" }]);
-    expect(readRealtimeEvent({ type: "input_audio_buffer.speech_started" })).toEqual([{ kind: "interrupt" }]);
-    expect(readRealtimeEvent({ type: "error", error: { message: "bad key" } })).toEqual([{ kind: "error", message: "bad key" }]);
-  });
-
-  test("an OpenAI realtime call writes down what the person says and speaks in the picked voice; xAI keeps its own shape", async () => {
-    const { realtimeSession } = await import("../src/voice-link.ts");
-    expect(realtimeSession("openai", "gpt-realtime-2.1", "cedar", "Be brief.", [])).toMatchObject({
-      type: "realtime",
-      model: "gpt-realtime-2.1",
-      audio: { input: { format: { rate: 24_000 }, transcription: { model: "gpt-transcribe" } }, output: { voice: "cedar" } },
-    });
-    const xai = realtimeSession("xai", "grok-voice-latest", "eve", "Be brief.", []) as Record<string, unknown>;
-    expect(xai).toMatchObject({ voice: "eve", turn_detection: { type: "server_vad" } });
-    expect(xai.type).toBeUndefined();
-  });
-
-  test("voice models come from the key's list, newest first, the newest the default and a pick kept only while offered", async () => {
-    const { voiceModelsFrom } = await import("../src/speech-models.ts");
-    const { callProtocol, chosenModel, openAiCallVoices, speechModels } = await import("@gond/shared");
-    const listed = ["gpt-live-1", "gpt-realtime-2.1-mini", "gpt-live-1.2", "gpt-realtime-2.1", "gpt-live-1.1", "gpt-live-2", "gpt-live-transcribe", "gpt-realtime-whisper", "gpt-4o-realtime-preview", "whisper-1", "gpt-transcribe", "gpt-image-2"];
-    const openai = voiceModelsFrom("openai", listed, false, { call: null, transcribe: null });
-    // A new major version may talk differently, and the transcription-only models never hold a call.
-    expect(openai.call.groups).toEqual([
-      { name: "GPT-Live", models: ["gpt-live-1.2", "gpt-live-1.1", "gpt-live-1"] },
-      { name: "GPT-Realtime", models: ["gpt-realtime-2.1", "gpt-realtime-2.1-mini"] },
-    ]);
-    expect(openai.call).toMatchObject({ default: "gpt-live-1.2", chosen: "gpt-live-1.2" });
-    expect(openai.transcribe).toMatchObject({ default: "gpt-transcribe", groups: [{ models: ["gpt-transcribe"] }, { models: ["whisper-1"] }] });
-    expect(openai.others).toEqual([]);
-    expect(speechModels("openai", "transcribe", ["gpt-transcribe", "gpt-transcribe-2"]).default).toBe("gpt-transcribe-2");
-
-    expect(chosenModel("openai", "call", "gpt-realtime-2.1", listed, false)).toBe("gpt-realtime-2.1");
-    expect(chosenModel("openai", "call", "gpt-live-1.0", listed, false)).toBe("gpt-live-1.2");
-    expect(chosenModel("openai", "call", "gpt-realtime-2.1", null, false)).toBe("gpt-realtime-2.1");
-    expect(chosenModel("xai", "transcribe", "whisper-1", null, false)).toBe("grok-voice-transcribe-2.0");
-    expect(chosenModel("openai", "transcribe", "Systran/faster-whisper-small", ["other"], true)).toBe("Systran/faster-whisper-small");
-    expect(chosenModel("openai", "call", "my-voice", ["my-voice"], true)).toBe("gpt-live-1.1");
-    expect(voiceModelsFrom("openai", ["Systran/faster-whisper-small", "gpt-live-1"], true, { call: null, transcribe: null }).others).toEqual(["Systran/faster-whisper-small"]);
-
-    expect(speechModels("xai", "call", ["grok-voice-2.0", "grok-voice-3.0", "grok-voice-transcribe-2.0", "grok-4"])).toEqual({ groups: [{ name: "Grok Voice", models: ["grok-voice-3.0", "grok-voice-2.0"] }], default: "grok-voice-3.0" });
-    expect(speechModels("xai", "call", ["grok-4"]).default).toBe("grok-voice-latest");
-    expect(speechModels("xai", "transcribe", null).default).toBe("grok-voice-transcribe-2.0");
-
-    expect(callProtocol("openai", "gpt-live-1.2")).toBe("live");
-    expect(callProtocol("openai", "gpt-realtime-2.1")).toBe("realtime");
-    expect(callProtocol("xai", "grok-voice-3.0")).toBe("realtime");
-    const ids = (list: { id: string }[]) => list.map((voice) => voice.id);
-    expect(ids(openAiCallVoices("gpt-realtime-2.1"))).not.toContain("quartz");
-    expect(ids(openAiCallVoices("gpt-live-1.2"))).toContain("quartz");
-  });
-
-  test("speech said apart is joined as sentences, and a word split across fragments stays whole", async () => {
-    const { joinSpeech } = await import("../src/calls.ts");
-    expect(joinSpeech("Hang on.", "I'm looking")).toBe("Hang on. I'm looking");
-    expect(joinSpeech("Fridays out", " of town")).toBe("Fridays out of town");
-    expect(joinSpeech("Net", "'s your bot")).toBe("Net's your bot");
-    expect(joinSpeech("Done.", " Next")).toBe("Done. Next");
-  });
-
-  test("a call's length reads in minutes", async () => {
-    const { callLength } = await import("../src/calls.ts");
-    expect(callLength(20_000)).toBe("under a minute");
-    expect(callLength(70_000)).toBe("1 min");
-    expect(callLength(5 * 60_000)).toBe("5 min");
-  });
-});
-
-describe("telling an answer on xAI", () => {
-  test("what the voice said tells an answer when it says its names and figures, in any words", async () => {
-    const { tellsAnswer } = await import("../src/voice-link.ts");
-    const answer = "Paperclip is a free, MIT-licensed, self-hosted layer that manages AI agents like a company. It launched March 2, 2026.";
-    expect(tellsAnswer(answer, "So Paperclip's basically a self-hosted tool for running agents, out since March 2026.")).toBe(true);
-    expect(tellsAnswer(answer, "Still digging, give me a sec.")).toBe(false);
-    expect(tellsAnswer("It's done.", "All done!")).toBe(true);
-  });
-
-  test("an answer the next reply didn't tell is asked again, unless an ask is still on its way, and given up after three", async () => {
-    const { AnswerWatch } = await import("../src/voice-link.ts");
-    const asked: string[][] = [];
-    let gaveUp = 0;
-    let asking = false;
-    const watch = new AnswerWatch((untold) => asked.push(untold), () => gaveUp++, () => asking);
-    const reply = (said: string) => {
-      watch.started();
-      watch.heard(said);
-      watch.done();
-    };
-    watch.arrived("The flight to Denver leaves at 8:40 for $284.");
-    expect(asked).toHaveLength(1);
-    asking = true;
-    reply("Sure, one moment.");
-    expect(asked).toHaveLength(1);
-    asking = false;
-    reply("Hmm, let me think.");
-    expect(asked).toHaveLength(2);
-    reply("Got it: there's one leaving at 8:40, for $284.");
-    expect(asked).toHaveLength(2);
-    watch.arrived("Your order number is 55712.");
-    reply("Okay.");
-    reply("Okay.");
-    reply("Okay.");
-    expect(gaveUp).toBe(1);
-  });
-});
-
-describe("speaking on xAI", () => {
-  test("asks wait for the reply in progress, and one refused or never started is asked again", async () => {
-    const { SpeakQueue } = await import("../src/voice-link.ts");
-    const sent: string[] = [];
-    const dropped: string[] = [];
-    const text = (ask: { instructions?: string } | undefined) => ask?.instructions ?? "plain";
-    const queue = new SpeakQueue((ask) => sent.push(text(ask)), 20, (ask) => dropped.push(text(ask)));
-    queue.started();
-    queue.ask({ instructions: "answer" });
-    expect(sent).toEqual([]);
-    queue.finished();
-    expect(sent).toEqual(["answer"]);
-    queue.refused();
-    queue.started();
-    queue.finished();
-    expect(sent).toEqual(["answer", "answer"]);
-    queue.started();
-    queue.finished();
-    await Bun.sleep(30);
-    expect(sent).toEqual(["answer", "answer"]);
-    queue.ask({ instructions: "lost" });
-    await Bun.sleep(150);
-    expect(sent.filter((s) => s === "lost")).toHaveLength(4);
-    expect(dropped).toEqual(["lost"]);
-    queue.stop();
   });
 });
 

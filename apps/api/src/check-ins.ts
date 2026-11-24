@@ -178,7 +178,7 @@ async function gather(userId: string, bot: Bot, state: CheckInState, now: Date):
   const bots = listBots({ userId });
   const threads = listThreads({ userId });
   const chats = threads
-    .map((thread) => ({ thread, lines: unseen(listMessages(thread.id, { from: since, limit: 200, shown: true }), state.lastSeen).filter((m) => SHOWN.has(m.kind) && !m.checkIn).slice(-LINES_PER_CHAT) }))
+    .map((thread) => ({ thread, lines: unseen(listMessages(thread.id, { from: since, limit: 200 }), state.lastSeen).filter((m) => SHOWN.has(m.kind) && !m.checkIn).slice(-LINES_PER_CHAT) }))
     .filter((chat) => chat.lines.length > 0);
   const ids = new Set(threads.map((t) => t.id));
   const botIds = new Set(bots.map((b) => b.id));

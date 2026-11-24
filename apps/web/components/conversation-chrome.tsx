@@ -17,13 +17,6 @@ type Props = Omit<ChromeState, "faces" | "tint" | "menu" | "covered" | "composer
   onEvent: (event: ChromeEvent) => void;
 };
 
-/**
- * A conversation's header and composer in the iPhone and Mac apps: the page keeps its own in place, unseen,
- * and hands the app what they show; the app draws them in Liquid Glass and sends back what the person
- * did. The text the person types lives in the app's field while they type: the page's copy only goes
- * back to it when the page changed it itself (sent, a mention, a dictation), counted by `textRev`, which
- * the page raises for its own changes alone (`changeDraft`).
- */
 export function ConversationChrome({ avatarKey, menu, composer, mentions, onEvent, ...header }: Props) {
   const faces = useFaces(avatarKey);
   const mentionFaces = useMentionFaces(mentions.map((m) => m.id).join(",") + avatarKey);

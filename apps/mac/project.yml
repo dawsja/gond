@@ -39,19 +39,15 @@ targets:
         LSApplicationCategoryType: public.app-category.productivity
         LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
         NSPrincipalClass: NSApplication
-        NSMicrophoneUsageDescription: Gond uses the microphone when you talk to your bots instead of typing, and on calls.
         NSDownloadsFolderUsageDescription: Gond saves the files you download from your bots in Downloads.
         # A Gond is self-hosted, often at a plain-http address on a home network.
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
         # What a bot sends is marked as downloaded, so the Mac checks a program before it first runs.
         LSFileQuarantineEnabled: true
-    # Not sandboxed: it is downloaded directly, not from the App Store. The hardened runtime lets the
-    # microphone through only with this entitlement.
     entitlements:
       path: Gond/Gond.entitlements
-      properties:
-        com.apple.security.device.audio-input: true
+      properties: {}
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.gond.mac

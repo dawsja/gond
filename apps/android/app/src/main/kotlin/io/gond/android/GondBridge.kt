@@ -41,8 +41,5 @@ class GondBridge(private val activity: MainActivity) {
     fun openExternal(url: String?) = activity.fromTrustedPage { if (url != null) openOutside(url) }
 
     @JavascriptInterface
-    fun setCall(bot: String?, startedAt: String?) = activity.fromTrustedPage { CallService.set(this, bot.orEmpty(), startedAt.orEmpty()) }
-
-    @JavascriptInterface
     fun setTheme(background: String?, dark: Boolean) = activity.fromTrustedPage { applyTheme(background, dark) }
 }

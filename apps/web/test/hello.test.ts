@@ -3,7 +3,7 @@ import { expect, test } from "bun:test";
 import { helloOutcome } from "../lib/hello";
 
 function line(over: Partial<Message>): Message {
-  return { id: "m", threadId: "t", author: "you", kind: "message", body: "", attachments: [], depth: 0, approvalId: null, fromThreadId: null, steered: false, spoken: false, note: null, sentTo: null, reactions: [], replyTo: null, createdAt: "2026-10-26T12:00:00.000Z", ...over };
+  return { id: "m", threadId: "t", author: "you", kind: "message", body: "", attachments: [], depth: 0, approvalId: null, fromThreadId: null, steered: false, note: null, sentTo: null, reactions: [], replyTo: null, createdAt: "2026-10-26T12:00:00.000Z", ...over };
 }
 
 const sent = line({ id: "hi", body: "Hi! What can you do?" });

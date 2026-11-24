@@ -54,8 +54,8 @@ screen of its own, drawn with the web's tokens, then shows the Gond you
 connected to, so every other screen is the web app. Each has exactly one
 bridge, and every call on it checks that the page is on the saved
 server's origin first, so a page from another origin (an OAuth provider
-mid sign-in) can't use it. The microphone is granted to that origin only.
-The address rules are mirrored in each app with the same tests.
+mid sign-in) can't use it. The address rules are mirrored in each app with
+the same tests.
 
 - **The apps are built only when they change, each on its own, never just
   because Gond ships.** A web or API change reaches them without a build.

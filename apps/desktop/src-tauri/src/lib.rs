@@ -317,11 +317,7 @@ fn page_builder<'a>(
         .on_permission_request(|webview, kind| {
             let own = on_server(&webview);
             match kind {
-                PermissionKind::Notifications
-                | PermissionKind::ClipboardRead
-                | PermissionKind::Microphone
-                    if own =>
-                {
+                PermissionKind::Notifications | PermissionKind::ClipboardRead if own => {
                     PermissionResponse::Allow
                 }
                 _ => PermissionResponse::Deny,
@@ -356,28 +352,21 @@ fn tell_maximized(window: &WebviewWindow) {
     });
 }
 
-// WebKitGTK ships with media capture off, so getUserMedia isn't there for the composer's mic or a
-// call until it is turned on; who may use it is still on_permission_request's to say. The clipboard
-// is the same: WebKitGTK asks for it with a request wry passes on as Other, which is refused, so
-// readText fails and a paste into a bot's screen has nothing to send. Only the server's pages and
-// the bundled Connect screen ever load in a window (on_navigation).
 #[cfg(target_os = "linux")]
-fn allow_media(window: &WebviewWindow) {
+fn allow_clipboard(window: &WebviewWindow) {
     let _ = window.with_webview(|webview| {
         use webkit2gtk::{SettingsExt, WebViewExt};
         if let Some(settings) = WebViewExt::settings(&webview.inner()) {
-            settings.set_enable_media_stream(true);
-            settings.set_enable_webrtc(true);
             settings.set_javascript_can_access_clipboard(true);
         }
     });
 }
 
 #[cfg(not(target_os = "linux"))]
-fn allow_media(_window: &WebviewWindow) {}
+fn allow_clipboard(_window: &WebviewWindow) {}
 
 fn present(window: &WebviewWindow) {
-    allow_media(window);
+    allow_clipboard(window);
     hide_menu_bar(window);
     tell_maximized(window);
     let dark = matches!(window.theme(), Ok(Theme::Dark));

@@ -27,7 +27,6 @@ import { lookTurnEnded, stopTeachingsIn, teachingIn } from "./teach.ts";
 import { activity, emit, threadChanged } from "./events.ts";
 import { canRoute, routeLine } from "./router.ts";
 import { createWriting } from "./writing.ts";
-import { answerOnCall, closeCallTurn, handedOnCall } from "./calls.ts";
 import { boxMcpServers, mcpServersFor } from "./mcp.ts";
 import { nativeMcpTools } from "./mcp-client.ts";
 import { nativeTurn, readsPdf, SteerQueue } from "./native.ts";
@@ -405,11 +404,8 @@ async function routeAndDeliver(thread: Thread, message: Message, input: PersonLi
   threadChanged(thread.id);
 }
 
-// "stop" in the chat is Stop: everything halts, nothing reads the message as
-// a task, and the bot that was working says what it stopped. In a space both
-// stay on this Gond: they're said to its own bots, not to the room.
-export async function stopFromMessage(thread: Thread, body: string, options: { spoken?: boolean } = {}): Promise<Message> {
-  const message = keepHere(() => postMessage({ threadId: thread.id, author: "you", body, answered: true, spoken: options.spoken }));
+export async function stopFromMessage(thread: Thread, body: string): Promise<Message> {
+  const message = keepHere(() => postMessage({ threadId: thread.id, author: "you", body, answered: true }));
   const working = turnsIn(thread.id)[0]?.botId ?? guestWorkers(thread.id)[0];
   const bots = listBots({ includeHidden: true, userId: thread.userId });
   const author = working ?? targetsFor({ author: "you", body }, thread, bots, roomBefore(thread))[0]?.id;
@@ -658,8 +654,7 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
 
   const clock = createTurnClock(Date.now, Date.parse(message.createdAt));
   clock.routed(routeTimeOf(message.id));
-  // Only an answer bound for the person is shown as it is written; one for a teammate or up a chain isn't theirs to read.
-  const writing = active.route === "person" && !handedOnCall(message.id) ? createWriting((text) => emit({ topic: "writing", threadId: thread.id, botId: bot.id, text }), scrub) : null;
+  const writing = active.route === "person" ? createWriting((text) => emit({ topic: "writing", threadId: thread.id, botId: bot.id, text }), scrub) : null;
   const onText = (text: string | null) => {
     if (text) clock.firstText();
     writing?.text(text);
@@ -804,12 +799,10 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
       // Nothing for the person (in a room, often a line meant for another bot): nothing is posted.
     } else if (said) {
       reply = scrub(said);
-      if (!answerOnCall(message.id, reply)) {
-        deliverReply(bot, thread, message, reply);
+      deliverReply(bot, thread, message, reply);
 
-        if (bot.notify && (message.author === "you" || message.author === "routine")) {
-          void sendPush({ title: bot.name, body: plainMarkdown(reply).slice(0, 140), url: `/app/t/${thread.id}`, tag: thread.id, threadId: thread.id, botId: bot.id }, thread.userId);
-        }
+      if (bot.notify && (message.author === "you" || message.author === "routine")) {
+        void sendPush({ title: bot.name, body: plainMarkdown(reply).slice(0, 140), url: `/app/t/${thread.id}`, tag: thread.id, threadId: thread.id, botId: bot.id }, thread.userId);
       }
     } else {
       const detail = hide(result.error ?? (result.stopReason ? `stopped (${result.stopReason})` : "no reply"));
@@ -848,7 +841,6 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
     }
   }
   if (again) return "";
-  if (!reply) closeCallTurn(message.id, stopped ? "stopped" : unanswered ? "failed" : "quiet");
   await reportBack(bot, message, reply, stopped, broke);
   if (message.author === "routine") finishRoutineRun(message.id, Boolean(reply) || quiet);
   if (reply && bot.primary && message.author === "you" && thread.id === bot.threadId) offerCheckIns(thread.userId);

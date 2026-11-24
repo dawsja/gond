@@ -9,8 +9,6 @@ enum Theme {
     /// Quieter text, a row's time and a teammates-only unread dot (`--ash`).
     static let ash = dynamic(light: 0x646A79, dark: 0x8A8A8A)
     static let destructive = dynamic(light: 0xBD1F1F, dark: 0xF97C7C)
-    /// A call's hang-up red, deep enough for a white icon in both themes (`--hangup`).
-    static let hangup = dynamic(light: 0xC2301A, dark: 0xC4372B)
     static let tint = Color(hex: 0x2F6FD6)
 
     static let bots: [UInt32] = [0x2F6FD6, 0x1F9E8F, 0xD2483C]

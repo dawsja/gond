@@ -1155,6 +1155,17 @@ const MIGRATIONS: Array<string | ((db: Database) => void)> = [
     updated_at TEXT NOT NULL
   );
   `,
+  `
+  DELETE FROM gond_providers WHERE kind = 'voice';
+  DELETE FROM gond_messages WHERE spoken = 1;
+  DROP INDEX IF EXISTS gond_messages_unread;
+  ALTER TABLE gond_messages DROP COLUMN spoken;
+  CREATE INDEX gond_messages_unread ON gond_messages (thread_id, created_at, from_thread_id) WHERE author NOT IN ('you') AND kind IN ('message', 'approval', 'signin', 'teach');
+  ALTER TABLE gond_user_prefs DROP COLUMN voice;
+  ALTER TABLE gond_user_prefs DROP COLUMN voice_model;
+  ALTER TABLE gond_user_prefs DROP COLUMN call_voice;
+  ALTER TABLE gond_user_prefs DROP COLUMN call_model;
+  `,
 ];
 
 /**
@@ -1302,6 +1313,7 @@ export const XAI_KEYS_VERSION = MIGRATIONS.indexOf(foldXaiKeys) + 1;
 export const VOICE_KEYS_VERSION = MIGRATIONS.indexOf(VOICE_KEYS) + 1;
 export const MEMORY_MOVES_VERSION = MIGRATIONS.indexOf(markMemoryOnComputer) + 1;
 export const BOT_PICTURES_GONE_VERSION = MIGRATIONS.findIndex((step) => typeof step === "string" && step.includes("DROP TABLE IF EXISTS gond_bot_avatars")) + 1;
+export const VOICE_GONE_VERSION = MIGRATIONS.findIndex((step) => typeof step === "string" && step.includes("ALTER TABLE gond_messages DROP COLUMN spoken")) + 1;
 export const LATEST_VERSION = MIGRATIONS.length;
 
 type Named = { name: string; sql: string | null };

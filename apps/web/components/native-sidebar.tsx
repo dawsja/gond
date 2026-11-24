@@ -4,7 +4,6 @@ import { MAX_PROFILES } from "@gond/shared";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { BotAvatar, PersonAvatar, RoomAvatar, roomMembers } from "@/components/bot-avatar";
-import { useCall } from "@/components/call/call-provider";
 import { dismissTopmost, useCovered, useTokenHex } from "@/components/conversation-chrome";
 import { failed } from "@/components/failed";
 import { useSignOut } from "@/components/profile-menu";
@@ -38,7 +37,6 @@ export function NativeSidebar({ onOpen }: { onOpen: (dialog: ShellDialog) => voi
   const router = useRouter();
   const { query, setQuery, rows, hits } = useBotSearch();
   const { federation } = useFederation();
-  const { call, end, toggleMute } = useCall();
   const look = useWorthALookLine();
   const covered = useCovered();
   const ink = useTokenHex("--foreground");
@@ -47,8 +45,6 @@ export function NativeSidebar({ onOpen }: { onOpen: (dialog: ShellDialog) => voi
   const [looking, setLooking] = useState(false);
 
   const section = settingsSectionOf(pathname);
-  const callThread = call ? threads.find((t) => t.id === call.info.threadId) : undefined;
-  const callBot = call ? bots.find((b) => b.id === call.info.botId) : undefined;
 
   const lists = sidebarLists({
     rows,
@@ -57,7 +53,6 @@ export function NativeSidebar({ onOpen }: { onOpen: (dialog: ShellDialog) => voi
     activity,
     drafts,
     pathname,
-    call: call ? { threadId: call.info.threadId, connecting: call.phase === "connecting" } : null,
     ink,
     membersOf: (thread) => roomMembers(thread, bots),
     menuOf: (thread, bot) => items(threadActions({ thread, bot, bots, onOpen: nothing, onAsk: nothing, refresh })),
@@ -102,11 +97,6 @@ export function NativeSidebar({ onOpen }: { onOpen: (dialog: ShellDialog) => voi
       [{ id: "settings", label: "Settings", symbol: "gearshape" }],
       [{ id: "sign-out", label: "Sign out", symbol: "rectangle.portrait.and.arrow.right" }],
     ],
-    // As the page's CallBar: only away from the call's own chat, whose composer is the call.
-    call:
-      call && pathname !== `/app/t/${call.info.threadId}`
-        ? { label: call.phase === "connecting" ? `Calling ${callBot?.name ?? "your bot"}` : (callBot?.name ?? callThread?.name ?? "Call"), since: Date.parse(call.info.startedAt), muted: call.muted, color: callBot?.color ?? "" }
-        : null,
     sections: sidebarSections(groupedSections(me.role), section),
   };
 
@@ -145,15 +135,6 @@ export function NativeSidebar({ onOpen }: { onOpen: (dialog: ShellDialog) => voi
         return;
       case "look":
         setLooking(true);
-        return;
-      case "call-open":
-        if (call) router.push(`/app/t/${call.info.threadId}`);
-        return;
-      case "call-mute":
-        toggleMute();
-        return;
-      case "call-end":
-        end();
         return;
       case "dismiss":
         dismissTopmost();

@@ -47,10 +47,8 @@ struct ChromeState: Decodable, Equatable {
         let canSend: Bool
         let sending: Bool
         let later: Bool
-        let voice: String
-        let seconds: Int
 
-        static let none = Composer(text: "", textRev: 0, focusRev: 0, placeholder: "", canSend: false, sending: false, later: false, voice: "off", seconds: 0)
+        static let none = Composer(text: "", textRev: 0, focusRev: 0, placeholder: "", canSend: false, sending: false, later: false)
     }
 
     struct Mention: Decodable, Equatable, Identifiable {
@@ -73,16 +71,6 @@ struct ChromeState: Decodable, Equatable {
     struct Screen: Decodable, Equatable, Identifiable {
         let id: String
         let label: String
-    }
-
-    struct Call: Decodable, Equatable {
-        let label: String
-        /// When it was picked up, in milliseconds since 1970, so the clock ticks here.
-        let since: Double
-        let connecting: Bool
-        let muted: Bool
-        let speaking: Bool
-        let color: String
     }
 
     /// Where the page's conversation column is across the web view, in CSS pixels, when it says so;
@@ -108,14 +96,13 @@ struct ChromeState: Decodable, Equatable {
     let replying: Replying?
     let jump: Bool
     let screens: [Screen]
-    let call: Call?
     let column: Column?
     let composer: Composer
 }
 
 extension ChromeState {
     private enum Keys: String, CodingKey {
-        case thread, title, subtitle, working, faces, more, primary, space, tint, menu, covered, mentions, files, replying, jump, screens, call, column, composer
+        case thread, title, subtitle, working, faces, more, primary, space, tint, menu, covered, mentions, files, replying, jump, screens, column, composer
     }
 
     init(from decoder: Decoder) throws {
@@ -137,14 +124,13 @@ extension ChromeState {
         replying = c.maybe(.replying)
         jump = c.value(.jump, false)
         screens = c.value(.screens, [Screen]())
-        call = c.maybe(.call)
         column = c.maybe(.column)
         composer = c.value(.composer, Composer.none)
     }
 }
 
 extension ChromeState.Composer {
-    private enum Keys: String, CodingKey { case text, textRev, focusRev, placeholder, canSend, sending, later, voice, seconds }
+    private enum Keys: String, CodingKey { case text, textRev, focusRev, placeholder, canSend, sending, later }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Keys.self)
@@ -155,8 +141,6 @@ extension ChromeState.Composer {
         canSend = c.value(.canSend, false)
         sending = c.value(.sending, false)
         later = c.value(.later, false)
-        voice = c.value(.voice, "off")
-        seconds = c.value(.seconds, 0)
     }
 }
 
@@ -202,20 +186,6 @@ extension ChromeState.Screen {
     }
 }
 
-extension ChromeState.Call {
-    private enum Keys: String, CodingKey { case label, since, connecting, muted, speaking, color }
-
-    init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: Keys.self)
-        label = c.value(.label, "")
-        since = c.value(.since, Date().timeIntervalSince1970 * 1000)
-        connecting = c.value(.connecting, false)
-        muted = c.value(.muted, false)
-        speaking = c.value(.speaking, false)
-        color = c.value(.color, "")
-    }
-}
-
 extension ChromeState.Column {
     private enum Keys: String, CodingKey { case x, width }
 
@@ -237,7 +207,6 @@ struct SidebarState: Decodable, Equatable {
         let pinned: Bool
         let time: String
         let preview: String
-        /// "text", "working", "draft" or "call".
         let previewKind: String
         /// "you" (the bot's colour), "team" (grey) or nil.
         let unread: String?
@@ -285,13 +254,6 @@ struct SidebarState: Decodable, Equatable {
         static let none = Me(name: "", face: nil, initial: "", profile: nil, active: false)
     }
 
-    struct Call: Decodable, Equatable {
-        let label: String
-        let since: Double
-        let muted: Bool
-        let color: String
-    }
-
     struct SettingsItem: Decodable, Equatable, Identifiable {
         let id: String
         let label: String
@@ -320,7 +282,6 @@ struct SidebarState: Decodable, Equatable {
     let newItems: [NativeMenuItem]
     let me: Me
     let profileMenu: [[NativeMenuItem]]
-    let call: Call?
     let sections: [SettingsGroup]
 
     var settings: Bool { mode == "settings" }
@@ -328,7 +289,7 @@ struct SidebarState: Decodable, Equatable {
 
 extension SidebarState {
     private enum Keys: String, CodingKey {
-        case mode, title, covered, faces, query, loaded, empty, pinned, rows, hits, look, newItems, me, profileMenu, call, sections
+        case mode, title, covered, faces, query, loaded, empty, pinned, rows, hits, look, newItems, me, profileMenu, sections
     }
 
     init(from decoder: Decoder) throws {
@@ -347,7 +308,6 @@ extension SidebarState {
         newItems = c.value(.newItems, [NativeMenuItem]())
         me = c.value(.me, Me.none)
         profileMenu = c.value(.profileMenu, [[NativeMenuItem]]())
-        call = c.maybe(.call)
         sections = c.value(.sections, [SettingsGroup]())
     }
 }
@@ -424,18 +384,6 @@ extension SidebarState.Me {
         initial = c.value(.initial, "")
         profile = c.maybe(.profile)
         active = c.value(.active, false)
-    }
-}
-
-extension SidebarState.Call {
-    private enum Keys: String, CodingKey { case label, since, muted, color }
-
-    init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: Keys.self)
-        label = c.value(.label, "")
-        since = c.value(.since, Date().timeIntervalSince1970 * 1000)
-        muted = c.value(.muted, false)
-        color = c.value(.color, "")
     }
 }
 

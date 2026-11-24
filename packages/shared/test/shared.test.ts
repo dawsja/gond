@@ -410,7 +410,7 @@ describe("rooms", () => {
     expect(roomAnswerer([])).toBeNull();
   });
 
-  test("a person names a bot with @, by its name in any case (voice types no @), or the room as a whole", () => {
+  test("a person names a bot with @, by its name in any case, or the room as a whole", () => {
     expect(ids(addressedIn("@patch how's it going", members))).toEqual(["patch"]);
     expect(ids(addressedIn("Patch, are you still working?", members))).toEqual(["patch"]);
     expect(ids(addressedIn("Net and Patch, check", members))).toEqual(["net", "patch"]);

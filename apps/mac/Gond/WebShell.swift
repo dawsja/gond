@@ -152,7 +152,7 @@ final class WebShell: NSObject {
           window.gondMac = {
             platform: function () { return "macos"; },
             version: function () { return \(json(version)); },
-            features: function () { return ["call", "scale", "sidebar"]; },
+            features: function () { return ["scale", "sidebar"]; },
             changeServer: function () { post("changeServer"); },
             signIn: function (next) { post("signIn", [String(next || "")]); },
             notify: function (title, body, url, tag) { post("notify", [String(title || ""), String(body || ""), String(url || ""), String(tag || "")]); },
@@ -540,8 +540,7 @@ extension WebShell: WKUIDelegate {
     }
 
     func webView(_ webView: WKWebView, requestMediaCapturePermissionFor origin: WKSecurityOrigin, initiatedByFrame frame: WKFrameInfo, type: WKMediaCaptureType, decisionHandler: @escaping (WKPermissionDecision) -> Void) {
-        let mine = ServerURL.origin(scheme: origin.`protocol`, host: origin.host, port: origin.port) == server
-        decisionHandler(type == .microphone && mine && frame.isMainFrame ? .grant : .deny)
+        decisionHandler(.deny)
     }
 }
 

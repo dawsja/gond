@@ -28,7 +28,6 @@ const messageOf = (approval: Approval): Message => ({
   approvalId: approval.id,
   fromThreadId: null,
   steered: false,
-  spoken: false,
   note: null,
   sentTo: null,
   reactions: [],

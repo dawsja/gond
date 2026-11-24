@@ -51,7 +51,6 @@ type MessageRow = {
   claimed_by: string | null;
   answered_at: string | null;
   steered: number;
-  spoken: number;
   note: string | null;
   sent_to: string | null;
   reply_to: string | null;
@@ -94,7 +93,6 @@ function messageFrom(row: MessageRow, reactions: Reaction[], quote: Quote | null
     approvalId: row.approval_id,
     fromThreadId: row.from_thread_id,
     steered: row.steered === 1,
-    spoken: row.spoken === 1,
     note: isNoteKind(row.note) ? row.note : null,
     sentTo: parseSentTo(row.sent_to),
     reactions,
@@ -178,13 +176,11 @@ export function setReaction(message: Message, author: MessageAuthor, emoji: Reac
 
 type LineRow = { thread_id: string; author: string; body: string; created_at: string };
 
-// A line with `from_thread_id` is bots talking to each other (a teammate's message, a handoff, its
-// result, an incident): it shows in the conversation as an exchange, so it is never the line the list
-// previews, dates or sorts by, and only marks the conversation as quietly new.
-const SHOWN_KINDS = "kind IN ('message', 'approval', 'signin', 'teach') AND spoken = 0";
+const SHOWN_KINDS = "kind IN ('message', 'approval', 'signin', 'teach')";
+const NOT_BOT_EXCHANGE = "from_thread_id IS NULL";
 
 /** The lines that make a conversation unread (`m` is gond_messages), word for word the WHERE of `gond_messages_unread`. */
-export const UNREAD_LINES = "m.author NOT IN ('you') AND m.kind IN ('message', 'approval', 'signin', 'teach') AND m.spoken = 0";
+export const UNREAD_LINES = "m.author NOT IN ('you') AND m.kind IN ('message', 'approval', 'signin', 'teach')";
 
 const UNREAD_SINCE_READ = `FROM gond_messages m WHERE m.thread_id = t.id AND ${UNREAD_LINES} AND m.created_at > COALESCE(t.last_read_at, '')`;
 
@@ -210,7 +206,7 @@ function toThreads(rows: ThreadRow[]): Thread[] {
           .all(ids) as LineRow[]
       ).map((row) => [row.thread_id, row]),
     );
-  const last = latest(`${SHOWN_KINDS} AND from_thread_id IS NULL`);
+  const last = latest(`${SHOWN_KINDS} AND ${NOT_BOT_EXCHANGE}`);
   const runs = latest("author = 'routine'");
   const unreadRows = db.query(UNREAD_COUNTS).all(ids) as { thread_id: string; n: number; team: number }[];
   const unread = new Map(unreadRows.map((row) => [row.thread_id, row]));
@@ -240,7 +236,7 @@ function toThreads(rows: ThreadRow[]): Thread[] {
 function noticedIn(row: ThreadRow, run: LineRow | undefined): Thread["noticed"] {
   if (!run || !isWatchRun(run.body)) return null;
   const said = ensureDatabase()
-    .query("SELECT body, created_at FROM gond_messages WHERE thread_id = ? AND kind = 'message' AND spoken = 0 AND author NOT IN ('you', 'system', 'routine') AND created_at > ? AND created_at > ? ORDER BY created_at LIMIT 1")
+    .query("SELECT body, created_at FROM gond_messages WHERE thread_id = ? AND kind = 'message' AND author NOT IN ('you', 'system', 'routine') AND created_at > ? AND created_at > ? ORDER BY created_at LIMIT 1")
     .get(row.id, run.created_at, row.last_read_at ?? "") as { body: string; created_at: string } | null;
   return said ? { watch: routineName(run.body) ?? "", body: said.body, at: said.created_at } : null;
 }
@@ -341,8 +337,6 @@ type NewMessage = {
   wake?: boolean;
 
   steered?: boolean;
-  /** Said on a call: kept for the bot, never shown, previewed, counted or searched. */
-  spoken?: boolean;
   note?: NoteKind | null;
 
   replyTo?: string | null;
@@ -359,9 +353,9 @@ export function postMessage(input: NewMessage): Message {
   const needsAnswer = !input.answered && !input.steered && ((kind === "message" && (input.author === "you" || input.author === "routine" || Boolean(input.fromThreadId) || Boolean(input.wake))) || kind === "prompt");
   transaction((db) => {
     db.query(
-      `INSERT INTO gond_messages (id, thread_id, author, kind, body, attachments, depth, approval_id, from_thread_id, answered_at, steered, spoken, note, reply_to, answering, claimed_by, check_in, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(id, input.threadId, input.author, kind, input.body, JSON.stringify(input.attachments ?? []), input.depth ?? 0, input.approvalId ?? null, input.fromThreadId ?? null, needsAnswer ? null : at, input.steered ? 1 : 0, input.spoken ? 1 : 0, input.note ?? null, input.replyTo ?? null, input.answering ?? null, needsAnswer && input.routing ? ROUTING : null, input.checkIn ? 1 : 0, at);
+      `INSERT INTO gond_messages (id, thread_id, author, kind, body, attachments, depth, approval_id, from_thread_id, answered_at, steered, note, reply_to, answering, claimed_by, check_in, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(id, input.threadId, input.author, kind, input.body, JSON.stringify(input.attachments ?? []), input.depth ?? 0, input.approvalId ?? null, input.fromThreadId ?? null, needsAnswer ? null : at, input.steered ? 1 : 0, input.note ?? null, input.replyTo ?? null, input.answering ?? null, needsAnswer && input.routing ? ROUTING : null, input.checkIn ? 1 : 0, at);
     db.query("UPDATE gond_threads SET updated_at = ? WHERE id = ?").run(at, input.threadId);
     if (input.commerceId) db.query("UPDATE gond_messages SET commerce_id = ? WHERE id = ?").run(input.commerceId, id);
     if (input.author === "you") db.query("UPDATE gond_threads SET last_read_at = ? WHERE id = ?").run(at, input.threadId);
@@ -448,12 +442,6 @@ export function getMessage(id: string): Message | null {
   return row ? toMessage(row) : null;
 }
 
-/**
- * `shown` is what the person sees: what was said on a call stays the bot's. `after` is a message's own
- * time and leaves it out; `from` is a moment taken off the clock and keeps the lines stamped in that
- * millisecond, which may have been written after it was read: a cursor kept as a clock time reads
- * `from` and drops what it already read by id, since `after` would lose them.
- */
 export function listMessages(threadId: string, options: MessagePage = {}): Message[] {
   const { sql, args } = messagePage(threadId, options);
   const rows = ensureDatabase().query(sql).all(...args) as MessageRow[];
@@ -461,7 +449,7 @@ export function listMessages(threadId: string, options: MessagePage = {}): Messa
   return toMessages(oldestFirst ? rows : rows.reverse());
 }
 
-type MessagePage = { after?: string | null; from?: string | null; before?: string | null; limit?: number; includeSent?: boolean; shown?: boolean; prompts?: boolean };
+type MessagePage = { after?: string | null; from?: string | null; before?: string | null; limit?: number; includeSent?: boolean; prompts?: boolean };
 
 /**
  * The statement for a page of `listMessages`. With `includeSent` it reads the conversation's own lines
@@ -471,7 +459,7 @@ type MessagePage = { after?: string | null; from?: string | null; before?: strin
 export function messagePage(threadId: string, options: MessagePage = {}): { sql: string; args: (string | number)[] } {
   const limit = Math.min(Math.max(options.limit ?? 200, 1), 500);
   const since = options.from || options.after || null;
-  const filters = `${options.shown ? " AND spoken = 0" : ""}${options.prompts === false ? " AND kind != 'prompt'" : ""}`;
+  const filters = options.prompts === false ? " AND kind != 'prompt'" : "";
   const bound = since ? ` AND created_at ${options.from ? ">=" : ">"} ?` : options.before ? " AND created_at < ?" : "";
   const cursor = since || options.before || null;
   const order = since ? "ASC" : "DESC";
@@ -531,10 +519,10 @@ export function searchMessages(query: string, userId: string, limit = 50): Messa
         .query(
           `SELECT m.* FROM (SELECT rowid AS r FROM gond_messages_fts WHERE gond_messages_fts MATCH ? ORDER BY rowid DESC) f
            JOIN gond_messages m ON m.rowid = f.r JOIN gond_threads t ON t.id = m.thread_id
-           WHERE t.user_id = ? AND m.kind = 'message' AND m.spoken = 0 ${short} LIMIT ?`,
+           WHERE t.user_id = ? AND m.kind = 'message' ${short} LIMIT ?`,
         )
         .all(indexed.map((term) => `"${term.replaceAll('"', '""')}"`).join(" AND "), userId, ...likes, limit)
-    : db.query(`SELECT m.* FROM gond_messages m JOIN gond_threads t ON t.id = m.thread_id WHERE t.user_id = ? AND m.kind = 'message' AND m.spoken = 0 ${short} ORDER BY m.created_at DESC LIMIT ?`).all(userId, ...likes, limit);
+    : db.query(`SELECT m.* FROM gond_messages m JOIN gond_threads t ON t.id = m.thread_id WHERE t.user_id = ? AND m.kind = 'message' ${short} ORDER BY m.created_at DESC LIMIT ?`).all(userId, ...likes, limit);
   return toMessages(rows as MessageRow[]);
 }
 

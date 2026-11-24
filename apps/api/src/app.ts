@@ -30,8 +30,6 @@ import { threadsRoutes } from "./routes/threads.ts";
 import { authConfig, usersRoutes } from "./routes/users.ts";
 import { releaseRoutes } from "./routes/release.ts";
 import { serverRoutes } from "./routes/server.ts";
-import { voiceRoutes } from "./routes/voice.ts";
-import { callsRoutes } from "./routes/calls.ts";
 import { usageRoutes } from "./routes/usage.ts";
 import { readBody } from "./routes/body.ts";
 import { shoppingRoutes } from "./routes/shopping.ts";
@@ -157,8 +155,6 @@ export function createApp() {
   app.route("/api", detailsRoutes());
   app.route("/api", shoppingRoutes());
   app.route("/api", providerRoutes());
-  app.route("/api", voiceRoutes());
-  app.route("/api", callsRoutes());
   app.route("/api", usageRoutes());
   app.route("/api", pushRoutes());
   app.route("/api", checkInsRoutes());

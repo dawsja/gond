@@ -37,9 +37,7 @@ commit, things that stay true) hold here too.
     confirm as iOS's alert, from every `Confirm`; a message's long-press
     menu; pictures in Quick Look with the web view's cookies), answered
     as `gond:native` events, and `chrome`, which hands over a
-    conversation's header and composer (`ConversationChrome`, a `call`
-    state for the call bar; an app without "call" in `features()` leaves
-  the call to the page, `useNativeCallBar`). The page keeps its own header and composer
+    conversation's header and composer (`ConversationChrome`). The page keeps its own header and composer
     in place unseen so the layout holds (`--native-composer-bottom`,
     `--native-composer-height`); taps and typing come back as
     `gond:native-chrome` events. The page decides everything; the app

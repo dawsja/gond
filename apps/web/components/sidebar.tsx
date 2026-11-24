@@ -1,12 +1,11 @@
 "use client";
 
 import { handleOf, type Bot, type Message } from "@gond/shared";
-import { Bot as BotIcon, Link2, LogIn, MessageSquareText, Phone, Pin, Plus, Search, Users } from "lucide-react";
+import { Bot as BotIcon, Link2, LogIn, MessageSquareText, Pin, Plus, Search, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Fragment, memo, useEffect, useMemo, useState, type ReactElement, type ReactNode } from "react";
 import { BotAvatar, PersonAvatar, RoomAvatar, roomMembers } from "@/components/bot-avatar";
-import { CallBar, useCallLine } from "@/components/call/call-controls";
 import { GondBot } from "@/components/hq/gond-bot";
 import { ProfileMenu } from "@/components/profile-menu";
 import type { ShellDialog } from "@/components/shell";
@@ -122,8 +121,7 @@ const PinnedTile = memo(function PinnedTile({ thread, bot, active, working, onOp
 const Row = memo(function Row({ thread, bot, active, bots, activity, draft, onOpen, onAsk }: { thread: ThreadRow; bot: Bot | undefined; active: boolean; bots: Bot[]; activity: Record<string, string>; draft: string | undefined; onOpen: (dialog: ShellDialog) => void; onAsk: (ask: Ask) => void }) {
   const { setOpenMobile } = useSidebar();
   const working = Object.keys(activity).length > 0;
-  const calling = useCallLine(thread.id);
-  const drafted = !active && !working && !calling && draft ? draft.replace(/\s+/g, " ").trim() : "";
+  const drafted = !active && !working && draft ? draft.replace(/\s+/g, " ").trim() : "";
   return (
     <ThreadMenu thread={thread} bot={bot} onOpen={onOpen} onAsk={onAsk} lift="row" trigger={<SidebarMenuItem />}>
         <SidebarMenuButton size="lg" isActive={active} render={<Link href={`/app/t/${thread.id}`} aria-current={active ? "page" : undefined} onClick={() => setOpenMobile(false)} />} className="h-[76px] gap-4 rounded-2xl px-3 data-active:bg-card data-active:[--surface:var(--card)] data-active:shadow-subtle hover:bg-card/60 wide:h-[60px] wide:gap-3 wide:px-2.5 wide:hover:bg-muted wide:data-active:bg-muted wide:data-active:[--surface:var(--muted)] wide:data-active:shadow-none">
@@ -157,13 +155,8 @@ const Row = memo(function Row({ thread, bot, active, bots, activity, draft, onOp
               </span>
               {thread.lastMessage ? <span className="shrink-0 text-[13px] text-ash wide:text-[11px]">{shortTime(thread.lastMessage.at)}</span> : null}
             </span>
-            <span className={cn("flex items-center gap-1.5 text-[15px] leading-6 text-muted-foreground wide:text-[12.5px] wide:leading-5", working && !calling && "italic")}>
-              {calling ? (
-                <span className="flex min-w-0 items-center gap-1.5 font-medium text-tint-ink tabular-nums">
-                  <Phone className="size-3.5 shrink-0" aria-hidden="true" />
-                  <span className="truncate">{calling}</span>
-                </span>
-              ) : drafted ? (
+            <span className={cn("flex items-center gap-1.5 text-[15px] leading-6 text-muted-foreground wide:text-[12.5px] wide:leading-5", working && "italic")}>
+              {drafted ? (
                 <span className="truncate">
                   <span className="font-medium text-foreground">Draft: </span>
                   {drafted}
@@ -386,7 +379,6 @@ export function AppSidebar({ onOpen }: { onOpen: (dialog: ShellDialog) => void }
       </SidebarContent>
 
       <SidebarFooter className="px-2 pb-2">
-        <CallBar />
         <SidebarMenu className="gap-0.5">
 
           <SidebarMenuItem>

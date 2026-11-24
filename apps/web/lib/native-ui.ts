@@ -40,11 +40,6 @@ export function useNativeApp(): "iphone" | "mac" | null {
   return useSyncExternalStore(never, () => (bridge() === null ? null : mobileShell() ? "iphone" : "mac"), () => null);
 }
 
-/** Whether the app draws a call's bar in the composer's place; an older one doesn't, and the page keeps the chrome for a call. */
-export function useNativeCallBar(): boolean {
-  return useSyncExternalStore(never, () => features().includes("call"), () => false);
-}
-
 function sidebarBridge(): { sidebar(state: string): void } | null {
   const mac = macShell();
   return mac && typeof mac.sidebar === "function" && features().includes("sidebar") ? mac : null;
@@ -130,19 +125,14 @@ export type ChromeState = {
   screens: { id: string; label: string }[];
   /** Where the conversation sits across the web view, in CSS pixels: the Mac app centres its composer in it, clear of the details beside it. */
   column: { x: number; width: number };
-  /** On a call with the bot, which takes the composer's place; `since` is when it was picked up, in milliseconds. */
-  call: { label: string; since: number; connecting: boolean; muted: boolean; speaking: boolean; color: string } | null;
   composer: {
     text: string;
-    /** Goes up when the page changed the text itself (sent, a mention, a dictation), so the app takes it. */
     textRev: number;
     focusRev: number;
     placeholder: string;
     canSend: boolean;
     sending: boolean;
     later: boolean;
-    voice: "off" | "idle" | "recording" | "working";
-    seconds: number;
   };
 };
 
@@ -163,7 +153,6 @@ export type ChromeEvent =
   | { type: "menu"; id: string }
   | { type: "text"; value: string }
   | { type: "send"; later?: boolean }
-  | { type: "voice" }
   | { type: "attach"; files: { name: string; type: string; data: string }[] }
   | { type: "notice"; text: string }
   | { type: "settings" }
@@ -175,9 +164,7 @@ export type ChromeEvent =
   | { type: "remove-file"; index: number }
   | { type: "cancel-reply" }
   | { type: "jump" }
-  | { type: "screen"; id: string }
-  | { type: "call-mute" }
-  | { type: "call-end" };
+  | { type: "screen"; id: string };
 
 type SettingsChromeState = { screen: "settings"; label: string; covered: boolean };
 
@@ -210,7 +197,7 @@ export type SidebarRow = {
   /** Already worded by the page (`shortTime`), "" when nothing was said yet. */
   time: string;
   preview: string;
-  previewKind: "text" | "working" | "draft" | "call";
+  previewKind: "text" | "working" | "draft";
   unread: "you" | "team" | null;
   /** #rrggbb: the bot's colour for the unread dot, the page's text colour for a room's. */
   color: string;
@@ -248,8 +235,6 @@ export type SidebarState = {
   /** `face` is a key into the faces too, null for your initial on a plain circle; `profile` is the open profile's name when there are several. */
   me: { name: string; face: string | null; initial: string; profile: string | null; active: boolean };
   profileMenu: NativeMenuItem[][];
-  /** A call going on in another chat; `since` is when it was picked up, in milliseconds. */
-  call: { label: string; since: number; muted: boolean; color: string } | null;
 
   sections: { label: string; items: SidebarSection[] }[];
 };
@@ -261,9 +246,6 @@ export type SidebarEvent =
   | { type: "new"; id: string }
   | { type: "profile"; id: string }
   | { type: "look" }
-  | { type: "call-open" }
-  | { type: "call-mute" }
-  | { type: "call-end" }
   | { type: "dismiss" };
 
 // At most one send a frame: the state as it is then, with the faces drawn since the last one.

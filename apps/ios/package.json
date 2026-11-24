@@ -2,7 +2,7 @@
   "name": "@gond/ios",
   "private": true,
   "version": "0.1.0",
-  "description": "Gond for iPhone: Connect to your Gond, then the web app in a native shell with notifications, downloads and the microphone.",
+  "description": "Gond for iPhone: Connect to your Gond, then the web app in a native shell with notifications and downloads.",
   "license": "MIT",
   "scripts": {
     "generate:ios": "xcodegen generate",

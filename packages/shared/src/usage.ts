@@ -1,7 +1,7 @@
-import type { EngineProviderKind } from "./ai.ts";
+import type { ProviderKind } from "./ai.ts";
 
 /** Where a turn's tokens came from: "claude" is Claude Code on the person's Claude plan, the rest a provider. */
-export type UsageSource = "claude" | EngineProviderKind;
+export type UsageSource = "claude" | ProviderKind;
 
 export const USAGE_RANGES = ["month", "week", "today"] as const;
 export type UsageRange = (typeof USAGE_RANGES)[number];

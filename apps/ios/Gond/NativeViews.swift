@@ -512,7 +512,7 @@ struct ChromeView: View {
                 }
                 .scrollClipDisabled()
             }
-            if state.call == nil, let replying = state.replying {
+            if let replying = state.replying {
                 HStack(spacing: 10 * s) {
                     Image(systemName: "arrowshape.turn.up.left").font(.system(size: 14 * s)).foregroundStyle(Theme.muted)
                     Capsule().fill(UIColor(css: replying.color).map { Color(uiColor: $0) } ?? Theme.muted).frame(width: 3 * s, height: 30 * s)
@@ -533,11 +533,7 @@ struct ChromeView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .glassControl(in: RoundedRectangle(cornerRadius: 22 * s, style: .continuous), interactive: false)
             }
-            if let call = state.call {
-                callBar(call)
-            } else {
-                composer
-            }
+            composer
         }
         .foregroundStyle(Theme.foreground)
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { blockHeight = $0 }
@@ -575,54 +571,6 @@ struct ChromeView: View {
             .foregroundStyle(Theme.foreground)
         }
         .frame(maxWidth: .infinity)
-    }
-
-    private func callBar(_ call: ChromeState.Call) -> some View {
-        let bot = UIColor(css: call.color).map { Color(uiColor: $0) } ?? Theme.foreground
-        return GlassGroup {
-            HStack(spacing: 10 * s) {
-                Button { ui.send(["type": "call-mute"]) } label: {
-                    Image(systemName: call.muted ? "mic.slash.fill" : "mic")
-                        .font(.system(size: 18 * s, weight: .medium))
-                        .frame(width: 44 * s, height: 44 * s)
-                        .contentShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .glassControl(in: Circle())
-                .accessibilityLabel(call.muted ? "Unmute" : "Mute")
-                .accessibilityIdentifier("chrome.call-mute")
-
-                HStack(spacing: 10 * s) {
-                    Text(call.label)
-                        .font(.system(size: 14 * s, weight: .medium))
-                        .lineLimit(1)
-                        .opacity(call.connecting ? 0.6 : 1)
-                    CallClock(since: call.since)
-                    Spacer(minLength: 0)
-                    CallBars(color: call.speaking ? bot : tint, quiet: call.muted && !call.speaking)
-                        .accessibilityHidden(true)
-                }
-                .padding(.leading, 18 * s)
-                .padding(.trailing, 16 * s)
-                .frame(height: 44 * s)
-                .frame(maxWidth: .infinity)
-                .glassControl(in: Capsule(), interactive: false)
-                .accessibilityElement(children: .combine)
-
-                Button { ui.send(["type": "call-end"]) } label: {
-                    Image(systemName: "phone.down.fill")
-                        .font(.system(size: 18 * s, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .frame(width: 44 * s, height: 44 * s)
-                        .background(Circle().fill(Theme.hangup))
-                        .contentShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("End the call")
-                .accessibilityIdentifier("chrome.call-end")
-            }
-            .foregroundStyle(Theme.foreground)
-        }
     }
 
     private var composer: some View {
@@ -676,29 +624,6 @@ struct ChromeView: View {
                     .frame(height: 32 * s)
                     .accessibilityLabel("Send after it finishes")
             }
-            if composer.voice == "recording" {
-                Text("\(composer.seconds / 60):\(composer.seconds % 60 < 10 ? "0" : "")\(composer.seconds % 60)")
-                    .font(.system(size: 12 * s).monospacedDigit())
-                    .foregroundStyle(Theme.muted)
-                    .padding(.horizontal, 4 * s)
-            }
-            Button { ui.send(["type": "voice"]) } label: {
-                Group {
-                    if composer.voice == "working" {
-                        ProgressView()
-                    } else {
-                        Image(systemName: composer.voice == "recording" ? "stop.fill" : "mic")
-                            .font(.system(size: 16 * s, weight: .medium))
-                    }
-                }
-                .frame(width: 32 * s, height: 32 * s)
-                .background(Circle().fill(composer.voice == "recording" ? Theme.foreground.opacity(0.12) : .clear))
-                .contentShape(Circle())
-            }
-            .buttonStyle(.plain)
-            .opacity(composer.voice == "off" ? 0.45 : 1)
-            .disabled(composer.voice == "working")
-            .accessibilityLabel(composer.voice == "recording" ? "Stop and turn it into text" : "Talk instead of typing")
 
             Button { ui.send(["type": "send"]) } label: {
                 Group {
@@ -718,50 +643,6 @@ struct ChromeView: View {
             .disabled(!composer.canSend)
             .accessibilityLabel("Send")
             .accessibilityIdentifier("chrome.send")
-        }
-    }
-}
-
-private struct CallClock: View {
-    @Environment(\.chromeScale) private var s
-    let since: Double
-
-    var body: some View {
-        TimelineView(.periodic(from: .now, by: 1)) { context in
-            let seconds = max(0, Int(context.date.timeIntervalSince1970 - since / 1000))
-            Text("\(seconds / 60):\(seconds % 60 < 10 ? "0" : "")\(seconds % 60)")
-                .font(.system(size: 12 * s).monospacedDigit())
-                .foregroundStyle(Theme.muted)
-        }
-    }
-}
-
-/// The call's five bars, in the person's colour while they talk and the bot's while it does. The app
-/// doesn't hear the audio, so they sway rather than follow it; still while muted or under reduced motion.
-private struct CallBars: View {
-    @Environment(\.chromeScale) private var s
-    let color: Color
-    let quiet: Bool
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    private static let heights: [CGFloat] = [0.5, 0.8, 1, 0.8, 0.5]
-
-    private func height(of bar: Int, at time: Double) -> CGFloat {
-        let index = Double(bar)
-        let sway: Double = quiet ? 0.18 : reduceMotion ? 0.5 : 0.25 + 0.75 * abs(sin(time * (4 + index) + index * 1.3))
-        return max(4, 20 * Self.heights[bar] * CGFloat(sway)) * s
-    }
-
-    var body: some View {
-        TimelineView(.animation(minimumInterval: 0.08, paused: quiet || reduceMotion)) { context in
-            let t = context.date.timeIntervalSinceReferenceDate
-            HStack(spacing: 3 * s) {
-                ForEach(0..<5, id: \.self) { i in
-                    Capsule()
-                        .fill(quiet ? Theme.muted.opacity(0.5) : color)
-                        .frame(width: 3 * s, height: height(of: i, at: t))
-                }
-            }
-            .frame(height: 20 * s)
         }
     }
 }

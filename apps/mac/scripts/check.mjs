@@ -23,7 +23,7 @@ const macPort = /static let loopbackPort = (\d+)/.exec(webShell)?.[1];
 if (!port || port !== macPort) problems.push(`apps/mac/Gond/WebShell.swift: loopbackPort is ${macPort}, MCP_LOOPBACK_PORT is ${port}`);
 
 const project = read("apps/mac/project.yml");
-for (const key of ["NSMicrophoneUsageDescription:", "com.apple.security.device.audio-input: true", "NSAllowsArbitraryLoads: true", "ENABLE_HARDENED_RUNTIME: YES"]) {
+for (const key of ["NSAllowsArbitraryLoads: true", "ENABLE_HARDENED_RUNTIME: YES"]) {
   if (!project.includes(key)) problems.push(`apps/mac/project.yml: ${key} is missing`);
 }
 for (const [, source] of project.matchAll(/^\s*- path: (\.\.\/\S+)/gm)) {

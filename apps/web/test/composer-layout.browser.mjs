@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 
-// The caller supplies a Playwright page open to a seeded conversation, with no call or native chrome.
 export async function checkComposerLayout(page) {
   const field = page.locator("textarea[data-slot=input-group-control]");
   const original = await field.inputValue();

@@ -44,7 +44,6 @@ const VOCATIVE = new RegExp(`^\\s*(?:(?:${GREETING})[\\s,!.]+)*(?:${GROUP})\\b|,
 const SIGN_OFF = /(?<!\b(?:the|my|our|your|a|this|that|to|for|with|tell|ask|ping|message|restart|stop|check)\s+)\b(?:guys|team|folks|gang|crew|fellas|bots|everyone|everybody)\s*[?.!]*\s*$/i;
 const BOTH = /\b(?:both|you two)\b/i;
 
-/** The members a line names, by @handle or by name as a word in any case ("Patch, are you…", or "patch" as voice types it). */
 function namedIn<B extends RoomMember>(text: string, members: B[]): B[] {
   const handles = mentionsIn(text);
   return members.filter((b) => handles.includes(handleOf(b.name)) || new RegExp(`(?<![\\w@])${b.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?!\\w)`, "i").test(text));

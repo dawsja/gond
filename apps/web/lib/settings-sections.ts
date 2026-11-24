@@ -1,5 +1,5 @@
 import type { UserRole } from "@gond/shared";
-import { Bell, BookUser, Database, Gauge, Globe, Layers, Link2, Blocks, BrainCircuit, Info, KeyRound, LogIn, MessageCircleHeart, Mic, Monitor, Palette, Server, Sparkles, UserRound } from "lucide-react";
+import { Bell, BookUser, Database, Gauge, Globe, Layers, Link2, Blocks, BrainCircuit, Info, KeyRound, LogIn, MessageCircleHeart, Monitor, Palette, Server, Sparkles, UserRound } from "lucide-react";
 
 const SETTINGS_GROUPS = [
   { id: "you", label: "You" },
@@ -20,7 +20,6 @@ export const SETTINGS_SECTIONS = [
   { id: "computer", group: "you", label: "Your computer", blurb: "Put the computer your bots work on back the way it was built.", icon: Monitor, symbol: "desktopcomputer", admin: false },
   { id: "ai", group: "bots", label: "AI", blurb: "Choose what your bots run on: Claude Code on your plan or a key, your ChatGPT or Grok plan, or an API key.", icon: BrainCircuit, symbol: "brain", admin: false },
   { id: "usage", group: "bots", label: "Usage", blurb: "See how much of your plan is left and what each bot used.", icon: Gauge, symbol: "gauge.medium", admin: false },
-  { id: "voice", group: "bots", label: "Voice", blurb: "Set the key, the models and the voice for the microphone and calls.", icon: Mic, symbol: "mic", admin: false },
   { id: "skills", group: "bots", label: "Skills", blurb: "A skill says how to do a job. All your bots can use it.", icon: Sparkles, symbol: "sparkles", admin: false },
   { id: "apps", group: "bots", label: "Apps", blurb: "Connect Gmail, Slack and other apps to your bots, or add your own MCP servers.", icon: Blocks, symbol: "square.grid.2x2", admin: false },
   { id: "secrets", group: "bots", label: "Secrets", blurb: "Change or forget the cards, sign-ins and keys you gave your bots. Gond never shows their values.", icon: KeyRound, symbol: "key", admin: false },

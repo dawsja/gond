@@ -215,14 +215,9 @@ private struct ChatsSidebar: View {
     }
 
     private var footer: some View {
-        VStack(spacing: 6) {
-            if let call = state.call {
-                SidebarCallPill(call: call) { event in ui.sendSidebar(event) }
-            }
-            MeButton(ui: ui, me: state.me, groups: state.profileMenu)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
+        MeButton(ui: ui, me: state.me, groups: state.profileMenu)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
     }
 }
 
@@ -315,13 +310,6 @@ private struct SidebarRowView: View {
     private var preview: some View {
         let font = Font.system(size: 12 * s)
         switch row.previewKind {
-        case "call":
-            HStack(spacing: 4) {
-                Image(systemName: "phone.fill").font(.system(size: 10 * s))
-                Text(row.preview).lineLimit(1)
-            }
-            .font(font.weight(.medium))
-            .foregroundStyle(Theme.tint)
         case "draft":
             HStack(spacing: 0) {
                 Text("Draft: ").font(font.weight(.medium)).foregroundStyle(Theme.foreground).fixedSize()
@@ -403,54 +391,6 @@ private struct ItemsMenu: View {
                 }
             }
         }
-    }
-}
-
-private struct SidebarCallPill: View {
-    let call: SidebarState.Call
-    let send: ([String: Any]) -> Void
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Button { send(["type": "call-open"]) } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "phone.fill")
-                        .font(.system(size: 11))
-                        .foregroundStyle(Color.css(call.color, or: Theme.tint))
-                    Text(call.label).font(.system(size: 12, weight: .medium)).lineLimit(1)
-                    CallClock(since: call.since)
-                    Spacer(minLength: 0)
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .help("Open the call")
-            Button { send(["type": "call-mute"]) } label: {
-                Image(systemName: call.muted ? "mic.slash.fill" : "mic")
-                    .font(.system(size: 12, weight: .medium))
-                    .frame(width: 26, height: 26)
-                    .contentShape(Circle())
-            }
-            .buttonStyle(.plain)
-            .help(call.muted ? "Unmute" : "Mute")
-            .accessibilityLabel(call.muted ? "Unmute" : "Mute")
-            Button { send(["type": "call-end"]) } label: {
-                Image(systemName: "phone.down.fill")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 26, height: 26)
-                    .background(Circle().fill(Theme.hangup))
-                    .contentShape(Circle())
-            }
-            .buttonStyle(.plain)
-            .help("End the call")
-            .accessibilityLabel("End the call")
-        }
-        .foregroundStyle(Theme.foreground)
-        .padding(.leading, 12)
-        .padding(.trailing, 5)
-        .frame(height: 36)
-        .glassControl(in: Capsule(), interactive: false)
     }
 }
 

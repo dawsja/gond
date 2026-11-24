@@ -3,8 +3,6 @@
 import dynamic from "next/dynamic";
 import { Suspense, useEffect, useState, type ReactNode } from "react";
 import { ShareBotDialog, SharedTemplate } from "@/components/bot-template";
-import { CallPill } from "@/components/call/call-controls";
-import { CallProvider } from "@/components/call/call-provider";
 import { ComputerPanel } from "@/components/computer-panel";
 import { failed } from "@/components/failed";
 import { ShellNotifications } from "@/components/shell-notifications";
@@ -48,7 +46,6 @@ export function Shell({ user, children }: { user: SessionUser; children: ReactNo
   return (
     <StoreProvider user={user}>
       <TeachingProvider>
-      <CallProvider>
         <SidebarProvider style={{ "--sidebar-width": "300px" } as React.CSSProperties} className="h-dvh min-h-0 overflow-hidden">
           {nativeSidebar ? <NativeSidebar onOpen={setDialog} /> : <AppSidebar onOpen={setDialog} />}
           <SidebarInset className="min-h-0 min-w-0">
@@ -80,8 +77,6 @@ export function Shell({ user, children }: { user: SessionUser; children: ReactNo
         <ScopedSelection />
         <OutsideLinks />
         <DesktopDownloads />
-        <CallPill />
-      </CallProvider>
       </TeachingProvider>
     </StoreProvider>
   );

@@ -24,6 +24,7 @@ test("ICO frame dimensions agree with the directory", async () => {
 test("tracked web and shared source cannot restore the old brand", async () => {
   const files = Bun.spawnSync(["git", "ls-files", "-z", "--", "apps/web", "packages/shared"], { cwd: root }).stdout.toString().split("\0");
   for (const path of files.filter((path) => /\.(tsx?|jsx?|svg|html|css)$/.test(path) && !path.includes("/test/"))) {
+    if (!(await Bun.file(join(root, path)).exists())) continue;
     const source = await readFile(join(root, path), "utf8");
     expect(source, path).not.toMatch(/assets\/gond(?:-1024)?\.(?:svg|png)/);
     expect(source.includes('<circle cx="50" cy="50" r="50" fill="#ffffff"') && source.includes('M40.14 25.36'), path).toBe(false);

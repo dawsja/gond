@@ -80,8 +80,6 @@ export type Message = {
   fromThreadId: string | null;
 
   steered: boolean;
-  /** Said out loud on a call: the person's words as heard, or what the bot's voice said. Kept for the bot, never shown. */
-  spoken: boolean;
   note: NoteKind | null;
   /** In a room, the bots Gond's router judged a person's unnamed line was for; null when the line named them or nothing was routed. */
   sentTo: string[] | null;

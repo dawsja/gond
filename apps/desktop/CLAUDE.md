@@ -11,9 +11,9 @@ commit, things that stay true) hold here too.
   and the form as an island. The bridge is
   `window.gondDesktop`, injected by `src-tauri/src/init.js`; every
   command in `bridge.rs` checks the origin. `on_permission_request` in
-  `lib.rs` allows notifications, clipboard reads and the microphone to
-  that origin; on Linux `allow_media` first turns on WebKitGTK's media
-  stream, which ships off, or the mic gets nothing. Address rules: the
+  `lib.rs` allows notifications and clipboard reads to that origin; on
+  Linux `allow_clipboard` enables WebKitGTK's clipboard access so paste
+  into a bot's screen works. Address rules: the
   `server-url` crate. The menu bar is always hidden; a lone tap of Alt
   shows it, and another tap, Esc, a click or a pick hides it (`init.js`,
   `toggle_menu_bar`); no setting. A window without a frame has no menu

@@ -32,7 +32,7 @@ final class BridgeTests: XCTestCase {
         let context = page(origin: server)
         XCTAssertEqual(context.evaluateScript("gondMac.platform()").toString(), "macos")
         XCTAssertEqual(context.evaluateScript("gondMac.version()").toString(), "1.2.3")
-        XCTAssertEqual(context.evaluateScript("gondMac.features().join(',')").toString(), "call,scale,sidebar")
+        XCTAssertEqual(context.evaluateScript("gondMac.features().join(',')").toString(), "scale,sidebar")
         XCTAssertEqual(context.evaluateScript("gondMac.notificationsState()").toString(), "denied")
         XCTAssertEqual(context.evaluateScript("properties['--shell-inset-top']").toString(), "52.0px")
         _ = context.evaluateScript("listeners['gond:notifications-state']({ detail: 'granted' })")
