@@ -273,7 +273,7 @@ commit, things that stay true) hold here too.
   `expiredText` and goes on. A card closed by Stop says nothing.
 - **A paused card can still be answered** (`pauseOnExpiry`, `isPaused`:
   `expired` with outcome `paused`, no migration): an approval or email
-  card from a turn answering the person, outside a space, keeps that
+  card from a turn answering the person keeps that
   turn's message and steps in its `note` (`CardWork`, never sent to the
   page) and at 15 minutes, or at a restart, pauses instead: no line, the
   turn ends, the card stays open with a "Paused" badge and stays on the
@@ -281,8 +281,8 @@ commit, things that stay true) hold here too.
   hidden prompt (`lateAnswerText`: what ran, the answer, check first,
   never repeat) and only the same call (`actionKey`) goes through once in
   that turn (`lateYes`, spent by `takeLateYes`); anything else asks
-  again. Sign-ins, secrets, money (`answerableLate`) and another Gond's
-  request keep the strict expiry. Only a bot's newest card there waits;
+  again. Sign-ins, secrets and money (`answerableLate`) keep the strict
+  expiry. Only a bot's newest card there waits;
   the person's next line there, Stop, a newer card or
   `LATE_ANSWER_HOURS` (24) retires it. It never shows in Worth a look.
 - **A message is only its bubble**: no avatar beside it (a room names the
@@ -365,7 +365,7 @@ One line each: where to start, and what must not change.
   `unsendMessage`, `editMessage`, `Message.waiting`): only the person's
   own line, only while no bot has read it (unclaimed, unanswered, not
   steered, checked in the same statement as the change, so it can't race
-  the dispatcher), never in a space; unsending removes its files.
+  the dispatcher); unsending removes its files.
 - **Reactions** (`REACTIONS`, `gond_message_reactions`, `setReaction`,
   `components/reactions.tsx`): one per author per message; the
   `reactions` event carries the message's reactions as they stand,
@@ -400,17 +400,6 @@ One line each: where to start, and what must not change.
   `TeachSteps` (`DesktopFrame`'s `aside`), `TeachPhone`, `TeachPillFor`.
   Live steps are their own context (`TeachingProvider`, `useOpenTeaching`,
   `useTeaching`), never the store.
-- **Spaces UI** (`components/spaces/`, `lib/spaces.ts`): `SpaceSection`,
-  `InviteSpaceDialog`, `NewSpaceDialog`, `JoinSpaceDialog`, `BotPicker`,
-  `RuleRow`, `SpaceDefaultsCard`, `OtherGondsSection`, public `/join`.
-  Only bots the person let into spaces are offered, none until picked
-  (`"*"` stored is every bot); `PATCH /api/rooms/:id` refuses others
-  (`mayJoinSpaces`). A remote author is `remote:<key's first 12>:<member>`
-  (`remoteMember`). Mentions include other Gonds' members
-  (`spaceMentionables`). Reactions stay off another Gond's lines
-  (`canReact`) and its bots' `::choices` are inert, since only lines
-  cross. Always allow is picked only through `LevelSelect`, which
-  confirms it every time.
 - **Bot files** (`bot-files.tsx`, `GET /api/bots/:id/files`,
   `/files/raw`): dotfiles left out; a download is always a sandboxed
   attachment, a picture inline only when its bytes are one

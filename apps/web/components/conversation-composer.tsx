@@ -1,6 +1,6 @@
 "use client";
 
-import type { Message, ThreadSpace } from "@gond/shared";
+import type { Message } from "@gond/shared";
 import { ArrowUp, Camera, Folder, Image as ImageIcon, ListEnd, Paperclip, X } from "lucide-react";
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type ChangeEvent, type ClipboardEvent, type ComponentProps, type FormEvent, type KeyboardEvent, type Ref, type RefObject } from "react";
 import { ConversationChrome } from "@/components/conversation-chrome";
@@ -34,11 +34,6 @@ export type ComposerHandle = { focus: () => void; attach: (files: File[]) => voi
 export type Replying = { id: string; name: string; color: string | null; text: string };
 
 type ChromeHeader = Omit<ComponentProps<typeof ConversationChrome>, "files" | "replying" | "mentions" | "composer" | "onEvent">;
-
-function spaceNotice(space: ThreadSpace): string {
-  if (space.status === "joining") return `Waiting for ${space.gonds.find((g) => g.host)?.name ?? "the other Gond"} to let you in. What you write meanwhile stays here.`;
-  return `This space is ${space.status === "left" ? "one you left" : "closed"}, so what you write here stays here and no bot answers.`;
-}
 
 function ComposerFileMedia({ file }: { file: File }) {
   const previewable = isPreviewableImage(file);
@@ -81,7 +76,6 @@ export function Composer({
   busy,
   hint,
   label,
-  space,
   chips,
   mentionable,
   reply,
@@ -100,7 +94,6 @@ export function Composer({
   busy: boolean;
   hint: string;
   label: string;
-  space: ThreadSpace | null;
   chips: Mentionable[];
   mentionable: Mentionable[];
   reply: Replying | null;
@@ -398,11 +391,6 @@ export function Composer({
           </Marker>
         ) : null}
         <TeachPillFor threadId={threadId} />
-        {space && space.status !== "active" ? (
-          <Marker className="mx-auto mb-2 w-fit max-w-full justify-center rounded-full bg-background px-3" role="status">
-            <MarkerContent className="text-center text-xs">{spaceNotice(space)}</MarkerContent>
-          </Marker>
-        ) : null}
         {reply && !nativeChrome ? <ReplyingTo name={reply.name} color={reply.color} text={reply.text} onCancel={onCancelReply} /> : null}
         <div
           className={cn(!nativeChrome && "-mx-3 -mt-2 -mb-[calc(var(--safe-bottom)+8px)] px-3 pt-2 pb-[calc(var(--safe-bottom)+8px)] sm:-mx-4 sm:px-4 wide:m-0 wide:p-0")}

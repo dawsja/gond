@@ -2,28 +2,6 @@ import { isNoteKind, isWatchRun, plainMarkdown, QUOTE_CHARS, routineName, type C
 import { ensureDatabase, transaction } from "../db/init.ts";
 import { botsChanged, emit, threadChanged } from "../events.ts";
 import { newId, now } from "../ids.ts";
-import { federationRow, threadSpace } from "./spaces.ts";
-
-/** What happened to a conversation, for Spaces to pass on: a message posted, or a room's bots changed. */
-type ThreadEvent = { type: "posted"; message: Message } | { type: "room"; threadId: string };
-type ThreadListener = (event: ThreadEvent) => void;
-const listenerHolder = globalThis as typeof globalThis & { __gondThreadListeners?: Set<ThreadListener> };
-const threadListeners = () => (listenerHolder.__gondThreadListeners ??= new Set());
-
-export function onThreadEvent(listener: ThreadListener): () => void {
-  threadListeners().add(listener);
-  return () => void threadListeners().delete(listener);
-}
-
-function tell(event: ThreadEvent) {
-  for (const listener of threadListeners()) {
-    try {
-      listener(event);
-    } catch (error) {
-      console.error("[gond] a conversation listener failed:", error);
-    }
-  }
-}
 
 type ThreadRow = {
   id: string;
@@ -210,7 +188,6 @@ function toThreads(rows: ThreadRow[]): Thread[] {
   const runs = latest("author = 'routine'");
   const unreadRows = db.query(UNREAD_COUNTS).all(ids) as { thread_id: string; n: number; team: number }[];
   const unread = new Map(unreadRows.map((row) => [row.thread_id, row]));
-  let ownKey: string | null | undefined;
   return rows.map((row) => {
     const line = last.get(row.id);
     const counts = unread.get(row.id) ?? { n: 0, team: 0 };
@@ -226,7 +203,6 @@ function toThreads(rows: ThreadRow[]): Thread[] {
       unread: Number(counts.n) - Number(counts.team),
       unreadTeam: Number(counts.team) > 0 && Number(counts.n) === Number(counts.team),
       noticed: noticedIn(row, runs.get(row.id)),
-      space: row.kind === "room" ? threadSpace(row.id, (ownKey ??= federationRow().key)) : null,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
@@ -298,7 +274,6 @@ export function updateRoom(id: string, patch: { name?: string; members?: string[
     }
   });
   botsChanged(thread.userId);
-  if (patch.members) tell({ type: "room", threadId: id });
   return getThread(id);
 }
 
@@ -362,9 +337,7 @@ export function postMessage(input: NewMessage): Message {
     for (const file of input.attachments ?? []) db.query("UPDATE gond_attachments SET message_id = ? WHERE id = ?").run(id, file.id);
   });
   threadChanged(input.threadId);
-  const message = getMessage(id)!;
-  tell({ type: "posted", message });
-  return message;
+  return getMessage(id)!;
 }
 
 /** The claim a room line holds while the router decides whom it is for, so no turn takes it first. */

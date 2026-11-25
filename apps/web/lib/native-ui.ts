@@ -112,7 +112,6 @@ export type ChromeState = {
   faces: string[];
   more: number;
   primary: boolean;
-  space: boolean;
   tint: string;
   menu: NativeMenuItem[][];
   /** Something of the page's is open over the conversation (a sheet, a dialog, a menu), so the chrome steps aside. */
@@ -393,12 +392,6 @@ async function drawAvatar(avatar: Element, size: number): Promise<string | null>
   return pngOf(canvas);
 }
 
-/**
- * A face as the page draws it, every part of it (a bot with its crown, a room's two faces, a space's
- * globe, a person's picture or initial), painted into a square PNG for the Mac app's sidebar. Each svg
- * is drawn again at the PNG's own size, so a small copy paints sharp. Rings in the surface's colour
- * and the gap between a room's faces (`data-cut`) are cut out, since the app's sidebar is glass.
- */
 export async function facePng(face: Element, size = 128): Promise<string | null> {
   try {
     return await drawFace(face, size);

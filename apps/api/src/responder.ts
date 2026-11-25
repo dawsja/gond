@@ -41,7 +41,6 @@ import { noteInterrupted, takeInterrupted, wasInterrupted } from "./resume.ts";
 import { turnTiming } from "./config.ts";
 import { MAX_CHAIN, MAX_ROOM_LINES, resultDepth } from "./limits.ts";
 import { appTools, baseTools, permissionTool, teamTools, toolNotesFor, type MemoryRead } from "./tools.ts";
-import { guestWorkers, hasGuestWork, isSpace, keepHere, memoryAllowed, postInSpace, SPACE_TURN, spaceNote, spaceTargets, stopGuestWork } from "./spaces.ts";
 import { saveClaudeLimits, usageRecorder } from "./usage.ts";
 import { transcript } from "./transcript.ts";
 import { memoryForTurn } from "./memory-moves.ts";
@@ -213,11 +212,7 @@ export async function stopThread(threadId: string, options: { quiet?: boolean } 
   } finally {
     quietStops.delete(threadId);
   }
-  // A space's answers to another Gond's lines run outside the turns, each with its own stop.
-  const guests = stopGuestWork(threadId);
-  report.stopped += guests.stopped;
-  report.tasks.push(...guests.tasks);
-  report.dropped = closePending(threadId) + guests.dropped;
+  report.dropped = closePending(threadId);
   report.recordings = await stopTeachingsIn(threadId);
   report.dropped += stopCheckoutsIn(threadId);
   report.cards = retirePausedCards(threadId);
@@ -252,7 +247,7 @@ export function stoppedReply(report: StopReport): string {
 }
 
 export function hasWork(threadId: string): boolean {
-  return turnsIn(threadId).length > 0 || openDelegationsFrom(threadId).length > 0 || threadBusy(threadId) || teachingIn(threadId) || hasGuestWork(threadId) || hasPausedCards(threadId);
+  return turnsIn(threadId).length > 0 || openDelegationsFrom(threadId).length > 0 || threadBusy(threadId) || teachingIn(threadId) || hasPausedCards(threadId);
 }
 
 export async function stopBot(bot: Bot) {
@@ -355,9 +350,6 @@ export async function postFromPerson(thread: Thread, input: PersonLine): Promise
   if (!input.attachments?.length && !input.replyTo && isStopRequest(input.body) && hasWork(thread.id)) return stopFromMessage(thread, input.body);
   // The person moved on: a card nobody answered in time can't be answered late any more.
   retirePausedCards(thread.id);
-  // In a space people talk to each other too: a line that names none of the person's bots is only said.
-  const inSpace = spaceTargets(thread, input.body);
-  if (inSpace && !inSpace.length) return postInSpace(thread, input, []);
   if (forTheRouter(thread, input.body)) return postForRouter(thread, input);
   const { turns, all } = !input.after && !input.attachments?.length ? steerableTurns(thread, { author: "you", body: input.body }) : { turns: [], all: false };
   // Taken by every bot it is for, the line needs no turn of its own; else the idle ones answer it as usual, while those mid-answer already have it.
@@ -405,12 +397,12 @@ async function routeAndDeliver(thread: Thread, message: Message, input: PersonLi
 }
 
 export async function stopFromMessage(thread: Thread, body: string): Promise<Message> {
-  const message = keepHere(() => postMessage({ threadId: thread.id, author: "you", body, answered: true }));
-  const working = turnsIn(thread.id)[0]?.botId ?? guestWorkers(thread.id)[0];
+  const message = postMessage({ threadId: thread.id, author: "you", body, answered: true });
+  const working = turnsIn(thread.id)[0]?.botId;
   const bots = listBots({ includeHidden: true, userId: thread.userId });
   const author = working ?? targetsFor({ author: "you", body }, thread, bots, roomBefore(thread))[0]?.id;
   const report = await stopThread(thread.id, { quiet: true });
-  if (author) keepHere(() => postMessage({ threadId: thread.id, author, body: stoppedReply(report), answered: true }));
+  if (author) postMessage({ threadId: thread.id, author, body: stoppedReply(report), answered: true });
   else postMessage({ threadId: thread.id, author: "system", kind: "event", body: "Stopped.", answered: true });
   return getMessage(message.id) ?? message;
 }
@@ -528,11 +520,11 @@ export function promptFor(bot: Bot, thread: Thread, message: Message, bots: Bot[
     : "";
   const members = bots.filter((b) => thread.members.includes(b.id));
   const alone = thread.kind === "room" && message.author === "you" && !alongside.length && !addressedIn(message.body, members).length && !isClosing(message.body);
-  const room = thread.kind === "room" ? `\n\n${ROOM_TURN}${together}${alone ? ` ${ROOM_UNNAMED}` : ""}${isSpace(thread) ? `\n\n${SPACE_TURN}` : ""}` : "";
+  const room = thread.kind === "room" ? `\n\n${ROOM_TURN}${together}${alone ? ` ${ROOM_UNNAMED}` : ""}` : "";
   const talk = route === "person" ? talkReminder(userTalk(thread.userId)) : "";
 
   if (message.kind === "prompt") {
-    return [earlier, `${heading}\n${history || (since ? "(nothing new)" : "(nothing yet)")}`, `Gond, not the person, asks you this; nobody else sees it. Do it, and address your answer to the person:\n${message.body}${toPerson}`, isSpace(thread) ? SPACE_TURN : "", talk].filter(Boolean).join("\n\n");
+    return [earlier, `${heading}\n${history || (since ? "(nothing new)" : "(nothing yet)")}`, `Gond, not the person, asks you this; nobody else sees it. Do it, and address your answer to the person:\n${message.body}${toPerson}`, talk].filter(Boolean).join("\n\n");
   }
   const sender = names.get(message.author) ?? "a teammate";
   const result = message.fromThreadId && !PEOPLE_AND_GOND.has(message.author) && isDelegationResult(message.id);
@@ -661,8 +653,7 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
   };
   // What this turn finished, in words, for the turn that answers again if this one is cut off.
   const done: string[] = [];
-  // A card this turn waits on can be answered late, which starts its work again; a space's turns and a teammate's errands keep the strict expiry.
-  if (active.route === "person" && !isSpace(thread)) pauseOnExpiry(controller.signal, { messageId: message.id, card: message.kind === "prompt" ? message.approvalId : null, done: () => done });
+  if (active.route === "person") pauseOnExpiry(controller.signal, { messageId: message.id, card: message.kind === "prompt" ? message.approvalId : null, done: () => done });
   const resumed = takeInterrupted(message.id);
   const step = (raw: StepUpdate) => {
     clock.step(raw);
@@ -714,7 +705,6 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
       ...apps,
       ...(nativeMcp?.tools ?? {}),
     };
-    const inSpace = spaceNote(thread);
     const instructions = systemPromptFor(bot, {
       bots,
       thread,
@@ -726,7 +716,6 @@ export async function botTurn(bot: Bot, thread: Thread, message: Message, parent
       skillsIndex: skillsIndex(skills),
       talk: userTalk(thread.userId),
       logins: [...new Set(listSecrets(bot.userId).flatMap((s) => (s.site ? [s.site] : [])))],
-      space: inSpace ? { note: inSpace, memoryLeftOut: !memoryAllowed(thread, bot) } : null,
       computer: box !== null,
       mcpServers: nativeMcp?.servers ?? mcpServersFor(bot).map((m) => ({ name: m.name, note: m.authStatus === "needed" ? `not attached yet: it waits for the person to sign in, from its card or Settings → Apps → MCP servers → ${m.name} → Sign in, and its tools arrive on your next reply after that` : m.authStatus === "error" ? `sign-in problem (${m.authError ?? "unknown"}); its tools may fail` : undefined })),
     });

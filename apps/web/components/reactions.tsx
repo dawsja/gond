@@ -1,13 +1,13 @@
 "use client";
 
-import { isRemoteAuthor, joinNames, REACTIONS, type Bot, type Message, type ReactionEmoji } from "@gond/shared";
+import { joinNames, REACTIONS, type Bot, type Message, type ReactionEmoji } from "@gond/shared";
 import { ContextMenuGroup, ContextMenuItem } from "@/components/ui/context-menu";
 import { toast } from "@/components/ui/toast";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 export function canReact(message: Message): boolean {
-  return message.kind === "message" && !["you", "system", "routine"].includes(message.author) && !isRemoteAuthor(message.author);
+  return message.kind === "message" && !["you", "system", "routine"].includes(message.author);
 }
 
 export async function react(message: Message, emoji: ReactionEmoji, onChange: (message: Message) => void) {

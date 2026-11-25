@@ -379,8 +379,6 @@ type AgentTurnInput = {
   attachments?: { name: string; mediaType: string; data: string }[];
   tools: AgentTool[];
   timeoutMs: number;
-  /** A guest session (a line from another Gond): no tools, or only the web; see GUEST_MODES in the box. */
-  guest?: "talk" | "look";
 };
 
 type AgentEvent =

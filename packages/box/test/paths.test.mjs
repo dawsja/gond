@@ -5,7 +5,7 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { boxCwd, capOutput, inside, insideHome, openInsideHome, realInsideHome, skillPath, writableInsideHome, HttpError } from "../server.mjs";
 import { runFileJob } from "../file-job.mjs";
-import { GUEST_FLOOR, PERMISSION_MODES, SCREEN_SCRIPTING_DENIED, argsKeyFor, guestReady, guestRefusal, parseVersion, readReply, sessionArgs, settle, userMessage } from "../agents.mjs";
+import { PERMISSION_MODES, SCREEN_SCRIPTING_DENIED, argsKeyFor, parseVersion, readReply, sessionArgs, settle, userMessage } from "../agents.mjs";
 import { ReplyText } from "../bridge.mjs";
 
 const HOME = "/home/agent";
@@ -258,40 +258,4 @@ test("a skill's files stay inside its folder: no .., nothing hidden, no absolute
   assert.equal(skillPath("a\\b"), null);
   assert.equal(skillPath(""), null);
   assert.equal(skillPath(42), null);
-});
-
-test("a guest session has no tools, or only web search, whatever permission it asks for", () => {
-  const base = { model: "m", systemPromptFile: "/tmp/p.md", mcpConfigFile: "/tmp/m.json", sessionId: "s", resume: false, allowed: new Set(["--strict-mcp-config", "--setting-sources"]), optional: false };
-  const talk = sessionArgs({ ...base, permission: "full", guest: "talk" });
-  assert.equal(talk[talk.indexOf("--tools") + 1], "");
-  assert.ok(!talk.includes("--dangerously-skip-permissions"));
-  assert.ok(talk.includes("--permission-prompt-tool"));
-  const denied = talk.slice(talk.indexOf("--disallowedTools") + 1);
-  for (const tool of ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "Task", "WebFetch", "WebSearch"]) assert.ok(denied.includes(tool), tool);
-  assert.equal(talk[talk.indexOf("--setting-sources") + 1], "project");
-  assert.ok(talk.includes("--strict-mcp-config"));
-
-  const look = sessionArgs({ ...base, guest: "look" });
-  assert.equal(look[look.indexOf("--tools") + 1], "WebSearch");
-  const allowed = look.slice(look.indexOf("--allowedTools") + 1, look.indexOf("--strict-mcp-config"));
-  assert.deepEqual(allowed, ["mcp__gond", "WebSearch"]);
-  const lookDenied = look.slice(look.indexOf("--disallowedTools") + 1, look.indexOf("--append-system-prompt-file"));
-  assert.ok(lookDenied.includes("WebFetch"));
-  assert.ok(!lookDenied.includes("WebSearch"));
-
-  const plain = sessionArgs({ ...base, permission: "ask" });
-  assert.ok(!plain.includes("--tools"));
-});
-
-test("a guest session is its own, and needs a Claude Code that can drop its tools", () => {
-  const key = argsKeyFor({ model: "m", toolNames: [], permission: "ask" });
-  assert.notEqual(argsKeyFor({ model: "m", toolNames: [], permission: "ask", guest: "talk" }), key);
-  assert.equal(argsKeyFor({ model: "m", toolNames: [], permission: "ask", guest: null }), key);
-  assert.ok(guestReady(parseVersion(GUEST_FLOOR)));
-  assert.ok(guestReady(parseVersion("2.1.310")));
-  assert.ok(!guestReady(parseVersion("1.0.120")));
-  assert.ok(!guestReady(null));
-  assert.ok(!guestReady(parseVersion("not a version")));
-  assert.match(guestRefusal(null), /Couldn't tell which Claude Code/);
-  assert.match(guestRefusal(parseVersion("1.0.120")), /^Claude Code 1\.0\.120 on the computer is too old/);
 });

@@ -804,201 +804,22 @@ describe("data", () => {
     expect(answered(back.id)).toBeNull();
   });
 
-  test("in a space every answer is told it's public, and a bot reads how its cards were answered", async () => {
+  test("a bot reads how its cards were answered", async () => {
     await seedUsers(["u-public", "user"]);
     const { createBot } = await import("../src/data/bots.ts");
-    const { createRoom, getThread, postMessage } = await import("../src/data/threads.ts");
-    const { createSpace } = await import("../src/data/spaces.ts");
+    const { createRoom, postMessage } = await import("../src/data/threads.ts");
     const { createApproval, resolveApproval } = await import("../src/data/approvals.ts");
-    const { promptFor } = await import("../src/responder.ts");
     const { transcriptLines } = await import("../src/transcript.ts");
-    const { SPACE_TURN } = await import("../src/spaces.ts");
     const { botInputSchema } = await import("@gond/shared");
     const keeper = createBot(botInputSchema.parse({ name: "Keeper" }), "u-public");
     const helper = createBot(botInputSchema.parse({ name: "Helper" }), "u-public");
-    const room = createRoom("Shared", [keeper.id, helper.id], "u-public");
-    const plain = createRoom("Ours", [keeper.id, helper.id], "u-public");
-    createSpace({ threadId: room.id, userId: "u-public", hostKey: "p".repeat(64), status: "active" });
-    const asked = postMessage({ threadId: room.id, author: "you", body: "@keeper list the services" });
-    const hidden = postMessage({ threadId: room.id, author: "system", kind: "prompt", body: "@keeper do it" });
-    expect(promptFor(keeper, getThread(room.id)!, asked, [keeper, helper])).toContain(SPACE_TURN);
-    expect(promptFor(keeper, getThread(room.id)!, hidden, [keeper, helper])).toContain(SPACE_TURN);
-    expect(promptFor(keeper, getThread(plain.id)!, postMessage({ threadId: plain.id, author: "you", body: "@keeper hi" }), [keeper, helper])).not.toContain(SPACE_TURN);
+    const room = createRoom("Ours", [keeper.id, helper.id], "u-public");
 
-    const card = createApproval({ botId: keeper.id, threadId: room.id, tool: "ask_owner", summary: "Let Keeper do what Sam asked?", input: {} });
-    const line = postMessage({ threadId: room.id, author: keeper.id, kind: "approval", body: "Let Keeper do what Sam asked?", approvalId: card.id, answered: true });
+    const card = createApproval({ botId: keeper.id, threadId: room.id, tool: "ask_approval", summary: "Run the deploy?", input: {} });
+    const line = postMessage({ threadId: room.id, author: keeper.id, kind: "approval", body: "Run the deploy?", approvalId: card.id, answered: true });
     expect(transcriptLines([line], [keeper], keeper)).toContain("waiting for your person");
     resolveApproval(card.id, "allowed");
-    expect(transcriptLines([line], [keeper], keeper)).toContain("(asked for approval: Let Keeper do what Sam asked?; your person said yes)");
-  });
-
-  test("a Gond's envelopes go in the order they were written, and none overtakes one still waiting", async () => {
-    const { enqueue, dueOutbox, outboxDone, outboxLater } = await import("../src/data/spaces.ts");
-    for (const row of dueOutbox(1000)) outboxDone(row.id);
-    const members = enqueue("peer-a", { t: "members" });
-    const line = enqueue("peer-a", { t: "line" });
-    const other = enqueue("peer-b", { t: "line" });
-    expect(dueOutbox().map((r) => r.id)).toEqual([members, line, other]);
-    outboxLater(members, new Date(Date.now() + 60_000).toISOString());
-    const after = enqueue("peer-a", { t: "line" });
-    expect(dueOutbox().map((r) => r.id)).toEqual([other]);
-    outboxDone(members);
-    expect(dueOutbox().map((r) => r.id)).toEqual([line, other, after]);
-    for (const id of [line, other, after]) outboxDone(id);
-  });
-
-  test("an invite whose relay is loopback, link-local or a bare service name is turned down", async () => {
-    const { createIdentity, keyCard } = await import("@gond/relay/client");
-    const { inviteCode, previewInvite } = await import("../src/spaces.ts");
-    const host = await keyCard(await createIdentity());
-    const invite = (relay: string) => inviteCode({ v: 1, space: `space-${relay.length}`, name: "Trip", token: "tok_en", expires: Date.now() + 60_000, host: { ...host, name: "Ada's Gond", relay }, members: [] });
-    expect(previewInvite(invite("https://api.gond.io")).host.relay).toBe("https://api.gond.io");
-    expect(previewInvite(invite("http://relay.lan:8791")).host.name).toBe("Ada's Gond");
-    for (const relay of ["http://127.0.0.1:8791", "http://169.254.169.254/latest", "http://box:8080", "http://localhost:8791"]) {
-      expect(() => previewInvite(invite(relay))).toThrow("won't reach");
-    }
-  });
-
-  test("each Gond's members in a space are its own, and a line counts only from a member its Gond named", async () => {
-    const { createRoom } = await import("../src/data/threads.ts");
-    const { createSpace, addSpaceGond, setGondMembers, spaceMembers, declaredMember, memberOfAuthor, remoteAuthor } = await import("../src/data/spaces.ts");
-    const { mayTakeLine } = await import("../src/spaces.ts");
-    const [own, host, guest, other] = ["o", "h", "g", "x"].map((c) => c.repeat(43)) as [string, string, string, string];
-    const room = createRoom("Shared members", [], "u-admin");
-    const space = createSpace({ threadId: room.id, userId: "u-admin", hostKey: host, status: "active" });
-    for (const key of [host, guest, other]) addSpaceGond(space.id, key);
-    setGondMembers(space.id, guest, [{ id: "p-1", kind: "person", name: "Sam", color: null }]);
-    setGondMembers(space.id, other, [{ id: "p-1", kind: "bot", name: "Impostor", color: null }]);
-    expect(spaceMembers(space.id).map((m) => [m.gond, m.name])).toEqual([
-      [guest, "Sam"],
-      [other, "Impostor"],
-    ]);
-    expect(declaredMember(space.id, guest, "p-1")?.name).toBe("Sam");
-    expect(memberOfAuthor(room.id, remoteAuthor(guest, "p-1"))?.kind).toBe("person");
-    expect(memberOfAuthor(room.id, remoteAuthor(other, "p-1"))?.kind).toBe("bot");
-
-    const line = (gond: string, author: string) => ({ id: "l1", gond, author, body: "hi", at: 1, replyTo: null });
-    expect(mayTakeLine(space, host, line(guest, "p-1"), own)).toBe(true);
-    expect(mayTakeLine(space, host, line(guest, "p-9"), own)).toBe(false);
-    expect(mayTakeLine(space, host, line(host, "p-1"), own)).toBe(false);
-    expect(mayTakeLine(space, guest, line(guest, "p-1"), own)).toBe(false);
-    expect(mayTakeLine(space, host, line(own, "p-1"), own)).toBe(false);
-    expect(mayTakeLine(space, guest, line(guest, "p-1"), host)).toBe(true);
-    expect(mayTakeLine(space, guest, line(other, "p-1"), host)).toBe(false);
-    expect(mayTakeLine(space, guest, line(guest, "someone-new"), host)).toBe(false);
-  });
-
-  test("whether another Gond's words were checked is each person's own", async () => {
-    await seedUsers(["u-checker", "user"], ["u-other", "user"]);
-    const { createRoom } = await import("../src/data/threads.ts");
-    const { createSpace, addSpaceGond, gondsOf, listPeers, savePeer, spaceOfThread } = await import("../src/data/spaces.ts");
-    const { spacesRoutes } = await import("../src/routes/spaces.ts");
-    const { Hono } = await import("hono");
-    const peer = "w".repeat(43);
-    savePeer({ key: peer, box: "b".repeat(43), sig: "c2ln", name: "Sam's Gond", relayUrl: "https://api.gond.io" });
-    const mine = createRoom("Checked", [], "u-checker");
-    const theirs = createRoom("Unchecked", [], "u-other");
-    for (const [room, user] of [[mine, "u-checker"], [theirs, "u-other"]] as const) addSpaceGond(createSpace({ threadId: room.id, userId: user, hostKey: peer, status: "active" }).id, peer);
-    const app = asPerson(new Hono(), "u-checker");
-    app.route("/api", spacesRoutes());
-    expect((await app.request(`/api/spaces/gonds/${peer}/verify`, { method: "POST", body: JSON.stringify({ verified: true }) })).status).toBe(200);
-    expect(gondsOf(spaceOfThread(mine.id)!)[0]!.verified).toBe(true);
-    expect(gondsOf(spaceOfThread(theirs.id)!)[0]!.verified).toBe(false);
-    expect(listPeers("u-checker").find((p) => p.key === peer)?.verified).toBe(true);
-    expect(listPeers("u-other").find((p) => p.key === peer)?.verified).toBe(false);
-    await app.request(`/api/spaces/gonds/${peer}/verify`, { method: "POST", body: JSON.stringify({ verified: false }) });
-    expect(gondsOf(spaceOfThread(mine.id)!)[0]!.verified).toBe(false);
-  });
-
-  test("Stop reaches a space's answers to another Gond, drops those waiting and expires their card", async () => {
-    await seedUsers(["u-guest-stop", "user"]);
-    const { createBot } = await import("../src/data/bots.ts");
-    const { createRoom } = await import("../src/data/threads.ts");
-    const { getApproval } = await import("../src/data/approvals.ts");
-    const { askOwner } = await import("../src/approvals.ts");
-    const { inTurn, hasGuestWork } = await import("../src/spaces.ts");
-    const { hasWork, stopThread, stoppedReply } = await import("../src/responder.ts");
-    const { botInputSchema } = await import("@gond/shared");
-    const bot = createBot(botInputSchema.parse({ name: "Stopper" }), "u-guest-stop");
-    const room = createRoom("Space to stop", [bot.id], "u-guest-stop");
-    expect(hasWork(room.id)).toBe(false);
-
-    let card: Promise<{ decision: string }> | null = null;
-    let seen: AbortSignal | null = null;
-    inTurn(room.id, bot.id, "please book the table", (signal) => {
-      seen = signal;
-      card = askOwner({ bot, threadId: room.id, summary: "Let Stopper do what Sam asked?", input: { summary: "Let Stopper do what Sam asked?" }, signal });
-      return card.then(() => undefined);
-    });
-    const ran: string[] = [];
-    for (const task of ["one", "two", "three", "four"]) inTurn(room.id, bot.id, task, async () => void ran.push(task));
-    await Bun.sleep(0);
-    expect(hasGuestWork(room.id)).toBe(true);
-    expect(hasWork(room.id)).toBe(true);
-
-    const report = await stopThread(room.id, { quiet: true });
-    // Three wait at most behind the one running: the oldest gave way to the fourth.
-    expect(report).toMatchObject({ stopped: 1, dropped: 3, tasks: ["please book the table"] });
-    expect(seen!.aborted).toBe(true);
-    expect((await card!).decision).toBe("expired");
-    await Bun.sleep(0);
-    expect(ran).toEqual([]);
-    expect(hasGuestWork(room.id)).toBe(false);
-    expect(stoppedReply(report)).toContain('I stopped working on "please book the table"');
-    const { listApprovals } = await import("../src/data/approvals.ts");
-    expect(getApproval(listApprovals({ threadId: room.id })[0]!.id)?.status).toBe("expired");
-  });
-
-  test("a space takes only bots let into spaces, however it's edited", async () => {
-    await seedUsers(["u-spacer", "user"]);
-    const { createBot } = await import("../src/data/bots.ts");
-    const { createRoom, getThread } = await import("../src/data/threads.ts");
-    const { createSpace, setSpaceDefaults } = await import("../src/data/spaces.ts");
-    const { threadsRoutes } = await import("../src/routes/threads.ts");
-    const { Hono } = await import("hono");
-    const { botInputSchema } = await import("@gond/shared");
-    const clo = createBot(botInputSchema.parse({ name: "Clo" }), "u-spacer");
-    const ada = createBot(botInputSchema.parse({ name: "Ada" }), "u-spacer");
-    const patch = createBot(botInputSchema.parse({ name: "Patchwork" }), "u-spacer");
-    setSpaceDefaults("u-spacer", { level: "talk", bots: [clo.id, ada.id] });
-    const space = createRoom("Trip", [clo.id], "u-spacer");
-    createSpace({ threadId: space.id, userId: "u-spacer", hostKey: "s".repeat(64), status: "active" });
-    const room = createRoom("Lab", [clo.id, ada.id], "u-spacer");
-    const app = asPerson(new Hono(), "u-spacer");
-    app.route("/api", threadsRoutes());
-    const edit = (id: string, members: string[]) => app.request(`/api/rooms/${id}`, { method: "PATCH", body: JSON.stringify({ members }) });
-
-    const refused = await edit(space.id, [clo.id, patch.id]);
-    expect(refused.status).toBe(400);
-    expect(((await refused.json()) as { error: string }).error).toContain("Settings → Spaces");
-    expect(getThread(space.id)!.members).toEqual([clo.id]);
-    expect((await edit(space.id, [clo.id, ada.id])).status).toBe(200);
-    expect((await edit(space.id, [ada.id])).status).toBe(200);
-    expect((await edit(space.id, [])).status).toBe(400);
-    expect((await edit(room.id, [clo.id, ada.id, patch.id])).status).toBe(200);
-  });
-
-  test("a bot says something in a space only when its person asks in their chat, and only where they let it", async () => {
-    const { createBot } = await import("../src/data/bots.ts");
-    const { createRoom, getThread, listMessages } = await import("../src/data/threads.ts");
-    const { createSpace, setRule } = await import("../src/data/spaces.ts");
-    const { baseTools } = await import("../src/tools.ts");
-    const { botInputSchema } = await import("@gond/shared");
-    const scout = createBot(botInputSchema.parse({ name: "Scouty", title: "Research" }), "u-admin");
-    const room = createRoom("Trip", [scout.id], "u-admin");
-    const space = createSpace({ threadId: room.id, userId: "u-admin", hostKey: "k".repeat(64), status: "active" });
-    const own = getThread(scout.threadId)!;
-    const tools = (author: string, thread = own) =>
-      baseTools({ box: { url: "http://box.invalid", token: "t", user: "u-admin" }, bot: scout, thread, message: { depth: 0, author } as never, askBot: async () => "", syncSoul: async () => undefined, stopWork: async () => false, isWorking: () => false });
-
-    expect(tools("you").say_in_space).toBeUndefined();
-    setRule(space.id, { botId: scout.id, level: "talk", memory: false, peopleWake: true, botsWake: false, relay: true });
-    const say = tools("you").say_in_space!;
-    expect(say.description).toContain('"Trip"');
-    expect(await say.execute({ space: "Trip", text: "Sam, the ferry leaves at 9." }, "c1")).toContain('Said in "Trip"');
-    expect(listMessages(room.id).at(-1)).toMatchObject({ author: scout.id, body: "Sam, the ferry leaves at 9." });
-    expect(await tools("routine").say_in_space!.execute({ space: "Trip", text: "Hi" }, "c2")).toContain("NOT said");
-    expect(tools("you", room).say_in_space).toBeUndefined();
+    expect(transcriptLines([line], [keeper], keeper)).toContain("(asked for approval: Run the deploy?; your person said yes)");
   });
 
   test("in a room, a note to another member is said in the room for everyone, never privately", async () => {
@@ -3025,12 +2846,12 @@ describe("stop", () => {
     expect(getMessage(message.id)!.replyTo).toBeNull();
   });
 
-  test("a bot's line says which message it answered, so the web can tell a guest answer apart", async () => {
+  test("a bot's line says which message it answered", async () => {
     const { createBot } = await import("../src/data/bots.ts");
     const { botInputSchema } = await import("@gond/shared");
     const { getMessage, listMessages, postMessage } = await import("../src/data/threads.ts");
     const bot = createBot(botInputSchema.parse({ name: "Answerer" }), "u-answering");
-    const asked = postMessage({ threadId: bot.threadId, author: "remote:abcdef012345:sam", body: "Pickup or delivery?", answered: true });
+    const asked = postMessage({ threadId: bot.threadId, author: "you", body: "Pickup or delivery?", answered: true });
     const said = postMessage({ threadId: bot.threadId, author: bot.id, body: "::choices[Pickup | Delivery]", answered: true, answering: asked.id });
     expect(getMessage(said.id)!.answering).toBe(asked.id);
     expect(listMessages(bot.threadId).find((m) => m.id === said.id)!.answering).toBe(asked.id);
@@ -5685,8 +5506,7 @@ describe("usage", () => {
     const { usageRoutes } = await import("../src/routes/usage.ts");
     const { reportUsage, sharingState } = await import("../src/usage-sharing.ts");
     const { requireAdmin } = await import("../src/access.ts");
-    const { createRelayServer } = await import("../../../packages/relay/src/server.ts");
-    const { Database } = await import("bun:sqlite");
+    const { parseUsage, signedUsage, verifySignature } = await import("@gond/relay/protocol");
     const { Hono } = await import("hono");
     await seedUsers(["u-share-admin", "admin"], ["u-share-user", "user"]);
     const routes = (who: string) => {
@@ -5699,11 +5519,25 @@ describe("usage", () => {
       return app.route("/api", usageRoutes());
     };
     const put = (who: string, body: unknown) => routes(who).request("/api/usage/sharing", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-    const relay = createRelayServer({ port: 0, hostname: "127.0.0.1", database: new Database(":memory:", { strict: true }) });
+    const reports: NonNullable<ReturnType<typeof parseUsage>>[] = [];
+    const server = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      async fetch(request) {
+        if (new URL(request.url).pathname !== "/v1/usage" || request.method !== "POST") return new Response("no", { status: 404 });
+        const parsed = parseUsage(await request.json());
+        if (!parsed) return Response.json({ error: "bad" }, { status: 400 });
+        const { sig, ...unsigned } = parsed;
+        if (!(await verifySignature(parsed.from, sig, signedUsage(unsigned)))) return Response.json({ error: "sig" }, { status: 401 });
+        reports.push(parsed);
+        return Response.json({ ok: true });
+      },
+    });
+    const url = `http://127.0.0.1:${server.port}`;
     try {
       recordUsage({ userId: "u-share-user", botId: null, threadId: null, source: "claude", model: "m", tokens: { input: 900, output: 0, cacheRead: 0, cacheWrite: 0 }, cost: null });
       expect(sharingState()).toEqual({ on: false, since: null, tokens: 0 });
-      expect(await reportUsage(relay.url)).toBe(false);
+      expect(await reportUsage(url)).toBe(false);
       expect((await put("u-share-user", { on: true })).status).toBe(403);
       expect((await put("u-share-admin", { on: "yes" })).status).toBe(400);
 
@@ -5712,14 +5546,39 @@ describe("usage", () => {
       recordUsage({ userId: "u-share-user", botId: null, threadId: null, source: "claude", model: "m", tokens: { input: 100, output: 20, cacheRead: 5, cacheWrite: 0 }, cost: null });
       recordUsage({ userId: "u-share-admin", botId: null, threadId: null, source: "openai", model: "m", tokens: { input: 50, output: 0, cacheRead: 0, cacheWrite: 0 }, cost: null });
       expect(sharingState().tokens).toBe(175);
-      expect(await reportUsage(relay.url)).toBe(true);
-      expect(relay.usage.totals()).toMatchObject({ tokens: 175, gonds: 1 });
+      expect(await reportUsage(url)).toBe(true);
+      expect(reports).toHaveLength(1);
+      expect(reports[0]).toMatchObject({ v: 1, tokens: 175 });
 
       expect((await (await put("u-share-admin", { on: false })).json()) as unknown).toEqual({ on: false, since: null, tokens: 0 });
-      expect(await reportUsage(relay.url)).toBe(false);
+      expect(await reportUsage(url)).toBe(false);
       expect((await routes("u-share-user").request("/api/usage/sharing")).status).toBe(403);
     } finally {
-      relay.stop();
+      server.stop(true);
+    }
+  });
+
+  test("server identity preserves a migrated legacy key blob with extra box fields", async () => {
+    const { createIdentity } = await import("@gond/relay/client");
+    const { signedUsage, verifySignature } = await import("@gond/relay/protocol");
+    const { ensureDatabase } = await import("../src/db/init.ts");
+    const { encryptSecret } = await import("../src/secrets.ts");
+    const { signUsage } = await import("../src/server-identity.ts");
+    const db = ensureDatabase();
+    const prev = db.query("SELECT key, identity, updated_at FROM gond_server_identity WHERE id = 1").get() as { key: string; identity: string; updated_at: string } | null;
+    const legacy = { ...(await createIdentity()), box: "b".repeat(43), boxSecret: "s".repeat(43) };
+    const holder = globalThis as typeof globalThis & { __gondServerIdentity?: unknown };
+    try {
+      holder.__gondServerIdentity = undefined;
+      db.query("INSERT OR REPLACE INTO gond_server_identity (id, key, identity, updated_at) VALUES (1, ?, ?, ?)").run(legacy.key, encryptSecret(JSON.stringify(legacy)), "2026-11-25T00:00:00Z");
+      const signed = await signUsage({ epoch: "ep_legacy01", tokens: 42 });
+      expect(signed.from).toBe(legacy.key);
+      const { sig, ...unsigned } = signed;
+      expect(await verifySignature(signed.from, sig, signedUsage(unsigned))).toBe(true);
+    } finally {
+      holder.__gondServerIdentity = undefined;
+      if (prev) db.query("INSERT OR REPLACE INTO gond_server_identity (id, key, identity, updated_at) VALUES (1, ?, ?, ?)").run(prev.key, prev.identity, prev.updated_at);
+      else db.query("DELETE FROM gond_server_identity WHERE id = 1").run();
     }
   });
 
@@ -5952,7 +5811,6 @@ describe("profiles", () => {
     postMessage({ threadId: bot.threadId, author: "you", body: "here", attachments: [file] });
     postMessage({ threadId: room.id, author: bot.id, body: "done", answered: true });
     createApproval({ botId: bot.id, threadId: bot.threadId, tool: "Bash", summary: "ls", input: {} });
-    db.query("INSERT INTO gond_peer_checks (user_id, peer_key, checked_at) VALUES (?, ?, ?)").run(work.id, "k".repeat(64), "2026-01-01T00:00:00Z");
     const { setCheckIns } = await import("../src/data/check-ins.ts");
     setCheckIns(work.id, { everyHours: 4 });
     const { saveDetail } = await import("../src/data/details.ts");
@@ -6188,8 +6046,7 @@ describe("failed turns, Try again, and taking lines back", () => {
   test("a line no bot has read can be unsent or edited, and nothing else can", async () => {
     await seedUsers(["u-unsend", "user"], ["u-unsend-other", "user"]);
     const { createBot } = await import("../src/data/bots.ts");
-    const { createRoom, getAttachment, getMessage, listMessages, postMessage, searchMessages, storeAttachment, markAnswered } = await import("../src/data/threads.ts");
-    const { createSpace } = await import("../src/data/spaces.ts");
+    const { getAttachment, getMessage, postMessage, searchMessages, storeAttachment, markAnswered } = await import("../src/data/threads.ts");
     const { ensureDatabase } = await import("../src/db/init.ts");
     const { botInputSchema } = await import("@gond/shared");
     const bot = createBot(botInputSchema.parse({ name: "Unsend Bot" }), "u-unsend");
@@ -6235,17 +6092,6 @@ describe("failed turns, Try again, and taking lines back", () => {
     const said = postMessage({ threadId: bot.threadId, author: bot.id, body: "On it.", answered: true });
     expect(getMessage(said.id)!.waiting).toBe(false);
     expect((await unsend(said)).status).toBe(404);
-
-    const other = createBot(botInputSchema.parse({ name: "Unsend Two" }), "u-unsend");
-    const room = createRoom("Trip", [bot.id, other.id], "u-unsend");
-    createSpace({ threadId: room.id, userId: "u-unsend", hostKey: "u".repeat(64), status: "active" });
-    const crossed = postMessage({ threadId: room.id, author: "you", body: "Hi all" });
-    const spaced = await unsend(crossed);
-    expect(spaced.status).toBe(409);
-    expect(await spaced.json()).toEqual({ error: "Lines in a space can't be taken back" });
-    expect((await edit(crossed, "Hello all")).status).toBe(409);
-    markAnswered(crossed.id);
-    expect(listMessages(room.id).some((m) => m.id === crossed.id)).toBe(true);
   });
 
   test("any file can be sent: its type comes from the browser, the name, or it's bytes to download", async () => {
@@ -6354,26 +6200,6 @@ describe("notices per device", () => {
     expect(noticeWanted(notices, null)).toBe(false);
     expect(readDeviceNotices({ mutedBots: ["../x"], other: true })).toBeNull();
     expect(readDeviceNotices({ mutedBots: ["b-1", "b-1"], other: true })).toEqual({ mutedBots: ["b-1"], other: true });
-  });
-});
-
-describe("always allow in a space", () => {
-  test("it is a level of its own, never a default, and someone new puts it back to asking", async () => {
-    await seedUsers(["u-aa", "user"]);
-    const { createBot } = await import("../src/data/bots.ts");
-    const { createRoom } = await import("../src/data/threads.ts");
-    const { createSpace, endAlwaysAllow, ruleOf, setRule, setSpaceDefaults, spaceDefaults } = await import("../src/data/spaces.ts");
-    const { botInputSchema } = await import("@gond/shared");
-    const bot = createBot(botInputSchema.parse({ name: "Open" }), "u-aa");
-    const other = createBot(botInputSchema.parse({ name: "Other" }), "u-aa");
-    const room = createRoom("Weekend", [bot.id, other.id], "u-aa");
-    const space = createSpace({ threadId: room.id, userId: "u-aa", hostKey: "h".repeat(43), status: "active" });
-    setRule(space.id, { botId: bot.id, level: "full", memory: false, peopleWake: true, botsWake: false, relay: false });
-    expect(ruleOf(space.id, bot.id, "u-aa").level).toBe("full");
-    expect(endAlwaysAllow(space.id)).toEqual([bot.id]);
-    expect(ruleOf(space.id, bot.id, "u-aa").level).toBe("act");
-    setSpaceDefaults("u-aa", { level: "full", bots: null });
-    expect(spaceDefaults("u-aa").level).toBe("act");
   });
 });
 
@@ -6649,7 +6475,7 @@ describe("phone push", () => {
   test("a card goes to the phone with its own buttons, is answered from the lock screen by the phone's signature, and then leaves the phone", async () => {
     await seedUsers(["u-phone-card", "user"], ["u-phone-other", "user"]);
     const { createBot } = await import("../src/data/bots.ts");
-    const { askOwner } = await import("../src/approvals.ts");
+    const { askApproval } = await import("../src/approvals.ts");
     const { createApproval, getApproval } = await import("../src/data/approvals.ts");
     const { pushAnswerRoutes } = await import("../src/routes/push.ts");
     const { answerSignature } = await import("../src/phone-push.ts");
@@ -6661,7 +6487,7 @@ describe("phone push", () => {
     try {
       const bot = createBot(botInputSchema.parse({ name: "Errand" }), "u-phone-card");
       const device = await phone("u-phone-card", "fcm:token-card-000000001", "ios");
-      const asked = askOwner({ bot, threadId: bot.threadId, summary: "Place this order?", input: { summary: "Place this order?", allow: "Place order", deny: "Not yet" } });
+      const asked = askApproval({ bot, threadId: bot.threadId, tool: "ask_approval", summary: "Place this order?", input: { summary: "Place this order?", allow: "Place order", deny: "Not yet" } });
       await until(() => relay.pushes.length === 1);
       expect(relay.pushes[0]!.platform).toBe("ios");
       expect(relay.pushes[0]!.collapse).toStartWith("card-");

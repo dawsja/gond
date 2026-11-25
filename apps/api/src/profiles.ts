@@ -11,7 +11,6 @@ import { avatarUrl, deleteUserData } from "./data/users.ts";
 import { emit } from "./events.ts";
 import { signOutGrok } from "./grok.ts";
 import { stopAll } from "./responder.ts";
-import { leaveAllSpaces } from "./spaces.ts";
 
 const ICON_ERROR = "Pick one of the icons on offer";
 
@@ -78,7 +77,6 @@ export async function removePerson(personId: string): Promise<void> {
 
 async function wipe(id: string): Promise<void> {
   await stopAll(id).catch(() => undefined);
-  leaveAllSpaces(id);
   await signOutGrok(id).catch(() => false);
   await signOutChatGpt(id).catch(() => false);
   for (const connection of listConnections(id)) await disconnect(id, connection.toolkit).catch(() => false);

@@ -7,7 +7,7 @@ import { isPhoneShell, isWebViewShell, nativeShell, shellBridge, type GondMac } 
 
 const bot = (id: string, extra: Partial<Bot> = {}) => ({ id, name: id, title: `${id}'s job`, color: "#189c47", shape: "cog", expression: "smile", primary: false, pinned: false, hidden: false, ...extra }) as Bot;
 const chat = (id: string, extra: Partial<ThreadRow> = {}) =>
-  ({ id, kind: "bot", botId: id, name: id, members: [], pinned: false, lastMessage: { author: "you", body: "**hi**", at: "2026-11-20T09:00:00Z" }, unread: 0, unreadTeam: false, noticed: null, space: null, createdAt: "2026-11-01T00:00:00Z", ...extra }) as ThreadRow;
+  ({ id, kind: "bot", botId: id, name: id, members: [], pinned: false, lastMessage: { author: "you", body: "**hi**", at: "2026-11-20T09:00:00Z" }, unread: 0, unreadTeam: false, noticed: null, createdAt: "2026-11-01T00:00:00Z", ...extra }) as ThreadRow;
 
 describe("the Mac app's sidebar", () => {
   const bots = [bot("ada", { pinned: true }), bot("bo"), bot("cy"), bot("dee")];
@@ -48,16 +48,15 @@ describe("the Mac app's sidebar", () => {
 
   test("a face changes key only when what it draws does", () => {
     const ada = bots[0]!;
-    const key = faceOf(chat("ada"), ada, [], "#16181d").key;
-    expect(faceOf(chat("ada"), { ...ada, name: "Ada Lovelace", title: "Analyst" }, [], "#ffffff").key).toBe(key);
-    expect(faceOf(chat("ada"), { ...ada, color: "#c2410c" }, [], "#16181d").key).not.toBe(key);
+    const key = faceOf(ada, [], "#16181d").key;
+    expect(faceOf({ ...ada, name: "Ada Lovelace", title: "Analyst" }, [], "#ffffff").key).toBe(key);
+    expect(faceOf({ ...ada, color: "#c2410c" }, [], "#16181d").key).not.toBe(key);
     const two = [bots[1]!, bots[2]!];
-    const roomKey = faceOf(room, undefined, two, "#16181d").key;
-    expect(faceOf(room, undefined, two, "#ffffff").key).toBe(roomKey);
-    expect(faceOf(room, undefined, [...two, bots[3]!], "#16181d").key).not.toBe(roomKey);
+    const roomKey = faceOf(undefined, two, "#16181d").key;
+    expect(faceOf(undefined, two, "#ffffff").key).toBe(roomKey);
+    expect(faceOf(undefined, [...two, bots[3]!], "#16181d").key).not.toBe(roomKey);
     // A third bot adds the +1 chip, painted in the theme.
-    expect(faceOf(room, undefined, [...two, bots[3]!], "#ffffff").key).not.toBe(faceOf(room, undefined, [...two, bots[3]!], "#16181d").key);
-    expect(faceOf({ ...room, space: {} as ThreadRow["space"] }, undefined, two, "#16181d").key).not.toBe(roomKey);
+    expect(faceOf(undefined, [...two, bots[3]!], "#ffffff").key).not.toBe(faceOf(undefined, [...two, bots[3]!], "#16181d").key);
     const { faces, rows: listed, pinned } = lists();
     expect(new Set(faces.map((face) => face.key))).toEqual(new Set([...pinned, ...listed].map((item) => item.face)));
   });

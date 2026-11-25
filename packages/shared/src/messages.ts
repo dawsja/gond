@@ -1,5 +1,3 @@
-import type { ThreadSpace } from "./spaces.ts";
-
 export const THREAD_KINDS = ["bot", "room"] as const;
 export type ThreadKind = (typeof THREAD_KINDS)[number];
 
@@ -23,7 +21,6 @@ export type Thread = {
   unreadTeam: boolean;
   /** What a watch's latest run said, while the person hasn't read it yet. */
   noticed: { watch: string; body: string; at: string } | null;
-  space: ThreadSpace | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -87,7 +84,6 @@ export type Message = {
   reactions: Reaction[];
   /** The message this one answers, quoted: who wrote it and its first words, or its first file's name. */
   replyTo: Quote | null;
-  /** For a bot's line, the message it answered, which in a space may be someone's on another Gond. */
   answering?: string | null;
   /**
    * A person's line no bot has read yet (not claimed, answered or steered into a turn): it can still be

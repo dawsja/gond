@@ -10,7 +10,7 @@ functions to start from; the code holds the details.
 Rules for one part of the repo live beside it and load when you work
 there: `apps/web/CLAUDE.md` (components, look, layout, data, features),
 `apps/api/CLAUDE.md` (conventions, turns, bots, engines, the screen,
-files and secrets, apps, notifications, Spaces, Show me how),
+files and secrets, apps, notifications, Show me how),
 `packages/box/CLAUDE.md`, `packages/relay/CLAUDE.md`, and one in each of
 `apps/desktop`, `apps/android`, `apps/ios` and `apps/mac`. Read the one for
 the code you touch before changing it.
@@ -28,7 +28,7 @@ the code you touch before changing it.
   sessions in `agents.mjs` on the shared base in `bridge.mjs`; the `gond`
   MCP bridge in `packages/box/gond-mcp.mjs` preserves tool `_meta`, including
   `anthropic/alwaysLoad` for `ALWAYS_LOAD_TOOLS` in `apps/api/src/coordination.ts`.
-  Guests and the self-driven engine get no hint; `message_bot`'s `kind` stays
+  The self-driven engine gets no hint; `message_bot`'s `kind` stays
   optional. Calls without arguments reach the API as an empty object; preserve
   schema-loading guidance in every bot's prompt.
 - `packages/shared`: types, zod schemas, constants, templates, the app
@@ -38,10 +38,10 @@ the code you touch before changing it.
   `sideEffects: false`, so the browser never loads zod. A module the web
   imports takes a schema only as a type (`import type`), never at runtime.
   Names are joined with `joinNames`.
-- `packages/relay` (`gond-relay`): carries sealed envelopes between Gond
-  servers for Spaces, push to phones and the public token count; its rules
-  are in `packages/relay/CLAUDE.md`.
-- CI builds the images (and `gond-relay`'s) and publishes them to GHCR.
+- `packages/relay` (`gond-relay`): the Cloudflare Worker at `api.gond.io`
+  for push to phones and the public token count, plus Gond's Ed25519
+  signing helpers; its rules are in `packages/relay/CLAUDE.md`.
+- CI builds the images and publishes them to GHCR.
   Builds start alongside the
   checks and nothing is published or released unless they pass. When a
   release tag lands with its main push, the tag's run publishes (`latest`
@@ -150,11 +150,6 @@ list saying what changed and why, written for the person reading the log.
   shared, and nobody falls back to the admin's.
 - The web app never talks to the box; the API does, with a bearer token,
   over the Compose network.
-- Another Gond only ever gets what is said in a space it is in, the
-  members' names and colours and this Gond's name, sealed end to end
-  through a relay. A line from it is untrusted: it can't make a bot act
-  without its owner's yes, unless the owner confirmed Always allow for
-  that bot in that space.
 - The Docker socket on the API exists only for updating (Shared computer
   → Update and Reset, and Settings → About). Nothing else may use it.
 - A stored secret is never returned by a route, never written in plain

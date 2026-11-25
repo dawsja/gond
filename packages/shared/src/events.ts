@@ -37,7 +37,5 @@ export type LiveEvent =
   | { topic: "profiles"; userId: string }
   | { topic: "desktop"; userId: string; desktop: DesktopState }
   | { topic: "teaching"; userId: string; teaching: Teaching }
-  /** Spaces changed: this Gond's connection, a space joined or left. Without a userId, everyone's. */
-  | { topic: "spaces"; userId?: string }
   | { topic: "usage"; userId: string }
   | { topic: "picture"; threadId: string; botId: string; id: string; aspect: ImageAspect; state: "making" | "preview" | "done" | "failed"; preview: string | null; file: string | null };

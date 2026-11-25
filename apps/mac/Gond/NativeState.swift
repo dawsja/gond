@@ -87,7 +87,6 @@ struct ChromeState: Decodable, Equatable {
     let faces: [String]
     let more: Int
     let primary: Bool
-    let space: Bool
     let tint: String
     let menu: [[NativeMenuItem]]
     let covered: Bool
@@ -102,7 +101,7 @@ struct ChromeState: Decodable, Equatable {
 
 extension ChromeState {
     private enum Keys: String, CodingKey {
-        case thread, title, subtitle, working, faces, more, primary, space, tint, menu, covered, mentions, files, replying, jump, screens, column, composer
+        case thread, title, subtitle, working, faces, more, primary, tint, menu, covered, mentions, files, replying, jump, screens, column, composer
     }
 
     init(from decoder: Decoder) throws {
@@ -115,7 +114,6 @@ extension ChromeState {
         faces = c.value(.faces, [String]())
         more = c.value(.more, 0)
         primary = c.value(.primary, false)
-        space = c.value(.space, false)
         tint = c.value(.tint, "")
         menu = c.value(.menu, [[NativeMenuItem]]())
         covered = c.value(.covered, false)

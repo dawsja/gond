@@ -34,7 +34,6 @@ type PushPayload = {
 
   tag: string;
   threadId: string;
-  /** The bot it is about, so each device can leave out the bots it muted; none for an export or a person in a space. */
   botId?: string | null;
   /** A card a phone can answer from its lock screen, its buttons named as on the card. */
   card?: { id: string; allow: string; deny: string };

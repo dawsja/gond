@@ -42,10 +42,10 @@ export function resultAsText(value: unknown): string {
   return JSON.stringify(value ?? "");
 }
 
-export function agentToolsFor(tools: Record<string, DriverTool>, engine: Engine, guest?: "talk" | "look"): AgentTool[] {
+export function agentToolsFor(tools: Record<string, DriverTool>, engine: Engine): AgentTool[] {
   return Object.entries(tools).map(([name, tool]) => ({
     name, description: tool.description, inputSchema: tool.inputSchema ?? { type: "object", properties: {} },
-    ...(engine === "claude" && !guest && ALWAYS_LOAD_TOOLS.has(name) ? { _meta: { "anthropic/alwaysLoad": true as const } } : {}),
+    ...(engine === "claude" && ALWAYS_LOAD_TOOLS.has(name) ? { _meta: { "anthropic/alwaysLoad": true as const } } : {}),
   }));
 }
 
@@ -83,7 +83,6 @@ type CliTurn = {
   home?: string | null;
   timeoutMs: number;
   signal?: AbortSignal;
-  guest?: "talk" | "look";
 
   onLog?: (line: string) => void;
 
@@ -202,10 +201,9 @@ export async function cliTurn(turn: CliTurn): Promise<CliTurnResult> {
       ...(turn.followUp ? { followUp: turn.followUp } : {}),
       ...(turn.session ? { session: turn.session } : {}),
       ...(turn.attachments?.length ? { attachments: turn.attachments } : {}),
-      tools: agentToolsFor(turn.tools, turn.engine, turn.guest),
+      tools: agentToolsFor(turn.tools, turn.engine),
       ...(turn.mcpServers?.length ? { mcpServers: turn.mcpServers } : {}),
       timeoutMs: turn.timeoutMs,
-      ...(turn.guest ? { guest: turn.guest } : {}),
     },
     {
       signal: turn.signal,

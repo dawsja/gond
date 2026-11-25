@@ -1,5 +1,5 @@
 import type { UserRole } from "@gond/shared";
-import { Bell, BookUser, Database, Gauge, Globe, Layers, Link2, Blocks, BrainCircuit, Info, KeyRound, LogIn, MessageCircleHeart, Monitor, Palette, Server, Sparkles, UserRound } from "lucide-react";
+import { Bell, BookUser, Database, Gauge, Layers, Blocks, BrainCircuit, Info, KeyRound, LogIn, MessageCircleHeart, Monitor, Palette, Server, Sparkles, UserRound } from "lucide-react";
 
 const SETTINGS_GROUPS = [
   { id: "you", label: "You" },
@@ -23,10 +23,8 @@ export const SETTINGS_SECTIONS = [
   { id: "skills", group: "bots", label: "Skills", blurb: "A skill says how to do a job. All your bots can use it.", icon: Sparkles, symbol: "sparkles", admin: false },
   { id: "apps", group: "bots", label: "Apps", blurb: "Connect Gmail, Slack and other apps to your bots, or add your own MCP servers.", icon: Blocks, symbol: "square.grid.2x2", admin: false },
   { id: "secrets", group: "bots", label: "Secrets", blurb: "Change or forget the cards, sign-ins and keys you gave your bots. Gond never shows their values.", icon: KeyRound, symbol: "key", admin: false },
-  { id: "spaces", group: "bots", label: "Spaces", blurb: "Choose which bots may join rooms with people on other Gonds and what they may do there.", icon: Link2, symbol: "link", admin: false },
   { id: "shared-computer", group: "server", label: "Shared computer", blurb: "Check on the computer everyone's bots run on, update it or reset it.", icon: Server, symbol: "server.rack", admin: true },
   { id: "auth", group: "server", label: "Authentication", blurb: "Set up your identity provider and see who has signed in.", icon: LogIn, symbol: "person.badge.key", admin: true },
-  { id: "other-gonds", group: "server", label: "Other Gonds", blurb: "Turn on Spaces, name this Gond, pick its relay and see the Gonds it knows.", icon: Globe, symbol: "globe", admin: true },
   { id: "data", group: "server", label: "Data & backups", blurb: "Back up the database and choose how long old files and usage history stay.", icon: Database, symbol: "cylinder.split.1x2", admin: true },
   { id: "about", group: null, label: "About", blurb: "Check the version and updates, see your server and read where Gond comes from.", icon: Info, symbol: "info.circle", admin: false },
 ] as const;

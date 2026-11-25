@@ -1,8 +1,7 @@
 "use client";
 
-import { handleOf, joinNames, plainMarkdown, REACTIONS, roomTargets, type Approval, type ApprovalAnswer, type Bot, type ChatAttachment, type Message, type ReactionEmoji, type Routine, type Thread, type ThreadSpace } from "@gond/shared";
-import { inertChoices, remoteMember, spaceMentionables, spaceSubtitle } from "@/lib/spaces";
-import { ChevronLeft, Copy, CornerUpLeft, Download, Eye, EllipsisVertical, File as FileIcon, FileArchive, FileHeadphone, FilePlay, FileSpreadsheet, FileText, FileX, ImageOff, Lock, Monitor, PanelRight, Paperclip, Pencil, RotateCcw, TextSelect, Undo2 } from "lucide-react";
+import { handleOf, joinNames, plainMarkdown, REACTIONS, roomTargets, type Approval, type ApprovalAnswer, type Bot, type ChatAttachment, type Message, type ReactionEmoji, type Routine, type Thread } from "@gond/shared";
+import { ChevronLeft, Copy, CornerUpLeft, Download, Eye, EllipsisVertical, File as FileIcon, FileArchive, FileHeadphone, FilePlay, FileSpreadsheet, FileText, FileX, ImageOff, Monitor, PanelRight, Paperclip, Pencil, RotateCcw, TextSelect, Undo2 } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -217,15 +216,14 @@ function showsTime(event: ReactMouseEvent): boolean {
   return !window.getSelection()?.toString();
 }
 
-function nameOf(author: string, bots: Bot[], space?: ThreadSpace | null): string {
+function nameOf(author: string, bots: Bot[]): string {
   if (author === "you") return "You";
-  return remoteMember(space, author)?.name ?? bots.find((b) => b.id === author)?.name ?? "A bot";
+  return bots.find((b) => b.id === author)?.name ?? "A bot";
 }
 
-function colorOf(author: string, bots: Bot[], space?: ThreadSpace | null): string | null {
+function colorOf(author: string, bots: Bot[]): string | null {
   if (author === "you") return null;
-  const remote = remoteMember(space, author);
-  return remote ? remote.color : (bots.find((b) => b.id === author)?.color ?? null);
+  return bots.find((b) => b.id === author)?.color ?? null;
 }
 
 /** A file shown as a picture, on its own outside the bubble: anything an image but an SVG, which could run script, while it's still kept. */
@@ -242,7 +240,7 @@ function quoteText(message: Message): string {
   return plainMarkdown(message.body).slice(0, 280) || message.attachments[0]?.name || "";
 }
 
-const Line = memo(function Line({ message, threadId, bots, other, bot, approval, isRoom, space, editing, latestHandOff, stops, touch, picks, closedBy, inert, sentTo, noticed, reveal, highlighted, unread, onPick, onView, onViewPdf, onDecide, onOpenExchange, onEdit, onUnsend, onSelectText, onReacted, onReply, onJump }: { message: Message; threadId: string; bots: Bot[]; other: ThreadRow | undefined; bot: Bot | null; approval: Approval | null | undefined; isRoom: boolean; space: ThreadSpace | null; editing: boolean; latestHandOff: boolean; stops: boolean; touch: boolean; picks: string; closedBy: string | null; inert: boolean; sentTo: string | undefined; noticed: Noticed | undefined; reveal: PictureReveal | undefined; highlighted: boolean; unread: string | undefined; onPick: (option: string, from: Message) => Promise<void>; onView: (attachmentId: string) => void; onViewPdf: (file: ViewerPdf) => void; onDecide: (id: string, answer: ApprovalAnswer) => Promise<void>; onOpenExchange: (withThreadId: string) => void; onEdit: (message: Message | null, text?: string) => Promise<boolean>; onUnsend: (message: Message) => void; onSelectText: (text: string) => void; onReacted: (message: Message) => void; onReply: (message: Message) => void; onJump: (id: string) => void }) {
+const Line = memo(function Line({ message, threadId, bots, other, bot, approval, isRoom, editing, latestHandOff, stops, touch, picks, closedBy, sentTo, noticed, reveal, highlighted, unread, onPick, onView, onViewPdf, onDecide, onOpenExchange, onEdit, onUnsend, onSelectText, onReacted, onReply, onJump }: { message: Message; threadId: string; bots: Bot[]; other: ThreadRow | undefined; bot: Bot | null; approval: Approval | null | undefined; isRoom: boolean; editing: boolean; latestHandOff: boolean; stops: boolean; touch: boolean; picks: string; closedBy: string | null; sentTo: string | undefined; noticed: Noticed | undefined; reveal: PictureReveal | undefined; highlighted: boolean; unread: string | undefined; onPick: (option: string, from: Message) => Promise<void>; onView: (attachmentId: string) => void; onViewPdf: (file: ViewerPdf) => void; onDecide: (id: string, answer: ApprovalAnswer) => Promise<void>; onOpenExchange: (withThreadId: string) => void; onEdit: (message: Message | null, text?: string) => Promise<boolean>; onUnsend: (message: Message) => void; onSelectText: (text: string) => void; onReacted: (message: Message) => void; onReply: (message: Message) => void; onJump: (id: string) => void }) {
   const mine = message.author === "you";
   const bubble = useRef<HTMLDivElement>(null);
   const nativeApp = useNativeApp();
@@ -254,10 +252,9 @@ const Line = memo(function Line({ message, threadId, bots, other, bot, approval,
   const [swipe, setSwipe] = useState(0);
   const replyable = message.kind === "message" && !message.fromThreadId && message.author !== "routine" && message.author !== "system";
   useSwipeToReply(bubble, touch && replyable, setSwipe, () => onReply(message));
-  const choices = useMemo(() => (mine || inert ? {} : { pick: (option: string) => onPick(option, message), answer: { picks: splitPicks(picks), closedBy } }), [mine, inert, onPick, message, picks, closedBy]);
+  const choices = useMemo(() => (mine ? {} : { pick: (option: string) => onPick(option, message), answer: { picks: splitPicks(picks), closedBy } }), [mine, onPick, message, picks, closedBy]);
 
   const author = mine ? null : bots.find((b) => b.id === message.author) ?? null;
-  const remote = remoteMember(space, message.author);
   if (message.kind === "prompt") return null;
   if (message.commerceId) return <MessageRow align="start"><MessageContent><ShoppingCard message={message} bot={author ?? bot ?? undefined} /></MessageContent></MessageRow>;
   if (message.kind === "message" && message.fromThreadId && author) return <Handoff message={message} threadId={threadId} bots={bots} other={other} onOpen={onOpenExchange} />;
@@ -369,16 +366,7 @@ const Line = memo(function Line({ message, threadId, bots, other, bot, approval,
     <MessageRow align={mine ? "end" : "start"}>
       <MessageContent className="gap-1">
         {showName ? (
-          <MessageHeader>
-            {remote ? (
-              <>
-                {remote.name}
-                <span className="ml-1.5 rounded-full border border-primary-edge px-1.5 text-[10.5px] font-semibold text-muted-foreground">{remote.gondName}</span>
-              </>
-            ) : (
-              (author?.name ?? (message.author === "routine" ? "Routine" : "Gond"))
-            )}
-          </MessageHeader>
+          <MessageHeader>{author?.name ?? (message.author === "routine" ? "Routine" : "Gond")}</MessageHeader>
         ) : null}
 
         {message.checkIn ? (
@@ -433,7 +421,7 @@ const Line = memo(function Line({ message, threadId, bots, other, bot, approval,
           ) : null}
           {hasBubble ? (
           <BubbleContent className={cn("rounded-2xl px-3.5 py-2", RING, highlighted && RINGED)}>
-            {message.replyTo ? <QuoteInBubble quote={message.replyTo} name={nameOf(message.replyTo.author, bots, space)} color={colorOf(message.replyTo.author, bots, space)} onJump={onJump} /> : null}
+            {message.replyTo ? <QuoteInBubble quote={message.replyTo} name={nameOf(message.replyTo.author, bots)} color={colorOf(message.replyTo.author, bots)} onJump={onJump} /> : null}
             {message.body ? (
               <ChoicesContext.Provider value={choices}>
                 <Markdown text={message.body} className="flex flex-col gap-2 text-[14px] leading-6" />
@@ -549,8 +537,6 @@ type HistoryProps = {
   approvals: ReadonlyMap<string, Approval | null>;
   bot: Bot | null;
   isRoom: boolean;
-  space: ThreadSpace | null;
-  inSpace: boolean;
   roomBots: Bot[];
   answering: string[] | undefined;
   editing: string | null;
@@ -584,9 +570,8 @@ function noticedOnce(noticed: Noticed | undefined): Noticed | undefined {
 }
 
 /** The conversation's lines, each drawn only when what it shows changed; typing and streaming never reach it. */
-const MessageHistory = memo(function MessageHistory({ messages, threadId, bots, threads, approvals, bot, isRoom, space, inSpace, roomBots, answering, editing, touch, reveals, flash, unread, watches, ...handlers }: HistoryProps) {
+const MessageHistory = memo(function MessageHistory({ messages, threadId, bots, threads, approvals, bot, isRoom, roomBots, answering, editing, touch, reveals, flash, unread, watches, ...handlers }: HistoryProps) {
   const answers = useMemo(() => choiceAnswers(messages), [messages]);
-  const inert = useMemo(() => inertChoices(messages, inSpace), [messages, inSpace]);
   const runs = useMemo(() => noticedRuns(messages), [messages]);
   const handOff = useMemo(() => messages.findLast((m) => m.kind === "control") ?? null, [messages]);
   // Who a line in a room went to: the router's pick when it made one (`sentTo`), else read the way the API reads it (`roomTargets`).
@@ -612,14 +597,12 @@ const MessageHistory = memo(function MessageHistory({ messages, threadId, bots, 
             bot={bot}
             approval={m.approvalId ? approvals.get(m.approvalId) : undefined}
             isRoom={isRoom}
-            space={space}
             editing={editing === m.id}
             latestHandOff={m.id === handOff?.id}
             stops={Boolean(answering?.includes(m.id))}
             touch={touch}
             picks={joinPicks(answers.get(m.id))}
             closedBy={answers.get(m.id)?.closedBy ?? null}
-            inert={inert.has(m.id)}
             sentTo={sentTo.get(m.id)}
             noticed={noticedOnce(runs.get(m.id))}
             reveal={revealIn(m, reveals)}
@@ -806,8 +789,6 @@ export function Conversation({ threadId }: { threadId: string }) {
   const threadMap = useMemo(() => new Map(threads.map((t) => [t.id, t])), [threads]);
 
   const sentLines = useMemo(() => sentHistory(messages), [messages]);
-  // Until the conversation's details load, whether it is a space is unknown, so assume it is.
-  const inSpace = info ? Boolean(info.thread.space) : true;
   const pictures = useMemo(() => picturesIn(messages), [messages]);
 
   const replaceMessage = useCallback((changed: Pick<Message, "id" | "reactions">) => update((current) => current.map((m) => (m.id === changed.id ? { ...m, reactions: changed.reactions } : m))), [update]);
@@ -891,7 +872,6 @@ export function Conversation({ threadId }: { threadId: string }) {
   const thread = info?.thread ?? null;
   const isRoom = thread?.kind === "room";
   const bot = info?.bot ?? null;
-  const space = thread?.space ?? null;
   const answering = info?.answering;
   const watches = useWatches(bot?.id ?? null);
   const roomBots = useMemo(() => (isRoom && thread ? roomMembers(thread, bots) : []), [isRoom, thread, bots]);
@@ -905,19 +885,18 @@ export function Conversation({ threadId }: { threadId: string }) {
   const botName = bot?.name ?? null;
   const unreadNote = useMemo(() => {
     const map = new Map<string, string>();
-    if (space) return map;
     const taken = new Set(answering ?? []);
     for (const m of messages) if (m.answering && m.author !== "you") taken.add(m.answering);
     const note = notReadYet({ isRoom, botName, working: botWorking });
     for (const m of messages) if (m.author === "you" && m.waiting && !taken.has(m.id)) map.set(m.id, note);
     return map;
-  }, [messages, answering, isRoom, botName, botWorking, space]);
+  }, [messages, answering, isRoom, botName, botWorking]);
   const waitingOnYou = approvals.some((a) => a.threadId === threadId && a.status === "pending") || handOffOpen(handOff, desktop);
 
   const members = useMemo(() => (isRoom && thread ? thread.members.map((id) => bots.find((b) => b.id === id)).filter((b): b is Bot => Boolean(b)) : []), [isRoom, thread, bots]);
-  const chips = useMemo(() => (isRoom ? [...members.map(mentionOfBot), ...spaceMentionables(space)] : []), [isRoom, members, space]);
+  const chips = useMemo(() => (isRoom ? members.map(mentionOfBot) : []), [isRoom, members]);
   const mentionable = useMemo(() => (isRoom ? chips : bots.filter((b) => !b.hidden).map(mentionOfBot)), [isRoom, chips, bots]);
-  const reply = useMemo<Replying | null>(() => (replying ? { id: replying.id, name: nameOf(replying.author, bots, space), color: colorOf(replying.author, bots, space), text: quoteText(replying) } : null), [replying, bots, space]);
+  const reply = useMemo<Replying | null>(() => (replying ? { id: replying.id, name: nameOf(replying.author, bots), color: colorOf(replying.author, bots), text: quoteText(replying) } : null), [replying, bots]);
 
   function replyTo(message: Message) {
     setReplying(message);
@@ -1049,7 +1028,7 @@ export function Conversation({ threadId }: { threadId: string }) {
   }
 
   const busy = Object.keys(working).length > 0 || Boolean(info?.busy.length);
-  const roomLine = info ? (space ? spaceSubtitle(space) : `${info.thread.members.length} bots`) : "";
+  const roomLine = info ? `${info.thread.members.length} bots` : "";
   const row = threadMap.get(threadId);
   const driving = (bot ? [bot] : roomDrivers).filter((b) => desktop?.drivers.some((driver) => driver.threadId === threadId && driver.botId === b.id));
   const screenProps = { open: screen, onExpand: setScreen, onCollapse: () => setScreen(null) };
@@ -1063,7 +1042,7 @@ export function Conversation({ threadId }: { threadId: string }) {
   const rowBot = bot ?? (row?.botId ? bots.find((b) => b.id === row.botId) : undefined);
   const actions = row && (row.kind === "room" || rowBot) ? threadActions({ thread: row, bot: rowBot, bots, onOpen: openShellDialog, onAsk: setAsk, refresh }) : [];
   const status = boxUpdating ? " · the computer is updating, replies wait" : busy ? " · working" : waitingOnYou ? " · waiting on you" : watches.length ? ` · watching ${watches.length === 1 ? "1 thing" : `${watches.length} things`}` : "";
-  const hint = busy && !isRoom ? "Add to it, or say stop" : bot ? `Message ${bot.name}` : space ? "Message the space" : answersNext.length ? `${joinNames(answersNext)} ${answersNext.length > 1 ? "answer" : "answers"} next` : "Message the room";
+  const hint = busy && !isRoom ? "Add to it, or say stop" : bot ? `Message ${bot.name}` : answersNext.length ? `${joinNames(answersNext)} ${answersNext.length > 1 ? "answer" : "answers"} next` : "Message the room";
 
   return (
     <div className="flex min-h-0 flex-1">
@@ -1087,11 +1066,10 @@ export function Conversation({ threadId }: { threadId: string }) {
           </Button>
           <h1 className="sr-only">{info?.thread.name ?? "Conversation"}</h1>
           <Button size="xl" onClick={openPill} aria-label={bot ? `${bot.name}'s details` : "Room details"} data-native-avatar="" className="pointer-events-auto min-w-0 shrink gap-2 pl-1.5 text-left">
-            {bot ? <BotAvatar bot={bot} size={32} /> : <RoomAvatar bots={roomBots} size={32} space={Boolean(space)} />}
+            {bot ? <BotAvatar bot={bot} size={32} /> : <RoomAvatar bots={roomBots} size={32} />}
             <span className="flex min-w-0 flex-col">
               <span className="truncate text-[15px] leading-5 font-semibold">{info?.thread.name ?? "…"}</span>
               <span className={cn("truncate text-[11px] leading-3.5 font-normal opacity-70", (busy || boxUpdating) && "shimmer")}>
-                {space?.status === "active" ? <Lock className="mr-1 inline size-2.5 -translate-y-px" aria-label="End-to-end encrypted" /> : null}
                 {bot ? bot.title || "Teammate" : roomLine}
                 {status}
               </span>
@@ -1179,7 +1157,7 @@ export function Conversation({ threadId }: { threadId: string }) {
                   <MessageScrollerItem className="m-auto">
                     <Empty>
                       <EmptyHeader>
-                        <EmptyMedia>{bot ? <BotAvatar bot={bot} size={56} greet /> : <RoomAvatar bots={members} size={64} space={Boolean(space)} />}</EmptyMedia>
+                        <EmptyMedia>{bot ? <BotAvatar bot={bot} size={56} greet /> : <RoomAvatar bots={members} size={64} />}</EmptyMedia>
                         <EmptyTitle>{bot ? `${bot.name} is ready.` : "Say what needs doing."}</EmptyTitle>
                         <EmptyDescription>{bot ? "Give it a task with the outcome, the sources, what it must avoid, and what to return." : "Mention a bot with @ to address it. With nobody named, your primary bot answers."}</EmptyDescription>
                       </EmptyHeader>
@@ -1194,8 +1172,6 @@ export function Conversation({ threadId }: { threadId: string }) {
                   approvals={approvalMap}
                   bot={bot}
                   isRoom={isRoom}
-                  space={space}
-                  inSpace={inSpace}
                   roomBots={roomBots}
                   answering={answering}
                   editing={editing}
@@ -1232,7 +1208,6 @@ export function Conversation({ threadId }: { threadId: string }) {
           busy={busy}
           hint={hint}
           label={bot ? `Message ${bot.name}` : "Message the room"}
-          space={space}
           chips={chips}
           mentionable={mentionable}
           reply={reply}
@@ -1248,7 +1223,6 @@ export function Conversation({ threadId }: { threadId: string }) {
             jump: canJump,
             screens: driving.length && !screen ? driving.map((b) => ({ id: b.id, label: driving.length > 1 ? `${b.name}'s screen` : "Watching the screen" })) : [],
             primary: Boolean(bot?.primary),
-            space: Boolean(space),
             menu: actions,
           }}
           onCancelReply={onCancelReply}

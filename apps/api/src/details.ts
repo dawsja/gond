@@ -8,10 +8,8 @@ import { postMessage } from "./data/threads.ts";
 import type { DriverTool } from "./driver.ts";
 import { boundSite, holdLogin, pageHost, siteOnPage } from "./logins.ts";
 import { todayIn } from "./souls.ts";
-import { isSpace } from "./spaces.ts";
 
 const WHERE = "Settings → Your details";
-const NOT_IN_SPACES = "NOT done: the person's details stay out of spaces. If they want them used, they can ask you in your own chat.";
 const schema = (properties: Record<string, unknown>, required: string[] = []) => ({ type: "object", properties, required, additionalProperties: false });
 const text = (value: unknown, max: number) => (typeof value === "string" ? value.trim().slice(0, max) : "");
 
@@ -56,7 +54,7 @@ export function detailsTools(context: { bot: Bot; thread: Thread; signal?: Abort
     list_details: {
       description: `The person's details from ${WHERE}: the people in their household, IDs and documents, insurance and vehicles, as they saved them. Readable ones come with their values; private ones (an ID's number, an insurance member ID) only by name, for use_details.`,
       inputSchema: schema({}),
-      execute: async () => (isSpace(thread) ? NOT_IN_SPACES : detailsText(listDetails(bot.userId))),
+      execute: async () => detailsText(listDetails(bot.userId)),
     },
     save_details: {
       description: `Save something the person told you about their household to ${WHERE}, so every bot of theirs can use it: a name, a date of birth, an address, allergies, a school, a plate. The person says yes on a card first. Never a private number (an ID, a passport, an insurance or account number): tell them to add it there themselves, marked private.`,
@@ -70,7 +68,6 @@ export function detailsTools(context: { bot: Bot; thread: Thread; signal?: Abort
         ["record", "fields"],
       ),
       execute: async (input) => {
-        if (isSpace(thread)) return NOT_IN_SPACES;
         const record = text(input.record, DETAIL_LIMITS.label);
         if (!record) return "NOT saved: say whose or what these details are, like Maya.";
         const kind = isDetailKind(input.kind) ? input.kind : findDetail(bot.userId, record)?.kind ?? "other";
@@ -122,7 +119,6 @@ export function detailsTools(context: { bot: Bot; thread: Thread; signal?: Abort
         ["site", "details"],
       ),
       execute: async (input) => {
-        if (isSpace(thread)) return NOT_IN_SPACES;
         const site = text(input.site, 80);
         if (!site) return "NOT asked: name the site the form is on.";
         const wanted = wantedOf(input.details);

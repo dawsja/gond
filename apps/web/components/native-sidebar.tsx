@@ -10,7 +10,6 @@ import { useSignOut } from "@/components/profile-menu";
 import { openProfile } from "@/components/profiles";
 import type { ShellDialog } from "@/components/shell";
 import { useBotSearch } from "@/components/sidebar";
-import { useFederation } from "@/components/spaces/use-federation";
 import { useActivity, useStore } from "@/components/store";
 import { threadActions, ThreadConfirms, type Ask, type ThreadAction } from "@/components/thread-actions";
 import { WorthALookDialog, useWorthALookLine } from "@/components/worth-a-look";
@@ -24,7 +23,7 @@ const FACE_PX = 128;
 // Drawn at 64 so every face keeps its detail (glow, sheen) and a room's two read; painted at FACE_PX.
 const COPY_SIZE = 64;
 
-const NEW_SYMBOLS: Record<string, string> = { "new-bot": "plus.bubble", "new-room": "person.3", "new-space": "link", "join-space": "arrow.right.circle" };
+const NEW_SYMBOLS: Record<string, string> = { "new-bot": "plus.bubble", "new-room": "person.3" };
 
 const items = (groups: ThreadAction[][]): NativeMenuItem[][] => groups.map((group) => group.map(({ id, label, symbol, destructive }) => ({ id, label, symbol, destructive })));
 const nothing = () => {};
@@ -36,7 +35,6 @@ export function NativeSidebar({ onOpen }: { onOpen: (dialog: ShellDialog) => voi
   const pathname = usePathname();
   const router = useRouter();
   const { query, setQuery, rows, hits } = useBotSearch();
-  const { federation } = useFederation();
   const look = useWorthALookLine();
   const covered = useCovered();
   const ink = useTokenHex("--foreground");
@@ -73,12 +71,6 @@ export function NativeSidebar({ onOpen }: { onOpen: (dialog: ShellDialog) => voi
     newItems: [
       { id: "new-bot", label: "New bot", symbol: NEW_SYMBOLS["new-bot"]! },
       { id: "new-room", label: bots.length === 0 ? "New room (make a bot first)" : "New room", symbol: NEW_SYMBOLS["new-room"]! },
-      ...(federation?.canInvite
-        ? [
-            { id: "new-space", label: "New space", symbol: NEW_SYMBOLS["new-space"]! },
-            { id: "join-space", label: "Join space", symbol: NEW_SYMBOLS["join-space"]! },
-          ]
-        : []),
     ],
     me: { name: me.name, face: meFace, initial: me.name.trim().charAt(0).toUpperCase() || "Y", profile: profiles.length > 1 ? me.profile.label : null, active: Boolean(section) },
     profileMenu: [
@@ -121,7 +113,7 @@ export function NativeSidebar({ onOpen }: { onOpen: (dialog: ShellDialog) => voi
         return;
       }
       case "new":
-        if (event.id === "new-bot" || event.id === "new-space" || event.id === "join-space") onOpen({ kind: event.id });
+        if (event.id === "new-bot") onOpen({ kind: "new-bot" });
         else if (event.id === "new-room" && bots.length > 0) onOpen({ kind: "new-room" });
         return;
       case "profile":
@@ -179,7 +171,7 @@ function FaceCopies({ faces, me }: { faces: FaceSpec[]; me: MeFace | null }) {
     <div ref={containerRef} aria-hidden="true" className="invisible fixed top-0 left-0 size-0 overflow-hidden">
       {waiting.map((face) => (
         <span key={face.key} data-native-face={face.key} className="block w-fit">
-          {"bot" in face ? <BotAvatar bot={face.bot} size={COPY_SIZE} /> : <RoomAvatar bots={face.members} size={COPY_SIZE} space={face.space} />}
+          {"bot" in face ? <BotAvatar bot={face.bot} size={COPY_SIZE} /> : <RoomAvatar bots={face.members} size={COPY_SIZE} />}
         </span>
       ))}
       {meWaiting ? (

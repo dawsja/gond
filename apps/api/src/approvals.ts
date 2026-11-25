@@ -347,14 +347,6 @@ export async function askApproval(input: { bot: Bot; threadId: string; tool: str
   return postCard({ ...input, bot });
 }
 
-/**
- * A card that always asks, whatever the bot's level: someone on another Gond wants this bot to act
- * (Spaces), and only its owner can say yes to that.
- */
-export function askOwner(input: { bot: Bot; threadId: string; input: Record<string, unknown>; summary: string; signal?: AbortSignal }): Promise<Answer> {
-  return postCard({ ...input, tool: "ask_approval", strict: true });
-}
-
 /** Whether a phone may answer this card from its lock screen: a plain yes or no, never an email, whose card can be read and edited only in full. */
 export function answerableOnPhone(approval: Pick<Approval, "tool" | "input">): boolean {
   return !emailDraftOf(approval.tool, approval.input);
@@ -406,7 +398,6 @@ export function pausedOn(message: Pick<Message, "id" | "threadId">): Set<string>
   return new Set(pausedApprovals(message.threadId).flatMap((card) => (cardWork(card.id)?.answering === message.id ? [card.botId] : [])));
 }
 
-/** `strict`: the card expires in time whatever it asks, as another Gond's request to act does. */
 function postCard(input: { bot: Bot; threadId: string; tool: string; input: Record<string, unknown>; summary?: string; signal?: AbortSignal; strict?: boolean }): Promise<Answer> {
   const { bot, threadId, tool } = input;
   const answer = (decision: Decision): Answer => ({ decision, input: input.input, edited: false, send: false, note: null, aside: false });

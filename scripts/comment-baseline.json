@@ -415,14 +415,6 @@
         "preview": "Typing a household's private details (a passport, an insurance number) into a..."
       },
       {
-        "hash": "91f620b003f5bca2",
-        "preview": "* A card that always asks, whatever the bot's level: someone on another Gond ..."
-      },
-      {
-        "hash": "993bce72d5b0a04a",
-        "preview": "`strict`: the card expires in time whatever it asks, as another Gond's reques..."
-      },
-      {
         "hash": "9ad6d395a18315cc",
         "preview": "A draft goes nowhere, but the letter card is how the person sees what was wri..."
       },
@@ -631,10 +623,6 @@
       {
         "hash": "bd3f912dedf55957",
         "preview": "False leaves the refs' labels off the screenshot, for one the person will see."
-      },
-      {
-        "hash": "c819a3e9e8aabea9",
-        "preview": "A guest session (a line from another Gond): no tools, or only the web; see GU..."
       },
       {
         "hash": "d93d0cebc27f6615",
@@ -1119,36 +1107,6 @@
         "preview": "Refuse ambiguous totals, including when the old approved amount appears only ..."
       }
     ],
-    "apps/api/src/data/spaces.ts": [
-      {
-        "hash": "3a81c6a40a747ea2",
-        "preview": "Forgets envelope ids old enough that anything that old is refused anyway, and..."
-      },
-      {
-        "hash": "4e30ec4655c28030",
-        "preview": "No bot joins a space until the person picks it; \"*\" is every bot, new ones in..."
-      },
-      {
-        "hash": "70f522b10b7dd183",
-        "preview": "Always allow is never a default: it is chosen for one bot in one space."
-      },
-      {
-        "hash": "97b449810df86ee4",
-        "preview": "Whether this person said they read another Gond's words with someone there an..."
-      },
-      {
-        "hash": "acabc3c51b4b52fc",
-        "preview": "* What can go now, oldest first. A Gond's rows go in the order they were writ..."
-      },
-      {
-        "hash": "acc0eac77efa94b1",
-        "preview": "* A line from another Gond is written here by `remote:<Gond>:<member>`: the G..."
-      },
-      {
-        "hash": "c241f4ad6f7f7853",
-        "preview": "* Spaces' rows. A space is a room here (`thread_id`) and the same room on eve..."
-      }
-    ],
     "apps/api/src/data/summaries.ts": [
       {
         "hash": "3ff93e3298b09296",
@@ -1201,10 +1159,6 @@
       {
         "hash": "573615f4d97db73d",
         "preview": "* Spends the one call a late yes lets through: the hidden prompt it started c..."
-      },
-      {
-        "hash": "6bfb8696e7cf6140",
-        "preview": "What happened to a conversation, for Spaces to pass on: a message posted, or ..."
       },
       {
         "hash": "8338546407ece614",
@@ -1545,76 +1499,6 @@
       {
         "hash": "8f116d63dc8d6d68",
         "preview": "A card or saved rule of this profile's changed; one with no owner left is nob..."
-      }
-    ],
-    "apps/api/src/federation.ts": [
-      {
-        "hash": "02bf79272b61d5b6",
-        "preview": "A socket to another Gond's relay is only for sending, so one nobody sent on f..."
-      },
-      {
-        "hash": "0422005530dbc66f",
-        "preview": "Every spelling peers gave for each relay, since their rows name the relay as ..."
-      },
-      {
-        "hash": "0c67e7305b5877ac",
-        "preview": "A relay that's away shouldn't hold up every other Gond's envelopes for long."
-      },
-      {
-        "hash": "22b4aa53c5a7dda7",
-        "preview": "Back on the relay: what waited out a dropped connection goes now, not after i..."
-      },
-      {
-        "hash": "2b6267898ebb59fd",
-        "preview": "A push for one phone, signed with this Gond's key, which the relay checks bef..."
-      },
-      {
-        "hash": "3c899aa9c3cf7fa6",
-        "preview": "An event the relay won't ever take, like a join whose invite is used up: for ..."
-      },
-      {
-        "hash": "40773c2064935bd0",
-        "preview": "An IPv4 address mapped into IPv6 (::ffff:a.b.c.d) reaches that IPv4 address."
-      },
-      {
-        "hash": "43163c23a0933b65",
-        "preview": "* One spelling per relay: the scheme and host lowercased, no default port, no..."
-      },
-      {
-        "hash": "6782c4891295891a",
-        "preview": "* This Gond among other Gonds: its keys, its connection to its relay, and the..."
-      },
-      {
-        "hash": "69e7376c78e8dc14",
-        "preview": "Only this Gond's own relay delivers to it: anything another relay pushes down..."
-      },
-      {
-        "hash": "7fd2252708c2dffd",
-        "preview": "* Takes back invites at the relay by their hashes (what this Gond keeps of a ..."
-      },
-      {
-        "hash": "a13f29ecd1f77f23",
-        "preview": "An invite the relay no longer knows was used or ran out: waiting won't change..."
-      },
-      {
-        "hash": "aed8c2bcbb884312",
-        "preview": "By the relay's canonical address (`normalizeRelayUrl`)."
-      },
-      {
-        "hash": "b93ea50cc5343cb7",
-        "preview": "A blocked Gond's envelopes are dropped unread; one this Gond never met only e..."
-      },
-      {
-        "hash": "d1917f20554d00c8",
-        "preview": "The eight 16-bit groups of an IPv6 literal as URL writes it (hex, `::` allowe..."
-      },
-      {
-        "hash": "e6893a9931a823df",
-        "preview": "The relay keeps an envelope 7 days; past that nothing is waiting for it and a..."
-      },
-      {
-        "hash": "ec78e7008e329cff",
-        "preview": "* One Gond's rows, in order, beside every other Gond's. Once one has to wait,..."
       }
     ],
     "apps/api/src/grok.ts": [
@@ -2017,10 +1901,6 @@
         "preview": "xAI states a request's billed cost in ticks, 10^10 to the dollar."
       },
       {
-        "hash": "d89ab5fc024e6919",
-        "preview": "False leaves out the provider's own web search, for a guest in a space who ma..."
-      },
-      {
         "hash": "dc8cb1a48a49d211",
         "preview": "* OpenAI's own API refuses `max_tokens` from its reasoning models on (GPT-5, ..."
       },
@@ -2127,10 +2007,6 @@
       {
         "hash": "1fd7cf50792aef92",
         "preview": "A card a phone can answer from its lock screen, its buttons named as on the c..."
-      },
-      {
-        "hash": "2933fd667398a975",
-        "preview": "The bot it is about, so each device can leave out the bots it muted; none for..."
       }
     ],
     "apps/api/src/redact.ts": [
@@ -2171,10 +2047,6 @@
         "preview": "Forgets the session on the computer, so it starts over instead of resuming hi..."
       },
       {
-        "hash": "4845b6f91ecb4895",
-        "preview": "A space's answers to another Gond's lines run outside the turns, each with it..."
-      },
-      {
         "hash": "49d10de187cd3fcd",
         "preview": "The person moved on: a card nobody answered in time can't be answered late an..."
       },
@@ -2211,20 +2083,12 @@
         "preview": "Conversations stopped by a message: the bot says what it stopped, so the turn..."
       },
       {
-        "hash": "8b62dc2b043dbe4c",
-        "preview": "A card this turn waits on can be answered late, which starts its work again; ..."
-      },
-      {
         "hash": "933f1b9b6e7bc3ce",
         "preview": "* Whom a bot's line in a room wakes: the members it names, less those * answe..."
       },
       {
         "hash": "99502fcdd059d22a",
         "preview": "The computer is still ending a turn of this bot's that Gond lost (it restarte..."
-      },
-      {
-        "hash": "9f7cb756f41b857b",
-        "preview": "In a space people talk to each other too: a line that names none of the perso..."
       },
       {
         "hash": "a2ee8e94de096d2b",
@@ -2407,12 +2271,6 @@
         "preview": "A probe goes without the sign-in's token, so a signed-in server would read as..."
       }
     ],
-    "apps/api/src/routes/mobile-sign-in.ts": [
-      {
-        "hash": "fd1c2153670ba449",
-        "preview": "* The apps load the redeem themselves, as a page of the web view's own (`Sec-..."
-      }
-    ],
     "apps/api/src/routes/profiles.ts": [
       {
         "hash": "b572029afba0c203",
@@ -2469,24 +2327,6 @@
         "preview": "Password guesses through the move are held to the sign-in page's own limit."
       }
     ],
-    "apps/api/src/routes/spaces.ts": [
-      {
-        "hash": "0796dd523caf6ddf",
-        "preview": "Saying the words matched is each person's own say, for a Gond they share a sp..."
-      },
-      {
-        "hash": "1f99de912618f71b",
-        "preview": "Always allow lets people on other Gonds have the bot act with no card first, ..."
-      },
-      {
-        "hash": "886e4b0c238909d7",
-        "preview": "Off closes every space here, and the other Gonds hear so before this one goes..."
-      },
-      {
-        "hash": "c96c1b72c0cad6f5",
-        "preview": "A page from before a switch doesn't send it, and leaves it as it was."
-      }
-    ],
     "apps/api/src/routes/teachings.ts": [
       {
         "hash": "04d47fcf7c98983b",
@@ -2494,10 +2334,6 @@
       }
     ],
     "apps/api/src/routes/threads.ts": [
-      {
-        "hash": "2b1574e9e7b8d091",
-        "preview": "A space takes only bots the person let into spaces, however it's edited; one ..."
-      },
       {
         "hash": "2bcb169e8aac23f4",
         "preview": "Only types that can't run script open in the tab; the rest (HTML, SVG, anythi..."
@@ -2509,10 +2345,6 @@
       {
         "hash": "cd9cc7dccce637a2",
         "preview": "An iPhone's photo: no browser but Safari shows HEIC, so it is kept as the JPE..."
-      },
-      {
-        "hash": "de3866ee684c3c3e",
-        "preview": "A space may have one bot, as it can start with one; a room needs two."
       }
     ],
     "apps/api/src/routes/usage.ts": [
@@ -2567,80 +2399,6 @@
       {
         "hash": "f69c647d6c0bee01",
         "preview": "* What a Gond without a computer says in place of the house rules' lines abou..."
-      }
-    ],
-    "apps/api/src/spaces.ts": [
-      {
-        "hash": "10e55edbe1246815",
-        "preview": "Posts what `post` posts without it going to the other Gonds; posting is synch..."
-      },
-      {
-        "hash": "14e3a9625077ccaf",
-        "preview": "Its join let it into the mailbox; a Gond in no live space with this one has n..."
-      },
-      {
-        "hash": "162bf53ba3015f4f",
-        "preview": "What each space last sent of who is in it: a list that didn't change never go..."
-      },
-      {
-        "hash": "31dbf76ffe0cdbe5",
-        "preview": "What a newcomer sees: the space's lines since it became one, never the room's..."
-      },
-      {
-        "hash": "557a304b540e7949",
-        "preview": "A person's line is a message for you, as in any group chat; another Gond's bo..."
-      },
-      {
-        "hash": "6908ce09a59dbf85",
-        "preview": "Control characters, line breaks and the marks that reorder or hide text: a na..."
-      },
-      {
-        "hash": "7c9c28a66ea297b3",
-        "preview": "* Always allow was confirmed for the people in a space then, so someone new a..."
-      },
-      {
-        "hash": "847a761639729b88",
-        "preview": "* The hidden prompt that lets a bot do what someone on another Gond asked. Sa..."
-      },
-      {
-        "hash": "93c2cb5d150f4c04",
-        "preview": "What another Gond's person asked, as the card shows it and the bot is let do ..."
-      },
-      {
-        "hash": "a4dc7a0ac6b5f3b6",
-        "preview": "* Whether a line from another Gond may be posted here: it came the way it sho..."
-      },
-      {
-        "hash": "b44eba315cc3b21d",
-        "preview": "Anyone the members don't place counts as a bot, which wakes the least."
-      },
-      {
-        "hash": "bea805899d47f15d",
-        "preview": "* An author its own Gond declared in the space. Whether that member is a pers..."
-      },
-      {
-        "hash": "c0370c4a892778c0",
-        "preview": "A stop says what it stopped on its own."
-      },
-      {
-        "hash": "c824f8524bf3b52d",
-        "preview": "Lets every Gond this one shares a live space with into its mailbox again, aft..."
-      },
-      {
-        "hash": "d79c48ceb6dcec8f",
-        "preview": "* One bot answers one space's lines from afar in turn, each with its own stop..."
-      },
-      {
-        "hash": "f67817d102efee82",
-        "preview": "* Every line leaves for another Gond through here, whoever posted it, so a pa..."
-      },
-      {
-        "hash": "f9c4b680dc0c635f",
-        "preview": "Everything a space sends from here goes in order: a line by a member who just..."
-      },
-      {
-        "hash": "f9d6b7b36887c52d",
-        "preview": "Posts a person's line in a space, already sent to the bots it names (if any),..."
       }
     ],
     "apps/api/src/storage-worker.ts": [
@@ -2799,12 +2557,6 @@
         "preview": "What the person's bots run on now, read without failing when it isn't set up."
       }
     ],
-    "apps/api/src/words.ts": [
-      {
-        "hash": "9aedd22ed6d92b6b",
-        "preview": "256 short, plain words, one per byte, so six of them carry 48 bits of a key's..."
-      }
-    ],
     "apps/api/src/writing.ts": [
       {
         "hash": "7170b87d486f37dd",
@@ -2823,10 +2575,6 @@
       {
         "hash": "0aeebfcd0924d7c3",
         "preview": "A small HEIF photo made here: an AVIF, which libheif reads the same way, unde..."
-      },
-      {
-        "hash": "11b78e072547346b",
-        "preview": "Three wait at most behind the one running: the oldest gave way to the fourth."
       },
       {
         "hash": "3f48fa3d11ec3912",
@@ -2893,10 +2641,6 @@
         "preview": "A note under memory/ called MEMORY.md is a topic of its own, never merged int..."
       },
       {
-        "hash": "610bd1b239d0c786",
-        "preview": "This prompt is shared by every engine and guest, so it must not name Claude-o..."
-      },
-      {
         "hash": "753193126bb3fa1b",
         "preview": "The window is full and starts after the last turn: lines in between would be ..."
       },
@@ -2909,16 +2653,6 @@
       {
         "hash": "bba300071f3d4b1a",
         "preview": "The turn's work rides in the row, never out to a page."
-      }
-    ],
-    "apps/api/test/spaces.test.ts": [
-      {
-        "hash": "36c5804b4f639a44",
-        "preview": "Ada's Gond has no AI here, so Patch can't answer; it says so on Ada's side on..."
-      },
-      {
-        "hash": "e32a415d4cb3a7f9",
-        "preview": "No bot joins a space until its person lets it."
       }
     ],
     "apps/desktop/src-tauri/server-url/src/lib.rs": [
@@ -3999,10 +3733,6 @@
       {
         "hash": "9fd3be0de2e063fd",
         "preview": "Lucide's crown without its base line, framed on the crown's own centre, lifte..."
-      },
-      {
-        "hash": "a2137ea55a9819e0",
-        "preview": "* A room as its bots: two faces on the diagonal, the one that answers when no..."
       }
     ],
     "apps/web/components/bot-dialog.tsx": [
@@ -4269,10 +3999,6 @@
         "preview": "A wide screen already shows the details beside the chat, so there the bot's p..."
       },
       {
-        "hash": "ccde7f3effc54a62",
-        "preview": "Until the conversation's details load, whether it is a space is unknown, so a..."
-      },
-      {
         "hash": "ddabc9828e3c361d",
         "preview": "One object per watch and place, so a line a run noticed keeps its props as la..."
       },
@@ -4519,12 +4245,6 @@
         "preview": "An (i) beside a setting that says what it does: it opens on hover with a mous..."
       }
     ],
-    "apps/web/components/level-select.tsx": [
-      {
-        "hash": "e4a6ed37141e5886",
-        "preview": "* What a bot may do for someone who isn't its person, in a space. * Always al..."
-      }
-    ],
     "apps/web/components/linked-sign-in.tsx": [
       {
         "hash": "fdc53d0c3a69659f",
@@ -4657,14 +4377,6 @@
         "preview": "A room from before the limits keeps its size; a change only has to move it to..."
       },
       {
-        "hash": "9e5cbca8b10a0157",
-        "preview": "A space offers only the bots let into spaces (Settings → Spaces), and those a..."
-      },
-      {
-        "hash": "de3866ee684c3c3e",
-        "preview": "A space may have one bot, as it can start with one; a room needs two."
-      },
-      {
         "hash": "e72e9479f1156237",
         "preview": "The bots already in it come first, in the order they had when it opened, so a..."
       },
@@ -4779,18 +4491,6 @@
       {
         "hash": "5b70a896b4347073",
         "preview": "Every composer hears the same event; the first to see it loads for all of them."
-      }
-    ],
-    "apps/web/components/spaces/space-dialogs.tsx": [
-      {
-        "hash": "9fb7c0fe2c73f920",
-        "preview": "Eight rows, then it scrolls: a row and the padding as `ui/dropdown-menu.tsx` ..."
-      }
-    ],
-    "apps/web/components/spaces/spaces-settings.tsx": [
-      {
-        "hash": "6213c60050e6856c",
-        "preview": "Always allow is chosen for one bot in one space, never as what every bot join..."
       }
     ],
     "apps/web/components/store.tsx": [
@@ -5195,10 +4895,6 @@
     ],
     "apps/web/lib/native-sidebar.ts": [
       {
-        "hash": "165b2ecc19839641",
-        "preview": "What a face is drawn from: a bot, or a room's bots (and whether it's a space)..."
-      },
-      {
         "hash": "1906fdefeefff24f",
         "preview": "Your picture's face, by its address, which changes with the picture."
       },
@@ -5271,10 +4967,6 @@
       {
         "hash": "72a01c1bca9e96a0",
         "preview": "A computed `linear-gradient(…)` as the canvas's own, for the primary bot's go..."
-      },
-      {
-        "hash": "8190f5874f3dc1f0",
-        "preview": "* A face as the page draws it, every part of it (a bot with its crown, a room..."
       },
       {
         "hash": "8a84685f3b416ca6",
@@ -5431,16 +5123,6 @@
       {
         "hash": "e4b7078af245941a",
         "preview": "One call at a time: a call made while one runs waits for it and then runs onc..."
-      }
-    ],
-    "apps/web/lib/spaces.ts": [
-      {
-        "hash": "8b7f001620d4bb9f",
-        "preview": "Who a line from another Gond is by, and which Gond: the API writes them as `r..."
-      },
-      {
-        "hash": "a88e8e82a10883ae",
-        "preview": "* The lines whose `::choices` are shown but can't be tapped: one from another..."
       }
     ],
     "apps/web/lib/theme/contrast.ts": [
@@ -5659,10 +5341,6 @@
         "preview": "The launch no longer waits to see the CLI take its flags, so one that refuses..."
       },
       {
-        "hash": "2061c4ef9e896c17",
-        "preview": "Only a refreshed server adds its revision, only a guest its mode and only a k..."
-      },
-      {
         "hash": "304d53c327bdf0c3",
         "preview": "The CLI's echo of a message it read from stdin (with --replay-user-messages),..."
       },
@@ -5685,10 +5363,6 @@
       {
         "hash": "731239573d91edeb",
         "preview": "A total that went down was reset (a /clear): what it holds now is all new."
-      },
-      {
-        "hash": "768d68405620b1b5",
-        "preview": "A guest never loads settings or CLAUDE.md from the person's own folders."
       },
       {
         "hash": "86a51b111a96e7b8",
@@ -5717,10 +5391,6 @@
       {
         "hash": "be61915945d580d1",
         "preview": "Written to stdin at once: the pipe holds the prompt until the CLI reads it."
-      },
-      {
-        "hash": "d34ebfd0de5e3dcc",
-        "preview": "* A guest session answers a line from someone on another Gond (Spaces): with ..."
       },
       {
         "hash": "deaa660f46f4a8fa",
@@ -6277,10 +5947,6 @@
         "preview": "Shot as the person into their screen's own folder, read back without followin..."
       },
       {
-        "hash": "ae9cc663f89c9e68",
-        "preview": "* A guest session's working folder: new, empty and the person's, made by root..."
-      },
-      {
         "hash": "b1c79ed5343e2515",
         "preview": "What the viewers had typed and not yet finished, so Done keeps the last words."
       },
@@ -6513,89 +6179,7 @@
         "preview": "Compositing stays on for the dock's see-through background; shadows and fades..."
       }
     ],
-    "packages/relay/Dockerfile": [
-      {
-        "hash": "9258ef9378033bea",
-        "preview": "gond-relay, self-hosted: one Bun process and one SQLite file in /data. The re..."
-      }
-    ],
-    "packages/relay/src/client.ts": [
-      {
-        "hash": "0b788611a5d8ee09",
-        "preview": "* A connection can die without a close: a router or proxy dropping an idle so..."
-      },
-      {
-        "hash": "1ec92151b944ef29",
-        "preview": "Takes back an invite by its hash, which is all a Gond keeps of a token once t..."
-      },
-      {
-        "hash": "479546874fe7170d",
-        "preview": "What a peer needs to write to you: your key, your box key, and your key's wor..."
-      },
-      {
-        "hash": "57f048b13e8c3e07",
-        "preview": "Requests made from here on wait for the next connection; ones already waiting..."
-      },
-      {
-        "hash": "6316990719718154",
-        "preview": "Envelopes reach onEnvelope one at a time, in the order the relay sent them; e..."
-      },
-      {
-        "hash": "730104d705da7c4a",
-        "preview": "How long a request waits for an answer, connecting included."
-      },
-      {
-        "hash": "7dc16070a7dd3aef",
-        "preview": "\"replaced\": another connection with this key took the mailbox over, so this o..."
-      },
-      {
-        "hash": "949c3d4623ece6f6",
-        "preview": "Seals `body` (anything JSON) for one peer. The id is yours to pick; it must b..."
-      },
-      {
-        "hash": "aa43845c9213f467",
-        "preview": "Called once per envelope, in order; it's acked only after this resolves, so o..."
-      },
-      {
-        "hash": "af2b268444bef480",
-        "preview": "* Gond's side of the relay: its identity, sealing and opening envelopes, and ..."
-      },
-      {
-        "hash": "c857b041846724ef",
-        "preview": "An invite token goes in the invite link; the relay is only told its hash unti..."
-      },
-      {
-        "hash": "d3714e28de5a1429",
-        "preview": "The relay's address, like https://api.gond.io or http://relay.lan:8791."
-      },
-      {
-        "hash": "dcd82979e40dc3d8",
-        "preview": "A Gond server's keys. Keep it secret; `card` is what others get."
-      }
-    ],
-    "packages/relay/src/mailbox.ts": [
-      {
-        "hash": "24fe7bb647912f15",
-        "preview": "* What the recipient's side does with an envelope: let it in if its sender is..."
-      },
-      {
-        "hash": "d6c5836d403f4c10",
-        "preview": "Spent before anything is checked, so a key sending frames that fail costs its..."
-      },
-      {
-        "hash": "dba010ef5aae7ef7",
-        "preview": "* The mailboxes, over any SQLite: one file for every mailbox on a self-hosted..."
-      }
-    ],
     "packages/relay/src/protocol.ts": [
-      {
-        "hash": "0a34fefd094b3435",
-        "preview": "* gond-relay's wire protocol, version 1. Everything here is pure, so the Bun ..."
-      },
-      {
-        "hash": "3bef69b294341170",
-        "preview": "Chosen by the sender, unique per sender; the recipient drops one it has seen."
-      },
       {
         "hash": "3f74022c73618fa3",
         "preview": "Chosen when sharing was turned on; a new one starts the count from nothing."
@@ -6617,10 +6201,6 @@
         "preview": "Ed25519 by `from` over `signedPush`."
       },
       {
-        "hash": "87674e9fdc4b938c",
-        "preview": "HPKE's encapsulated key and the ciphertext, base64url."
-      },
-      {
         "hash": "8c17fca4a2eb534e",
         "preview": "`quiet` came later, so a push without it signs exactly as before."
       },
@@ -6631,10 +6211,6 @@
       {
         "hash": "97aa52723200e312",
         "preview": "* A Gond's count of the tokens its bots used since its admin turned sharing o..."
-      },
-      {
-        "hash": "a6e24fd57dea26a8",
-        "preview": "Ed25519 by `from` over `signedEnvelope`."
       },
       {
         "hash": "b737c60ea26e8fa7",
@@ -6671,12 +6247,6 @@
         "preview": "* Pushes to phones through Firebase Cloud Messaging's v1 API, as the service ..."
       }
     ],
-    "packages/relay/src/server.ts": [
-      {
-        "hash": "8e8da4752a4bd8aa",
-        "preview": "Signatures are checked asynchronously, so each socket's frames wait their tur..."
-      }
-    ],
     "packages/relay/src/usage.ts": [
       {
         "hash": "291f2a34ed0e75cd",
@@ -6693,46 +6263,12 @@
     ],
     "packages/relay/src/worker.ts": [
       {
-        "hash": "05731d067a3e1520",
-        "preview": "* gond-relay on Cloudflare (api.gond.io): the Worker sends each socket to the..."
-      },
-      {
         "hash": "2aeb9016bb0f4de1",
         "preview": "The public count lives in one Durable Object, so every report and read sees t..."
       },
       {
-        "hash": "5814b901a80d81f6",
-        "preview": "Each Gond's pushes are counted in the Durable Object named after its key, as ..."
-      },
-      {
-        "hash": "7cf836d0bd8a3130",
-        "preview": "Asking another mailbox lets other events in meanwhile, so each socket's frame..."
-      },
-      {
         "hash": "87876bf185b467a1",
         "preview": "The few Workers types this file uses, so it typechecks without @cloudflare/wo..."
-      },
-      {
-        "hash": "fa9600e240adbc0e",
-        "preview": "Only a Durable Object calls this; the Worker never forwards it, so nobody out..."
-      }
-    ],
-    "packages/relay/test/relay.test.ts": [
-      {
-        "hash": "44169c8699bc8360",
-        "preview": "Set GOND_RELAY_TEST_URL (say, to a `wrangler dev` address) to run the flow ag..."
-      },
-      {
-        "hash": "9308fe00d6c94680",
-        "preview": "Too big for one frame, so the socket's own limit stops it before the relay re..."
-      },
-      {
-        "hash": "9deca46dcc553866",
-        "preview": "Bun relay only: a run against GOND_RELAY_TEST_URL must never add to a real co..."
-      },
-      {
-        "hash": "e1c6c31570a9299f",
-        "preview": "A control request waits for the socket to be ready; forgetting a key nobody a..."
       }
     ],
     "packages/shared/src/ai.ts": [
@@ -6885,10 +6421,6 @@
         "preview": "Approvals changed: the owning profile's, or with no `userId` everyone's."
       },
       {
-        "hash": "57d66c35975cea82",
-        "preview": "Spaces changed: this Gond's connection, a space joined or left. Without a use..."
-      },
-      {
         "hash": "8528b50d15c72807",
         "preview": "The computer's update moved a step."
       },
@@ -6939,10 +6471,6 @@
         "preview": "A room pinned to the top of the list; a bot's conversation follows its bot's ..."
       },
       {
-        "hash": "993f45bc2038df42",
-        "preview": "For a bot's line, the message it answered, which in a space may be someone's ..."
-      },
-      {
         "hash": "ae622df46155ab2a",
         "preview": "* What one bot tells another with message_bot: an `action` wakes it to act on..."
       },
@@ -6961,12 +6489,6 @@
       {
         "hash": "ed61ceda652af0ac",
         "preview": "What a person or a bot can put on a message, one each: the chat's own tapbacks."
-      }
-    ],
-    "packages/shared/src/notices.ts": [
-      {
-        "hash": "60a2d2b24464f416",
-        "preview": "What one browser or app is told about: every bot but the muted ones, and `oth..."
       }
     ],
     "packages/shared/src/people.ts": [
@@ -7121,32 +6643,6 @@
       {
         "hash": "231377c70d061370",
         "preview": "Shopping links are public HTTPS resources, never local services or credential..."
-      }
-    ],
-    "packages/shared/src/spaces.ts": [
-      {
-        "hash": "2d7a7378945e62f0",
-        "preview": "Six words made from the Gond's key, which both people read out to check nobod..."
-      },
-      {
-        "hash": "54daba87cf2b6a02",
-        "preview": "Whether the person asking may make invites and join spaces now."
-      },
-      {
-        "hash": "6b7bd1ceaedeea12",
-        "preview": "Your bot's rules in one space, which only you see and set."
-      },
-      {
-        "hash": "828fb568338c1fe7",
-        "preview": "Each person's defaults for their bots in spaces. `bots` lists who may join (n..."
-      },
-      {
-        "hash": "bb73caab2d47e41a",
-        "preview": "* Spaces: rooms shared with people and their bots on other Gond servers, carr..."
-      },
-      {
-        "hash": "c7199c70237acc56",
-        "preview": "* `peopleWake`: the people on the other Gonds can wake the bot by naming it (..."
       }
     ],
     "packages/shared/src/teach.ts": [

@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { AgentSession, authStatus, claudeVersion, forgetClaudeVersion } from "../agents.mjs";
+import { authStatus, claudeVersion, forgetClaudeVersion } from "../agents.mjs";
 
 function fakeClaude(t, body) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "gond-probe-"));
@@ -32,17 +32,13 @@ test("the CLI's version is asked once while it runs, without holding up the box,
   assert.equal(cli.count(), 2);
 });
 
-test("a CLI that never answers gives no version by its deadline, and no guest session runs on it", async (t) => {
+test("a CLI that never answers gives no version by its deadline", async (t) => {
   forgetClaudeVersion();
   t.after(forgetClaudeVersion);
   const cli = fakeClaude(t, "exec sleep 30");
   const started = Date.now();
   assert.equal(await claudeVersion({ bin: cli.bin, env: cli.env, timeoutMs: 200 }), null);
   assert.ok(Date.now() - started < 5_000);
-  const session = new AgentSession({ id: "guest-probe", cwd: cli.dir, env: cli.env, socketDir: cli.dir, mcpScript: "/dev/null", bin: cli.bin });
-  t.after(() => session.close({ keepSession: false }));
-  await assert.rejects(session.ensure({ model: "opus", systemPrompt: "", tools: [], guest: "talk" }), /Couldn't tell which Claude Code/);
-  assert.equal(session.running, false);
 });
 
 test("a person's sign-in is read once while a look runs, but a finished sign-in looks again", async (t) => {

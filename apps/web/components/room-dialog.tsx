@@ -1,9 +1,9 @@
 "use client";
 
-import { ROOM_MAX_BOTS, ROOM_MIN_BOTS, roomAnswerer, roomNameFor, type Bot, type SpaceDefaults, type Thread } from "@gond/shared";
+import { ROOM_MAX_BOTS, ROOM_MIN_BOTS, roomAnswerer, roomNameFor, type Bot, type Thread } from "@gond/shared";
 import { Check, Search, X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { BotAvatar, RoomAvatar } from "@/components/bot-avatar";
 import { useStore } from "@/components/store";
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
 import { Spinner } from "@/components/ui/spinner";
 import { Toggle } from "@/components/ui/toggle";
-import { api, patch, post } from "@/lib/api";
+import { patch, post } from "@/lib/api";
 
 const SEARCH_FROM = 12;
 
@@ -49,32 +49,20 @@ export function RoomDialog({ threadId = null, onClose }: { threadId?: string | n
   const [first] = useState(() => new Set(existing ? existing.members : []));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // A space offers only the bots let into spaces (Settings → Spaces), and those already in it; undefined while that loads.
-  const space = Boolean(existing?.space);
-  const [allowed, setAllowed] = useState<string[] | null | undefined>(undefined);
-  useEffect(() => {
-    if (!space) return;
-    void api<{ defaults: SpaceDefaults }>("/api/spaces/defaults")
-      .then((d) => setAllowed(d.defaults.bots))
-      .catch(() => setAllowed([]));
-  }, [space]);
-  const offered = space ? bots.filter((b) => first.has(b.id) || (allowed !== undefined && (allowed === null || allowed.includes(b.id)))) : bots;
 
   // In the room's own order, as the API reads it: with no primary among them, the first one answers when nobody is named.
   const picked = members.flatMap((id) => bots.find((b) => b.id === id) ?? []);
   const answerer = picked.length > 1 ? roomAnswerer(picked) : null;
-  const many = offered.length > SEARCH_FROM;
-  const shown = [...offered.filter((b) => first.has(b.id)), ...offered.filter((b) => !first.has(b.id))].filter((b) => matches(b, query));
+  const many = bots.length > SEARCH_FROM;
+  const shown = [...bots.filter((b) => first.has(b.id)), ...bots.filter((b) => !first.has(b.id))].filter((b) => matches(b, query));
   const full = picked.length >= ROOM_MAX_BOTS;
   // A room from before the limits keeps its size; a change only has to move it toward them.
   const before = existing?.members.length ?? 0;
-  // A space may have one bot, as it can start with one; a room needs two.
-  const fewest = space ? 1 : ROOM_MIN_BOTS;
-  const fits = (picked.length >= fewest || (existing && picked.length >= before)) && (picked.length <= ROOM_MAX_BOTS || (existing && picked.length <= before));
+  const fits = (picked.length >= ROOM_MIN_BOTS || (existing && picked.length >= before)) && (picked.length <= ROOM_MAX_BOTS || (existing && picked.length <= before));
   const summary =
     picked.length === 0
-      ? `Pick ${fewest} to ${ROOM_MAX_BOTS} bots.`
-      : picked.length < fewest
+      ? `Pick ${ROOM_MIN_BOTS} to ${ROOM_MAX_BOTS} bots.`
+      : picked.length < ROOM_MIN_BOTS
         ? "Pick one more bot. A room needs at least two."
         : `${picked.length} of ${ROOM_MAX_BOTS} bots${full ? ", the most a room holds" : ""}${answerer ? ` · ${answerer.name} answers when nobody is named` : ""}`;
   const search = (
@@ -164,7 +152,6 @@ export function RoomDialog({ threadId = null, onClose }: { threadId?: string | n
                   {summary}
                 </p>
               )}
-              {space ? <FieldDescription className="text-center">Only bots you let into spaces are here. Choose them in Settings → Spaces.</FieldDescription> : null}
             </FieldSet>
             {error ? <FieldError>{error}</FieldError> : null}
             <DialogFooter>

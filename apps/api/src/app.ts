@@ -13,7 +13,6 @@ import { connectionsRoutes } from "./routes/connections.ts";
 import { eventsRoutes } from "./routes/events.ts";
 import { exportsRoutes } from "./routes/exports.ts";
 import { teachingsRoutes } from "./routes/teachings.ts";
-import { spacesRoutes } from "./routes/spaces.ts";
 import { llmProxyRoutes, providerRoutes } from "./routes/llm.ts";
 import { mcpHandBack, mcpProxyRoutes, mcpRoutes } from "./routes/mcp.ts";
 import { mobileSignInRoutes } from "./routes/mobile-sign-in.ts";
@@ -148,7 +147,6 @@ export function createApp() {
   app.route("/api", eventsRoutes());
   app.route("/api", exportsRoutes());
   app.route("/api", teachingsRoutes());
-  app.route("/api", spacesRoutes());
   app.route("/api", skillsRoutes());
   app.route("/api", mcpRoutes());
   app.route("/api", secretsRoutes());

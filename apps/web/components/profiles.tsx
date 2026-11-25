@@ -312,7 +312,7 @@ export function ProfilesCard() {
         open={deleting !== null}
         onOpenChange={(open) => !open && setDeleting(null)}
         title={`Delete ${deleting?.label ?? "this profile"}?`}
-        description={`This deletes everything in ${deleting?.label ?? "it"}: its bots, chats, rooms, routines, memories, skills, secrets, cards, sign-ins, connected apps, MCP servers, AI sign-ins and keys, usage, and its computer account with every file on it. Rooms it shares with other Gonds are left. This can't be undone.`}
+        description={`This deletes everything in ${deleting?.label ?? "it"}: its bots, chats, rooms, routines, memories, skills, secrets, cards, sign-ins, connected apps, MCP servers, AI sign-ins and keys, usage, and its computer account with every file on it. This can't be undone.`}
         action={`Delete ${deleting?.label ?? "it"}`}
         onConfirm={() => deleting && remove(deleting)}
       />

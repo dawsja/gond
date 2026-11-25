@@ -163,7 +163,6 @@ type PromptContext = {
   mcpServers: McpServerNote[];
   logins: string[];
   talk: { style: ReplyStyle; emoji: EmojiLevel };
-  space?: { note: string; memoryLeftOut: boolean } | null;
   computer?: boolean;
 };
 
@@ -178,14 +177,9 @@ export function systemPromptFor(bot: Bot, context: PromptContext): string {
     context.thread.kind === "room"
       ? `You are in the room "${context.thread.name}" with ${context.thread.members.length} bots and the person. Everyone in the room reads what you write.`
       : `You are in your 1:1 conversation with the person.`;
-  const leftOut = Boolean(context.space?.memoryLeftOut);
   const apps = context.connections.filter((c) => c.status === "active");
-  const memory = leftOut
-    ? "## Memory\nLeft out here: people on other Gonds read this space. Don't write anything about them or this space into your memory either; your person can let you use your memory here from the space's details."
-    : memorySection("Memory (MEMORY.md", context.memory, MAX_MEMORY_BYTES, "topics with memory_write", "Empty so far. Write what you learn about the person and the job as you go.", "memory_update");
-  const teamMemory = leftOut
-    ? ""
-    : memorySection("Team memory (its MEMORY.md, shared by the person's bots", context.teamMemory, MAX_TEAM_MEMORY_BYTES, "team topics", "Empty so far. Put there what every teammate should know, with team_memory_update.", "team_memory_update");
+  const memory = memorySection("Memory (MEMORY.md", context.memory, MAX_MEMORY_BYTES, "topics with memory_write", "Empty so far. Write what you learn about the person and the job as you go.", "memory_update");
+  const teamMemory = memorySection("Team memory (its MEMORY.md, shared by the person's bots", context.teamMemory, MAX_TEAM_MEMORY_BYTES, "team topics", "Empty so far. Put there what every teammate should know, with team_memory_update.", "team_memory_update");
   const talk = howToTalk(context.talk);
   // What every bot of the person's shares comes first and what changes most comes last, so the
   // providers' prompt caches keep the longest prefix from one turn to the next.
@@ -203,7 +197,7 @@ export function systemPromptFor(bot: Bot, context: PromptContext): string {
     context.mcpServers.length ? `## Your MCP servers\n${context.mcpServers.map((m) => `- ${m.name}: ${m.note ?? `tools named mcp__${m.name}__…`}`).join("\n")}\nThey are the person's own servers, attached to every bot's session by Gond; their writes go through approval like any other. Use their tools directly for anything they cover. If one's tools are missing or a call says it needs a sign-in, tell the person in one line; never look for MCP settings, tokens or credentials in ~/.claude or any config file, and never try to sign a server in yourself.` : "",
     teamMemory,
     memory,
-    `## Where you are\n${where}${context.space ? `\n${context.space.note}` : ""}\nYour approval level right now is ${APPROVAL_LEVEL_LABELS[bot.approval].title}.\nThe person's time zone is ${context.timezone}${context.computer !== false ? ", and your computer's clock and browser keep it too" : ""}. Today is ${todayIn(context.timezone)}.`,
+    `## Where you are\n${where}\nYour approval level right now is ${APPROVAL_LEVEL_LABELS[bot.approval].title}.\nThe person's time zone is ${context.timezone}${context.computer !== false ? ", and your computer's clock and browser keep it too" : ""}. Today is ${todayIn(context.timezone)}.`,
   ]
     .filter(Boolean)
     .join("\n\n");

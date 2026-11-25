@@ -1,4 +1,5 @@
 import { LIMITS, fromB64, parsePush, signedPush, toB64, utf8, verifySignature, type PushPlatform, type PushResult } from "./protocol.ts";
+import type { Sql } from "./sql.ts";
 
 /**
  * Pushes to phones through Firebase Cloud Messaging's v1 API, as the service account the relay
@@ -86,6 +87,23 @@ async function signJwt(account: ServiceAccount, claims: Record<string, unknown>)
 }
 
 export type PushAnswer = { status: number; body: { result: PushResult } | { error: string } };
+
+export function createPushLimiter(sql: Sql, now: () => number = Date.now) {
+  sql.run(`CREATE TABLE IF NOT EXISTS relay_sends (key TEXT PRIMARY KEY, minute INTEGER NOT NULL, count INTEGER NOT NULL)`);
+  return {
+    now,
+    spend(key: string, limit: number = LIMITS.pushesPerMinute): boolean {
+      const minute = Math.floor(now() / 60_000);
+      const row = sql.all(`SELECT minute, count FROM relay_sends WHERE key = ?`, key)[0];
+      const used = row && Number(row.minute) === minute ? Number(row.count) : 0;
+      if (used >= limit) return false;
+      sql.run(`INSERT INTO relay_sends (key, minute, count) VALUES (?, ?, ?) ON CONFLICT (key) DO UPDATE SET minute = excluded.minute, count = excluded.count`, key, minute, used + 1);
+      return true;
+    },
+  };
+}
+
+export type PushLimiterStore = ReturnType<typeof createPushLimiter>;
 
 export async function handlePush(raw: unknown, deps: { fcm: Fcm | null; spend: (key: string, limit: number) => boolean; now: () => number }): Promise<PushAnswer> {
   const push = parsePush(raw);

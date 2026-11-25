@@ -3,7 +3,6 @@ export type PushSubscriptionInput = {
   keys: { p256dh: string; auth: string };
 };
 
-/** What one browser or app is told about: every bot but the muted ones, and `other` for notices about no bot (exports, spaces). */
 export type DeviceNotices = { mutedBots: string[]; other: boolean };
 
 export const ALL_NOTICES: DeviceNotices = { mutedBots: [], other: true };

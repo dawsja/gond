@@ -1166,6 +1166,38 @@ const MIGRATIONS: Array<string | ((db: Database) => void)> = [
   ALTER TABLE gond_user_prefs DROP COLUMN call_voice;
   ALTER TABLE gond_user_prefs DROP COLUMN call_model;
   `,
+  `
+  CREATE TABLE gond_server_identity (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    key TEXT NOT NULL,
+    identity TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  INSERT OR IGNORE INTO gond_server_identity (id, key, identity, updated_at)
+    SELECT 1, key, identity, updated_at FROM gond_federation
+    WHERE id = 1 AND key IS NOT NULL AND identity IS NOT NULL;
+  DELETE FROM gond_message_reactions WHERE author LIKE 'remote:%' OR message_id IN (SELECT id FROM gond_messages WHERE author LIKE 'remote:%');
+  DELETE FROM gond_attachments WHERE message_id IN (SELECT id FROM gond_messages WHERE author LIKE 'remote:%');
+  UPDATE gond_messages SET reply_to = NULL WHERE reply_to IN (SELECT id FROM gond_messages WHERE author LIKE 'remote:%');
+  UPDATE gond_messages SET answering = NULL WHERE answering IN (SELECT id FROM gond_messages WHERE author LIKE 'remote:%');
+  DELETE FROM gond_messages WHERE author LIKE 'remote:%';
+  DROP INDEX IF EXISTS gond_space_lines_message;
+  DROP INDEX IF EXISTS gond_space_seen_at;
+  DROP INDEX IF EXISTS gond_space_outbox_peer;
+  DROP TABLE IF EXISTS gond_space_outbox;
+  DROP TABLE IF EXISTS gond_space_seen;
+  DROP TABLE IF EXISTS gond_space_lines;
+  DROP TABLE IF EXISTS gond_space_invites;
+  DROP TABLE IF EXISTS gond_space_rules;
+  DROP TABLE IF EXISTS gond_space_members;
+  DROP TABLE IF EXISTS gond_space_gonds;
+  DROP TABLE IF EXISTS gond_spaces;
+  DROP TABLE IF EXISTS gond_peer_checks;
+  DROP TABLE IF EXISTS gond_peers;
+  DROP TABLE IF EXISTS gond_federation;
+  ALTER TABLE gond_user_prefs DROP COLUMN space_level;
+  ALTER TABLE gond_user_prefs DROP COLUMN space_bots;
+  `,
 ];
 
 /**
@@ -1314,6 +1346,7 @@ export const VOICE_KEYS_VERSION = MIGRATIONS.indexOf(VOICE_KEYS) + 1;
 export const MEMORY_MOVES_VERSION = MIGRATIONS.indexOf(markMemoryOnComputer) + 1;
 export const BOT_PICTURES_GONE_VERSION = MIGRATIONS.findIndex((step) => typeof step === "string" && step.includes("DROP TABLE IF EXISTS gond_bot_avatars")) + 1;
 export const VOICE_GONE_VERSION = MIGRATIONS.findIndex((step) => typeof step === "string" && step.includes("ALTER TABLE gond_messages DROP COLUMN spoken")) + 1;
+export const SPACES_GONE_VERSION = MIGRATIONS.findIndex((step) => typeof step === "string" && step.includes("CREATE TABLE gond_server_identity")) + 1;
 export const LATEST_VERSION = MIGRATIONS.length;
 
 type Named = { name: string; sql: string | null };

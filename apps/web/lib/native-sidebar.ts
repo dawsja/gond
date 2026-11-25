@@ -3,7 +3,6 @@ import type { ThreadRow } from "@/components/store";
 import type { NativeMenuItem, SidebarHit, SidebarRow, SidebarSection, SidebarTile } from "@/lib/native-ui";
 import { settingsHref, type groupedSections } from "@/lib/settings-sections";
 import { messageSnippet } from "@/lib/snippet";
-import { remoteMember, spaceSubtitle } from "@/lib/spaces";
 import { shortTime } from "@/lib/time";
 
 type Activity = Readonly<Record<string, string>>;
@@ -16,14 +15,13 @@ export function threadPreview(thread: ThreadRow, bots: Bot[], activity: Activity
     return thread.kind === "room" && name ? `${name}: ${line}` : line;
   }
   const last = thread.lastMessage;
-  if (!last) return thread.space ? spaceSubtitle(thread.space) : thread.kind === "room" ? "A room for several bots." : "Say hello, or hand over a task.";
+  if (!last) return thread.kind === "room" ? "A room for several bots." : "Say hello, or hand over a task.";
   if (last.author === "routine") return isWatchRun(last.body) ? `Noticed: ${routineName(last.body) ?? "something"}` : `Routine: ${routineName(last.body) ?? "ran"}`;
-  const who = last.author === "you" ? "You: " : thread.kind === "room" ? `${remoteMember(thread.space, last.author)?.name ?? bots.find((b) => b.id === last.author)?.name ?? ""}: ` : "";
+  const who = last.author === "you" ? "You: " : thread.kind === "room" ? `${bots.find((b) => b.id === last.author)?.name ?? ""}: ` : "";
   return `${who}${plainMarkdown(last.body)}`;
 }
 
-/** What a face is drawn from: a bot, or a room's bots (and whether it's a space). Its key changes only when the drawing would. */
-export type FaceSpec = { key: string; bot: Bot } | { key: string; members: Bot[]; space: boolean };
+export type FaceSpec = { key: string; bot: Bot } | { key: string; members: Bot[] };
 
 function hash(text: string): string {
   let h = 0x811c9dc5;
@@ -37,10 +35,9 @@ function hash(text: string): string {
 const looks = (bot: Bot) => [bot.id, bot.color, bot.shape, bot.avatar, bot.expression, bot.primary];
 
 /** `ink` is the theme's text colour: a room's +N chip is painted in the theme, a bot's face isn't. */
-export function faceOf(thread: ThreadRow, bot: Bot | undefined, members: Bot[], ink: string): FaceSpec {
+export function faceOf(bot: Bot | undefined, members: Bot[], ink: string): FaceSpec {
   if (bot) return { key: `b${hash(JSON.stringify(looks(bot)))}`, bot };
-  const space = Boolean(thread.space);
-  return { key: `r${hash(JSON.stringify([space, members.map(looks), members.length > 2 ? ink : ""]))}`, members, space };
+  return { key: `r${hash(JSON.stringify([members.map(looks), members.length > 2 ? ink : ""]))}`, members };
 }
 
 /** Your picture's face, by its address, which changes with the picture. */
@@ -68,7 +65,7 @@ export function sidebarLists({ rows, query, bots, activity, drafts, pathname, in
   const pinnedRows = query.trim() ? [] : rows.filter((thread) => botOf(thread)?.pinned || (thread.kind === "room" && thread.pinned));
 
   const common = (thread: ThreadRow, bot: Bot | undefined) => {
-    const face = faceOf(thread, bot, bot ? [] : membersOf(thread), ink);
+    const face = faceOf(bot, bot ? [] : membersOf(thread), ink);
     faces.set(face.key, face);
     const path = `/app/t/${thread.id}`;
     const active = pathname === path;

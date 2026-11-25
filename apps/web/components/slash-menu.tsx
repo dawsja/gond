@@ -1,7 +1,7 @@
 "use client";
 
 import { handleOf, type Bot, type Skill } from "@gond/shared";
-import { BotAvatar, PersonAvatar } from "@/components/bot-avatar";
+import { BotAvatar } from "@/components/bot-avatar";
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { useLiveEvents } from "@/components/hq/live-events";
 import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from "@/components/ui/command";
@@ -61,7 +61,7 @@ export function slashQuery(text: string, caret: number): { kind: "skill" | "bot"
   return { kind: match[1] === "/" ? "skill" : "bot", query: match[2]!.toLowerCase(), start: caret - match[2]!.length - 1 };
 }
 
-export type Mentionable = { id: string; name: string; handle: string; detail: string | null; face: Parameters<typeof BotAvatar>[0]["bot"] | null };
+export type Mentionable = { id: string; name: string; handle: string; detail: string | null; face: Parameters<typeof BotAvatar>[0]["bot"] };
 
 export function mentionOfBot(bot: Bot): Mentionable {
   return { id: bot.id, name: bot.name, handle: handleOf(bot.name), detail: bot.title || null, face: bot };
@@ -73,7 +73,7 @@ export function matchMentions(people: Mentionable[], query: string): Mentionable
 }
 
 export function MentionFace({ who, size }: { who: Mentionable; size: number }) {
-  return who.face ? <BotAvatar bot={who.face} size={size} /> : <PersonAvatar name={who.name} avatar={null} size={size} />;
+  return <BotAvatar bot={who.face} size={size} />;
 }
 
 export function matchSkills(skills: Skill[], query: string): Skill[] {
@@ -85,10 +85,9 @@ export function SlashMenu({ kind, skills, people, query, selected, onPickSkill, 
   const skillMatches = useMemo(() => (kind === "skill" ? matchSkills(skills, query) : []), [kind, skills, query]);
   const botMatches = useMemo(() => (kind === "bot" ? matchMentions(people, query) : []), [kind, people, query]);
   const current = kind === "skill" ? (skillMatches[selected]?.id ?? "") : (botMatches[selected]?.id ?? "");
-  const everyone = people.some((m) => !m.face);
-  const empty = kind === "skill" ? (skills.length ? "No skill matches." : "No skills yet. Add one under Settings → Skills.") : everyone ? "Nobody matches." : "No bot matches.";
+  const empty = kind === "skill" ? (skills.length ? "No skill matches." : "No skills yet. Add one under Settings → Skills.") : "No bot matches.";
   return (
-    <div className="absolute inset-x-0 bottom-full z-10 mb-2 overflow-hidden rounded-2xl border border-primary-edge bg-popover p-1.5 shadow-subtle-3 pointer-coarse:rounded-3xl" aria-label={kind === "skill" ? "Skills" : everyone ? "People and bots" : "Bots"}>
+    <div className="absolute inset-x-0 bottom-full z-10 mb-2 overflow-hidden rounded-2xl border border-primary-edge bg-popover p-1.5 shadow-subtle-3 pointer-coarse:rounded-3xl" aria-label={kind === "skill" ? "Skills" : "Bots"}>
       <Command value={current} shouldFilter={false} loop>
         <CommandList className="max-h-64">
           {skillMatches.length === 0 && botMatches.length === 0 ? <CommandEmpty>{empty}</CommandEmpty> : null}
@@ -102,7 +101,7 @@ export function SlashMenu({ kind, skills, people, query, selected, onPickSkill, 
               ))}
             </CommandGroup>
           ) : (
-            <CommandGroup heading={everyone ? "People and bots" : "Bots"}>
+            <CommandGroup heading="Bots">
               {botMatches.map((who) => (
                 <CommandItem key={who.id} value={who.id} onSelect={() => onPickPerson(who)} onMouseDown={(e) => e.preventDefault()}>
                   <MentionFace who={who} size={18} />

@@ -9,7 +9,7 @@ import { pipeline } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { Accounts, USER_ID, handOver, openedPath } from "./accounts.mjs";
 import { CLAUDE_BIN, checkClaude } from "./claude.mjs";
-import { AgentSession, GUEST_MODES, PERMISSION_MODES, authStatus, backendOf, forgetClaudeVersion, parseAccess } from "./agents.mjs";
+import { AgentSession, PERMISSION_MODES, authStatus, backendOf, forgetClaudeVersion, parseAccess } from "./agents.mjs";
 import { toolResultContent } from "./bridge.mjs";
 import { BrowserError, createBrowsers } from "./browser.mjs";
 import { homeUrl, lookOf } from "./home.mjs";
@@ -1578,11 +1578,7 @@ function refuseWhileUpdating() {
 
 async function closeAgent(id, agent, { keepSession }) {
   agents.delete(id);
-  try {
-    await agent.close({ keepSession });
-  } finally {
-    dropAgent(agent);
-  }
+  await agent.close({ keepSession });
 }
 
 async function closeAgentsOf(account, options) {
@@ -1685,7 +1681,7 @@ export async function stats() {
   const [byUid, disk, memory] = await Promise.all([isRoot ? memoryByUid() : null, diskOf(HOMES_DIR), memoryNow()]);
   const people = accounts.list().map((account) => {
     // An agent is a bot in one conversation: a bot counts once however many it has open.
-    const bots = new Set([...agents].filter(([, agent]) => agent.user === account.id && agent.running && !agent.guest).map(([id]) => id.split("--")[0]));
+    const bots = new Set([...agents].filter(([, agent]) => agent.user === account.id && agent.running).map(([id]) => id.split("--")[0]));
     const screensRunning = [...screens.values()].filter((screen) => screen.user === account.id).length;
     const size = homeSizes.of(account.home);
     return {
@@ -1783,36 +1779,20 @@ function rememberSession(agent) {
   sessions.remember(agent.id, agent.sessionId ? { user: agent.user, engine: agent.engine, sessionId: agent.sessionId, backend: agent.backend } : null);
 }
 
-/**
- * A guest session's working folder: new, empty and the person's, made by root with mkdtemp so nobody
- * can have put anything there first. Nothing in it means no CLAUDE.md and no files to wander into.
- */
-function guestDir(account) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "gond-guest-"));
-  const owner = asUser(account);
-  if (owner.uid !== undefined) fs.chownSync(dir, owner.uid, owner.gid);
-  return dir;
-}
-
-function dropAgent(agent) {
-  if (agent.guestDir) fs.rmSync(agent.guestDir, { recursive: true, force: true });
-}
-
-async function agentFor(account, id, bot, engine = "claude", guest = null, start = {}) {
+async function agentFor(account, id, bot, engine = "claude", start = {}) {
   if (!ID.test(id)) throw new HttpError(400, "Bad agent id");
   let agent = agents.get(id);
   if (agent && agent.user !== account.id) throw new HttpError(404, "No such agent");
-  if (agent && (agent.engine !== engine || (agent.guest ?? null) !== guest)) {
+  if (agent && agent.engine !== engine) {
     await closeAgent(id, agent, { keepSession: false });
     sessions.forget(id);
     agent = undefined;
   }
   if (!agent) {
     const Session = ENGINES[engine];
-    const cwd = guest ? guestDir(account) : botDir(account, bot);
     agent = new Session({
       id,
-      cwd,
+      cwd: botDir(account, bot),
       env: agentEnv(account),
       ...asUser(account),
       socketDir: AGENT_SOCKET_DIR,
@@ -1821,10 +1801,8 @@ async function agentFor(account, id, bot, engine = "claude", guest = null, start
       onWarning: (text) => console.warn(`[box] ${id}: ${text}`),
     });
     agent.user = account.id;
-    agent.guest = guest;
-    if (guest) agent.guestDir = cwd;
     const resume = sessionToStart(start.session, sessions, { id, user: account.id, engine, backend: backendOf(start.access) });
-    agent.sessionId = guest ? null : resume.sessionId;
+    agent.sessionId = resume.sessionId;
     agent.backend = resume.backend;
     agents.set(id, agent);
   }
@@ -1876,13 +1854,10 @@ async function agentTurnRoute(request, response, id, account) {
   const permission = PERMISSION_MODES.includes(body.permission) ? body.permission : "ask";
   const timeoutMs = Math.min(Math.max(Number(body.timeoutMs) || MAX_AGENT_TURN_MS, 1000), MAX_AGENT_TURN_MS);
   const images = Array.isArray(body.attachments) ? body.attachments : [];
-  const guest = body.guest === undefined || body.guest === null ? null : GUEST_MODES.includes(body.guest) ? body.guest : undefined;
-  if (guest === undefined) throw new HttpError(400, "Bad guest mode");
-  if (guest && engine !== "claude") throw new HttpError(400, "Only Claude Code runs as a guest");
   if (ownAgent(account, id)?.turn) throw new HttpError(409, "This bot is already answering");
   const access = parseAccess(body.access);
-  const agent = await agentFor(account, id, body.bot, engine, guest, { session: body.session, access });
-  if (!guest) await foldClaudeMemory(account, body.bot);
+  const agent = await agentFor(account, id, body.bot, engine, { session: body.session, access });
+  await foldClaudeMemory(account, body.bot);
 
   response.writeHead(200, {
     "Content-Type": "text/event-stream",
@@ -1894,7 +1869,7 @@ async function agentTurnRoute(request, response, id, account) {
   const sendEvent = (event) => response.write(`data: ${JSON.stringify(event)}\n\n`);
   const keepalive = setInterval(() => response.write(": ping\n\n"), SSE_KEEPALIVE_MS);
   try {
-    const settings = { model: body.model, maxTurns, systemPrompt, tools, permission, mcpServers: Array.isArray(body.mcpServers) ? body.mcpServers : [], access, guest, timezone: account.timezone };
+    const settings = { model: body.model, maxTurns, systemPrompt, tools, permission, mcpServers: Array.isArray(body.mcpServers) ? body.mcpServers : [], access, timezone: account.timezone };
     let launch = await agent.ensure(settings);
     const turn = (prompt) =>
       agent.turnWith({ prompt, images, timeoutMs, systemPrompt, onEvent: sendEvent, signal: stop.signal }).catch((error) => {
@@ -1915,7 +1890,7 @@ async function agentTurnRoute(request, response, id, account) {
       recovered = true;
       result = await turn(body.prompt);
     }
-    if (!guest) rememberSession(agent);
+    rememberSession(agent);
     sendEvent({ type: "result", ...result, sessionId: agent.sessionId, launched: launch.launched, resumed: launch.resumed ?? false, recovered });
   } catch (error) {
     const missing = error.code === "ENOENT" || error.code === "EACCES";

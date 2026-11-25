@@ -170,8 +170,7 @@ commit, things that stay true) hold here too.
   with `memory_read` and written whole with `memory_write`, both with
   `team` for the team's. File tools aimed at where it was kept are turned
   to those (`isMemoryFile`, in the native tools and the CLI's permission
-  prompt). In a space whose owner left memory out, every memory tool
-  refuses. Memory from before is moved in from the computer
+  prompt). Memory from before is moved in from the computer
   (`src/memory-moves.ts`): every bot and profile there was at the
   migration waits in `gond_memory_moves` (one made later never does), is
   moved at its first turn or by the sweep at start (`startMemoryMoves`),
@@ -279,7 +278,7 @@ commit, things that stay true) hold here too.
   one visible primary per person. Who does what lives in SOUL and the
   house rules, never gated in the responder. `validateCoordination` in
   `tools.ts` checks schemas before coordination tools run; `ALWAYS_LOAD_TOOLS`
-  in `coordination.ts` keeps their schemas in Claude's non-guest tool list.
+  in `coordination.ts` keeps their schemas in Claude's tool list.
 - **Profiles through tools, not SQL**: `set_profile` and `update_bot` go
   through `profilePatch()` in `src/tools.ts`, then `syncSoul` rewrites
   SOUL.md. Add a field there, not in the route. `picture` is a path in
@@ -473,7 +472,7 @@ commit, things that stay true) hold here too.
   (`isInternalApiPath`), so those token-only routes are reached only on
   the Compose network.
 - **Usage** (`src/usage.ts`, `data/usage.ts`): every call (turns, the
-  router, summaries, guest turns, pictures) records a `gond_usage` row per
+  router, summaries, pictures) records a `gond_usage` row per
   model through `usageRecorder` / `onUsage`, with a cost only when the
   provider billed one; Claude Code's `total_cost_usd` is a list-price
   estimate and never kept. Plan limits are `gond_plan_limits`: Claude's
@@ -601,7 +600,7 @@ commit, things that stay true) hold here too.
   `routes/shopping.ts`, `prepare_checkout` and `submit_checkout` in
   `computer-tool.ts`): products, checkouts and orders are encrypted rows of
   `gond_commerce`, the address apart (`private`), in private conversations
-  only (never a space). A quote is bound to its revision and its live
+  only. A quote is bound to its revision and its live
   page's items and total; the purchase card is the payment's yes whatever
   the bot's level, and expires at `GOND_APPROVAL_TIMEOUT_MINUTES` with
   Gond's `CARD_EXPIRED_LINE` (`expireDueCheckouts`). One open checkout per
@@ -651,7 +650,7 @@ commit, things that stay true) hold here too.
   reminds the primary bot by hidden prompt at 90, 30 and 7 days and on the
   day (`expiryStage`, `runDetailReminders`), in the person's daytime, each
   marked before it posts (`markReminded`); a new date starts over. Never in
-  a space, an export or a template.
+  an export or a template.
 
 ## Apps, MCP, skills
 
@@ -720,8 +719,9 @@ commit, things that stay true) hold here too.
   emits a `notify` event for the shells.
   Phones (`gond_push_devices`, per person, Android or iPhone,
   `src/phone-push.ts`) get each notice sealed for them alone (`sealNotice`, AES-256-GCM with
-  the phone's key) and signed with this Gond's key (`signPush`), sent to
-  the relay; a 410 forgets the phone. `registerPushDevice` hands out keys
+  the phone's key) and signed with this Gond's key (`signPush` in
+  `src/server-identity.ts`, persisted in `gond_server_identity`), sent to
+  `api.gond.io`; a 410 forgets the phone. `registerPushDevice` hands out keys
   only to a phone it doesn't know. A card a phone may answer
   (`answerableOnPhone`: never an email) carries its buttons under a
   `card-<id>` tag and is withdrawn from the phones once closed
@@ -780,67 +780,8 @@ commit, things that stay true) hold here too.
   `removed` on its message in the same transaction that deletes it
   (`markRemoved`), so the chat draws "Removed to save space", the viewer
   skips it and a bot hears it's gone; its message stays.
-  `SIGTERM`/`SIGINT` stop the dispatcher, usage sharing and federation,
+  `SIGTERM`/`SIGINT` stop the dispatcher and usage sharing,
   drain HTTP and run `checkpointAndCloseDb` (`index.ts`).
-
-## Spaces
-
-`src/spaces.ts` over `src/federation.ts` and `data/spaces.ts`. This
-Gond's keys are made once and kept encrypted (`gond_federation.identity`);
-it holds one `RelayClient` to its own relay (`GOND_RELAY_URL` or the
-admin's) and one per other relay it sends to. Everything goes through
-`gond_space_outbox` (sealed and sent with backoff, at once when a relay
-reconnects, `outboxDueNow`), and arrivals are checked against
-`gond_space_seen` (refused past 14 days), so restarts lose nothing and
-nothing posts twice. A space is a room with the same id on each Gond
-(`gond_spaces`); the creator hosts, guests send to it, it passes lines on.
-Events (`parseEvent` checks everything from another Gond): join, welcome
-(lines since it became a space, never earlier talk), refused, line,
-members, leave, closed, gond.
-
-- Lines go out from `onThreadEvent` (`outbound`); an edited room sends its
-  members. Every line passes `spaceSafe` in `wireLine` on its way out,
-  whoever posted it, which also hides stored values from
-  `SHORT_SECRET` (4) characters as whole words. What crosses is only lines said there (a file as a note), members'
-  names and colours and each Gond's name: never a card, file, memory or
-  setting.
-- The rules (`gond_space_rules`, `spaceDefaults`) gate what another
-  Gond's line does in code, never only in the prompt: `peopleWake`
-  (`wokenFromAfar`), `botsWake` (by @handle, within `MAX_ROOM_LINES`).
-  `talk` and `look` answer as a guest (`answerAsGuest`,
-  `guestInstructions`, memory only with `memory` on, a box guest session
-  with no tools or only web, `guestReply`). `act` asks the owner
-  (`askOwner`) whatever the bot's level; on a yes a hidden prompt has it do
-  the task as Gond's own word with the request set apart (a yes inside
-  quoted remote text reads like injected permission), the same words the
-  card showed (`askedText`) and the asker's names only inside the quote
-  (`actPrompt`). `full`, Always allow, skips the card: set per bot and
-  space only, confirmed (`confirmed: true`), never a default, and put
-  back to `act` with a line when someone new joins
-  (`newcomersEndAlwaysAllow`).
-- A line counts only from a member the Gond it's from declared in that
-  space (`mayTakeLine`, on the host and every guest, the welcome's lines
-  too; members are keyed by Gond, so one can't overwrite another's), and
-  a member nobody can place is a bot to the rules, since no Gond can
-  check what another says its members are. Every name from afar is one
-  plain line (`plainName`). Members go out only when the list changed,
-  after a short settle and in order with the lines (`membersSoon`,
-  `inOrder`). Answers to another Gond wait in a lane per bot (`inTurn`,
-  three waiting at most, the oldest giving way) that Stop aborts and
-  empties (`stopGuestWork`), expiring an `act` card with it; a "stop"
-  said in a space and the bot's account of it stay on this Gond
-  (`keepHere`). "We checked the words" is each person's own
-  (`gond_peer_checks`).
-- Every space turn hears `SPACE_TURN` (public, no private reply). The
-  person's own line wakes only bots it names (`spaceTargets`,
-  `postInSpace`); `spaceNote`; `memoryAllowed`. Remote people are "not
-  your person" in transcripts. `say_in_space` (rule `relay`, off by
-  default) works only when the bot's own person asks in their chat
-  (`message.author` is "you").
-- Leaving, deleting the room or person, or turning Spaces off sends leave
-  or closed first; Block removes a Gond everywhere, forgets it at the
-  relay and drops its outbox. A join the relay refuses ends with a line.
-  `test/spaces.test.ts` runs three real APIs and a relay.
 
 ## Show me how
 

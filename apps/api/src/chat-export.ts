@@ -1,4 +1,4 @@
-import { EXPORT_RANGES, isRemoteAuthor, isWatchRun, routineName, type Approval, type ApprovalStatus, type ExportRange, type Message, type MessageAuthor } from "@gond/shared";
+import { EXPORT_RANGES, isWatchRun, routineName, type Approval, type ApprovalStatus, type ExportRange, type Message, type MessageAuthor } from "@gond/shared";
 import { Zip, ZipDeflate, ZipPassThrough } from "fflate";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -8,7 +8,6 @@ import { listBots } from "./data/bots.ts";
 import { exportProgress, exportWanted, failExport, finishExport, type ExportJob } from "./data/exports.ts";
 import { userTimezone } from "./data/prefs.ts";
 import { allSecretValues } from "./data/secrets.ts";
-import { remoteName } from "./data/spaces.ts";
 import { getAttachment, getThread, messagesInOrder, threadRefs, type ThreadRef } from "./data/threads.ts";
 import { sendPush } from "./push.ts";
 import { createRedactor } from "./redact.ts";
@@ -258,7 +257,7 @@ async function buildExport(job: ExportJob, label: string): Promise<Uint8Array | 
   const refs = exportChats(job.userId, job.threadId);
   const chatNames = new Map(threadRefs(job.userId).map((ref) => [ref.id, ref.name]));
   const nameOf = (author: MessageAuthor) =>
-    author === "you" ? "You" : author === "system" ? "Gond" : author === "routine" ? "Routine" : isRemoteAuthor(author) ? (remoteName(author) ?? "Someone on another Gond") : (bots.get(author) ?? "A bot that was removed");
+    author === "you" ? "You" : author === "system" ? "Gond" : author === "routine" ? "Routine" : (bots.get(author) ?? "A bot that was removed");
   const redact = createRedactor(allSecretValues(), Number.POSITIVE_INFINITY);
   const zip = zipWriter();
   try {

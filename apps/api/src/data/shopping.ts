@@ -4,7 +4,6 @@ import { newId, now } from "../ids.ts";
 import { encryptSecret, decryptSecret } from "../secrets.ts";
 import { threadChanged } from "../events.ts";
 import { getThread, postMessage } from "./threads.ts";
-import { spaceOfThread } from "./spaces.ts";
 import { approvalTimeoutMs, shoppingPreviewOnly } from "../config.ts";
 import { CARD_EXPIRED_LINE } from "../approvals.ts";
 
@@ -78,7 +77,7 @@ function save(row: Row, value: ShoppingRecord, state = row.state) {
 }
 
 function privateThread(threadId: string, userId: string) {
-  if (getThread(threadId)?.userId !== userId || spaceOfThread(threadId)) throw new Error("Shopping is available only in your private conversations");
+  if (getThread(threadId)?.userId !== userId) throw new Error("Shopping is available only in your private conversations");
 }
 
 export function presentProducts(userId: string, botId: string, threadId: string, input: unknown): ProductCollection {

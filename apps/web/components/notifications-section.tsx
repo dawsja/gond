@@ -174,7 +174,7 @@ function DeviceNoticesCard() {
         <div className="flex items-center gap-3">
           <div className="min-w-0 flex-1">
             <p className="text-[14.5px] font-medium">Other notices</p>
-            <p className="text-[13px] text-muted-foreground">Exports, people in spaces</p>
+            <p className="text-[13px] text-muted-foreground">Exports</p>
           </div>
           <Switch size="sm" checked={notices.other} onCheckedChange={change} aria-label={`Other notices on ${here}`} />
         </div>

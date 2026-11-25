@@ -10,8 +10,6 @@ import { startUsageSharing, stopUsageSharing } from "./usage-sharing.ts";
 import { syncSkills } from "./skills.ts";
 import { startMemoryMoves } from "./memory-moves.ts";
 import { resumeTeachings } from "./teach.ts";
-import { startFederation, stopFederation } from "./federation.ts";
-import { allowKnownGonds, startSpaces } from "./spaces.ts";
 
 ensureDatabase();
 await getAuth();
@@ -22,10 +20,6 @@ startDispatcher();
 watchSetupCards();
 startUsageSharing();
 void resumeTeachings().catch((error: unknown) => console.error("[gond] picking up Show me how failed:", error));
-startSpaces();
-void startFederation()
-  .then(() => allowKnownGonds())
-  .catch((error: unknown) => console.error("[gond] connecting to other Gonds failed:", error));
 
 const app = createApp();
 const server = Bun.serve({
@@ -51,7 +45,6 @@ async function shutdown(signal: string) {
   try {
     stopDispatcher();
     stopUsageSharing();
-    stopFederation();
     await Promise.race([server.stop(false), Bun.sleep(3_000)]);
   } catch (error) {
     console.warn(`[gond] Error while shutting down: ${error instanceof Error ? error.message : error}`);

@@ -1,6 +1,5 @@
-import { isPaused, isRemoteAuthor, replyLine, type Bot, type Message, type Thread } from "@gond/shared";
+import { isPaused, replyLine, type Bot, type Message, type Thread } from "@gond/shared";
 import { getApproval } from "./data/approvals.ts";
-import { memberOfAuthor } from "./data/spaces.ts";
 import { recentMessages } from "./data/threads.ts";
 
 export function transcript(thread: Thread, bots: Bot[], self: Bot, upTo: Message, count = 30, options: { after?: string | null } = {}): string {
@@ -25,11 +24,10 @@ export function transcriptLines(lines: Message[], bots: Bot[], self: Pick<Bot, "
     .join("\n");
 }
 
-export function authorName(author: string, threadId: string, names: Map<string, string>, selfId?: string): string {
+export function authorName(author: string, _threadId: string, names: Map<string, string>, selfId?: string): string {
   if (author === "you") return "Person";
   if (author === "routine") return "Routine";
   if (author === "system") return "Gond";
-  if (isRemoteAuthor(author)) return fromAfar(threadId, author);
   return (names.get(author) ?? author) + (author === selfId ? " (you)" : "");
 }
 
@@ -38,12 +36,6 @@ function approvalEnding(m: Message): string {
   const status = card?.status;
   if (isPaused(card)) return "; nobody answered in time, so that work is paused: if your person answers it, Gond tells you and you carry on";
   return status === "allowed" ? "; your person said yes" : status === "denied" ? "; your person said no" : status === "expired" ? "; nobody answered in time" : status === "pending" ? "; waiting for your person" : "";
-}
-
-function fromAfar(threadId: string, author: string): string {
-  const member = memberOfAuthor(threadId, author);
-  if (!member) return "Someone from another Gond (not your person)";
-  return member.kind === "person" ? `${member.name} (from ${member.gondName}, not your person)` : `${member.name} (${member.gondName}'s bot)`;
 }
 
 /** For a summary, where a long table or log needs only its gist. */

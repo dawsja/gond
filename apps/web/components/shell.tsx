@@ -20,9 +20,6 @@ import { downloadRevealer, macShell, shellBridge, type DesktopDownload } from "@
 
 const BotDialog = dynamic(() => import("@/components/bot-dialog").then((m) => m.BotDialog));
 const RoomDialog = dynamic(() => import("@/components/room-dialog").then((m) => m.RoomDialog));
-const InviteSpaceDialog = dynamic(() => import("@/components/spaces/space-dialogs").then((m) => m.InviteSpaceDialog));
-const JoinSpace = dynamic(() => import("@/components/spaces/join-space").then((m) => m.JoinSpace));
-const NewSpace = dynamic(() => import("@/components/spaces/join-space").then((m) => m.NewSpace));
 const ProfilesDialog = dynamic(() => import("@/components/profiles").then((m) => m.ProfilesDialog));
 const AddProfileDialog = dynamic(() => import("@/components/profiles").then((m) => m.AddProfileDialog));
 
@@ -33,9 +30,6 @@ export type ShellDialog =
   | { kind: "edit-room"; threadId: string }
   | { kind: "computer"; botId?: string | null }
   | { kind: "share-bot"; botId: string }
-  | { kind: "invite-space"; threadId: string }
-  | { kind: "join-space"; link?: string }
-  | { kind: "new-space" }
   | { kind: "profiles" }
   | { kind: "add-profile" }
   | null;
@@ -61,9 +55,6 @@ export function Shell({ user, children }: { user: SessionUser; children: ReactNo
           />
         ) : null}
         {dialog?.kind === "share-bot" ? <ShareBotDialog botId={dialog.botId} onClose={() => setDialog(null)} /> : null}
-        {dialog?.kind === "invite-space" ? <InviteSpaceDialog threadId={dialog.threadId} onClose={() => setDialog(null)} /> : null}
-        {dialog?.kind === "join-space" ? <JoinSpace link={dialog.link} onClose={() => setDialog(null)} /> : null}
-        {dialog?.kind === "new-space" ? <NewSpace onClose={() => setDialog(null)} /> : null}
         {dialog?.kind === "profiles" ? <ProfilesDialog onClose={() => setDialog(null)} /> : null}
         {dialog?.kind === "add-profile" ? <AddProfileDialog onClose={() => setDialog(null)} /> : null}
         <Suspense>

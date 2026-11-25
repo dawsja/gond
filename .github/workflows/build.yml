@@ -621,7 +621,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        name: [gond-web, gond-api, gond-box, gond-relay]
+        name: [gond-web, gond-api, gond-box]
         arch: [amd64, arm64]
         include:
           - name: gond-web
@@ -633,9 +633,6 @@ jobs:
           - name: gond-box
             context: packages/box
             dockerfile: packages/box/Dockerfile
-          - name: gond-relay
-            context: packages/relay
-            dockerfile: packages/relay/Dockerfile
           - arch: amd64
             runner: ubuntu-24.04
           - arch: arm64
@@ -701,7 +698,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        name: [gond-web, gond-api, gond-box, gond-relay]
+        name: [gond-web, gond-api, gond-box]
     runs-on: ubuntu-24.04
     permissions:
       contents: read

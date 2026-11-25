@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { apiUrl } from "@/lib/api-url";
 import { isInternalApiPath } from "@/lib/internal-api";
 
-const PUBLIC_PATH = /^\/(login|register|join|api|healthz)(\/|$)/;
+const PUBLIC_PATH = /^\/(login|register|api|healthz)(\/|$)/;
 
 export function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;

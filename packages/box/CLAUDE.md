@@ -83,13 +83,6 @@ commit, things that stay true) hold here too.
   the code written back, the result confirmed by the CLI. Only the link,
   the code and a short error leave; never the transcript. Pure and tested
   (`test/sign-in.test.mjs`).
-- **Guest sessions** (Spaces, `GUEST_MODES`): Claude Code with `--tools
-  ""` (or only WebSearch for `look`; WebFetch never, since it reaches
-  any address the box can), everything else denied, never skipped
-  permissions, no MCP but the gond bridge, project settings only, a fresh
-  mkdtemp folder removed with the agent (`guestDir`, `dropAgent`), no
-  session kept. Below `GUEST_FLOOR`, or when the version can't be read,
-  it refuses.
 - **`POST /computer`** (`computer.mjs`): `{ bot, target, steps, saveTo? }`
   in real pixels, a sign-in pre-filled as `{ type: "type", text, secret:
   true }`. `parseSteps` checks every step (pure, tested; navigate is http

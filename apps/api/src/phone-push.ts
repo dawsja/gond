@@ -1,7 +1,7 @@
 import { noticeWanted } from "@gond/shared";
 import { createCipheriv, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { listPushDevices, removePushDevice, type PushDevice } from "./data/push-devices.ts";
-import { signPush } from "./federation.ts";
+import { signPush } from "./server-identity.ts";
 
 /** Gond's own relay passes every Gond's pushes to Firebase, which holds no Gond's keys; there is no other. */
 export const PUSH_RELAY_URL = "https://api.gond.io";

@@ -53,8 +53,6 @@ type NativeTurn = {
   cacheKey?: string;
   // The reply's words so far as the model writes them, or null when a tool call ends them.
   onText?: TextSink;
-  // False leaves out the provider's own web search, for a guest in a space who may only talk.
-  search?: boolean;
   onUsage?: (usage: ModelUsage) => void;
 };
 
@@ -175,7 +173,7 @@ export function serverSearch(access: NativeAccess, model: string): unknown | nul
   return isMiniMaxHost(access.upstream) ? { type: "web_search_20250305", name: "web_search" } : null;
 }
 
-export function toolList(access: NativeAccess, tools: Record<string, DriverTool>, model = "", withSearch = true): unknown[] {
+export function toolList(access: NativeAccess, tools: Record<string, DriverTool>, model = ""): unknown[] {
   const native = anthropicNative(access);
   const list = Object.entries(tools).map(([name, tool]) => {
     if (native && tool.native?.anthropic) return tool.native.anthropic;
@@ -186,7 +184,7 @@ export function toolList(access: NativeAccess, tools: Record<string, DriverTool>
   });
   // A ChatGPT plan takes function tools only inside a namespace.
   if (access.kind === "chatgpt") return list.length ? [{ type: "namespace", name: TOOL_NAMESPACE, description: "Gond's tools for this bot.", tools: list }] : [];
-  const search = withSearch ? serverSearch(access, model) : null;
+  const search = serverSearch(access, model);
   return search ? [...list, search] : list;
 }
 
@@ -419,7 +417,7 @@ export function readResponses(events: unknown[], kind: ProviderKind = "chatgpt")
 async function sendResponses(turn: NativeTurn, input: unknown[], onText?: TextSink): Promise<Step> {
   const { baseUrl, token } = turn.access;
   const grok = turn.access.kind === "grok";
-  const tools = toolList(turn.access, turn.tools, turn.model, turn.search !== false);
+  const tools = toolList(turn.access, turn.tools, turn.model);
   const res = await fetch(upstreamUrl(baseUrl, "responses", ""), {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "text/event-stream", authorization: `Bearer ${token}` },
@@ -482,10 +480,10 @@ async function send(turn: NativeTurn, messages: unknown[], onText?: TextSink): P
   const openai = isOpenAiShaped(kind);
   const url = upstreamUrl(baseUrl, openai ? "chat/completions" : "v1/messages", "");
   const body = openai
-    ? { model: turn.model, messages: [{ role: "system", content: turn.instructions }, ...messages], tools: toolList(turn.access, turn.tools, turn.model, turn.search !== false), ...outputLimit(turn.access), stream: true, stream_options: { include_usage: true } }
+    ? { model: turn.model, messages: [{ role: "system", content: turn.instructions }, ...messages], tools: toolList(turn.access, turn.tools, turn.model), ...outputLimit(turn.access), stream: true, stream_options: { include_usage: true } }
     : anthropicNative(turn.access)
-      ? { model: turn.model, ...withCacheBreakpoints(turn.instructions, toolList(turn.access, turn.tools, turn.model, turn.search !== false), messages), max_tokens: MAX_OUTPUT_TOKENS, stream: true }
-      : { model: turn.model, system: turn.instructions, messages, tools: toolList(turn.access, turn.tools, turn.model, turn.search !== false), max_tokens: MAX_OUTPUT_TOKENS, stream: true };
+      ? { model: turn.model, ...withCacheBreakpoints(turn.instructions, toolList(turn.access, turn.tools, turn.model), messages), max_tokens: MAX_OUTPUT_TOKENS, stream: true }
+      : { model: turn.model, system: turn.instructions, messages, tools: toolList(turn.access, turn.tools, turn.model), max_tokens: MAX_OUTPUT_TOKENS, stream: true };
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders(kind, baseUrl, token), ...(openai ? {} : { "anthropic-version": ANTHROPIC_VERSION, ...betaHeaders(turn.access, turn.tools) }) },

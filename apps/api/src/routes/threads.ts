@@ -4,8 +4,6 @@ import { ownThread, ownsThread, userId } from "../access.ts";
 import type { Env } from "../app.ts";
 import { jpegFromHeic } from "../image-work.ts";
 import { getBot, listBots } from "../data/bots.ts";
-import { leaveSpace, mayJoinSpaces } from "../spaces.ts";
-import { spaceOfThread } from "../data/spaces.ts";
 import { attachmentOwner, createRoom, deleteRoom, dropMessage, editMessage, failuresAnswering, getAttachment, getMessage, getThread, listExchange, listMessages, listThreads, markThreadRead, postMessage, searchMessages, setReaction, storeAttachment, unsendMessage, unsteer, updateRoom } from "../data/threads.ts";
 import { isHeic } from "../images.ts";
 import { previewOf } from "../pictures.ts";
@@ -105,7 +103,6 @@ export function threadsRoutes() {
     const id = c.req.param("id") ?? "";
     const message = ownsThread(c, id) ? getMessage(c.req.param("messageId") ?? "") : null;
     if (!message || message.threadId !== id || message.kind !== "message" || message.author !== "you") return { error: "Couldn't find that message", status: 404 as const };
-    if (spaceOfThread(id)) return { error: "Lines in a space can't be taken back", status: 409 as const };
     return { message };
   };
 
@@ -216,15 +213,9 @@ export function threadsRoutes() {
     const bots = listBots({ includeHidden: true, userId: userId(c) });
     const known = new Set(bots.map((b) => b.id));
     const members = Array.isArray(body.members) ? [...new Set(body.members.map(String).filter((id) => known.has(id)))] : undefined;
-    // A space may have one bot, as it can start with one; a room needs two.
-    const inSpace = Boolean(spaceOfThread(before.id));
-    const fewest = inSpace ? 1 : ROOM_MIN_BOTS;
     // A room from before the limits keeps its size; a change only has to move it toward them.
-    if (members && members.length < fewest && members.length < before.members.length) return c.json({ error: inSpace ? "Keep at least one of your bots in the space" : "Keep at least two bots in the room" }, 400);
+    if (members && members.length < ROOM_MIN_BOTS && members.length < before.members.length) return c.json({ error: "Keep at least two bots in the room" }, 400);
     if (members && members.length > ROOM_MAX_BOTS && members.length > before.members.length) return c.json({ error: "A room holds up to six bots" }, 400);
-    // A space takes only bots the person let into spaces, however it's edited; one already there may stay.
-    if (members && inSpace && members.some((id) => !before.members.includes(id) && !mayJoinSpaces(userId(c), id)))
-      return c.json({ error: "Only bots you let into spaces can join this one. Pick them in Settings → Spaces." }, 400);
     const given = body.name === undefined ? undefined : String(body.name).trim().slice(0, 80);
     const name = given === "" ? roomNameFor(bots.filter((b) => (members ?? before.members).includes(b.id))).slice(0, 80) : given;
     if (body.pinned !== undefined && typeof body.pinned !== "boolean") return c.json({ error: "Pinned must be on or off" }, 400);
@@ -239,7 +230,6 @@ export function threadsRoutes() {
     const room = ownThread(c, c.req.param("id"));
     if (!room) return c.json({ error: "Couldn't find that room" }, 404);
     await stopThread(room.id);
-    leaveSpace(room);
     return deleteRoom(c.req.param("id")) ? c.body(null, 204) : c.json({ error: "Couldn't find that room" }, 404);
   });
 

@@ -1,4 +1,4 @@
-import type { Sql } from "./mailbox.ts";
+import type { Sql } from "./sql.ts";
 import { LIMITS, parseUsage, signedUsage, verifySignature, type UsageTotals } from "./protocol.ts";
 
 /**

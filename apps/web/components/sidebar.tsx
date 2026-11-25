@@ -1,7 +1,7 @@
 "use client";
 
 import { handleOf, type Bot, type Message } from "@gond/shared";
-import { Bot as BotIcon, Link2, LogIn, MessageSquareText, Pin, Plus, Search, Users } from "lucide-react";
+import { Bot as BotIcon, MessageSquareText, Pin, Plus, Search, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Fragment, memo, useEffect, useMemo, useState, type ReactElement, type ReactNode } from "react";
@@ -26,7 +26,6 @@ import { messageSnippet } from "@/lib/snippet";
 import { threadPreview } from "@/lib/native-sidebar";
 import { cn } from "@/lib/utils";
 import { WorthALook } from "@/components/worth-a-look";
-import { useFederation } from "@/components/spaces/use-federation";
 
 const IDLE: Record<string, string> = {};
 
@@ -107,8 +106,8 @@ const PinnedTile = memo(function PinnedTile({ thread, bot, active, working, onOp
           </>
         ) : (
           <>
-            <RoomAvatar bots={roomMembers(thread, bots)} size={96} space={Boolean(thread.space)} className="wide:hidden" />
-            <RoomAvatar bots={roomMembers(thread, bots)} size={64} space={Boolean(thread.space)} className="hidden wide:inline-block" />
+            <RoomAvatar bots={roomMembers(thread, bots)} size={96} className="wide:hidden" />
+            <RoomAvatar bots={roomMembers(thread, bots)} size={64} className="hidden wide:inline-block" />
           </>
         )}
         <span className={cn("max-w-full truncate text-[16px] wide:text-[13px]", active ? "font-medium text-foreground" : "text-muted-foreground")}>{bot?.name ?? thread.name}</span>
@@ -132,8 +131,8 @@ const Row = memo(function Row({ thread, bot, active, bots, activity, draft, onOp
             </>
           ) : (
             <>
-              <RoomAvatar bots={roomMembers(thread, bots)} size={48} space={Boolean(thread.space)} className="wide:hidden" />
-              <RoomAvatar bots={roomMembers(thread, bots)} size={40} space={Boolean(thread.space)} className="hidden wide:inline-block" />
+              <RoomAvatar bots={roomMembers(thread, bots)} size={48} className="wide:hidden" />
+              <RoomAvatar bots={roomMembers(thread, bots)} size={40} className="hidden wide:inline-block" />
             </>
           )}
           <span className="flex min-w-0 flex-1 flex-col">
@@ -237,7 +236,6 @@ export function BotSearchInput({ query, setQuery, autoFocus = false, className }
 
 export function NewMenu({ onOpen, size = "icon-lg" }: { onOpen: (dialog: ShellDialog) => void; size?: "icon-xl" | "icon-lg" | "icon" }) {
   const { bots } = useStore();
-  const { federation } = useFederation();
   return (
     <DropdownMenu>
       <DropdownMenuTrigger render={<Button size={size} aria-label="New" />}>
@@ -253,18 +251,6 @@ export function NewMenu({ onOpen, size = "icon-lg" }: { onOpen: (dialog: ShellDi
             <Users aria-hidden="true" />
             {bots.length === 0 ? "New room (make a bot first)" : "New room"}
           </DropdownMenuItem>
-          {federation?.canInvite ? (
-            <>
-              <DropdownMenuItem onClick={() => onOpen({ kind: "new-space" })}>
-                <Link2 aria-hidden="true" />
-                New space
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onOpen({ kind: "join-space" })}>
-                <LogIn aria-hidden="true" />
-                Join space
-              </DropdownMenuItem>
-            </>
-          ) : null}
         </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>

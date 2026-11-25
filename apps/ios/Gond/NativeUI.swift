@@ -66,7 +66,6 @@ struct ChromeState: Decodable, Equatable {
     let menu: [[Item]]
     let covered: Bool
     // Newer pages send these; an older server's page doesn't, and the composer goes without them.
-    let space: Bool?
     let mentions: [Mention]?
     let files: [File]?
     let replying: Replying?

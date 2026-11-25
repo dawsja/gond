@@ -11,7 +11,6 @@ export * from "./ai.ts";
 export * from "./box.ts";
 export * from "./work.ts";
 export * from "./teach.ts";
-export * from "./spaces.ts";
 export * from "./events.ts";
 export * from "./usage.ts";
 export * from "./skills.ts";

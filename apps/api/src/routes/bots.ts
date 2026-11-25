@@ -1,6 +1,5 @@
 import { AVATAR_MAX_BYTES, BOT_TEMPLATES, MODEL_ID_PATTERN, botInputSchema, botPatchSchema, pickBotName } from "@gond/shared";
 import { forgetBotTeachings } from "../teach.ts";
-import { refreshSpaces } from "../spaces.ts";
 import { Hono } from "hono";
 import { ownBot, userId } from "../access.ts";
 import type { Env } from "../app.ts";
@@ -185,7 +184,6 @@ export function botsRoutes() {
     await forgetBotTeachings(bot.id, bot.userId);
     for (const routine of listRoutines(bot.id)) await disarmRoutine(bot.userId, routine.id);
     deleteBot(bot.id);
-    void refreshSpaces(bot.userId).catch(() => undefined);
     const box = boxConfig(userId(c));
     if (box && c.req.query("keepFiles") !== "1") await deleteBotHome(box, bot.id).catch(() => undefined);
     return c.body(null, 204);

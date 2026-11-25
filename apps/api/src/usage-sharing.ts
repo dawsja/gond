@@ -1,7 +1,7 @@
 import { type UsageSharing } from "@gond/shared";
 import { setUsageSharing, usageSharing } from "./data/settings.ts";
 import { serverTokens } from "./data/usage.ts";
-import { signUsage } from "./federation.ts";
+import { signUsage } from "./server-identity.ts";
 import { PUSH_RELAY_URL } from "./phone-push.ts";
 
 // The relay takes one report a key every ten minutes; an hour keeps well clear of it.

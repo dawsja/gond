@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
 import { botInputSchema, isPaused, type Bot, type Message } from "@gond/shared";
-import { answerableLate, askApproval, askOwner, CARD_EXPIRED_LINE, decide, endTurnOnExpiry, pauseOnExpiry, requestApproval, retireLapsedCards } from "../src/approvals.ts";
+import { answerableLate, askApproval, CARD_EXPIRED_LINE, decide, endTurnOnExpiry, pauseOnExpiry, requestApproval, retireLapsedCards } from "../src/approvals.ts";
 import { createApproval, getApproval, pauseApproval } from "../src/data/approvals.ts";
 import { createBot } from "../src/data/bots.ts";
 import { getMessage, getThread, listMessages, postMessage } from "../src/data/threads.ts";
@@ -174,7 +174,7 @@ describe("a card nobody answered in time", () => {
 });
 
 describe("cards that keep the strict expiry", () => {
-  test("money, sign-ins, secrets, a server's keys and another Gond's request expire at 15 minutes with Gond's line", async () => {
+  test("money, sign-ins, secrets and a server's keys expire at 15 minutes with Gond's line", async () => {
     const bot = asker("Strict");
     const asked = postMessage({ threadId: bot.threadId, author: "you", body: "Order the groceries", answered: true });
     const strict: [string, Record<string, unknown>][] = [
@@ -198,13 +198,10 @@ describe("cards that keep the strict expiry", () => {
       expect(answerableLate(tool, input)).toBe(true);
     }
 
-    const owner = personTurn(asked);
     jest.useFakeTimers();
     try {
-      const fromAfar = askOwner({ bot, threadId: bot.threadId, summary: "Let Strict do what Sam asked?", input: { summary: "Let Strict do what Sam asked?" }, signal: owner.signal });
       const login = requestSecret({ bot, threadId: bot.threadId, name: "ROUTER", reason: "to add reservations", target: "login", site: "Router", fields: [{ name: "ROUTER_PASSWORD", label: "Password", kind: "password" }], signal: personTurn(asked).signal });
       jest.advanceTimersByTime(FIFTEEN_MINUTES);
-      expect((await fromAfar).decision).toBe("expired");
       expect(await login).toBe("expired");
     } finally {
       jest.useRealTimers();

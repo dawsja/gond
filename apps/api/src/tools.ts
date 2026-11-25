@@ -32,7 +32,6 @@ import { botHome, isMemoryFile, kb, MAX_MEMORY_BYTES, MAX_TEAM_MEMORY_BYTES, MAX
 import { requestSecret } from "./secret-requests.ts";
 import { looksExecutable, nameFromFolder, parseSkillMd, type BundleFile } from "./skill-bundle.ts";
 import { readSkillFromBox, skillBrief, skillsReady, syncSkills } from "./skills.ts";
-import { isSpace, memoryAllowed, relaySpaces } from "./spaces.ts";
 import { offerTeaching, proposeDraft } from "./teach.ts";
 import { teachingsIn } from "./data/teachings.ts";
 import { recordUsage } from "./data/usage.ts";
@@ -195,12 +194,7 @@ function remember(read: MemoryRead, owner: MemoryOwner, topic: string, content: 
 }
 
 const MEMORY_WAITING = "NOT saved: your memory is still on the computer from before it moved into Gond, and the computer isn't answering. It moves in the first time the computer answers; try again then.";
-const MEMORY_LEFT_OUT = "Your memory is left out in this space, so you can't read or change it here. If your person wants something kept, they can ask you in your own chat.";
 const MAX_MEMORY_READ = 32 * 1024;
-
-function memoryHere(context: Context): boolean {
-  return !isSpace(context.thread) || memoryAllowed(context.thread, context.bot);
-}
 
 const MAX_DECISION_ROWS = 12;
 const MAX_DECISION_ITEMS = 60;
@@ -437,30 +431,6 @@ export function mcpServerName(value: string): string {
     .slice(0, 40);
 }
 
-function sayInSpaceTool(context: Context): Record<string, DriverTool> {
-  const { bot, thread, message } = context;
-  const spaces = relaySpaces(bot).filter((space) => space.id !== thread.id);
-  if (!spaces.length) return {};
-  return {
-    say_in_space: {
-      description: `Say something in a space (a room shared with people on other Gonds) as yourself, when your person asks you to in this chat. Everyone there sees it, people and bots on the other Gonds too. Spaces you may speak in: ${spaces.map((s) => `"${s.name}"`).join(", ")}. Say only what they asked you to say there, in your own words; never anything private (memory, secrets, files) unless they said to share it.`,
-      inputSchema: schema({ space: { type: "string", description: "The space's name." }, text: { type: "string", description: "What to say there." } }, ["space", "text"]),
-      execute: async (input) => {
-        if (message.author !== "you") return "NOT said: only your person can ask you to speak in a space, in their own message to you.";
-        const wanted = String(input.space ?? "").trim().toLowerCase();
-        const space = spaces.find((s) => s.name.toLowerCase() === wanted) ?? (spaces.length === 1 ? spaces[0] : undefined);
-        if (!space) return `NOT said: no space called "${String(input.space ?? "")}". You may speak in ${spaces.map((s) => `"${s.name}"`).join(", ")}.`;
-        const text = String(input.text ?? "").trim();
-        if (!text) return "NOT said: empty message.";
-        const long = overLimit("that message", text, NOTE_MAX);
-        if (long) return `NOT said: ${long}. Make it shorter.`;
-        postMessage({ threadId: space.id, author: bot.id, body: hideSecrets(text), depth: message.depth + 1, answered: true });
-        return `Said in "${space.name}" for everyone there to see. Tell your person in a line that it's said.`;
-      },
-    },
-  };
-}
-
 export function baseTools(context: Context): Record<string, DriverTool> {
   const { box, bot, thread, message } = context;
   const depth = message.depth + 1;
@@ -600,7 +570,6 @@ export function baseTools(context: Context): Record<string, DriverTool> {
       description: "Replace MEMORY.md, the notes that load into every one of your turns.",
       inputSchema: schema({ content: { type: "string", description: "The whole new MEMORY.md." } }, ["content"]),
       execute: async (input) => {
-        if (!memoryHere(context)) return MEMORY_LEFT_OUT;
         const content = String(input.content ?? "");
         const size = Buffer.byteLength(content.trim(), "utf8");
         if (size > MAX_MEMORY_BYTES) return `NOT saved: that's ${kb(size)} and MEMORY.md loads only ${kb(MAX_MEMORY_BYTES)}. Move detail into topics with memory_write and keep this to what every turn needs.`;
@@ -618,7 +587,6 @@ export function baseTools(context: Context): Record<string, DriverTool> {
         from: { type: "number", description: "For a long topic, where to go on reading, as the last read said." },
       }),
       execute: async (input) => {
-        if (!memoryHere(context)) return MEMORY_LEFT_OUT;
         const team = input.team === true;
         const owner: MemoryOwner = team ? { team: bot.userId } : { bot: bot.id };
         const whose = team ? "The team memory" : "Your memory";
@@ -649,7 +617,6 @@ export function baseTools(context: Context): Record<string, DriverTool> {
         ["topic", "content"],
       ),
       execute: async (input) => {
-        if (!memoryHere(context)) return MEMORY_LEFT_OUT;
         const team = input.team === true;
         const owner: MemoryOwner = team ? { team: bot.userId } : { bot: bot.id };
         const given = String(input.topic ?? "").trim();
@@ -922,12 +889,10 @@ export function baseTools(context: Context): Record<string, DriverTool> {
         return `Sent to ${target.name} as an action: it's woken to act on it, and its answer will come back here and wake you to carry on.`;
       },
     },
-    ...sayInSpaceTool(context),
     team_memory_update: {
       description: "Replace the team memory's MEMORY.md, shared by every bot on your person's team.",
       inputSchema: schema({ content: { type: "string", description: "The whole new team MEMORY.md." } }, ["content"]),
       execute: async (input) => {
-        if (!memoryHere(context)) return MEMORY_LEFT_OUT;
         const content = String(input.content ?? "");
         const size = Buffer.byteLength(content.trim(), "utf8");
         if (size > MAX_TEAM_MEMORY_BYTES) return `NOT saved: that's ${kb(size)} and the team memory loads only ${kb(MAX_TEAM_MEMORY_BYTES)}. Keep it to what everyone needs; longer notes go in team topics with memory_write and team: true.`;

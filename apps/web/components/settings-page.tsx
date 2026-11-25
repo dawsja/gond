@@ -23,7 +23,6 @@ import { OidcCard } from "@/components/oidc-card";
 import { UsageSection } from "@/components/usage-section";
 import { SecretsCard } from "@/components/secrets-card";
 import { DetailsCard } from "@/components/details-card";
-import { OtherGondsSection, SpaceDefaultsCard } from "@/components/spaces/spaces-settings";
 import { ServerCard } from "@/components/server-card";
 import { ServerStorageSection } from "@/components/server-storage-section";
 import { SkillsCard } from "@/components/skills-card";
@@ -243,12 +242,6 @@ export function SettingsPage({ user, section, index = false }: { user: SessionUs
       break;
     case "secrets":
       body = <SecretsCard />;
-      break;
-    case "spaces":
-      body = <SpaceDefaultsCard />;
-      break;
-    case "other-gonds":
-      body = <OtherGondsSection />;
       break;
     case "data":
       body = <ServerStorageSection />;

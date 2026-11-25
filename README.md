@@ -52,11 +52,6 @@ affiliated with xAI, Meta or Anthropic.
 - **Show me how.** Do a task once on a bot's screen while it watches, and it
   turns what you did into a skill it can repeat. Passwords and sign-in codes
   never leave the page.
-- **Spaces.** Share a room with someone on another Gond: you, them, and your
-  bots together, end-to-end encrypted. A line from their side wakes only
-  the bots it names, and each answers by your rules for that space: in
-  words only, with the web, or, for anything that acts, only after a card
-  to you. Your memory, files and cards stay on your Gond.
 - **Secrets the bots never see.** A bot asks with a card, you type the value,
   and the API fills it in where it's needed. Save a payment card once and a
   bot pays with it on any site, after you say yes to each total. Anything a bot writes is
@@ -186,21 +181,6 @@ need. These also work in `.env`, and nothing needs them:
 | `GOND_SCREEN_TIMING` | Set to `1` on the computer to log where each screen batch's time went | off |
 | `BOT_IDLE_MS` | How long an idle bot session stays open | `600000` |
 | `GOND_BOX_MEMORY`, `GOND_BOX_CPUS`, `GOND_BOX_SHM` | The computer's limits | `4g`, `2`, `256m` |
-
-### Your own relay
-
-Spaces travel between Gonds through a relay, which passes sealed envelopes
-it can't read, so neither Gond needs to be reachable from the internet.
-Gond's own runs at `https://api.gond.io`; to run yours:
-
-```sh
-docker run -d --name gond-relay -p 8791:8791 -v gond-relay:/data ghcr.io/dawsja/gond-relay
-```
-
-Put it behind HTTPS, then in Settings → Other Gonds pick My own relay and
-give its address. It keeps envelopes for a server that's offline for up to 7
-days, and nothing else. Two Gonds on different relays still reach each
-other: each sends to the other's.
 
 ## Development
 

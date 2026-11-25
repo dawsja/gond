@@ -22,7 +22,6 @@ COPY packages/shared ./packages/shared
 # (shared's zod lives here, pointing into node_modules/.bun).
 COPY --from=install /app/packages/shared/node_modules ./packages/shared/node_modules
 COPY packages/relay ./packages/relay
-COPY --from=install /app/packages/relay/node_modules ./packages/relay/node_modules
 COPY apps/api ./apps/api
 RUN mkdir -p /data && chown bun:bun /data && chmod 700 /data
 VOLUME ["/data"]

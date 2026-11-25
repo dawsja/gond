@@ -17,8 +17,6 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
-import { SpaceSection } from "@/components/spaces/space-section";
-import { spaceSubtitle } from "@/lib/spaces";
 import { api } from "@/lib/api";
 import { describeRoutine } from "@/lib/schedule";
 import { cn } from "@/lib/utils";
@@ -86,7 +84,7 @@ function RightPanelContent({ thread, bot, screen }: { thread: Thread; bot: Bot |
     return (
       <>
         <section>
-          <h2 className="text-[13px] font-semibold">{thread.space ? "Your bots in this space" : "In this room"}</h2>
+          <h2 className="text-[13px] font-semibold">In this room</h2>
           <ul className="mt-2 flex flex-col gap-1.5">
             {members.map((b) => (
               <li key={b.id} className="flex items-center gap-2 text-[13px]">
@@ -97,10 +95,9 @@ function RightPanelContent({ thread, bot, screen }: { thread: Thread; bot: Bot |
             ))}
           </ul>
           <Button variant="outline" size="sm" onClick={() => openShellDialog({ kind: "edit-room", threadId: thread.id })} className="mt-3 w-full">
-            {thread.space ? "Edit your bots here" : "Edit room"}
+            Edit room
           </Button>
         </section>
-        <SpaceSection thread={thread} />
         {drivers.map((driver) => (
           <section key={driver.id}>
             <h2 className="text-[13px] font-semibold">{driver.name}&apos;s computer</h2>
@@ -179,7 +176,7 @@ export function DetailsSheet({ open, onOpenChange, ...props }: { open: boolean; 
       <SheetContent side="bottom" className="gap-0 xwide:hidden">
         <SheetHeader className="pb-3">
           <SheetTitle>{props.bot ? props.bot.name : props.thread.name}</SheetTitle>
-          <SheetDescription>{props.bot ? props.bot.title || "Your bot" : props.thread.space ? spaceSubtitle(props.thread.space) : `${props.thread.members.length} ${props.thread.members.length === 1 ? "bot" : "bots"}`}</SheetDescription>
+          <SheetDescription>{props.bot ? props.bot.title || "Your bot" : `${props.thread.members.length} ${props.thread.members.length === 1 ? "bot" : "bots"}`}</SheetDescription>
         </SheetHeader>
         <div className="flex min-h-0 flex-col gap-5 overflow-y-auto px-6 pb-6">{open ? <RightPanelContent {...props} /> : null}</div>
       </SheetContent>

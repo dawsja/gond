@@ -110,49 +110,24 @@ export const PERMISSION_MODES = ["ask", "full"];
 
 export const SCREEN_SCRIPTING_DENIED = ["Bash(xdotool:*)", "Bash(ydotool:*)", "Bash(wtype:*)"];
 
-/**
- * A guest session answers a line from someone on another Gond (Spaces): with no tools at all ("talk"),
- * or with only web search ("look"). `--tools` is what takes the rest away, so a Claude Code too old
- * for it, or one whose version can't be read, never runs one; the deny list and an empty working
- * folder are a second fence, since an untrusted line must never reach the owner's files, shell or
- * memory. WebFetch is never a guest's: it reaches any address the box can, the Compose network and
- * the cloud's metadata service included.
- */
-export const GUEST_MODES = ["talk", "look"];
-export const GUEST_FLOOR = "2.0.30";
-const GUEST_WEB = ["WebSearch"];
-const GUEST_DENIED = ["WebFetch", "Bash", "BashOutput", "KillShell", "PowerShell", "Read", "Write", "Edit", "MultiEdit", "NotebookEdit", "Glob", "Grep", "LS", "Task", "Agent", "TodoWrite", "Skill", "SlashCommand", "ExitPlanMode", "ListMcpResourcesTool", "ReadMcpResourceTool", "LSP", "Monitor"];
-
-export function guestReady(version) {
-  return Boolean(version) && atLeast(version, GUEST_FLOOR);
-}
-
-export function guestRefusal(version) {
-  return version
-    ? `Claude Code ${version.join(".")} on the computer is too old to answer in spaces. Update the computer and try again.`
-    : "Couldn't tell which Claude Code the computer has, so it won't answer in spaces. Update the computer and try again.";
-}
-
-export function sessionArgs({ model, maxTurns, systemPromptFile, mcpConfigFile, permission = "ask", sessionId, resume, allowed, optional = true, guest = null }) {
+export function sessionArgs({ model, maxTurns, systemPromptFile, mcpConfigFile, permission = "ask", sessionId, resume, allowed, optional = true }) {
   const has = (flag) => optional && allowed.has(flag);
   const args = ["-p", "--output-format", "stream-json", "--input-format", "stream-json", "--verbose", "--model", model];
   if (maxTurns && allowed.has("--max-turns")) args.push("--max-turns", String(maxTurns));
-  if ((permission === "full" && !guest) || !mcpConfigFile) {
+  if (permission === "full" || !mcpConfigFile) {
     args.push("--dangerously-skip-permissions");
   } else {
     args.push("--permission-mode", "default");
     args.push("--permission-prompt-tool", "mcp__gond__permission");
   }
-  if (guest) args.push("--tools", guest === "look" ? GUEST_WEB.join(",") : "");
   // Screen input goes through the gond browser and computer tools, never a shell; deny rules hold even when permissions are skipped.
-  args.push("--disallowedTools", ...SCREEN_SCRIPTING_DENIED, ...(guest ? GUEST_DENIED : []), ...(guest === "talk" ? GUEST_WEB : []));
+  args.push("--disallowedTools", ...SCREEN_SCRIPTING_DENIED);
   args.push("--append-system-prompt-file", systemPromptFile);
   if (mcpConfigFile) {
-    args.push("--mcp-config", mcpConfigFile, "--allowedTools", "mcp__gond", ...(guest === "look" ? GUEST_WEB : []));
-    if (has("--strict-mcp-config") || (guest && allowed.has("--strict-mcp-config"))) args.push("--strict-mcp-config");
+    args.push("--mcp-config", mcpConfigFile, "--allowedTools", "mcp__gond");
+    if (has("--strict-mcp-config")) args.push("--strict-mcp-config");
   }
-  // A guest never loads settings or CLAUDE.md from the person's own folders.
-  if (has("--setting-sources") || (guest && allowed.has("--setting-sources"))) args.push("--setting-sources", "project");
+  if (has("--setting-sources")) args.push("--setting-sources", "project");
 
   if (has("--replay-user-messages")) args.push("--replay-user-messages");
   if (has("--include-partial-messages")) args.push("--include-partial-messages");
@@ -160,12 +135,10 @@ export function sessionArgs({ model, maxTurns, systemPromptFile, mcpConfigFile, 
   return args;
 }
 
-export function argsKeyFor({ model, maxTurns, toolNames, permission, mcpServers = [], mcpRevs = [], access = { kind: "plan" }, guest = null, timezone = null }) {
-  // Only a refreshed server adds its revision, only a guest its mode and only a known zone itself, so other sessions keep the key they had.
+export function argsKeyFor({ model, maxTurns, toolNames, permission, mcpServers = [], mcpRevs = [], access = { kind: "plan" }, timezone = null }) {
   const revs = mcpRevs.some(Boolean) ? { mcpRevs } : {};
-  const visitor = guest ? { guest } : {};
   const zone = timezone ? { timezone } : {};
-  return createHash("sha256").update(JSON.stringify({ model, maxTurns: maxTurns ?? null, toolNames, permission: permission ?? "ask", mcpServers, access, ...revs, ...visitor, ...zone })).digest("hex").slice(0, 16);
+  return createHash("sha256").update(JSON.stringify({ model, maxTurns: maxTurns ?? null, toolNames, permission: permission ?? "ask", mcpServers, access, ...revs, ...zone })).digest("hex").slice(0, 16);
 }
 
 function mcpServersConfig(servers) {
@@ -383,16 +356,11 @@ export class AgentSession extends BridgedSession {
     return { file, cleanup: () => fs.rmSync(dir, { recursive: true, force: true }) };
   }
 
-  async ensure({ model, maxTurns, systemPrompt, tools, permission = "ask", mcpServers = [], access = { kind: "plan" }, guest = null, timezone = null }) {
-    if (guest) {
-      tools = [];
-      mcpServers = [];
-      permission = "ask";
-    }
+  async ensure({ model, maxTurns, systemPrompt, tools, permission = "ask", mcpServers = [], access = { kind: "plan" }, timezone = null }) {
     const toolNames = tools.map((tool) => tool.name).sort();
     const mcpRevs = (Array.isArray(mcpServers) ? mcpServers : []).map((server) => (typeof server?.rev === "string" ? server.rev : null));
     // A person who moved to another zone gets a relaunched (resumed) session, so its commands read their clock.
-    const argsKey = argsKeyFor({ model, maxTurns, toolNames, permission, mcpServers: mcpServersConfig(mcpServers), mcpRevs, access, guest, timezone });
+    const argsKey = argsKeyFor({ model, maxTurns, toolNames, permission, mcpServers: mcpServersConfig(mcpServers), mcpRevs, access, timezone });
     this.tools = tools;
     const backend = backendOf(access);
     if (this.backend && this.backend !== backend) {
@@ -406,7 +374,6 @@ export class AgentSession extends BridgedSession {
     this.access = access;
 
     const version = await claudeVersion({ bin: this.bin, env: this.env, uid: this.uid, gid: this.gid });
-    if (guest && !guestReady(version)) throw new Error(guestRefusal(version));
     const allowed = flagsFor(version);
     for (const flag of Object.keys(FLAG_FLOORS)) {
       if (!allowed.has(flag)) this.onWarning(`Claude Code ${version?.join(".") ?? "?"} predates ${flag}; bots run without it.`);
@@ -422,7 +389,7 @@ export class AgentSession extends BridgedSession {
     const sessionId = this.sessionId ?? randomUUID();
     const launch = (optional) =>
       this.spawn(
-        sessionArgs({ model, maxTurns, systemPromptFile: persona.file, mcpConfigFile: mcp.file, permission, sessionId, resume, allowed, optional, guest }),
+        sessionArgs({ model, maxTurns, systemPromptFile: persona.file, mcpConfigFile: mcp.file, permission, sessionId, resume, allowed, optional }),
         { resume },
       );
     const outcome = await launch(!this.withoutOptional);

@@ -140,7 +140,7 @@ private struct TitleView: View {
         } else if let chrome = ui.chrome {
             Button { ui.send(["type": "details"]) } label: {
                 HStack(spacing: 8) {
-                    FacesView(faces: ui.faces, more: chrome.more, primary: chrome.primary, space: chrome.space)
+                    FacesView(faces: ui.faces, more: chrome.more, primary: chrome.primary)
                         .frame(width: 28, height: 28)
                     VStack(alignment: .leading, spacing: 0) {
                         Text(chrome.title)
@@ -188,7 +188,6 @@ struct FacesView: View {
     let faces: [NSImage]
     let more: Int
     let primary: Bool
-    var space = false
 
     var body: some View {
         GeometryReader { proxy in
@@ -219,14 +218,6 @@ struct FacesView: View {
                         .frame(width: size * 0.42, height: size * 0.42)
                         .background(Circle().fill(Color(hex: 0xF2C14E)))
                         .offset(x: size * 0.6, y: size * 0.6)
-                }
-                if space {
-                    Image(systemName: "globe")
-                        .font(.system(size: size * 0.26, weight: .semibold))
-                        .foregroundStyle(Theme.background)
-                        .frame(width: size * 0.42, height: size * 0.42)
-                        .background(Circle().fill(Theme.foreground))
-                        .offset(x: size * 0.64, y: -size * 0.06)
                 }
             }
         }
